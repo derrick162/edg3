@@ -37,7 +37,10 @@ export default function LandingPage() {
       <div className="relative z-10">
         {/* Nav */}
         <nav className="flex items-center justify-between px-8 py-6 max-w-6xl mx-auto">
-          <span className="logo-text text-2xl">EDG3</span>
+          <div>
+            <span className="logo-text text-2xl">EDG3</span>
+            <p className="text-xs mt-0.5" style={{ color: '#6366f1', letterSpacing: '0.08em' }}>ELITE DAILY GUIDANCE ENGINE</p>
+          </div>
           <div className="flex items-center gap-4">
             <Link href="/login" className="btn-secondary text-sm py-2 px-5">Log in</Link>
             <Link href="/signup" className="btn-primary text-sm py-2 px-5">Get started</Link>
@@ -53,9 +56,9 @@ export default function LandingPage() {
           </div>
 
           <h1 className="text-6xl font-black tracking-tight mb-6 leading-tight">
-            <span style={{ color: 'var(--foreground)' }}>Every morning,</span>
+            <span style={{ color: 'var(--foreground)' }}>Most people have a calendar.</span>
             <br />
-            <span className="logo-text">EDG3 calls you.</span>
+            <span className="logo-text">You have Edge.</span>
           </h1>
 
           <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: '#888899' }}>
@@ -80,7 +83,7 @@ export default function LandingPage() {
               {
                 icon: '📞',
                 title: 'Calls You Every Morning',
-                desc: 'EDG3 initiates the call at your chosen time. You don\'t have to open an app. It comes to you.',
+                desc: 'Edge initiates the call at your chosen time. You don\'t have to open an app. It comes to you.',
               },
               {
                 icon: '🧠',
@@ -90,7 +93,7 @@ export default function LandingPage() {
               {
                 icon: '⚡',
                 title: 'Calls Out Misalignment',
-                desc: 'If you said building your startup is priority #1 but your calendar says otherwise — EDG3 will say it.',
+                desc: 'If you said building your startup is priority #1 but your calendar says otherwise — Edge will say it.',
               },
               {
                 icon: '📅',
@@ -100,7 +103,7 @@ export default function LandingPage() {
               {
                 icon: '🔁',
                 title: 'Memory That Accumulates',
-                desc: '"You\'ve mentioned moving to Hong Kong 8 times in the last 30 days." EDG3 tracks patterns you miss.',
+                desc: '"You\'ve mentioned moving to Hong Kong 8 times in the last 30 days." Edge tracks patterns you miss.',
               },
               {
                 icon: '🎯',
@@ -114,6 +117,12 @@ export default function LandingPage() {
                 <p className="text-sm leading-relaxed" style={{ color: '#888899' }}>{f.desc}</p>
               </div>
             ))}
+          </div>
+
+          {/* Tagline */}
+          <div className="glass-card p-8 text-center mb-6">
+            <p className="text-lg font-semibold mb-1" style={{ color: 'var(--foreground)' }}>Elite Daily Guidance Engine</p>
+            <p className="text-sm" style={{ color: '#888899' }}>Built for founders, operators, and ambitious humans who refuse to drift.</p>
           </div>
 
           {/* Who it's for */}

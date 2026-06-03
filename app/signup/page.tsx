@@ -40,6 +40,7 @@ export default function SignupPage() {
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="logo-text text-3xl">EDG3</Link>
+          <p className="text-xs mt-1 mb-1" style={{ color: '#6366f1', letterSpacing: '0.08em' }}>ELITE DAILY GUIDANCE ENGINE</p>
           <p className="mt-2 text-sm" style={{ color: '#888899' }}>Create your account</p>
         </div>
 
