@@ -27,6 +27,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getWeekEvents(userId).catch(() => []),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
+  const recentlyCompletedTasks = taskQueries.getRecent(userId, 3).filter(t => t.completed);
 
   const calendarText = formatEventsForBriefing(calendarEvents);
   const weekCalendarText = weekEvents.length
@@ -88,16 +89,19 @@ ${memoriesText}
 INCOMPLETE TASKS FROM PREVIOUS DAYS:
 ${incompleteTasks.length ? incompleteTasks.map(t => `- [${t.date}] ${t.text}`).join('\n') : 'None.'}
 
+RECENTLY COMPLETED TASKS:
+${recentlyCompletedTasks.length ? recentlyCompletedTasks.map(t => `- [${t.date}] ${t.text}`).join('\n') : 'None.'}
+
 RECENT CALL RESPONSES FROM USER:
 ${previousBriefingsText}
 
 Generate a briefing with these sections:
-1. GREETING — Start with "${greeting}, [name]." then be personal and sharp, reference something specific from their profile or recent conversations
+1. GREETING — Start with "${greeting}, [name]." then be personal and sharp. If there are recently completed tasks, open with genuine kudos — call them out by name, be specific, make them feel the win. Keep it warm and real, not generic.
 2. TODAY'S SNAPSHOT — Key events and commitments from their calendar (2-3 sentences)
 3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. Note any misalignment briefly and with empathy — one sentence max, then move on. Do not lecture or repeat the point.
-4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today (be specific, not generic). You MUST address every stated weekly priority — do not skip or omit any of them even if you think something else is more important. If there are incomplete tasks from previous days, reference them explicitly by name — acknowledge what carried over, adjust the recommendation based on what's already been attempted (e.g. if they tried to find 3 options yesterday and didn't, suggest finding just 1 today), and make it feel like continuity not repetition.
+4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today (be specific, not generic). You MUST address every stated weekly priority — do not skip or omit any of them even if you think something else is more important. If there are incomplete tasks from previous days, reference them explicitly by name — acknowledge what carried over and adjust the ask accordingly. IMPORTANT: If a recently completed task is directly related to one of their top priorities, do NOT repeat that priority as a task — instead acknowledge it's done and ask if a new priority should replace it (e.g. "You knocked out the bachelor party planning — do you want to swap that priority out for something new? Tell me at the end of the call.").
 5. PATTERN RECOGNITION — One insight from their memory/conversation history that they need to hear (if applicable)
-6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks for today with exact start and end times (e.g. "nine AM to ten thirty AM for the gym", "two PM to four PM for Edg3 development"). Always include specific times — these will be automatically added to the calendar.
+6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks for today with exact start and end times (e.g. "nine AM to ten thirty AM for the gym", "two PM to four PM for Edge development"). Always include specific times — these will be automatically added to the calendar.
 7. CLOSING QUESTION — End with: "What's the most important thing I should know before tomorrow's briefing?"
 
 Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
