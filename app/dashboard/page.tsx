@@ -493,6 +493,8 @@ export default function Dashboard() {
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1'
   );
   const [introCalling, setIntroCalling] = useState(false);
+  const [showNextCallTip, setShowNextCallTip] = useState(false);
+  const [reminderAdded, setReminderAdded] = useState(false);
 
   const loadData = useCallback(async () => {
     const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes] = await Promise.all([
@@ -619,11 +621,51 @@ export default function Dashboard() {
           </nav>
 
           <div className="mt-auto space-y-3">
-            <div className="glass-card p-3">
-              <p className="text-xs" style={{ color: '#4a4a5a' }}>Next call</p>
+            <div
+              className="glass-card p-3 transition-all"
+              style={showNextCallTip ? {
+                border: '1px solid rgba(99,102,241,0.6)',
+                boxShadow: '0 0 16px rgba(99,102,241,0.25)',
+              } : {}}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs" style={{ color: '#4a4a5a' }}>Next call</p>
+                {showNextCallTip && (
+                  <span className="text-xs px-1.5 py-0.5 rounded font-semibold animate-pulse"
+                    style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}>
+                    ← this is you
+                  </span>
+                )}
+              </div>
               <p className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>
                 {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
               </p>
+              {showNextCallTip && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(99,102,241,0.15)' }}>
+                  {!reminderAdded ? (
+                    <>
+                      <p className="text-xs mb-2" style={{ color: '#888899' }}>
+                        Add a daily reminder so you're ready when Edge calls.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          const res = await fetch('/api/calendar/reminder', { method: 'POST' });
+                          if (res.ok) { setReminderAdded(true); }
+                        }}
+                        className="btn-primary w-full py-2 text-xs"
+                      >
+                        📅 Add to calendar
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: '#6366f1' }}>✓</span>
+                      <p className="text-xs" style={{ color: '#888899' }}>Added to your calendar.</p>
+                      <button onClick={() => setShowNextCallTip(false)} className="ml-auto text-xs" style={{ color: '#4a4a5a' }}>Dismiss</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <button
               onClick={async () => {
@@ -860,7 +902,7 @@ export default function Dashboard() {
                 </div>
                 <p className="text-sm" style={{ color: '#888899' }}>Pick up — it'll only take 30 seconds.</p>
                 <button
-                  onClick={() => { setShowWelcome(false); router.replace('/dashboard'); }}
+                  onClick={() => { setShowWelcome(false); setShowNextCallTip(true); router.replace('/dashboard'); }}
                   className="btn-secondary w-full py-2 text-sm"
                 >
                   ✓ Done, I got the call
