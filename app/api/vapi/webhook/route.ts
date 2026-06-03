@@ -38,13 +38,15 @@ export async function POST(req: NextRequest) {
         await analyzeUserResponse(briefing.user_id, userResponse);
       }
 
-      // Auto-create calendar blocks and tasks from briefing recommendations
+      // Auto-create calendar blocks and tasks from briefing + transcript
       const user = userQueries.findById(briefing.user_id);
       if (user) {
-        extractAndCreateTimeBlocks(briefing.user_id, briefing.content, user.timezone)
+        // Extract calendar blocks from briefing AND transcript conversation
+        const combinedContent = briefing.content + (transcript ? '\n\nCONVERSATION TRANSCRIPT:\n' + transcript : '');
+        extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone)
           .catch(err => console.error('Calendar block creation failed:', err));
 
-        // Only extract tasks if none exist for today from EDG3 already
+        // Extract tasks from briefing content
         const db2 = (await import('@/lib/db')).getDb();
         const tomorrow = new Date(new Date().toLocaleString('en-US', { timeZone: user.timezone }));
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -56,6 +58,12 @@ export async function POST(req: NextRequest) {
         if (existingTasks.count === 0) {
           extractTasksFromBriefing(briefing.user_id, briefing.content, user.timezone)
             .catch(err => console.error('Task extraction failed:', err));
+        }
+
+        // Always extract tasks from transcript conversation (user requests during call)
+        if (transcript) {
+          extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
+            .catch(err => console.error('Transcript task extraction failed:', err));
         }
       }
     } else if (type === 'call-started') {
@@ -90,6 +98,42 @@ If no clear action items, return [].
 
 Briefing:
 ${briefingContent}`,
+    }],
+  });
+
+  const content = response.content[0];
+  if (content.type !== 'text') return;
+
+  try {
+    const match = content.text.match(/\[[\s\S]*\]/);
+    if (!match) return;
+    const tasks: string[] = JSON.parse(match[0]);
+    for (const text of tasks.slice(0, 5)) {
+      if (text?.trim()) taskQueries.create(userId, text.trim(), today, 'edg3');
+    }
+  } catch {
+    // ignore parse errors
+  }
+}
+
+async function extractTasksFromTranscript(userId: number, transcript: string, timezone: string) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const targetDate = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  targetDate.setDate(targetDate.getDate() + 1);
+  const today = targetDate.toLocaleDateString('en-CA');
+
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: `Read this call transcript between a user and their AI Chief of Staff.
+Extract any NEW tasks or action items that were agreed upon DURING the conversation (not from the original briefing).
+Focus on things the user requested, things the AI agreed to add, or new commitments made mid-call.
+Return ONLY a JSON array of short task strings (max 8 words each). If nothing new was agreed on, return [].
+
+Transcript:
+${transcript}`,
     }],
   });
 
