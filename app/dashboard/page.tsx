@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 
 const TIMEZONES = [
@@ -479,7 +479,6 @@ interface Task {
 
 export default function Dashboard() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
@@ -518,10 +517,10 @@ export default function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
-    if (searchParams.get('welcome') === '1') {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1') {
       setShowWelcome(true);
     }
-  }, [searchParams]);
+  }, []);
 
   async function callIntro() {
     setIntroCalling(true);
