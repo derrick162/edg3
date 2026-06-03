@@ -875,13 +875,6 @@ export default function Dashboard() {
                 </span>
               ) : '📞 Meet Edge'}
             </button>
-            <button
-              onClick={() => setShowWelcome(false)}
-              className="text-sm w-full"
-              style={{ color: '#4a4a5a' }}
-            >
-              Skip for now
-            </button>
           </div>
         </div>
       )}
