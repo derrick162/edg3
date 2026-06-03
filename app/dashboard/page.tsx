@@ -525,9 +525,7 @@ export default function Dashboard() {
   async function callIntro() {
     setIntroCalling(true);
     await fetch('/api/briefing/intro', { method: 'POST' });
-    setIntroCalling(false);
-    setShowWelcome(false);
-    router.replace('/dashboard');
+    // Keep modal open in "calling" state — user dismisses after call ends
   }
 
   async function generateBriefing() {
@@ -850,18 +848,28 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <button
-              onClick={callIntro}
-              disabled={introCalling}
-              className="btn-primary w-full py-3 text-base mb-3"
-            >
-              {introCalling ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Calling you now…
-                </span>
-              ) : '📞 Meet Edge'}
-            </button>
+            {!introCalling ? (
+              <button
+                onClick={callIntro}
+                className="btn-primary w-full py-3 text-base"
+              >
+                📞 Meet Edge
+              </button>
+            ) : (
+              <div className="text-center space-y-4">
+                <div className="flex items-center justify-center gap-3 py-3">
+                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="font-semibold" style={{ color: '#818cf8' }}>Edge is calling you now…</span>
+                </div>
+                <p className="text-sm" style={{ color: '#888899' }}>Pick up — it'll only take 30 seconds.</p>
+                <button
+                  onClick={() => { setShowWelcome(false); router.replace('/dashboard'); }}
+                  className="btn-secondary w-full py-2 text-sm"
+                >
+                  ✓ Done, I got the call
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
