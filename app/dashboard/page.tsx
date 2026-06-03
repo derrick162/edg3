@@ -520,15 +520,15 @@ export default function Dashboard() {
   useEffect(() => {
     if (searchParams.get('welcome') === '1') {
       setShowWelcome(true);
-      router.replace('/dashboard');
     }
-  }, [searchParams, router]);
+  }, [searchParams]);
 
   async function callIntro() {
     setIntroCalling(true);
     await fetch('/api/briefing/intro', { method: 'POST' });
     setIntroCalling(false);
     setShowWelcome(false);
+    router.replace('/dashboard');
   }
 
   async function generateBriefing() {
