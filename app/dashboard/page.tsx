@@ -89,6 +89,7 @@ function ProfileTab() {
               <label className="block text-xs mb-1" style={{ color: '#888899' }}>Timezone</label>
               <select
                 className="input"
+                style={{ background: '#1a1a2e', color: '#e8e8f0' }}
                 value={timezone}
                 onChange={e => setTimezone(e.target.value)}
               >
