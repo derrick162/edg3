@@ -27,7 +27,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getWeekEvents(userId).catch(() => []),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
-  const recentlyCompletedTasks = taskQueries.getRecent(userId, 3).filter(t => t.completed);
+  // Only kudos for tasks completed since the last briefing
+  const lastBriefing = recentBriefings[0];
+  const lastBriefingTime = lastBriefing ? new Date(lastBriefing.created_at) : null;
+  const recentlyCompletedTasks = taskQueries.getRecent(userId, 3).filter(t => {
+    if (!t.completed || !t.completed_at) return false;
+    if (!lastBriefingTime) return true;
+    return new Date(t.completed_at) > lastBriefingTime;
+  });
 
   const calendarText = formatEventsForBriefing(calendarEvents, userTimezone);
   const weekCalendarText = weekEvents.length
