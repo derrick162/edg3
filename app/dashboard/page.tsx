@@ -664,18 +664,6 @@ export default function Dashboard() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={generateBriefing}
-                disabled={generatingBriefing}
-                className="btn-secondary text-sm py-2 px-4"
-              >
-                {generatingBriefing ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                    Generating…
-                  </span>
-                ) : '✦ Preview briefing'}
-              </button>
-              <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
                 className="btn-primary text-sm py-2 px-4"
