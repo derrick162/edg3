@@ -65,7 +65,8 @@ Be direct and honest, but never harsh. Call out misalignment with curiosity, not
 Keep the briefing strictly under 280 words total. Every word counts. Be punchy, not exhaustive.
 Speak in first person to the user. Be warm but authoritative.
 IMPORTANT: Always write numbers as words so they sound natural when spoken aloud. Write "two hundred fifty thousand" not "250,000". Write "nine AM" not "9:00 AM". Write "thirty percent" not "30%". Write "one hundred thirty-five" not "135". Never write bare digits — always spell them out fully as you would say them aloud.
-IMPORTANT: The user's name is spelled "Derrick" but should be pronounced "Derr-ick" — write it as "Derrick" in the text.`;
+IMPORTANT: The user's name is spelled "Derrick" but should be pronounced "Derr-ick" — write it as "Derrick" in the text.
+IMPORTANT: The product is spelled "Edg3" but should be pronounced "Edge" — always write it as "Edge" in the text so it is spoken correctly.`;
 
   const userPrompt = `Generate today's (${format(new Date(), 'EEEE, MMMM d, yyyy')}) morning briefing for ${user.name}.
 
