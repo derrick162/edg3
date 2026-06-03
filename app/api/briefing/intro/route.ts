@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
+import Anthropic from '@anthropic-ai/sdk';
 
 export async function POST() {
   const user = await getSession();
@@ -12,15 +13,39 @@ export async function POST() {
   const phoneNumber = (fullUser as any).phone_number;
   if (!phoneNumber) return NextResponse.json({ error: 'No phone number on file' }, { status: 400 });
 
-  const firstName = fullUser.name.split(' ')[0];
-
   const VAPI_API_KEY = process.env.VAPI_API_KEY;
   const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
   if (!VAPI_API_KEY || !VAPI_PHONE_NUMBER_ID) {
     return NextResponse.json({ error: 'Vapi not configured' }, { status: 500 });
   }
 
-  const firstMessage = `Hey ${firstName}! I'm Edge — your Elite Daily Guidance Engine. Think of me as your personal AI Chief of Staff. Every morning I'll call you just like this, and in about three to five minutes I'll tell you exactly what deserves your attention that day. Here's how I'll help you: first, I'll align your calendar with your actual priorities so you stop drifting. Second, I'll track patterns in your life that you're too close to see yourself. And third, I'll hold you accountable — not harshly, but honestly, like a great advisor would. I already know your story, ${firstName}. Let's make sure the next chapter is the best one yet. I'll see you tomorrow morning.`;
+  const firstName = fullUser.name.split(' ')[0];
+  const profile = fullUser.profile_summary || '';
+
+  // Generate personalized intro using Claude
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const generated = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: `You are Edge, an AI Chief of Staff introducing yourself to ${firstName} for the very first time via a phone call.
+
+Write a warm, confident 30-second spoken intro (about 80 words max). Structure:
+1. Greet them by first name, introduce yourself as Edge their Elite Daily Guidance Engine
+2. Say you'll call them every morning with a focused briefing
+3. Based on their profile below, name exactly 3 specific ways you'll help THEM personally — be specific to their situation, not generic
+4. Close warmly: "I already know your story. Let's make the next chapter the best one. I'll see you tomorrow morning."
+
+Write numbers as words. Sound warm and human, not robotic.
+
+PROFILE:
+${profile || 'No profile yet — use generic helpful intro'}`,
+    }],
+  });
+
+  const content = generated.content[0];
+  const firstMessage = content.type === 'text' ? content.text : `Hey ${firstName}! I'm Edge — your Elite Daily Guidance Engine and AI Chief of Staff. Every morning I'll call you with a focused briefing on what deserves your attention that day. I'll align your priorities with your calendar, track patterns you're too close to see, and hold you accountable like a great advisor would. I already know your story. Let's make the next chapter the best one. I'll see you tomorrow morning.`;
 
   const payload = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
@@ -37,11 +62,11 @@ export async function POST() {
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
-        systemPrompt: `You are Edge, an AI Chief of Staff. You just delivered your intro message. The user may respond — if they do, acknowledge warmly in one sentence then say "I'll see you tomorrow morning." and end the call. Keep the entire call under 45 seconds.`,
+        systemPrompt: `You are Edge, an AI Chief of Staff. You just delivered your intro message to ${firstName}. If they respond, acknowledge warmly in one sentence then say "I'll see you tomorrow morning." and end the call. Keep the entire call under 60 seconds.`,
       },
       firstMessage,
       endCallPhrases: ["I'll see you tomorrow morning", 'see you tomorrow', 'goodbye'],
-      maxDurationSeconds: 60,
+      maxDurationSeconds: 90,
       silenceTimeoutSeconds: 10,
     },
   };
