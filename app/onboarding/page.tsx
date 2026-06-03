@@ -282,7 +282,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
 
         <div>
           <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>
-            Phone number <span style={{ color: '#4a4a5a' }}>(for voice calls — optional)</span>
+            Phone number
           </label>
           <input
             className="input"
@@ -290,9 +290,10 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             placeholder="+1 555 000 0000"
             value={phone}
             onChange={e => setPhone(e.target.value)}
+            required
           />
           <p className="text-xs mt-1" style={{ color: '#4a4a5a' }}>
-            Required for live phone calls. You can still use the dashboard without it.
+            Include country code (e.g. +1 for US/Canada). Edge will call you here every morning.
           </p>
         </div>
 
