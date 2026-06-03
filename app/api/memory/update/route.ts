@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const { content } = await req.json();
   if (!content?.trim()) return NextResponse.json({ error: 'Content required' }, { status: 400 });
 
-  memoryQueries.create(user.id, 'insight', content.trim());
+  memoryQueries.create(user.id, 'calendar_note', `[USER NOTE]: ${content.trim()}`);
 
   return NextResponse.json({ success: true });
 }
