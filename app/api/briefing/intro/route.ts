@@ -26,21 +26,22 @@ export async function POST() {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const generated = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+    max_tokens: 400,
     messages: [{
       role: 'user',
-      content: `You are Edge, an AI Chief of Staff introducing yourself to ${firstName} for the very first time via a phone call.
+      content: `You are Edge, an AI Chief of Staff making your very first call to ${firstName}.
 
-Write a warm, confident 30-second spoken intro (about 80 words max). Structure:
-1. Greet them by first name, introduce yourself as Edge their Elite Daily Guidance Engine
-2. Say you'll call them every morning with a focused briefing
-3. Based on their profile below, name exactly 3 specific ways you'll help THEM personally — be specific to their situation, not generic
-4. Close warmly: "I already know your story. Let's make the next chapter the best one. I'll see you tomorrow morning."
+Write a warm, confident 45-second spoken intro. Follow this exact structure:
 
-Write numbers as words. Sound warm and human, not robotic.
+1. "Hey ${firstName}, I'm Edge — your Elite Daily Guidance Engine and personal AI Chief of Staff."
+2. "Every morning I'll call you like this with a focused briefing on what actually deserves your attention that day."
+3. "I've read your full profile, and here are three specific ways I'm going to help you:" — then list exactly 3 highly specific, personal things drawn directly from the profile. Reference real details — their actual goals, challenges, businesses, or patterns. DO NOT be generic. For example if they're building a startup, name it. If they have a weight goal, name the number. If they have a financial challenge, reference it directly.
+4. Close with: "I already know what you're capable of, ${firstName}. Let's make the next chapter the best one yet. I'll see you tomorrow morning."
+
+Write all numbers as words. Natural spoken language only. No bullet points or formatting — flowing speech.
 
 PROFILE:
-${profile || 'No profile yet — use generic helpful intro'}`,
+${profile || 'New user — give a warm generic intro about aligning priorities, tracking patterns, and accountability'}`,
     }],
   });
 
