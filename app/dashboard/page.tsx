@@ -94,7 +94,7 @@ function ProfileTab() {
                 onChange={e => setTimezone(e.target.value)}
               >
                 {TIMEZONES.map(tz => (
-                  <option key={tz.value} value={tz.value}>{tz.label}</option>
+                  <option key={tz.value} value={tz.value} style={{ background: '#1a1a2e', color: '#e8e8f0' }}>{tz.label}</option>
                 ))}
               </select>
             </div>
