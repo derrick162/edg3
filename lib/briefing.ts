@@ -29,11 +29,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const incompleteTasks = taskQueries.getIncomplete(userId);
   const recentlyCompletedTasks = taskQueries.getRecent(userId, 3).filter(t => t.completed);
 
-  const calendarText = formatEventsForBriefing(calendarEvents);
+  const calendarText = formatEventsForBriefing(calendarEvents, userTimezone);
   const weekCalendarText = weekEvents.length
     ? weekEvents.map(e => {
         const start = e.start?.dateTime
-          ? new Date(e.start.dateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          ? new Date(e.start.dateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: userTimezone })
           : e.start?.date || 'All day';
         return `- ${start}: ${e.summary || 'Untitled'}`;
       }).join('\n')

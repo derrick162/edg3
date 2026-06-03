@@ -246,14 +246,14 @@ ${briefingContent}`,
   }
 }
 
-export function formatEventsForBriefing(events: any[]): string {
+export function formatEventsForBriefing(events: any[], timezone?: string): string {
   if (!events.length) return 'No calendar events found for today.';
 
   const now = new Date();
   return events.map(event => {
     const startDate = event.start?.dateTime ? new Date(event.start.dateTime) : null;
     const startStr = startDate
-      ? startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      ? startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone || 'America/Vancouver' })
       : 'All day';
     const isPast = startDate && startDate < now;
     const title = event.summary || 'Untitled event';
