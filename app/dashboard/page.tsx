@@ -830,7 +830,7 @@ export default function Dashboard() {
       </div>
 
       {/* Welcome modal */}
-      {showWelcome && user && (
+      {showWelcome && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
           <div className="glass-card p-8 max-w-md w-full text-center relative" style={{ border: '1px solid rgba(99,102,241,0.3)' }}>
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
@@ -839,7 +839,7 @@ export default function Dashboard() {
             </div>
             <h2 className="text-2xl font-black mb-2">Edge wants to introduce himself.</h2>
             <p className="text-sm mb-6" style={{ color: '#888899' }}>
-              Edge will call you now at <span style={{ color: '#e8e8f0', fontWeight: 600 }}>{(user as any).phone_number}</span> for a quick 30-second intro — your first of many conversations.
+              Edge will call you now at <span style={{ color: '#e8e8f0', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
             </p>
             <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'rgba(99,102,241,0.05)' }}>
               <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>EDGE WILL HELP YOU:</p>
