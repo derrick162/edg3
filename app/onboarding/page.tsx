@@ -293,7 +293,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             required
           />
           <p className="text-xs mt-1" style={{ color: '#4a4a5a' }}>
-            Include country code (e.g. +1 for US/Canada). Edge will call you here every morning.
+            Include country code (e.g. +1 for US/Canada). Edg3 will call you here every morning.
           </p>
         </div>
 

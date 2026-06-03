@@ -832,12 +832,12 @@ export default function Dashboard() {
                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}>
               <span className="logo-text text-2xl">E</span>
             </div>
-            <h2 className="text-2xl font-black mb-2">Edge wants to introduce himself.</h2>
+            <h2 className="text-2xl font-black mb-2">Edg3 wants to introduce himself.</h2>
             <p className="text-sm mb-6" style={{ color: '#888899' }}>
-              Edge will call you now at <span style={{ color: '#e8e8f0', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
+              Edg3 will call you now at <span style={{ color: '#e8e8f0', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
             </p>
             <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'rgba(99,102,241,0.05)' }}>
-              <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>EDGE WILL HELP YOU:</p>
+              <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>EDG3 WILL HELP YOU:</p>
               {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable — honestly, like a great advisor'].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className="text-indigo-400 font-bold text-sm">{i + 1}.</span>
@@ -850,13 +850,13 @@ export default function Dashboard() {
                 onClick={callIntro}
                 className="btn-primary w-full py-3 text-base"
               >
-                📞 Meet Edge
+                📞 Meet Edg3
               </button>
             ) : (
               <div className="text-center space-y-4">
                 <div className="flex items-center justify-center gap-3 py-3">
                   <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="font-semibold" style={{ color: '#818cf8' }}>Edge is calling you now…</span>
+                  <span className="font-semibold" style={{ color: '#818cf8' }}>Edg3 is calling you now…</span>
                 </div>
                 <p className="text-sm" style={{ color: '#888899' }}>Pick up — it'll only take 30 seconds.</p>
                 <button

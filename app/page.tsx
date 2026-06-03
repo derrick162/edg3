@@ -83,7 +83,7 @@ export default function LandingPage() {
               {
                 icon: '📞',
                 title: 'Calls You Every Morning',
-                desc: 'Edge initiates the call at your chosen time. You don\'t have to open an app. It comes to you.',
+                desc: 'Edg3 initiates the call at your chosen time. You don\'t have to open an app. It comes to you.',
               },
               {
                 icon: '🧠',
@@ -93,7 +93,7 @@ export default function LandingPage() {
               {
                 icon: '⚡',
                 title: 'Calls Out Misalignment',
-                desc: 'If you said building your startup is priority #1 but your calendar says otherwise — Edge will say it.',
+                desc: 'If you said building your startup is priority #1 but your calendar says otherwise — Edg3 will say it.',
               },
               {
                 icon: '📅',
@@ -103,7 +103,7 @@ export default function LandingPage() {
               {
                 icon: '🔁',
                 title: 'Memory That Accumulates',
-                desc: '"You\'ve mentioned moving to Hong Kong 8 times in the last 30 days." Edge tracks patterns you miss.',
+                desc: '"You\'ve mentioned moving to Hong Kong 8 times in the last 30 days." Edg3 tracks patterns you miss.',
               },
               {
                 icon: '🎯',
