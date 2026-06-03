@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { priorityQueries } from '@/lib/db';
+import { priorityQueries, memoryQueries } from '@/lib/db';
 import { getWeekOf } from '@/lib/briefing';
 
 export async function POST(req: NextRequest) {
@@ -13,13 +13,27 @@ export async function POST(req: NextRequest) {
   }
 
   const weekOf = getWeekOf();
-  priorityQueries.deleteThisWeek(user.id, weekOf);
 
-  priorities.slice(0, 3).forEach((text: string, i: number) => {
-    if (text?.trim()) {
-      priorityQueries.create(user.id, text.trim(), weekOf, i + 1);
-    }
+  // Capture old priorities before overwriting
+  const oldPriorities = priorityQueries.getThisWeek(user.id, weekOf);
+  const oldTexts = oldPriorities.map(p => p.text);
+  const newTexts = priorities.slice(0, 3).map((t: string) => t?.trim()).filter(Boolean);
+
+  priorityQueries.deleteThisWeek(user.id, weekOf);
+  newTexts.forEach((text: string, i: number) => {
+    priorityQueries.create(user.id, text, weekOf, i + 1);
   });
+
+  // Record the change in memory if priorities actually changed
+  const added = newTexts.filter(t => !oldTexts.includes(t));
+  const removed = oldTexts.filter(t => !newTexts.includes(t));
+  if (added.length > 0 || removed.length > 0) {
+    const changeNote = [
+      removed.length ? `Removed priorities: ${removed.join(', ')}` : '',
+      added.length ? `Added priorities: ${added.join(', ')}` : '',
+    ].filter(Boolean).join('. ');
+    memoryQueries.create(user.id, 'calendar_note', `[PRIORITY CHANGE]: ${changeNote}`);
+  }
 
   return NextResponse.json({ success: true });
 }
