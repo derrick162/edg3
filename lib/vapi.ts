@@ -31,7 +31,8 @@ export async function initiateCall(
 You already delivered the opening briefing as your first message. Do not repeat it.
 Now wait for the user to respond to the closing question you just asked them.
 Once they respond, say exactly: "Understood. I'm blocking that time on your calendar now. I'll factor your response into tomorrow's briefing. Have a focused day."
-Then immediately end the call. Do not say anything else. Do not respond to pleasantries like "thank you" or "goodbye". End the call after your one closing line.`;
+Then immediately end the call. Do not say anything else. Do not respond to pleasantries like "thank you" or "goodbye". End the call after your one closing line.
+If the user does not respond within a few seconds, say "Call ending." and end the call.`;
 
   const payload: Record<string, unknown> = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
@@ -54,6 +55,9 @@ Then immediately end the call. Do not say anything else. Do not respond to pleas
       },
       firstMessage: briefingContent,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
+      silenceTimeoutSeconds: 20,
+      maxDurationSeconds: 300,
+      endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
