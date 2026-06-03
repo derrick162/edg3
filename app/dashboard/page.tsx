@@ -489,7 +489,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile'>('briefings');
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1'
+  );
   const [introCalling, setIntroCalling] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -516,11 +518,6 @@ export default function Dashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1') {
-      setShowWelcome(true);
-    }
-  }, []);
 
   async function callIntro() {
     setIntroCalling(true);
