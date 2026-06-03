@@ -1,6 +1,6 @@
 [build]
 
 [deploy]
-startCommand = "npm start -- -p ${PORT:-3000}"
+startCommand = "npm start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
