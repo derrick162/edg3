@@ -66,7 +66,10 @@ export async function scheduleBriefingCall(userId: number) {
   if (phoneNumber && process.env.VAPI_API_KEY) {
     briefingQueries.update(briefingId, { status: 'calling' });
 
-    const call = await initiateCall(phoneNumber, briefingContent, user.name);
+    const { memoryQueries } = await import('./db');
+    const recentMemories = memoryQueries.getRecent(userId, 1);
+    const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
+    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall);
     console.log('Vapi call response:', JSON.stringify(call));
     const callId = call.id || (call as any).callId || (call as any).call?.id;
     if (callId) briefingQueries.update(briefingId, { vapi_call_id: callId });
