@@ -5,10 +5,11 @@ import { calendarQueries } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   const user = await getSession();
-  if (!user) return NextResponse.redirect(new URL('/login', req.url));
+  const base = process.env.NEXT_PUBLIC_APP_URL || req.url;
+  if (!user) return NextResponse.redirect(new URL('/login', base));
 
   const code = req.nextUrl.searchParams.get('code');
-  if (!code) return NextResponse.redirect(new URL('/onboarding?error=calendar_denied', req.url));
+  if (!code) return NextResponse.redirect(new URL('/onboarding?error=calendar_denied', base));
 
   try {
     const tokens = await exchangeCode(code);
@@ -18,9 +19,9 @@ export async function GET(req: NextRequest) {
       tokens.refresh_token || '',
       tokens.expiry_date?.toString() || ''
     );
-    return NextResponse.redirect(new URL('/onboarding?step=priorities', req.url));
+    return NextResponse.redirect(new URL('/onboarding?step=priorities', base));
   } catch (err) {
     console.error('Calendar OAuth error:', err);
-    return NextResponse.redirect(new URL('/onboarding?error=calendar_failed', req.url));
+    return NextResponse.redirect(new URL('/onboarding?error=calendar_failed', base));
   }
 }
