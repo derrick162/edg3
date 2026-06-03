@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 
 const TIMEZONES = [
@@ -479,6 +479,7 @@ interface Task {
 
 export default function Dashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
@@ -489,6 +490,8 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile'>('briefings');
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [introCalling, setIntroCalling] = useState(false);
 
   const loadData = useCallback(async () => {
     const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes] = await Promise.all([
@@ -513,6 +516,20 @@ export default function Dashboard() {
   }, [router]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (searchParams.get('welcome') === '1') {
+      setShowWelcome(true);
+      router.replace('/dashboard');
+    }
+  }, [searchParams, router]);
+
+  async function callIntro() {
+    setIntroCalling(true);
+    await fetch('/api/briefing/intro', { method: 'POST' });
+    setIntroCalling(false);
+    setShowWelcome(false);
+  }
 
   async function generateBriefing() {
     setGeneratingBriefing(true);
@@ -824,6 +841,50 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+
+      {/* Welcome modal */}
+      {showWelcome && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="glass-card p-8 max-w-md w-full text-center relative" style={{ border: '1px solid rgba(99,102,241,0.3)' }}>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
+                 style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}>
+              <span className="logo-text text-2xl">E</span>
+            </div>
+            <h2 className="text-2xl font-black mb-2">Edge wants to introduce himself.</h2>
+            <p className="text-sm mb-6" style={{ color: '#888899' }}>
+              Edge will call you now at <span style={{ color: '#e8e8f0', fontWeight: 600 }}>{(user as any).phone_number}</span> for a quick 30-second intro — your first of many conversations.
+            </p>
+            <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'rgba(99,102,241,0.05)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>EDGE WILL HELP YOU:</p>
+              {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable — honestly, like a great advisor'].map((item, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="text-indigo-400 font-bold text-sm">{i + 1}.</span>
+                  <p className="text-sm" style={{ color: '#c8c8d8' }}>{item}</p>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={callIntro}
+              disabled={introCalling}
+              className="btn-primary w-full py-3 text-base mb-3"
+            >
+              {introCalling ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Calling you now…
+                </span>
+              ) : '📞 Meet Edge'}
+            </button>
+            <button
+              onClick={() => setShowWelcome(false)}
+              className="text-sm w-full"
+              style={{ color: '#4a4a5a' }}
+            >
+              Skip for now
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

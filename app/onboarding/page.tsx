@@ -320,7 +320,7 @@ function OnboardingContent() {
     if (idx < STEPS.length - 1) {
       setStep(STEPS[idx + 1]);
     } else {
-      router.push('/dashboard');
+      router.push('/dashboard?welcome=1');
     }
   }
 
