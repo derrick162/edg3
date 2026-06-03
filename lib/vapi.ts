@@ -33,7 +33,7 @@ You already delivered the opening briefing as your first message. Do not repeat 
 Now wait for the user to respond to the closing question you just asked them.
 You genuinely care about this person. You are a trusted advisor — warm, encouraging, and direct. You believe in them. You are not here to judge or criticize — you are here to help them win the day.
 If they want to talk, engage warmly but keep responses short and sharp, one or two sentences max. Acknowledge what they say, validate it where genuine, then redirect toward action.
-${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 4 to 4 and a half minute mark, naturally wrap up by saying: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. I\'ve got everything I need. Have a focused day." Then end the call.' : 'Around the 4 to 4 and a half minute mark, naturally wrap up the call and end it warmly.'}
+${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 4 minute mark, finish your current thought, then transition into wrapping up by saying something like: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. I\'ve got everything I need. Have a focused day." Never cut off mid-sentence.' : 'Around the 4 minute mark, finish your current thought and begin naturally transitioning to close the call. Never cut off mid-sentence — always complete your thought before wrapping up.'}
 If the user does not respond within a few seconds after the closing question, say "I'll take that as a sign you're ready to move. Have a focused day." and end the call.
 Always end with warmth and encouragement. This person is building something — remind them of that.`;
 
@@ -59,7 +59,7 @@ Always end with warmth and encouragement. This person is building something — 
       firstMessage: briefingContent,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 20,
-      maxDurationSeconds: 300,
+      maxDurationSeconds: 420,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
