@@ -45,7 +45,8 @@ ${profile || 'No profile yet — use generic helpful intro'}`,
   });
 
   const content = generated.content[0];
-  const firstMessage = content.type === 'text' ? content.text : `Hey ${firstName}! I'm Edge — your Elite Daily Guidance Engine and AI Chief of Staff. Every morning I'll call you with a focused briefing on what deserves your attention that day. I'll align your priorities with your calendar, track patterns you're too close to see, and hold you accountable like a great advisor would. I already know your story. Let's make the next chapter the best one. I'll see you tomorrow morning.`;
+  const rawMessage = content.type === 'text' ? content.text : `I'm Edge — your Elite Daily Guidance Engine and AI Chief of Staff. Every morning I'll call you with a focused briefing on what deserves your attention that day. I'll align your priorities with your calendar, track patterns you're too close to see, and hold you accountable like a great advisor would. I already know your story. Let's make the next chapter the best one. I'll see you tomorrow morning.`;
+  const firstMessage = `... ${rawMessage}`;
 
   const payload = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,

@@ -56,7 +56,7 @@ Always end with warmth and encouragement. This person is building something — 
         model: 'claude-haiku-4-5-20251001',
         systemPrompt,
       },
-      firstMessage: briefingContent,
+      firstMessage: `... ${briefingContent}`,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 30,
       maxDurationSeconds: 720,
@@ -64,7 +64,7 @@ Always end with warmth and encouragement. This person is building something — 
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
-      firstMessage: briefingContent,
+      firstMessage: `... ${briefingContent}`,
       model: {
         systemPrompt,
       },
