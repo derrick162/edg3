@@ -9,12 +9,17 @@ const TIMEZONES = [
   { label: 'Denver (MT)', value: 'America/Denver' },
   { label: 'Chicago (CT)', value: 'America/Chicago' },
   { label: 'New York / Toronto (ET)', value: 'America/New_York' },
+  { label: 'São Paulo (BRT)', value: 'America/Sao_Paulo' },
   { label: 'London (GMT)', value: 'Europe/London' },
   { label: 'Paris / Berlin (CET)', value: 'Europe/Paris' },
+  { label: 'Cairo (EET)', value: 'Africa/Cairo' },
   { label: 'Dubai (GST)', value: 'Asia/Dubai' },
+  { label: 'Mumbai (IST)', value: 'Asia/Kolkata' },
+  { label: 'Bangkok (ICT)', value: 'Asia/Bangkok' },
   { label: 'Hong Kong / Singapore (HKT)', value: 'Asia/Hong_Kong' },
   { label: 'Tokyo (JST)', value: 'Asia/Tokyo' },
   { label: 'Sydney (AEST)', value: 'Australia/Sydney' },
+  { label: 'Auckland (NZST)', value: 'Pacific/Auckland' },
 ];
 
 function ProfileTab() {

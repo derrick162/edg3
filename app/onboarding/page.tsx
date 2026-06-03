@@ -216,9 +216,21 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
   const [loading, setLoading] = useState(false);
 
   const timezones = [
-    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-    'America/Toronto', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-    'Asia/Tokyo', 'Asia/Singapore', 'Asia/Dubai', 'Australia/Sydney',
+    { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
+    { label: 'Denver (MT)', value: 'America/Denver' },
+    { label: 'Chicago (CT)', value: 'America/Chicago' },
+    { label: 'New York / Toronto (ET)', value: 'America/New_York' },
+    { label: 'São Paulo (BRT)', value: 'America/Sao_Paulo' },
+    { label: 'London (GMT)', value: 'Europe/London' },
+    { label: 'Paris / Berlin (CET)', value: 'Europe/Paris' },
+    { label: 'Cairo (EET)', value: 'Africa/Cairo' },
+    { label: 'Dubai (GST)', value: 'Asia/Dubai' },
+    { label: 'Mumbai (IST)', value: 'Asia/Kolkata' },
+    { label: 'Bangkok (ICT)', value: 'Asia/Bangkok' },
+    { label: 'Hong Kong / Singapore (HKT)', value: 'Asia/Hong_Kong' },
+    { label: 'Tokyo (JST)', value: 'Asia/Tokyo' },
+    { label: 'Sydney (AEST)', value: 'Australia/Sydney' },
+    { label: 'Auckland (NZST)', value: 'Pacific/Auckland' },
   ];
 
   async function handleSubmit(e: React.FormEvent) {
@@ -258,11 +270,12 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
           <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>Timezone</label>
           <select
             className="input"
+            style={{ background: '#1a1a2e', color: '#e8e8f0' }}
             value={timezone}
             onChange={e => setTimezone(e.target.value)}
           >
             {timezones.map(tz => (
-              <option key={tz} value={tz}>{tz.replace('_', ' ')}</option>
+              <option key={tz.value} value={tz.value} style={{ background: '#1a1a2e', color: '#e8e8f0' }}>{tz.label}</option>
             ))}
           </select>
         </div>
