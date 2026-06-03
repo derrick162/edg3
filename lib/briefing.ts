@@ -94,7 +94,7 @@ Generate a briefing with these sections:
 1. GREETING — Start with "${greeting}, [name]." then be personal and sharp, reference something specific from their profile or recent conversations
 2. TODAY'S SNAPSHOT — Key events and commitments from their calendar (2-3 sentences)
 3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. Call out any misalignment directly
-4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today (be specific, not generic). You MUST address every stated weekly priority — do not skip or omit any of them even if you think something else is more important.
+4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today (be specific, not generic). You MUST address every stated weekly priority — do not skip or omit any of them even if you think something else is more important. If there are incomplete tasks from previous days, reference them explicitly by name — acknowledge what carried over, adjust the recommendation based on what's already been attempted (e.g. if they tried to find 3 options yesterday and didn't, suggest finding just 1 today), and make it feel like continuity not repetition.
 5. PATTERN RECOGNITION — One insight from their memory/conversation history that they need to hear (if applicable)
 6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks for today with exact start and end times (e.g. "nine AM to ten thirty AM for the gym", "two PM to four PM for Edg3 development"). Always include specific times — these will be automatically added to the calendar.
 7. CLOSING QUESTION — End with: "What's the most important thing I should know before tomorrow's briefing?"
