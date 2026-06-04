@@ -267,7 +267,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
     await fetch('/api/onboarding/call-time', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call_time: callTime, timezone, phone_number: phone }),
+      body: JSON.stringify({ call_time: callTime, timezone, phone_number: `+1${phone}` }),
     });
 
     setLoading(false);
@@ -311,16 +311,25 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
           <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>
             Phone number
           </label>
-          <input
-            className="input"
-            type="tel"
-            placeholder="+1 555 000 0000"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-            required
-          />
-          <p className="text-xs mt-1" style={{ color: '#4a4a5a' }}>
-            Include country code (e.g. +1 for US/Canada). Edg3 will call you here every morning.
+          <div className="flex gap-2">
+            <div className="input flex items-center px-3 text-sm font-semibold flex-shrink-0"
+              style={{ width: '64px', color: '#e8e8f0', background: 'rgba(255,255,255,0.04)', cursor: 'default' }}>
+              +1
+            </div>
+            <input
+              className="input flex-1"
+              type="tel"
+              placeholder="(555) 000-0000"
+              value={phone}
+              onChange={e => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                setPhone(digits);
+              }}
+              required
+            />
+          </div>
+          <p className="text-xs mt-2" style={{ color: '#4a4a5a' }}>
+            US &amp; Canada only. Edg3 will call you here every morning.
           </p>
           <p className="text-xs mt-3 leading-relaxed" style={{ color: '#4a4a5a' }}>
             By entering your number, you consent to receive one automated AI voice call and reminder text per day from Edg3.
