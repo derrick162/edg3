@@ -39,6 +39,7 @@ export default function TermsPage() {
             <ul className="space-y-2 text-sm" style={{ color: '#c8c8d8' }}>
               {[
                 'Daily, one call per day at your chosen time',
+                'Preceded by a reminder text message before your scheduled call',
                 'Automated and AI-generated (not a live human caller)',
                 'Informational — your personal daily briefing',
                 'Initiated only to numbers you provide and verify',
