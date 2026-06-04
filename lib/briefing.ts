@@ -136,8 +136,10 @@ WHAT THEY SAID ON RECENT CALLS:
 ${previousBriefingsText}
 
 Generate a briefing with these sections:
-1. GREETING & CARRY-FORWARD — Start with "${greeting}, [name]." then immediately follow up on what they said on the last call. If they mentioned something specific they were going to do, ask how it went — make it feel like you remembered and you care. If recently completed tasks exist, give genuine specific kudos. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them directly. Keep this warm and real.
-2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). ${weatherSummary ? `Weave in the weather naturally if it's relevant to their day — "${weatherSummary}". Only mention it if it actually affects something (outdoor plans, commute, mood).` : ''}
+CRITICAL RULE: Only state calendar events as facts if they appear in TODAY'S CALENDAR or UPCOMING THIS WEEK above. If the user requested a calendar change on a previous call (e.g. "move meal prep to Friday") but that event does NOT appear in the calendar data, do NOT confirm it happened. Instead, treat it as unverified — either skip it or note it may not have been updated yet.
+
+1. GREETING & CARRY-FORWARD — Start with "${greeting}, [name]." then follow up on what they said on the last call. If they mentioned something specific they were going to do, ask how it went. IMPORTANT: If they requested calendar changes last call, only confirm those changes if you can see them in the calendar data above — do not assume changes were made. If recently completed tasks exist, give genuine specific kudos. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them directly.
+2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above. ${weatherSummary ? `Weave in the weather naturally if it's relevant — "${weatherSummary}". Only mention it if it actually affects something.` : ''}
 3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.
 4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today. Be specific. Address every weekly priority. Reference incomplete tasks by name. If a completed task ties to a priority, acknowledge it and ask if they want to swap in a new one.
 5. PATTERN RECOGNITION — One sharp insight from their history that they need to hear. Make it feel like only someone who's been paying close attention would notice this.
