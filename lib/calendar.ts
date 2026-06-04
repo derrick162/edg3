@@ -363,6 +363,23 @@ ${briefingContent}`,
       const blockStart = new Date(block.start).getTime();
       const blockEnd = new Date(block.end).getTime();
 
+      // Skip if an event with the same (or very similar) title already exists on the same day
+      const blockDay = block.start.slice(0, 10); // YYYY-MM-DD
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const blockTitleNorm = normalize(block.title);
+      const hasDuplicate = existingEvents.some(ev => {
+        const evDay = (ev.start?.dateTime || ev.start?.date || '').slice(0, 10);
+        if (evDay !== blockDay) return false;
+        const evTitle = normalize(ev.summary?.replace(/^⚡\s*/, '') || '');
+        // Match if titles are identical or one contains the other (handles minor wording diffs)
+        return evTitle === blockTitleNorm || evTitle.includes(blockTitleNorm) || blockTitleNorm.includes(evTitle);
+      });
+
+      if (hasDuplicate) {
+        console.log(`[calendar] Skipping duplicate: "${block.title}" on ${blockDay}`);
+        continue;
+      }
+
       // Skip if overlaps with a real (non-placeholder) event
       const hasRealConflict = existingEvents.some(ev => {
         const evStart = ev.start?.dateTime ? new Date(ev.start.dateTime).getTime() : null;
@@ -375,7 +392,7 @@ ${briefingContent}`,
           ev.status === 'tentative' ||
           title.endsWith('?') ||
           /\b(maybe|tentative|possible|tbd|placeholder|block|hold|reminder|personal)\b/i.test(title);
-        return !isPlaceholder; // only block if it's a real event
+        return !isPlaceholder;
       });
 
       if (hasRealConflict) continue;
