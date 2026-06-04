@@ -699,7 +699,11 @@ export default function Dashboard() {
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-2xl font-bold">Good morning, {user.name.split(' ')[0]}</h1>
+              <h1 className="text-2xl font-bold">{(() => {
+                const h = new Date().getHours();
+                const g = h >= 18 ? 'Good evening' : h >= 12 ? 'Good afternoon' : 'Good morning';
+                return `${g}, ${user.name.split(' ')[0]}`;
+              })()}</h1>
               <p className="text-sm mt-1" style={{ color: '#888899' }}>
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </p>
