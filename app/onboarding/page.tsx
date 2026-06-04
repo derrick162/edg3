@@ -295,6 +295,11 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
           <p className="text-xs mt-1" style={{ color: '#4a4a5a' }}>
             Include country code (e.g. +1 for US/Canada). Edg3 will call you here every morning.
           </p>
+          <p className="text-xs mt-3 leading-relaxed" style={{ color: '#4a4a5a' }}>
+            By entering your number, you consent to receive one automated AI voice call per day from Edg3.
+            Message and data rates may apply. You can opt out anytime from your dashboard.{' '}
+            <a href="/terms" target="_blank" style={{ color: '#6366f1', textDecoration: 'underline' }}>Terms &amp; Privacy</a>.
+          </p>
         </div>
 
         <button type="submit" className="btn-primary w-full" disabled={loading}>
