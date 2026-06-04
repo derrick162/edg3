@@ -99,6 +99,13 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   const isFirstCall = recentMemories.length === 0;
 
+  // Check if user has a travel timezone saved in memory
+  const travelTzMemory = recentMemories.find(m => m.content?.includes('[TRAVEL TIMEZONE]'));
+  const travelTimezone = travelTzMemory
+    ? travelTzMemory.content.match(/timezone: ([^\s.]+)/)?.[1]
+    : null;
+  const effectiveTimezone = travelTimezone || userTimezone;
+
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.

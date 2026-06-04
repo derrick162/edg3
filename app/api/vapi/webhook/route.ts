@@ -104,6 +104,12 @@ export async function POST(req: NextRequest) {
       // Auto-create calendar blocks and tasks from briefing + transcript
       const user = userQueries.findById(briefing.user_id);
       if (user) {
+        // Detect travel timezone from transcript and save to memory
+        if (transcript) {
+          detectAndSaveTravelTimezone(briefing.user_id, transcript)
+            .catch(err => console.error('Travel timezone detection failed:', err));
+        }
+
         // Extract calendar blocks from briefing AND transcript conversation
         const combinedContent = briefing.content + (transcript ? '\n\nCONVERSATION TRANSCRIPT:\n' + transcript : '');
         // Extract tasks from briefing content
@@ -199,6 +205,27 @@ ${briefingContent}`,
     }
   } catch {
     // ignore parse errors
+  }
+}
+
+async function detectAndSaveTravelTimezone(userId: number, transcript: string) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const result = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 100,
+    messages: [{
+      role: 'user',
+      content: `Read this transcript. If the user mentions being in a different city/location/timezone than their home, return the IANA timezone for that location.
+Return ONLY the timezone string (e.g. "America/Toronto") or "none" if no travel location is mentioned.
+Common mappings: Blue Mountain/Toronto/Ontario → America/Toronto, New York/Eastern/EST → America/New_York, London → Europe/London
+Transcript: ${transcript.slice(0, 1000)}`,
+    }],
+  });
+  const tz = result.content[0].type === 'text' ? result.content[0].text.trim() : 'none';
+  if (tz && tz !== 'none' && tz.includes('/')) {
+    const { memoryQueries } = await import('@/lib/db');
+    memoryQueries.create(userId, 'calendar_note', `[TRAVEL TIMEZONE] User is currently in timezone: ${tz}. Use this for all calendar bookings until further notice.`);
+    console.log(`[webhook] Travel timezone detected and saved: ${tz}`);
   }
 }
 

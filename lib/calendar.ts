@@ -421,7 +421,17 @@ export async function extractAndCreateTimeBlocks(userId: number, briefingContent
 
 Today's date: ${todayDate} (${new Date(todayDate).toLocaleDateString('en-US', { weekday: 'long' })})
 Tomorrow's date: ${tomorrow} (${new Date(tomorrow).toLocaleDateString('en-US', { weekday: 'long' })})
-Timezone: ${timezone}
+User's home timezone: ${timezone}
+
+IMPORTANT — TRAVEL TIMEZONE DETECTION:
+First, check if the user mentions being in a different location or timezone anywhere in the content (e.g. "I'm in Blue Mountain", "I'm in Toronto", "EST", "Eastern time", "I'll be in New York").
+If they mention a different location/timezone, use THAT timezone for ALL bookings in this session unless a specific event has its own timezone override.
+- "Blue Mountain" / "Toronto" / "Ontario" → America/Toronto (EST/EDT)
+- "New York" / "Eastern" / "EST" / "EDT" → America/New_York
+- "Chicago" / "Central" / "CST" → America/Chicago
+- "Denver" / "Mountain" / "MST" → America/Denver
+- "London" / "UK" / "GMT" / "BST" → Europe/London
+If no travel location is mentioned, use the home timezone: ${timezone}
 
 Calculate upcoming weekday dates from today:
 ${Array.from({length: 14}, (_, i) => {
