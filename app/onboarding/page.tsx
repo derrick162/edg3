@@ -56,12 +56,6 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
   const [error, setError] = useState('');
   const [showExample, setShowExample] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/profile').then(r => r.json()).then(d => {
-      if (d.profile_summary) setSummary(d.profile_summary);
-    }).catch(() => {});
-  }, []);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!summary.trim()) return;
