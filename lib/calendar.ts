@@ -298,7 +298,7 @@ export async function extractAndCreateTimeBlocks(userId: number, briefingContent
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 800,
     messages: [{
       role: 'user',
       content: `Extract specific time block recommendations to add to the calendar.
@@ -310,6 +310,8 @@ Timezone: ${timezone}
 Rules:
 - If the user or AI mentions something for "today", "this afternoon", "this morning", "tonight" → use date ${todayDate}
 - If the user or AI mentions something for "tomorrow" or the AI is recommending blocks as part of a daily briefing → use date ${tomorrow}
+- IMPORTANT: If the user requests something "every day next week", "every day for the next X days", "daily for the week" etc. → create ONE entry for EACH day. For "every day next week" that means 5 separate entries (Mon–Fri). Use the correct dates for each day.
+- If they say "every day this week" from today, create entries for each remaining day this week.
 - Do NOT extract events already on the calendar (existing appointments, recurring meals, sleep)
 - Do NOT recreate one-time events that already happened today (court hearings, medical appointments etc.)
 - Only extract new blocks being explicitly requested or recommended
