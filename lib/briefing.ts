@@ -145,11 +145,7 @@ WHAT THEY SAID ON RECENT CALLS:
 ${previousBriefingsText}
 
 Generate a briefing with these sections:
-CRITICAL RULE — CALENDAR VERIFICATION: Before mentioning ANY specific calendar event (grocery run, gym session, meeting, meal prep, etc.), you MUST verify it appears in TODAY'S CALENDAR or UPCOMING THIS WEEK data above. This applies even if:
-- The user or you discussed it on a previous call
-- It appears in memory or conversation history
-- You booked it yourself in a prior session
-If an event is NOT in the current calendar data, do NOT mention it as if it exists. Do not say "I see you have X on Friday" unless X actually appears in the calendar above. If memory mentions something that's no longer on the calendar, simply omit it — do not reference it at all.
+CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. Memory, conversation history, and past call transcripts are NOT reliable sources for current calendar events — they may be outdated. Before mentioning ANY event (grocery run, gym, flight, meeting, meal prep, drive, etc.) you MUST confirm it appears in the calendar data above. If it does not appear there, do NOT mention it. Do not say things like "I see you have a grocery run Friday" or "you have your drive to Blue Mountain" unless those exact events appear in the calendar sections above. Treat memory references to calendar events as historical only — not current facts.
 
 1. GREETING & CARRY-FORWARD — Start with "${greeting}, [name]." then follow up on what they said on the last call. If they mentioned something specific they were going to do, ask how it went. IMPORTANT: If they requested calendar changes last call, only confirm those changes if you can see them in the calendar data above — do not assume changes were made. If recently completed tasks exist, give genuine specific kudos. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them directly.
 2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above. ${weatherSummary ? `Weave in the weather naturally if it's relevant — "${weatherSummary}". Only mention it if it actually affects something.` : ''}
