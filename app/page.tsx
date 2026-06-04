@@ -140,7 +140,9 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto px-8 py-8 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
           <p className="text-xs" style={{ color: '#4a4a5a' }}>
             © 2026 Edg3 · Elite Daily Guidance Engine ·{' '}
-            <Link href="/terms" style={{ color: '#6366f1' }}>Terms &amp; Privacy</Link>
+            <Link href="/terms" style={{ color: '#6366f1' }}>Terms of Service</Link>
+            {' · '}
+            <Link href="/privacy" style={{ color: '#6366f1' }}>Privacy Policy</Link>
           </p>
         </div>
       </div>

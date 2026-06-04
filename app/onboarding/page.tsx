@@ -300,7 +300,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
           <p className="text-xs mt-3 leading-relaxed" style={{ color: '#4a4a5a' }}>
             By entering your number, you consent to receive one automated AI voice call and reminder text per day from Edg3.
             Message and data rates may apply. You can opt out anytime from your dashboard.{' '}
-            <a href="/terms" target="_blank" style={{ color: '#6366f1', textDecoration: 'underline' }}>Terms &amp; Privacy</a>.
+            <a href="/terms" target="_blank" style={{ color: '#6366f1', textDecoration: 'underline' }}>Terms</a> &amp; <a href="/privacy" target="_blank" style={{ color: '#6366f1', textDecoration: 'underline' }}>Privacy Policy</a>.
           </p>
         </div>
 
