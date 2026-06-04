@@ -22,7 +22,7 @@ const TIMEZONES = [
   { label: 'Auckland (NZST)', value: 'Pacific/Auckland' },
 ];
 
-function ProfileTab() {
+function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [profile, setProfile] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -70,6 +70,7 @@ function ProfileTab() {
     setSavingSettings(false);
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 3000);
+    onSettingsSaved?.();
   }
 
   if (loading) return <div className="text-sm" style={{ color: '#888899' }}>Loading…</div>;
@@ -860,7 +861,7 @@ export default function Dashboard() {
           )}
 
           {activeTab === 'profile' && (
-            <ProfileTab />
+            <ProfileTab onSettingsSaved={loadData} />
           )}
         </main>
       </div>
