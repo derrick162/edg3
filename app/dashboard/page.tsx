@@ -490,8 +490,14 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile'>('briefings');
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
-  const isWelcome = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1';
-  const [showWelcome, setShowWelcome] = useState(() => isWelcome);
+  const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
+  const [showWelcome, setShowWelcome] = useState(() => {
+    if (typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1') {
+      sessionStorage.removeItem('edg3_welcome');
+      return true;
+    }
+    return false;
+  });
   const [introCalling, setIntroCalling] = useState(false);
   const [showNextCallTip, setShowNextCallTip] = useState(() => isWelcome);
   const [reminderAdded, setReminderAdded] = useState(false);
