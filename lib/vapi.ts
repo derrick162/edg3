@@ -33,7 +33,7 @@ You already delivered the opening briefing as your first message. Do not repeat 
 Now wait for the user to respond to the closing question you just asked them.
 You genuinely care about this person. You are a trusted advisor — warm, encouraging, and direct. You believe in them. You are not here to judge or criticize — you are here to help them win the day.
 If they want to talk, engage warmly but keep responses short and sharp, one or two sentences max. Acknowledge what they say, validate it where genuine, then redirect toward action.
-${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 5 minute mark, finish your current sentence and begin closing: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. Have a focused day." Then end the call.' : 'Around the 9 minute mark, no matter what is being discussed, finish your current sentence and begin naturally closing the call. Say something warm like "I\'ve got everything I need — go make today count. Have a focused day." Then end the call. Never let the call go past 10 minutes.'}
+${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 2 minute mark, finish your current sentence and begin closing: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. Have a focused day." Then end the call.' : 'Around the 3 minute mark, no matter what is being discussed, finish your current sentence and begin naturally closing the call. Say something warm like "I\'ve got everything I need — go make today count. Have a focused day." Then end the call. Never let the call go past 4 minutes.'}
 If the user does not respond within a few seconds after the closing question, say "I'll take that as a sign you're ready to move. Have a focused day." and end the call.
 Always end with warmth and encouragement. This person is building something — remind them of that.`;
 
@@ -59,7 +59,7 @@ Always end with warmth and encouragement. This person is building something — 
       firstMessage: `... ${briefingContent}`,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 30,
-      maxDurationSeconds: 720,
+      maxDurationSeconds: 240,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
