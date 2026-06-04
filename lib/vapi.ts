@@ -35,7 +35,7 @@ You genuinely care about this person. You are a trusted advisor — warm, encour
 If they want to talk, engage warmly but keep responses short and sharp, one or two sentences max. Acknowledge what they say, validate it where genuine, then redirect toward action.
 IMPORTANT: Whenever you ask a question — especially the closing question — stop talking completely and wait for the user to respond. Do not continue speaking after asking a question. Give them a full 15 seconds of silence to answer before doing anything else. Do not rush them.
 IMPORTANT: Never end the call abruptly mid-conversation. Always finish your thought, deliver a warm closing line, and only end after a natural pause.
-${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 2 minute mark, finish your current sentence and begin closing: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. Have a focused day." Then end the call.' : 'After delivering the briefing, open it up for conversation — let them respond, ask questions, or share what\'s on their mind. Keep your replies short and sharp, one or two sentences. Around the 5 minute mark, no matter what is being discussed, finish your current sentence and begin naturally closing: "I\'ve got everything I need — go make today count. Have a focused day." Then end the call. Never let the call go past 6 minutes.'}
+${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 2 minute mark, finish your current sentence and begin closing: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. Have a focused day." Then end the call.' : 'After delivering the briefing, open it up for conversation — let them respond, ask questions, or share what\'s on their mind. Keep your replies short and sharp, one or two sentences. Let the conversation flow naturally — only wrap up when the user is done or signals they want to end the call.'}
 If the user does not respond within 15 seconds after the closing question, say "I\'ll take that as a sign you\'re ready to move. Have a focused day." and end the call.
 Always end with warmth and encouragement. This person is building something — remind them of that.`;
 
@@ -61,7 +61,7 @@ Always end with warmth and encouragement. This person is building something — 
       firstMessage: `... ${briefingContent}`,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 45,
-      maxDurationSeconds: 360,
+      maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
