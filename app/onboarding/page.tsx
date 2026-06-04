@@ -354,6 +354,7 @@ function OnboardingContent() {
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (!d.id) router.push('/login');
+      else if (d.onboarding_complete) router.push('/dashboard');
     });
   }, [router]);
 
