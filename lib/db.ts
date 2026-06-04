@@ -60,10 +60,11 @@ function initSchema(db: Database.Database) {
       user_id INTEGER NOT NULL REFERENCES users(id),
       content TEXT NOT NULL,
       vapi_call_id TEXT,
-      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','calling','completed','failed')),
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','calling','completed','failed','missed')),
       scheduled_for TEXT NOT NULL,
       transcript TEXT,
       user_response TEXT,
+      retry_attempted INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -87,6 +88,14 @@ function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Migrations for existing databases
+  const migrations = [
+    "ALTER TABLE briefings ADD COLUMN retry_attempted INTEGER DEFAULT 0",
+  ];
+  for (const migration of migrations) {
+    try { db.exec(migration); } catch { /* column already exists */ }
+  }
 }
 
 // User queries

@@ -591,6 +591,7 @@ export default function Dashboard() {
     completed: 'badge-success',
     calling: 'badge-pending',
     failed: 'badge-danger',
+    missed: 'badge-danger',
     pending: 'badge-info',
   };
 
