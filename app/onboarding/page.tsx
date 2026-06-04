@@ -56,6 +56,8 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
     setLoading(false);
     if (res.ok) {
       onNext();
+    } else if (res.status === 401) {
+      setError('Session expired — please log in again.');
     } else {
       const d = await res.json();
       setError(d.error || 'Failed to save');
@@ -314,6 +316,12 @@ function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>('profile');
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (!d.id) router.push('/login');
+    });
+  }, [router]);
 
   useEffect(() => {
     const stepParam = searchParams.get('step') as Step | null;
