@@ -3,27 +3,11 @@ import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
 import Anthropic from '@anthropic-ai/sdk';
 
-export async function POST() {
-  const user = await getSession();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const fullUser = userQueries.findById(user.id);
-  if (!fullUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-
-  const phoneNumber = (fullUser as any).phone_number;
-  if (!phoneNumber) return NextResponse.json({ error: 'No phone number on file' }, { status: 400 });
-
+async function fireIntroCall(firstName: string, profile: string, phoneNumber: string) {
   const VAPI_API_KEY = process.env.VAPI_API_KEY;
   const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
-  if (!VAPI_API_KEY || !VAPI_PHONE_NUMBER_ID) {
-    return NextResponse.json({ error: 'Vapi not configured' }, { status: 500 });
-  }
+  if (!VAPI_API_KEY || !VAPI_PHONE_NUMBER_ID) return;
 
-  const firstName = fullUser.name.split(' ')[0];
-  const profile = fullUser.profile_summary || '';
-  console.log(`[intro] user=${firstName} profile_length=${profile.length} profile_preview="${profile.slice(0, 100)}"`);
-
-  // Generate personalized intro using Claude
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const generated = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -85,8 +69,32 @@ ${profile || 'New user — give a warm generic intro about aligning priorities, 
 
   if (!response.ok) {
     const error = await response.text();
-    return NextResponse.json({ error: `Vapi call failed: ${error}` }, { status: 500 });
+    console.error(`[intro] Vapi call failed: ${error}`);
+  } else {
+    console.log(`[intro] Call initiated for ${firstName}`);
   }
+}
+
+export async function POST() {
+  const user = await getSession();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const fullUser = userQueries.findById(user.id);
+  if (!fullUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+  const phoneNumber = (fullUser as any).phone_number;
+  if (!phoneNumber) return NextResponse.json({ error: 'No phone number on file' }, { status: 400 });
+
+  if (!process.env.VAPI_API_KEY || !process.env.VAPI_PHONE_NUMBER_ID) {
+    return NextResponse.json({ error: 'Vapi not configured' }, { status: 500 });
+  }
+
+  const firstName = fullUser.name.split(' ')[0];
+  const profile = fullUser.profile_summary || '';
+  console.log(`[intro] user=${firstName} profile_length=${profile.length} profile_preview="${profile.slice(0, 100)}"`);
+
+  // Respond immediately — fire the call in the background so Railway doesn't kill the request
+  fireIntroCall(firstName, profile, phoneNumber).catch(e => console.error('[intro] background error:', e));
 
   return NextResponse.json({ success: true });
 }
