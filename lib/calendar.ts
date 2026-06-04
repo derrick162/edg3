@@ -148,6 +148,144 @@ export async function createCalendarEvent(
   return event.data;
 }
 
+export async function deleteCalendarEvent(userId: number, eventId: string) {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) throw new Error('No calendar connected');
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  await calendar.events.delete({ calendarId: 'primary', eventId });
+}
+
+export async function moveCalendarEvent(
+  userId: number,
+  eventId: string,
+  newStart: string,
+  newEnd: string,
+  timezone: string
+) {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) throw new Error('No calendar connected');
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  await calendar.events.patch({
+    calendarId: 'primary',
+    eventId,
+    requestBody: {
+      start: { dateTime: newStart, timeZone: timezone },
+      end: { dateTime: newEnd, timeZone: timezone },
+    },
+  });
+}
+
+export async function processCalendarEdits(userId: number, transcript: string, timezone: string) {
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Get the next 7 days of events to work with
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return [];
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const weekAhead = new Date(now);
+  weekAhead.setDate(weekAhead.getDate() + 7);
+
+  const existing = await calendar.events.list({
+    calendarId: 'primary',
+    timeMin: now.toISOString(),
+    timeMax: weekAhead.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 100,
+  });
+
+  const events = existing.data.items || [];
+  const eventList = events.map(e => ({
+    id: e.id,
+    title: e.summary,
+    start: e.start?.dateTime || e.start?.date,
+    end: e.end?.dateTime || e.end?.date,
+  }));
+
+  // Ask Claude to extract edit/delete/move instructions from transcript
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `Read this call transcript and extract any requests to DELETE, MOVE, or RESCHEDULE existing calendar events.
+
+EXISTING CALENDAR EVENTS (next 7 days):
+${JSON.stringify(eventList, null, 2)}
+
+TRANSCRIPT:
+${transcript}
+
+Return a JSON array of actions. Each action has:
+- "action": "delete" | "move"
+- "eventId": the id from the event list above (match by title/time)
+- "reason": brief description of why (e.g. "duplicate breakfast")
+- For "move" only: "newStart" and "newEnd" as ISO datetime strings in ${timezone} local time (no Z suffix)
+
+Only include actions explicitly requested by the user. If nothing was requested, return [].
+
+Example: [{"action":"delete","eventId":"abc123","reason":"duplicate breakfast event"}]`,
+    }],
+  });
+
+  const content = response.content[0];
+  if (content.type !== 'text') return [];
+
+  try {
+    const match = content.text.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+    const actions: { action: string; eventId: string; reason: string; newStart?: string; newEnd?: string }[] = JSON.parse(match[0]);
+
+    const results = [];
+    for (const action of actions) {
+      try {
+        if (action.action === 'delete' && action.eventId) {
+          const event = events.find(e => e.id === action.eventId);
+          await deleteCalendarEvent(userId, action.eventId);
+          results.push({ type: 'deleted', title: event?.summary || action.eventId, reason: action.reason });
+          console.log(`[calendar] Deleted event: ${event?.summary} (${action.reason})`);
+        } else if (action.action === 'move' && action.eventId && action.newStart && action.newEnd) {
+          const event = events.find(e => e.id === action.eventId);
+          await moveCalendarEvent(userId, action.eventId, action.newStart, action.newEnd, timezone);
+          results.push({ type: 'moved', title: event?.summary || action.eventId, newStart: action.newStart, reason: action.reason });
+          console.log(`[calendar] Moved event: ${event?.summary} to ${action.newStart}`);
+        }
+      } catch (err) {
+        console.error(`[calendar] Failed to ${action.action} event ${action.eventId}:`, err);
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 export async function extractAndCreateTimeBlocks(userId: number, briefingContent: string, timezone: string) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

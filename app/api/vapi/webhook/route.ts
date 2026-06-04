@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { extractUserResponseFromTranscript } from '@/lib/vapi';
-import { extractAndCreateTimeBlocks } from '@/lib/calendar';
+import { extractAndCreateTimeBlocks, processCalendarEdits } from '@/lib/calendar';
 import Anthropic from '@anthropic-ai/sdk';
 
 // Reasons that indicate the user didn't answer — worth retrying
@@ -89,21 +89,21 @@ export async function POST(req: NextRequest) {
       if (user) {
         // Extract calendar blocks from briefing AND transcript conversation
         const combinedContent = briefing.content + (transcript ? '\n\nCONVERSATION TRANSCRIPT:\n' + transcript : '');
-        extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone)
-          .then(created => {
-            if (created.length > 0) {
-              const actions = created.map((e: any) => ({
-                type: 'created',
-                title: e.title,
-                start: e.start,
-                end: e.end,
-              }));
-              db.prepare('UPDATE briefings SET calendar_actions = ? WHERE id = ?')
-                .run(JSON.stringify(actions), briefing.id);
-              console.log(`[webhook] Stored ${actions.length} calendar actions for briefing ${briefing.id}`);
-            }
-          })
-          .catch(err => console.error('Calendar block creation failed:', err));
+        // Process creates AND edits/deletes in parallel
+        Promise.all([
+          extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone),
+          transcript ? processCalendarEdits(briefing.user_id, transcript, user.timezone) : Promise.resolve([]),
+        ]).then(([created, edited]) => {
+          const actions = [
+            ...created.map((e: any) => ({ type: 'created', title: e.title, start: e.start, end: e.end })),
+            ...edited.map((e: any) => ({ type: e.type, title: e.title, start: e.newStart, reason: e.reason })),
+          ];
+          if (actions.length > 0) {
+            db.prepare('UPDATE briefings SET calendar_actions = ? WHERE id = ?')
+              .run(JSON.stringify(actions), briefing.id);
+            console.log(`[webhook] ${created.length} created, ${edited.length} edited/deleted for briefing ${briefing.id}`);
+          }
+        }).catch(err => console.error('Calendar processing failed:', err));
 
         // Extract tasks from briefing content
         const db2 = (await import('@/lib/db')).getDb();
