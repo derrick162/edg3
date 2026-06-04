@@ -644,7 +644,7 @@ export default function Dashboard() {
                   {!reminderAdded ? (
                     <>
                       <p className="text-xs mb-2" style={{ color: '#888899' }}>
-                        Add a daily reminder so you're ready when Edge calls.
+                        Add a daily reminder so you're ready when Edg3 calls.
                       </p>
                       <button
                         onClick={async () => {
@@ -891,7 +891,7 @@ export default function Dashboard() {
                 onClick={callIntro}
                 className="btn-primary w-full py-3 text-base"
               >
-                📞 Meet Edg3
+                📗 Meet Edg3
               </button>
             ) : (
               <div className="text-center space-y-4">
