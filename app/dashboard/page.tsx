@@ -692,13 +692,15 @@ export default function Dashboard() {
             >
               📅 Reconnect calendar
             </button>
-            <button
-              onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
-              className="w-full text-xs py-2 text-left px-2 rounded"
-              style={{ color: '#4a4a5a' }}
-            >
-              <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Get intro call
-            </button>
+            {briefings.length === 0 && (
+              <button
+                onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
+                className="w-full text-xs py-2 text-left px-2 rounded"
+                style={{ color: '#4a4a5a' }}
+              >
+                <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Get intro call
+              </button>
+            )}
             <button
               onClick={logout}
               className="w-full text-xs py-2 text-left px-2 rounded"
