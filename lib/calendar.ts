@@ -290,33 +290,37 @@ export async function extractAndCreateTimeBlocks(userId: number, briefingContent
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Always book into tomorrow — morning briefing is always about the day ahead
-  const targetDate = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-  targetDate.setDate(targetDate.getDate() + 1);
-
-  const today = targetDate.toLocaleDateString('en-CA'); // YYYY-MM-DD (tomorrow)
+  const localNow = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const todayDate = localNow.toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const tomorrowDate = new Date(localNow);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = tomorrowDate.toLocaleDateString('en-CA');
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 400,
     messages: [{
       role: 'user',
-      content: `Extract specific time block recommendations to add to the calendar for tomorrow (${today}).
+      content: `Extract specific time block recommendations to add to the calendar.
+
+Today's date: ${todayDate}
+Tomorrow's date: ${tomorrow}
+Timezone: ${timezone}
 
 Rules:
-- ONLY extract blocks that are being RECOMMENDED as new time to block off for tomorrow
-- Do NOT extract events that are already happening today (the day of the call) — things like court hearings, medical appointments, or other one-time events referenced as happening "today" or "this morning/afternoon" should NOT be recreated for tomorrow
-- Do NOT extract recurring habits or events that are already on the calendar (like regular meals, sleep)
-- Only extract productivity blocks, focus time, workout windows, or tasks the AI is explicitly suggesting for tomorrow
-- All times are in the ${timezone} timezone, target date is ${today}
+- If the user or AI mentions something for "today", "this afternoon", "this morning", "tonight" → use date ${todayDate}
+- If the user or AI mentions something for "tomorrow" or the AI is recommending blocks as part of a daily briefing → use date ${tomorrow}
+- Do NOT extract events already on the calendar (existing appointments, recurring meals, sleep)
+- Do NOT recreate one-time events that already happened today (court hearings, medical appointments etc.)
+- Only extract new blocks being explicitly requested or recommended
 
 Return ONLY a JSON array of time blocks, nothing else. Format:
-[{"title": "event name", "start": "${today}T09:00:00", "end": "${today}T10:30:00"}]
+[{"title": "event name", "start": "YYYY-MM-DDTHH:MM:00", "end": "YYYY-MM-DDTHH:MM:00"}]
 
-The datetime strings should be local time (no Z suffix, no UTC offset).
-If no clear new time blocks are being recommended, return [].
+Datetime strings must be local time (no Z suffix, no UTC offset).
+If no clear new time blocks are mentioned, return [].
 
-Briefing content:
+Content:
 ${briefingContent}`,
     }],
   });
@@ -341,14 +345,15 @@ ${briefingContent}`,
         expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
       });
       const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-      const dayStart = new Date(`${today}T00:00:00`);
-      const dayEnd = new Date(`${today}T23:59:59`);
+      // Fetch events for both today and tomorrow to check conflicts
+      const dayStart = new Date(`${todayDate}T00:00:00`);
+      const dayEnd = new Date(`${tomorrow}T23:59:59`);
       const existing = await calendar.events.list({
         calendarId: 'primary',
         timeMin: dayStart.toISOString(),
         timeMax: dayEnd.toISOString(),
         singleEvents: true,
-        maxResults: 50,
+        maxResults: 100,
       });
       existingEvents = existing.data.items || [];
     }
