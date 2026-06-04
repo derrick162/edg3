@@ -358,10 +358,27 @@ ${briefingContent}`,
       existingEvents = existing.data.items || [];
     }
 
+    // Helper: convert a local datetime string (no timezone) to UTC ms using the user's timezone
+    // e.g. "2026-06-06T09:00:00" in "America/Vancouver" → correct UTC ms
+    const localToUtcMs = (localStr: string): number => {
+      const asIfUtc = new Date(localStr + 'Z'); // parse as UTC first
+      // Find what the target timezone displays for this UTC moment
+      const localDisplay = asIfUtc.toLocaleString('en-CA', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false,
+      }).replace(',', '').replace(' ', 'T');
+      const localAsUtc = new Date(localDisplay + 'Z');
+      const tzOffset = asIfUtc.getTime() - localAsUtc.getTime();
+      return asIfUtc.getTime() + tzOffset;
+    };
+
     const created = [];
     for (const block of blocks) {
-      const blockStart = new Date(block.start).getTime();
-      const blockEnd = new Date(block.end).getTime();
+      // Parse block times as local timezone (not UTC)
+      const blockStart = localToUtcMs(block.start);
+      const blockEnd = localToUtcMs(block.end);
 
       // Skip if an event with the same (or very similar) title already exists on the same day
       const blockDay = block.start.slice(0, 10); // YYYY-MM-DD
