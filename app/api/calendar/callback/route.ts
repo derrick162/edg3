@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { exchangeCode } from '@/lib/calendar';
 import { calendarQueries } from '@/lib/db';
 import { cookies } from 'next/headers';
+import { createToken, setSessionCookie } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
@@ -29,6 +30,11 @@ export async function GET(req: NextRequest) {
     );
     const redirect = NextResponse.redirect(new URL('/onboarding?step=priorities', base));
     redirect.cookies.set('edg3_oauth_uid', '', { maxAge: 0, path: '/' });
+    // Re-issue session cookie if it was dropped during OAuth redirect
+    if (!sessionUser) {
+      const token = createToken(userId);
+      redirect.cookies.set(setSessionCookie(token));
+    }
     return redirect;
   } catch (err) {
     console.error('Calendar OAuth error:', err);
