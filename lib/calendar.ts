@@ -62,16 +62,31 @@ export async function getCalendarEvents(userId: number) {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
 
-  const response = await calendar.events.list({
-    calendarId: 'primary',
-    timeMin: startOfDay.toISOString(),
-    timeMax: endOfDay.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 20,
-  });
+  // Fetch from all calendars
+  const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calendarIds = (calendarList.data.items || [])
+    .filter(c => !c.hidden)
+    .map(c => c.id!)
+    .filter(Boolean);
 
-  return response.data.items || [];
+  const allEvents = await Promise.all(
+    calendarIds.map(calendarId =>
+      calendar.events.list({
+        calendarId,
+        timeMin: startOfDay.toISOString(),
+        timeMax: endOfDay.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+        maxResults: 20,
+      }).then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  return allEvents.flat().sort((a, b) => {
+    const aTime = a.start?.dateTime || a.start?.date || '';
+    const bTime = b.start?.dateTime || b.start?.date || '';
+    return aTime.localeCompare(bTime);
+  });
 }
 
 export async function getWeekEvents(userId: number) {
@@ -91,16 +106,35 @@ export async function getWeekEvents(userId: number) {
   const endOfWeek = new Date();
   endOfWeek.setDate(now.getDate() + 7);
 
-  const response = await calendar.events.list({
-    calendarId: 'primary',
-    timeMin: now.toISOString(),
-    timeMax: endOfWeek.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 50,
+  // Fetch from all calendars, not just primary
+  const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calendarIds = (calendarList.data.items || [])
+    .filter(c => !c.hidden)
+    .map(c => c.id!)
+    .filter(Boolean);
+
+  // Fetch events from all calendars in parallel
+  const allEvents = await Promise.all(
+    calendarIds.map(calendarId =>
+      calendar.events.list({
+        calendarId,
+        timeMin: now.toISOString(),
+        timeMax: endOfWeek.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+        maxResults: 50,
+      }).then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  // Merge and sort by start time
+  const merged = allEvents.flat().sort((a, b) => {
+    const aTime = a.start?.dateTime || a.start?.date || '';
+    const bTime = b.start?.dateTime || b.start?.date || '';
+    return aTime.localeCompare(bTime);
   });
 
-  return response.data.items || [];
+  return merged;
 }
 
 export async function createCalendarEvent(
