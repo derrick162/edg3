@@ -182,6 +182,36 @@ export async function createCalendarEvent(
   return event.data;
 }
 
+const COLOR_MAP: Record<string, string> = {
+  green: '10', sage: '2', grape: '3', pink: '4', flamingo: '4',
+  yellow: '5', banana: '5', orange: '6', tangerine: '6',
+  teal: '7', peacock: '7', blue: '8', blueberry: '8', navy: '8',
+  red: '11', tomato: '11', purple: '3', lavender: '1',
+};
+
+export function getColorId(colorName: string): string {
+  return COLOR_MAP[colorName.toLowerCase()] || '9';
+}
+
+export async function colorCalendarEvent(userId: number, eventId: string, colorName: string) {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) throw new Error('No calendar connected');
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  await calendar.events.patch({
+    calendarId: 'primary',
+    eventId,
+    requestBody: { colorId: getColorId(colorName) },
+  });
+}
+
 export async function deleteCalendarEvent(userId: number, eventId: string) {
   const tokenRow = calendarQueries.get(userId);
   if (!tokenRow) throw new Error('No calendar connected');
@@ -301,14 +331,17 @@ SPECIFIC DAY PATTERNS:
 - "Reschedule to this Friday" → calculate correct date
 
 Return a JSON array of actions. Each action has:
-- "action": "delete" | "move"
+- "action": "delete" | "move" | "color"
 - "eventId": the id from the event list above (match by title/time/day)
 - "reason": brief description
 - For "move": "newStart" and "newEnd" as local datetime strings (no Z suffix, format: YYYY-MM-DDTHH:MM:00)
+- For "color": "color" as a color name (e.g. "green", "orange", "red", "blue", "purple", "yellow", "teal", "pink")
+
+BULK COLOR: If user says "make all meals orange" or "color all X events green", return one action per matching event.
 
 Only include actions explicitly requested by the user. If nothing was requested, return [].
 
-Example: [{"action":"delete","eventId":"abc123","reason":"duplicate"},{"action":"move","eventId":"def456","newStart":"2026-06-09T09:00:00","newEnd":"2026-06-09T10:00:00","reason":"pushed back 1 hour"}]`,
+Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goal"},{"action":"color","eventId":"def456","color":"orange","reason":"meal event"}]`,
     }],
   });
 
@@ -333,6 +366,11 @@ Example: [{"action":"delete","eventId":"abc123","reason":"duplicate"},{"action":
           await moveCalendarEvent(userId, action.eventId, action.newStart, action.newEnd, timezone);
           results.push({ type: 'moved', title: event?.summary || action.eventId, newStart: action.newStart, reason: action.reason });
           console.log(`[calendar] Moved event: ${event?.summary} to ${action.newStart}`);
+        } else if (action.action === 'color' && action.eventId && action.color) {
+          const event = events.find(e => e.id === action.eventId);
+          await colorCalendarEvent(userId, action.eventId, action.color);
+          results.push({ type: 'colored', title: event?.summary || action.eventId, color: action.color, reason: action.reason });
+          console.log(`[calendar] Colored event: ${event?.summary} → ${action.color}`);
         }
       } catch (err) {
         console.error(`[calendar] Failed to ${action.action} event ${action.eventId}:`, err);
