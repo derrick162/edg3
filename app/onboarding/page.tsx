@@ -151,6 +151,19 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
 function PrioritiesStep({ onNext }: { onNext: () => void }) {
   const [priorities, setPriorities] = useState(['', '', '']);
   const [loading, setLoading] = useState(false);
+  const [suggesting, setSuggesting] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/onboarding/suggest-priorities')
+      .then(r => r.json())
+      .then(d => {
+        if (d.priorities?.length) {
+          const filled = [...d.priorities, '', '', ''].slice(0, 3);
+          setPriorities(filled);
+        }
+      })
+      .finally(() => setSuggesting(false));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -171,9 +184,21 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-2">This week's top priorities</h2>
-      <p className="text-sm mb-8" style={{ color: '#888899' }}>
+      <p className="text-sm mb-6" style={{ color: '#888899' }}>
         EDG3 will check every briefing to make sure your calendar and actions actually reflect these.
       </p>
+
+      {suggesting ? (
+        <div className="flex items-center gap-3 mb-6 text-sm" style={{ color: '#6366f1' }}>
+          <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+          Generating suggestions from your profile…
+        </div>
+      ) : priorities.some(p => p.trim()) && (
+        <div className="flex items-center gap-2 mb-4 text-xs px-3 py-2 rounded-lg"
+          style={{ background: 'rgba(99,102,241,0.08)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.15)' }}>
+          ✦ Suggested from your profile — edit freely
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {priorities.map((p, i) => (
