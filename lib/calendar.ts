@@ -209,7 +209,7 @@ export async function processCalendarEdits(userId: number, transcript: string, t
   const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
   const weekAhead = new Date(now);
-  weekAhead.setDate(weekAhead.getDate() + 7);
+  weekAhead.setDate(weekAhead.getDate() + 14);
 
   const existing = await calendar.events.list({
     calendarId: 'primary',
@@ -228,29 +228,53 @@ export async function processCalendarEdits(userId: number, transcript: string, t
     end: e.end?.dateTime || e.end?.date,
   }));
 
+  const nowStr = now.toISOString().slice(0, 10);
+
   // Ask Claude to extract edit/delete/move instructions from transcript
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 500,
+    max_tokens: 1000,
     messages: [{
       role: 'user',
       content: `Read this call transcript and extract any requests to DELETE, MOVE, or RESCHEDULE existing calendar events.
 
-EXISTING CALENDAR EVENTS (next 7 days):
+Today's date: ${nowStr}
+Timezone: ${timezone}
+
+EXISTING CALENDAR EVENTS (next 14 days):
 ${JSON.stringify(eventList, null, 2)}
 
 TRANSCRIPT:
 ${transcript}
 
+Handle ALL of these natural language patterns:
+
+BULK OPERATIONS — generate one action per matching event:
+- "Delete all X this week" → find every event matching X this week, delete each
+- "Cancel everything on Friday" → find all Friday events, delete each
+- "Move all afternoon meetings to morning" → find each, move each individually
+- "Delete all duplicates" → find duplicate titles on same day, keep earliest, delete rest
+
+RELATIVE TIMING — calculate actual times from context:
+- "Push X back 30 minutes" → add 30 min to both start and end
+- "Move X to right after Y" → newStart = Y's end time, newEnd = newStart + X's duration
+- "Swap X and Y" → X gets Y's time, Y gets X's time
+- "Move to first thing in the morning" → use 07:00 same day
+- "Move to end of day" → use 17:00 same day
+
+SPECIFIC DAY PATTERNS:
+- "Move X to Monday" → find next Monday, keep same time
+- "Reschedule to this Friday" → calculate correct date
+
 Return a JSON array of actions. Each action has:
 - "action": "delete" | "move"
-- "eventId": the id from the event list above (match by title/time)
-- "reason": brief description of why (e.g. "duplicate breakfast")
-- For "move" only: "newStart" and "newEnd" as ISO datetime strings in ${timezone} local time (no Z suffix)
+- "eventId": the id from the event list above (match by title/time/day)
+- "reason": brief description
+- For "move": "newStart" and "newEnd" as local datetime strings (no Z suffix, format: YYYY-MM-DDTHH:MM:00)
 
 Only include actions explicitly requested by the user. If nothing was requested, return [].
 
-Example: [{"action":"delete","eventId":"abc123","reason":"duplicate breakfast event"}]`,
+Example: [{"action":"delete","eventId":"abc123","reason":"duplicate"},{"action":"move","eventId":"def456","newStart":"2026-06-09T09:00:00","newEnd":"2026-06-09T10:00:00","reason":"pushed back 1 hour"}]`,
     }],
   });
 
@@ -303,17 +327,31 @@ export async function extractAndCreateTimeBlocks(userId: number, briefingContent
       role: 'user',
       content: `Extract specific time block recommendations to add to the calendar.
 
-Today's date: ${todayDate}
-Tomorrow's date: ${tomorrow}
+Today's date: ${todayDate} (${new Date(todayDate).toLocaleDateString('en-US', { weekday: 'long' })})
+Tomorrow's date: ${tomorrow} (${new Date(tomorrow).toLocaleDateString('en-US', { weekday: 'long' })})
 Timezone: ${timezone}
 
+Calculate upcoming weekday dates from today:
+${Array.from({length: 14}, (_, i) => {
+  const d = new Date(todayDate);
+  d.setDate(d.getDate() + i + 1);
+  return `  ${d.toLocaleDateString('en-US', { weekday: 'long' })}: ${d.toLocaleDateString('en-CA')}`;
+}).join('\n')}
+
 Rules:
-- If the user or AI mentions something for "today", "this afternoon", "this morning", "tonight" → use date ${todayDate}
-- If the user or AI mentions something for "tomorrow" or the AI is recommending blocks as part of a daily briefing → use date ${tomorrow}
-- IMPORTANT: If the user requests something "every day next week", "every day for the next X days", "daily for the week" etc. → create ONE entry for EACH day. For "every day next week" that means 5 separate entries (Mon–Fri). Use the correct dates for each day.
-- If they say "every day this week" from today, create entries for each remaining day this week.
-- Do NOT extract events already on the calendar (existing appointments, recurring meals, sleep)
-- Do NOT recreate one-time events that already happened today (court hearings, medical appointments etc.)
+- "today", "this afternoon", "this morning", "tonight" → use ${todayDate}
+- "tomorrow" or AI briefing recommendations → use ${tomorrow}
+- "every day next week" → create one entry for EACH of Mon–Fri next week (5 entries)
+- "every weekday this week" → create one entry for each remaining weekday this week
+- "every Monday and Wednesday" → create entries for each Mon and Wed in the next 2 weeks
+- "every day for the next X days" → create X entries on consecutive days
+- "every morning this week" → one entry per remaining weekday this week
+- "for the next 2 weeks" → create entries for each specified day across 2 weeks
+- "first thing in the morning" → 07:00 local time
+- "end of day" / "late afternoon" → 16:00–17:00 local time
+- "block off 2 hours for X" → use a sensible time (e.g. 09:00–11:00) if no time given
+- Do NOT extract events already on the calendar
+- Do NOT recreate one-time events that already happened (court hearings, medical appointments)
 - Only extract new blocks being explicitly requested or recommended
 
 Return ONLY a JSON array of time blocks, nothing else. Format:
