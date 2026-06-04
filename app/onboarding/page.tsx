@@ -36,10 +36,25 @@ function StepIndicator({ current }: { current: Step }) {
   );
 }
 
+const EXAMPLE_PROFILE = `Current situation: Recently laid off from a corporate role in San Francisco. Reassessing career direction, exploring entrepreneurship, learning AI. Mix of relief, fear, and excitement — this is the beginning of reinvention, not failure.
+
+Goals (next 12 months): Build financial independence through consulting and AI services. Replace corporate income ($5–10k/month by month 6). Create multiple income streams nobody can take away. Develop AI leverage — not as an engineer, but as someone who can identify problems and deploy solutions.
+
+Strengths: Deep corporate experience (stakeholder management, project coordination, customer relationships). Strong communicator — can run meetings, present ideas, build trust. Empathy for customer pain points from years inside organizations. Geographic advantage: based in San Francisco with access to founders, engineers, and early adopters.
+
+Weaknesses / self-sabotage patterns: Seeking permission before acting — waiting for someone to assign the opportunity. Consuming more than creating (courses, tutorials, research) without selling anything. Tendency to underprice services. Identity still partly attached to job title and employer brand.
+
+Opportunities: AI workflow consulting for law firms, agencies, and recruiters. Fractional operations partner (process improvement, automation, retainers). Build publicly — share AI experiments and case studies to create inbound.
+
+Health: Needs to prioritize sleep, daily movement, and social connection during this transition. Burnout is not a business strategy.
+
+Chief of Staff priority: First paying client before first business plan. First $1k earned independently matters more than any pitch deck.`;
+
 function ProfileStep({ onNext }: { onNext: () => void }) {
   const [summary, setSummary] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showExample, setShowExample] = useState(false);
 
   useEffect(() => {
     fetch('/api/profile').then(r => r.json()).then(d => {
@@ -85,6 +100,24 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         <div className="rounded-lg p-4 text-sm font-mono leading-relaxed" style={{ background: 'rgba(0,0,0,0.3)', color: '#c4c4d0', userSelect: 'all', cursor: 'text' }}>
           "Summarize everything you know about me including goals, projects, strengths, weaknesses, recurring challenges, opportunities, financial goals, health goals, relationship goals, and areas where I may be self-sabotaging. Format as a briefing for a Chief of Staff."
         </div>
+      </div>
+
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setShowExample(e => !e)}
+          className="flex items-center gap-2 text-sm font-medium"
+          style={{ color: '#818cf8' }}
+        >
+          <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showExample ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+          See an example profile
+        </button>
+        {showExample && (
+          <div className="mt-3 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap"
+            style={{ background: 'rgba(0,0,0,0.25)', color: '#aaa', border: '1px solid rgba(99,102,241,0.15)', maxHeight: '220px', overflowY: 'auto' }}>
+            {EXAMPLE_PROFILE}
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit}>
