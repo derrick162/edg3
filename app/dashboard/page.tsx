@@ -529,7 +529,12 @@ export default function Dashboard() {
 
   async function callIntro() {
     setIntroCalling(true);
-    await fetch('/api/briefing/intro', { method: 'POST' });
+    const res = await fetch('/api/briefing/intro', { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert('Intro call failed: ' + (data.error || res.status));
+      setIntroCalling(false);
+    }
     // Keep modal open in "calling" state — user dismisses after call ends
   }
 
