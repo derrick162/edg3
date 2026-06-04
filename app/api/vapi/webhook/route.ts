@@ -106,22 +106,6 @@ export async function POST(req: NextRequest) {
       if (user) {
         // Extract calendar blocks from briefing AND transcript conversation
         const combinedContent = briefing.content + (transcript ? '\n\nCONVERSATION TRANSCRIPT:\n' + transcript : '');
-        // Process creates AND edits/deletes in parallel
-        Promise.all([
-          extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone),
-          transcript ? processCalendarEdits(briefing.user_id, transcript, user.timezone) : Promise.resolve([]),
-        ]).then(([created, edited]) => {
-          const actions = [
-            ...created.map((e: any) => ({ type: 'created', title: e.title, start: e.start, end: e.end })),
-            ...edited.map((e: any) => ({ type: e.type, title: e.title, start: e.newStart, reason: e.reason })),
-          ];
-          if (actions.length > 0) {
-            db.prepare('UPDATE briefings SET calendar_actions = ? WHERE id = ?')
-              .run(JSON.stringify(actions), briefing.id);
-            console.log(`[webhook] ${created.length} created, ${edited.length} edited/deleted for briefing ${briefing.id}`);
-          }
-        }).catch(err => console.error('Calendar processing failed:', err));
-
         // Extract tasks from briefing content
         const db2 = (await import('@/lib/db')).getDb();
         const tomorrow = new Date(new Date().toLocaleString('en-US', { timeZone: user.timezone }));
@@ -136,19 +120,31 @@ export async function POST(req: NextRequest) {
             .catch(err => console.error('Task extraction failed:', err));
         }
 
-        // Always extract tasks from transcript conversation (user requests during call)
         if (transcript) {
           extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
         }
 
-        // Check Edge's promises and fix anything missed — runs after a delay to let calendar processing finish
-        if (transcript) {
-          setTimeout(() => {
-            verifyEdgePromises(briefing.user_id, briefing.id, transcript, user.timezone)
+        // Process calendar creates/edits, then verify promises — chained so promises run after calendar is done
+        Promise.all([
+          extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone),
+          transcript ? processCalendarEdits(briefing.user_id, transcript, user.timezone) : Promise.resolve([]),
+        ]).then(async ([created, edited]) => {
+          const actions = [
+            ...created.map((e: any) => ({ type: 'created', title: e.title, start: e.start, end: e.end })),
+            ...edited.map((e: any) => ({ type: e.type, title: e.title, start: e.newStart, reason: e.reason })),
+          ];
+          if (actions.length > 0) {
+            db.prepare('UPDATE briefings SET calendar_actions = ? WHERE id = ?')
+              .run(JSON.stringify(actions), briefing.id);
+            console.log(`[webhook] ${created.length} created, ${edited.length} edited/deleted for briefing ${briefing.id}`);
+          }
+          // Verify promises immediately after calendar processing completes
+          if (transcript) {
+            await verifyEdgePromises(briefing.user_id, briefing.id, transcript, user.timezone)
               .catch(err => console.error('Promise verification failed:', err));
-          }, 15000); // wait 15s for calendar processing to complete first
-        }
+          }
+        }).catch(err => console.error('Calendar processing failed:', err));
       }
     } else if (type === 'call-started' || type === 'assistant.started') {
       briefingQueries.update(briefing.id, { status: 'calling' });
