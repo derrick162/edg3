@@ -21,6 +21,7 @@ export async function POST() {
 
   const firstName = fullUser.name.split(' ')[0];
   const profile = fullUser.profile_summary || '';
+  console.log(`[intro] user=${firstName} profile_length=${profile.length} profile_preview="${profile.slice(0, 100)}"`);
 
   // Generate personalized intro using Claude
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
