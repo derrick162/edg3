@@ -74,7 +74,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
       <div className="glass-card p-5 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.05)' }}>
         <p className="text-sm font-semibold mb-2" style={{ color: '#818cf8' }}>Step 1 of 2 — Get your profile from ChatGPT</p>
         <p className="text-sm mb-3" style={{ color: '#aaa' }}>
-          Go to ChatGPT and send this prompt (it works best if you've had conversations with ChatGPT before):
+          Go to ChatGPT (or your most actively used AI tool) and send this prompt (it works best if you've had prior conversations with it):
         </p>
         <div className="rounded-lg p-4 text-sm font-mono leading-relaxed" style={{ background: 'rgba(0,0,0,0.3)', color: '#c4c4d0', userSelect: 'all', cursor: 'text' }}>
           "Summarize everything you know about me including goals, projects, strengths, weaknesses, recurring challenges, opportunities, financial goals, health goals, relationship goals, and areas where I may be self-sabotaging. Format as a briefing for a Chief of Staff."
