@@ -7,7 +7,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const adminPassword = process.env.ADMIN_PASSWORD;
 
   if (!adminPassword || !adminCookie || adminCookie.value !== adminPassword) {
-    redirect('/admin/login');
+    redirect('/admin-login');
   }
 
   return <>{children}</>;
