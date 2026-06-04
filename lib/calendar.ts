@@ -301,16 +301,22 @@ export async function extractAndCreateTimeBlocks(userId: number, briefingContent
     max_tokens: 400,
     messages: [{
       role: 'user',
-      content: `Extract all specific time block recommendations from this briefing.
-The target date for these blocks is ${today} (tomorrow). All times are in the ${timezone} timezone.
+      content: `Extract specific time block recommendations to add to the calendar for tomorrow (${today}).
+
+Rules:
+- ONLY extract blocks that are being RECOMMENDED as new time to block off for tomorrow
+- Do NOT extract events that are already happening today (the day of the call) — things like court hearings, medical appointments, or other one-time events referenced as happening "today" or "this morning/afternoon" should NOT be recreated for tomorrow
+- Do NOT extract recurring habits or events that are already on the calendar (like regular meals, sleep)
+- Only extract productivity blocks, focus time, workout windows, or tasks the AI is explicitly suggesting for tomorrow
+- All times are in the ${timezone} timezone, target date is ${today}
 
 Return ONLY a JSON array of time blocks, nothing else. Format:
-[{"title": "event name", "start": "2026-06-03T09:00:00", "end": "2026-06-03T10:30:00"}]
+[{"title": "event name", "start": "${today}T09:00:00", "end": "${today}T10:30:00"}]
 
-The datetime strings should be local time (no Z suffix, no UTC offset) — the timezone will be set separately.
-If no specific times are mentioned, return an empty array [].
+The datetime strings should be local time (no Z suffix, no UTC offset).
+If no clear new time blocks are being recommended, return [].
 
-Briefing:
+Briefing content:
 ${briefingContent}`,
     }],
   });
