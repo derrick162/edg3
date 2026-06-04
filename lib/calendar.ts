@@ -331,13 +331,15 @@ SPECIFIC DAY PATTERNS:
 - "Reschedule to this Friday" → calculate correct date
 
 Return a JSON array of actions. Each action has:
-- "action": "delete" | "move" | "color"
+- "action": "delete" | "move" | "color" | "rename"
 - "eventId": the id from the event list above (match by title/time/day)
 - "reason": brief description
 - For "move": "newStart" and "newEnd" as local datetime strings (no Z suffix, format: YYYY-MM-DDTHH:MM:00)
 - For "color": "color" as a color name (e.g. "green", "orange", "red", "blue", "purple", "yellow", "teal", "pink")
+- For "rename": "newTitle" as the new event name
 
 BULK COLOR: If user says "make all meals orange" or "color all X events green", return one action per matching event.
+BULK RENAME: If user says "rename all X to Y", return one action per matching event.
 
 Only include actions explicitly requested by the user. If nothing was requested, return [].
 
@@ -371,6 +373,18 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
           await colorCalendarEvent(userId, action.eventId, action.color);
           results.push({ type: 'colored', title: event?.summary || action.eventId, color: action.color, reason: action.reason });
           console.log(`[calendar] Colored event: ${event?.summary} → ${action.color}`);
+        } else if (action.action === 'rename' && action.eventId && action.newTitle) {
+          const event = events.find(e => e.id === action.eventId);
+          const oauth2Client = getOAuthClient();
+          oauth2Client.setCredentials({
+            access_token: tokenRow.access_token,
+            refresh_token: tokenRow.refresh_token || undefined,
+            expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+          });
+          const cal = google.calendar({ version: 'v3', auth: oauth2Client });
+          await cal.events.patch({ calendarId: 'primary', eventId: action.eventId, requestBody: { summary: action.newTitle } });
+          results.push({ type: 'renamed', title: event?.summary || action.eventId, newTitle: action.newTitle, reason: action.reason });
+          console.log(`[calendar] Renamed: "${event?.summary}" → "${action.newTitle}"`);
         }
       } catch (err) {
         console.error(`[calendar] Failed to ${action.action} event ${action.eventId}:`, err);
@@ -554,6 +568,67 @@ ${briefingContent}`,
   } catch {
     return [];
   }
+}
+
+export function getFreeTimeSlots(events: calendar_v3.Schema$Event[], timezone: string, daysAhead: number = 7): string {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const workdayStart = 8; // 8am
+  const workdayEnd = 20;  // 8pm
+  const minSlotMinutes = 30;
+
+  const slots: string[] = [];
+
+  for (let d = 0; d < daysAhead; d++) {
+    const day = new Date(now);
+    day.setDate(day.getDate() + d);
+    const dayStr = day.toLocaleDateString('en-CA');
+
+    // Get all events on this day sorted by start time
+    const dayEvents = events
+      .filter(e => {
+        const start = e.start?.dateTime || e.start?.date || '';
+        return start.startsWith(dayStr);
+      })
+      .map(e => ({
+        start: e.start?.dateTime ? new Date(e.start.dateTime) : null,
+        end: e.end?.dateTime ? new Date(e.end.dateTime) : null,
+        title: e.summary || '',
+      }))
+      .filter(e => e.start && e.end)
+      .sort((a, b) => a.start!.getTime() - b.start!.getTime());
+
+    // Find gaps
+    const dayStart = new Date(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`);
+    const dayEnd = new Date(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`);
+    let cursor = dayStart.getTime();
+
+    for (const ev of dayEvents) {
+      const evStart = ev.start!.getTime();
+      if (evStart > cursor) {
+        const gapMins = (evStart - cursor) / 60000;
+        if (gapMins >= minSlotMinutes) {
+          const from = new Date(cursor).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
+          const to = new Date(evStart).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
+          const dayLabel = day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: timezone });
+          slots.push(`${dayLabel}: ${from}–${to} (${Math.round(gapMins / 30) * 30}min free)`);
+        }
+      }
+      cursor = Math.max(cursor, ev.end!.getTime());
+    }
+
+    // Gap after last event
+    if (cursor < dayEnd.getTime()) {
+      const gapMins = (dayEnd.getTime() - cursor) / 60000;
+      if (gapMins >= minSlotMinutes) {
+        const from = new Date(cursor).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
+        const to = new Date(dayEnd).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
+        const dayLabel = day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: timezone });
+        slots.push(`${dayLabel}: ${from}–${to} (${Math.round(gapMins / 30) * 30}min free)`);
+      }
+    }
+  }
+
+  return slots.length ? slots.join('\n') : 'No significant free slots found.';
 }
 
 export function formatEventsForBriefing(events: calendar_v3.Schema$Event[], timezone?: string): string {

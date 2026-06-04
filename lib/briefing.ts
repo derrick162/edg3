@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, User } from './db';
-import { getCalendarEvents, getWeekEvents, formatEventsForBriefing } from './calendar';
+import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -64,6 +64,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   });
 
   const calendarText = formatEventsForBriefing(calendarEvents, userTimezone);
+  const freeTimeText = getFreeTimeSlots([...calendarEvents, ...weekEvents], userTimezone, 7);
   const weekCalendarText = weekEvents.length
     ? weekEvents.map(e => {
         let start: string;
@@ -132,6 +133,9 @@ ${calendarText}
 UPCOMING THIS WEEK:
 ${weekCalendarText}
 
+FREE TIME SLOTS (next 7 days, 8am–8pm):
+${freeTimeText}
+
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
 
@@ -152,7 +156,7 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.
 4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today. Be specific. Address every weekly priority. Reference incomplete tasks by name. If a completed task ties to a priority, acknowledge it and ask if they want to swap in a new one.
 5. PATTERN RECOGNITION — One sharp insight from their history that they need to hear. Make it feel like only someone who's been paying close attention would notice this.
-6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks with exact start and end times. Always include specific times.
+6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.
 7. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
    - If they mentioned something big yesterday: "How did [specific thing] go — I want to factor that into tomorrow."
    - If there's a pattern worth breaking: "What's one thing that keeps getting in the way — I want to help you remove it."
