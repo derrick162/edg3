@@ -285,6 +285,12 @@ export async function processCalendarEdits(userId: number, transcript: string, t
   });
 
   const events = existing.data.items || [];
+  const eventCalendarMap = new Map<string, string>(); // eventId → calendarId
+  calendarIds.forEach((calId, idx) => {
+    (allEvents[idx] || []).forEach((e: calendar_v3.Schema$Event) => {
+      if (e.id) eventCalendarMap.set(e.id, calId);
+    });
+  });
   const eventList = events.map(e => ({
     id: e.id,
     title: e.summary,
@@ -358,6 +364,7 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
     const results = [];
     for (const action of actions) {
       try {
+        const calId = eventCalendarMap.get(action.eventId) || 'primary';
         if (action.action === 'delete' && action.eventId) {
           const event = events.find(e => e.id === action.eventId);
           await deleteCalendarEvent(userId, action.eventId);
@@ -370,19 +377,18 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
           console.log(`[calendar] Moved event: ${event?.summary} to ${action.newStart}`);
         } else if (action.action === 'color' && action.eventId && action.color) {
           const event = events.find(e => e.id === action.eventId);
-          await colorCalendarEvent(userId, action.eventId, action.color);
+          const oac = getOAuthClient();
+          oac.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token || undefined, expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined });
+          const cal = google.calendar({ version: 'v3', auth: oac });
+          await cal.events.patch({ calendarId: calId, eventId: action.eventId, requestBody: { colorId: getColorId(action.color) } });
           results.push({ type: 'colored', title: event?.summary || action.eventId, color: action.color, reason: action.reason });
-          console.log(`[calendar] Colored event: ${event?.summary} → ${action.color}`);
+          console.log(`[calendar] Colored event: ${event?.summary} → ${action.color} on calendar ${calId}`);
         } else if (action.action === 'rename' && action.eventId && action.newTitle) {
           const event = events.find(e => e.id === action.eventId);
-          const oauth2Client = getOAuthClient();
-          oauth2Client.setCredentials({
-            access_token: tokenRow.access_token,
-            refresh_token: tokenRow.refresh_token || undefined,
-            expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
-          });
-          const cal = google.calendar({ version: 'v3', auth: oauth2Client });
-          await cal.events.patch({ calendarId: 'primary', eventId: action.eventId, requestBody: { summary: action.newTitle } });
+          const oac = getOAuthClient();
+          oac.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token || undefined, expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined });
+          const cal = google.calendar({ version: 'v3', auth: oac });
+          await cal.events.patch({ calendarId: calId, eventId: action.eventId, requestBody: { summary: action.newTitle } });
           results.push({ type: 'renamed', title: event?.summary || action.eventId, newTitle: action.newTitle, reason: action.reason });
           console.log(`[calendar] Renamed: "${event?.summary}" → "${action.newTitle}"`);
         }

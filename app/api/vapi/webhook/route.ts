@@ -125,11 +125,12 @@ export async function POST(req: NextRequest) {
             .catch(err => console.error('Transcript task extraction failed:', err));
         }
 
-        // Process calendar creates/edits, then verify promises — chained so promises run after calendar is done
-        Promise.all([
-          extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone),
-          transcript ? processCalendarEdits(briefing.user_id, transcript, user.timezone) : Promise.resolve([]),
-        ]).then(async ([created, edited]) => {
+        // Run creates FIRST, then edits/colors (so color changes can find newly created events)
+        Promise.resolve().then(async () => {
+          const created = await extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone);
+          const edited = transcript ? await processCalendarEdits(briefing.user_id, transcript, user.timezone) : [];
+          return [created, edited] as const;
+        }).then(async ([created, edited]) => {
           const actions = [
             ...created.map((e: any) => ({ type: 'created', title: e.title, start: e.start, end: e.end })),
             ...edited.map((e: any) => ({ type: e.type, title: e.title, start: e.newStart, reason: e.reason })),
