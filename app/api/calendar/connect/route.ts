@@ -11,5 +11,14 @@ export async function GET() {
   }
 
   const url = getAuthUrl(user.id);
-  return NextResponse.json({ url });
+  const response = NextResponse.json({ url });
+  // Set a short-lived cookie as backup in case session drops during OAuth redirect
+  response.cookies.set('edg3_oauth_uid', String(user.id), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 10, // 10 minutes
+    path: '/',
+  });
+  return response;
 }
