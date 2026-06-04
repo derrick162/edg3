@@ -141,6 +141,14 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data === 'calendar_connected') onNext();
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onNext]);
+
   async function connectCalendar() {
     setLoading(true);
     setError('');
@@ -152,7 +160,11 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
       setError(data.error || 'Calendar connection not available');
       return;
     }
-    window.location.href = data.url;
+    const popup = window.open(data.url, 'google-calendar-oauth', 'width=500,height=650,scrollbars=yes');
+    if (!popup) {
+      // Fallback if popup blocked
+      window.location.href = data.url;
+    }
   }
 
   return (

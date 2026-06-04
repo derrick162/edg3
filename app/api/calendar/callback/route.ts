@@ -28,14 +28,17 @@ export async function GET(req: NextRequest) {
       tokens.refresh_token || '',
       tokens.expiry_date?.toString() || ''
     );
-    const redirect = NextResponse.redirect(new URL('/onboarding?step=priorities', base));
-    redirect.cookies.set('edg3_oauth_uid', '', { maxAge: 0, path: '/' });
-    // Re-issue session cookie if it was dropped during OAuth redirect
-    if (!sessionUser) {
-      const token = createToken(userId);
-      redirect.cookies.set(setSessionCookie(token));
-    }
-    return redirect;
+    // Return a page that messages the opener and closes itself
+    const html = `<!DOCTYPE html><html><body><script>
+      if (window.opener) {
+        window.opener.postMessage('calendar_connected', '*');
+        window.close();
+      } else {
+        window.location.href = '/onboarding?step=priorities';
+      }
+    </script><p style="font-family:sans-serif;text-align:center;margin-top:40px;color:#888">Calendar connected! Closing...</p></body></html>`;
+    const response = new Response(html, { headers: { 'Content-Type': 'text/html' } });
+    return response;
   } catch (err) {
     console.error('Calendar OAuth error:', err);
     return NextResponse.redirect(new URL('/onboarding?error=calendar_failed', base));
