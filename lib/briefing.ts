@@ -3,6 +3,32 @@ import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, User } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing } from './calendar';
 
+async function getWeatherSummary(timezone: string): Promise<string> {
+  try {
+    // Extract city from timezone e.g. "America/Vancouver" → "Vancouver"
+    const city = timezone.split('/').pop()?.replace(/_/g, '+') || 'Vancouver';
+    const res = await fetch(`https://wttr.in/${city}?format=j1`, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return '';
+    const data = await res.json();
+    const current = data.current_condition?.[0];
+    if (!current) return '';
+    const desc = current.weatherDesc?.[0]?.value || '';
+    const tempC = current.temp_C;
+    const feelsC = current.FeelsLikeC;
+    return `${desc}, ${tempC}°C (feels like ${feelsC}°C) in ${city.replace(/\+/g, ' ')}`;
+  } catch {
+    return '';
+  }
+}
+
+function extractCommitments(briefings: any[]): string {
+  const withResponses = briefings.filter(b => b.user_response).slice(0, 3);
+  if (!withResponses.length) return '';
+  return withResponses
+    .map(b => `[${format(new Date(b.scheduled_for), 'MMM d')}] They said: "${b.user_response}"`)
+    .join('\n');
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -22,9 +48,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getRecent(userId, 15);
   const recentBriefings = briefingQueries.getRecent(userId, 5);
-  const [calendarEvents, weekEvents] = await Promise.all([
+  const [calendarEvents, weekEvents, weatherSummary] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
+    getWeatherSummary(userTimezone),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Only kudos for tasks completed since the last briefing
@@ -60,6 +87,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     .map(b => `[${format(new Date(b.scheduled_for), 'MMM d')}] User said: "${b.user_response}"`)
     .join('\n') || 'No prior call responses.';
 
+  const commitmentsText = extractCommitments(recentBriefings);
+  const lastCallResponse = recentBriefings.find(b => b.user_response);
+
   const isFirstCall = recentMemories.length === 0;
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
@@ -84,6 +114,9 @@ ${user.profile_summary || 'No profile summary available.'}
 THIS WEEK'S TOP PRIORITIES:
 ${prioritiesText}
 
+TODAY'S WEATHER:
+${weatherSummary || 'Not available.'}
+
 TODAY'S CALENDAR:
 ${calendarText}
 
@@ -99,17 +132,22 @@ ${incompleteTasks.length ? incompleteTasks.map(t => `- [${t.date}] ${t.text}`).j
 RECENTLY COMPLETED TASKS:
 ${recentlyCompletedTasks.length ? recentlyCompletedTasks.map(t => `- [${t.date}] ${t.text}`).join('\n') : 'None.'}
 
-RECENT CALL RESPONSES FROM USER:
+WHAT THEY SAID ON RECENT CALLS:
 ${previousBriefingsText}
 
 Generate a briefing with these sections:
-1. GREETING — Start with "${greeting}, [name]." then be personal and sharp. If there are recently completed tasks, open with genuine kudos — call them out by name, be specific, make them feel the win. Keep it warm and real, not generic. IMPORTANT: If there are any [USER NOTE] or [PRIORITY CHANGE] entries in the memory, acknowledge them directly and early — these are messages the user manually sent you between calls and they expect you to have read them. For [PRIORITY CHANGE], explicitly call out what was added or removed and confirm the new priorities.
-2. TODAY'S SNAPSHOT — Key events and commitments from their calendar (2-3 sentences)
-3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. Note any misalignment briefly and with empathy — one sentence max, then move on. Do not lecture or repeat the point.
-4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today (be specific, not generic). You MUST address every stated weekly priority — do not skip or omit any of them even if you think something else is more important. If there are incomplete tasks from previous days, reference them explicitly by name — acknowledge what carried over and adjust the ask accordingly. IMPORTANT: If a recently completed task is directly related to one of their top priorities, do NOT repeat that priority as a task — instead acknowledge it's done and ask if a new priority should replace it (e.g. "You knocked out the bachelor party planning — do you want to swap that priority out for something new? Tell me at the end of the call.").
-5. PATTERN RECOGNITION — One insight from their memory/conversation history that they need to hear (if applicable)
-6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks for today with exact start and end times (e.g. "nine AM to ten thirty AM for the gym", "two PM to four PM for Edge development"). Always include specific times — these will be automatically added to the calendar.
-7. CLOSING QUESTION — End with: "What's the most important thing I should know before tomorrow's briefing?"
+1. GREETING & CARRY-FORWARD — Start with "${greeting}, [name]." then immediately follow up on what they said on the last call. If they mentioned something specific they were going to do, ask how it went — make it feel like you remembered and you care. If recently completed tasks exist, give genuine specific kudos. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them directly. Keep this warm and real.
+2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). ${weatherSummary ? `Weave in the weather naturally if it's relevant to their day — "${weatherSummary}". Only mention it if it actually affects something (outdoor plans, commute, mood).` : ''}
+3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.
+4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today. Be specific. Address every weekly priority. Reference incomplete tasks by name. If a completed task ties to a priority, acknowledge it and ask if they want to swap in a new one.
+5. PATTERN RECOGNITION — One sharp insight from their history that they need to hear. Make it feel like only someone who's been paying close attention would notice this.
+6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks with exact start and end times. Always include specific times.
+7. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
+   - If they mentioned something big yesterday: "How did [specific thing] go — I want to factor that into tomorrow."
+   - If there's a pattern worth breaking: "What's one thing that keeps getting in the way — I want to help you remove it."
+   - If they have a big upcoming event: "What do you need to feel ready for [event]?"
+   - Default if nothing specific stands out: "What's the most important thing I should know before tomorrow's briefing?"
+   Pick ONE and make it feel natural and specific, not generic.
 
 Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
 
