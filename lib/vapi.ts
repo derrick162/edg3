@@ -69,6 +69,11 @@ Always end with warmth and encouragement. This person is building something — 
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
       clientMessages: ['transcript', 'hang', 'function-call', 'speech-update'],
       serverMessages: ['transcript', 'end-of-call-report', 'status-update', 'hang', 'function-call'],
+      stopSpeakingPlan: {
+        numWords: 1,
+        voiceSeconds: 0.2,
+        backoffSeconds: 0,
+      },
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
