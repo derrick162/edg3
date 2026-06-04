@@ -141,6 +141,14 @@ export async function POST(req: NextRequest) {
           extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
         }
+
+        // Check Edge's promises and fix anything missed — runs after a delay to let calendar processing finish
+        if (transcript) {
+          setTimeout(() => {
+            verifyEdgePromises(briefing.user_id, briefing.id, transcript, user.timezone)
+              .catch(err => console.error('Promise verification failed:', err));
+          }, 15000); // wait 15s for calendar processing to complete first
+        }
       }
     } else if (type === 'call-started' || type === 'assistant.started') {
       briefingQueries.update(briefing.id, { status: 'calling' });
@@ -195,6 +203,68 @@ ${briefingContent}`,
   } catch {
     // ignore parse errors
   }
+}
+
+async function verifyEdgePromises(userId: number, briefingId: number, transcript: string, timezone: string) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const promisesResult = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `Read this call transcript between a user and their AI Chief of Staff called Edge.
+Extract every specific promise Edge made — things Edge said it would do, book, add, change, research, or handle.
+Focus on: calendar bookings, event color changes, event moves/deletes, research tasks, reminders.
+Return ONLY a JSON array of promise strings. If Edge made no clear promises, return [].
+Example: ["Book focus build time 1:30-3:30pm Mon-Fri next week", "Make MVP goal event green on June 12"]
+Transcript:\n${transcript}`,
+    }],
+  });
+
+  const promisesText = promisesResult.content[0].type === 'text' ? promisesResult.content[0].text : '[]';
+  let promises: string[] = [];
+  try { const m = promisesText.match(/\[[\s\S]*\]/); if (m) promises = JSON.parse(m[0]); } catch { return; }
+  if (!promises.length) return;
+  console.log(`[promises] Edge made ${promises.length} promises:`, promises);
+
+  const { getCalendarEvents, getWeekEvents, extractAndCreateTimeBlocks, processCalendarEdits } = await import('@/lib/calendar');
+  const [todayEvts, weekEvts] = await Promise.all([
+    getCalendarEvents(userId).catch(() => []),
+    getWeekEvents(userId).catch(() => []),
+  ]);
+  const calendarSummary = [...todayEvts, ...weekEvts]
+    .map(e => `- ${e.summary} (${e.start?.dateTime?.slice(0, 16) || e.start?.date || 'all day'})`)
+    .join('\n') || 'No events';
+
+  const checkResult = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 600,
+    messages: [{
+      role: 'user',
+      content: `Edge promised:\n${promises.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nCurrent calendar:\n${calendarSummary}\n\nReturn JSON array of unfulfilled promises only. Be lenient — if similar event exists, mark fulfilled.\nFormat: [{"promise":"text","reason":"why unfulfilled"}]\nIf all done, return [].`,
+    }],
+  });
+
+  const checkText = checkResult.content[0].type === 'text' ? checkResult.content[0].text : '[]';
+  let unfulfilled: { promise: string; reason: string }[] = [];
+  try { const m = checkText.match(/\[[\s\S]*\]/); if (m) unfulfilled = JSON.parse(m[0]); } catch { return; }
+
+  if (!unfulfilled.length) { console.log(`[promises] All ${promises.length} promises verified ✓`); return; }
+  console.log(`[promises] ${unfulfilled.length} unfulfilled:`, unfulfilled.map(u => u.promise));
+
+  const { memoryQueries } = await import('@/lib/db');
+  const missedList = unfulfilled.map(u => `- ${u.promise}`).join('\n');
+  memoryQueries.create(userId, 'calendar_note',
+    `[EDGE MISSED] Promised on last call but not completed:\n${missedList}\nOpen next briefing by addressing these directly.`
+  );
+
+  const retryTranscript = unfulfilled.map(u => `User: Please ${u.promise}`).join('\n');
+  await Promise.all([
+    extractAndCreateTimeBlocks(userId, retryTranscript, timezone),
+    processCalendarEdits(userId, retryTranscript, timezone),
+  ]).catch(err => console.error('[promises] Retry failed:', err));
+  console.log(`[promises] Retried ${unfulfilled.length} items`);
 }
 
 async function extractTasksFromTranscript(userId: number, transcript: string, timezone: string) {
