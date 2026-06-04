@@ -488,7 +488,9 @@ export function formatEventsForBriefing(events: calendar_v3.Schema$Event[], time
     const startDate = event.start?.dateTime ? new Date(event.start.dateTime) : null;
     const startStr = startDate
       ? startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone || 'America/Vancouver' })
-      : 'All day';
+      : event.start?.date
+        ? new Date(event.start.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) + ' (all day)'
+        : 'All day';
     const isPast = startDate && startDate < now;
     const title = event.summary || 'Untitled event';
 

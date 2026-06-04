@@ -66,9 +66,15 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const calendarText = formatEventsForBriefing(calendarEvents, userTimezone);
   const weekCalendarText = weekEvents.length
     ? weekEvents.map(e => {
-        const start = e.start?.dateTime
-          ? new Date(e.start.dateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: userTimezone })
-          : e.start?.date || 'All day';
+        let start: string;
+        if (e.start?.dateTime) {
+          start = new Date(e.start.dateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: userTimezone });
+        } else if (e.start?.date) {
+          // All-day event — format the date clearly with day of week
+          start = new Date(e.start.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) + ' (all day)';
+        } else {
+          start = 'All day';
+        }
         return `- ${start}: ${e.summary || 'Untitled'}`;
       }).join('\n')
     : 'No upcoming events this week.';
