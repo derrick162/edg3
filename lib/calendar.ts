@@ -355,9 +355,21 @@ Rules:
 - Only extract new blocks being explicitly requested or recommended
 
 Return ONLY a JSON array of time blocks, nothing else. Format:
-[{"title": "event name", "start": "YYYY-MM-DDTHH:MM:00", "end": "YYYY-MM-DDTHH:MM:00"}]
+[{"title": "event name", "start": "YYYY-MM-DDTHH:MM:00", "end": "YYYY-MM-DDTHH:MM:00", "timezone": "optional — only include if a specific timezone was mentioned"}]
 
-Datetime strings must be local time (no Z suffix, no UTC offset).
+TIMEZONE OVERRIDE: If the user specifies a timezone for an event (e.g. "4pm Eastern", "9am London time", "3pm EST", "noon Pacific"), include a "timezone" field with the correct IANA timezone:
+- Eastern / EST / EDT → "America/New_York"
+- Pacific / PST / PDT → "America/Vancouver"
+- Central / CST / CDT → "America/Chicago"
+- Mountain / MST / MDT → "America/Denver"
+- GMT / London → "Europe/London"
+- CET / Paris / Berlin → "Europe/Paris"
+- IST / India → "Asia/Kolkata"
+- JST / Tokyo → "Asia/Tokyo"
+- AEST / Sydney → "Australia/Sydney"
+If no timezone is mentioned, omit the "timezone" field and use the user's default.
+
+Datetime strings are the clock time as stated by the user (no Z suffix, no UTC offset).
 If no clear new time blocks are mentioned, return [].
 
 Content:
@@ -372,7 +384,7 @@ ${briefingContent}`,
     const text = content.text.trim();
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
-    const blocks: { title: string; start: string; end: string }[] = JSON.parse(jsonMatch[0]);
+    const blocks: { title: string; start: string; end: string; timezone?: string }[] = JSON.parse(jsonMatch[0]);
 
     // Fetch existing events for tomorrow to avoid conflicts
     const tokenRow = (await import('./db')).calendarQueries.get(userId);
@@ -455,8 +467,9 @@ ${briefingContent}`,
       if (hasRealConflict) continue;
 
       try {
-        const event = await createCalendarEvent(userId, `⚡ ${block.title}`, block.start, block.end, timezone);
-        created.push({ title: block.title, start: block.start, end: block.end, eventId: event.id });
+        const eventTimezone = block.timezone || timezone;
+        const event = await createCalendarEvent(userId, `⚡ ${block.title}`, block.start, block.end, eventTimezone);
+        created.push({ title: block.title, start: block.start, end: block.end, eventId: event.id, timezone: eventTimezone });
       } catch (err) {
         console.error('Failed to create event:', block.title, err);
       }
