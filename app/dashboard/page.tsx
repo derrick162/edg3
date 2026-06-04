@@ -902,7 +902,7 @@ export default function Dashboard() {
                 onClick={callIntro}
                 className="btn-primary w-full py-3 text-base"
               >
-                📗 Meet Edg3
+                <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Meet Edg3
               </button>
             ) : (
               <div className="text-center space-y-4">
