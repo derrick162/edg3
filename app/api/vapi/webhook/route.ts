@@ -59,7 +59,24 @@ export async function POST(req: NextRequest) {
     if (!briefing) return NextResponse.json({ received: true });
 
     if ((type === 'call-ended' || type === 'end-of-call-report') && briefing.status !== 'completed') {
-      const transcript = call.transcript || payload.transcript || '';
+      // Fetch full transcript from Vapi API — webhook payload often only has partial transcript
+      let transcript = call.transcript || payload.transcript || '';
+      try {
+        const vapiRes = await fetch(`https://api.vapi.ai/call/${call.id}`, {
+          headers: { 'Authorization': `Bearer ${process.env.VAPI_API_KEY}` },
+        });
+        if (vapiRes.ok) {
+          const vapiCall = await vapiRes.json();
+          const fullTranscript = vapiCall.transcript || vapiCall.artifact?.transcript || '';
+          if (fullTranscript.length > transcript.length) {
+            transcript = fullTranscript;
+            console.log(`[webhook] Fetched full transcript from Vapi API (${transcript.length} chars)`);
+          }
+        }
+      } catch (err) {
+        console.error('[webhook] Failed to fetch full transcript from Vapi:', err);
+      }
+
       const endedReason = payload.endedReason || call.endedReason || '';
       const wasMissed = MISSED_CALL_REASONS.some(r => endedReason.toLowerCase().includes(r));
 
