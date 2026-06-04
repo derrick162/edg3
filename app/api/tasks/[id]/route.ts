@@ -7,8 +7,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const { completed } = await req.json();
+  let body: { completed?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { completed } = body;
   const taskId = parseInt(id);
+  if (isNaN(taskId)) return NextResponse.json({ error: 'Invalid task ID' }, { status: 400 });
 
   if (completed) {
     taskQueries.complete(taskId, user.id);
@@ -24,6 +31,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  taskQueries.delete(parseInt(id), user.id);
+  const taskId = parseInt(id);
+  if (isNaN(taskId)) return NextResponse.json({ error: 'Invalid task ID' }, { status: 400 });
+  taskQueries.delete(taskId, user.id);
   return NextResponse.json({ success: true });
 }

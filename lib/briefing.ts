@@ -21,7 +21,7 @@ async function getWeatherSummary(timezone: string): Promise<string> {
   }
 }
 
-function extractCommitments(briefings: any[]): string {
+function extractCommitments(briefings: { user_response: string | null; scheduled_for: string }[]): string {
   const withResponses = briefings.filter(b => b.user_response).slice(0, 3);
   if (!withResponses.length) return '';
   return withResponses

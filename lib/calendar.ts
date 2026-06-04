@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { google, calendar_v3 } from 'googleapis';
 import { calendarQueries } from './db';
 
 const SCOPES = [
@@ -188,7 +188,7 @@ ${briefingContent}`,
 
     // Fetch existing events for tomorrow to avoid conflicts
     const tokenRow = (await import('./db')).calendarQueries.get(userId);
-    let existingEvents: any[] = [];
+    let existingEvents: calendar_v3.Schema$Event[] = [];
     if (tokenRow) {
       const oauth2Client = getOAuthClient();
       oauth2Client.setCredentials({
@@ -229,10 +229,7 @@ ${briefingContent}`,
         return !isPlaceholder; // only block if it's a real event
       });
 
-      if (hasRealConflict) {
-        console.log('Skipping time block due to real event conflict:', block.title, block.start);
-        continue;
-      }
+      if (hasRealConflict) continue;
 
       try {
         const event = await createCalendarEvent(userId, `⚡ ${block.title}`, block.start, block.end, timezone);
@@ -247,7 +244,7 @@ ${briefingContent}`,
   }
 }
 
-export function formatEventsForBriefing(events: any[], timezone?: string): string {
+export function formatEventsForBriefing(events: calendar_v3.Schema$Event[], timezone?: string): string {
   if (!events.length) return 'No calendar events found for today.';
 
   const now = new Date();

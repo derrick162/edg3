@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, memoryQueries, userQueries, taskQueries } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { extractUserResponseFromTranscript } from '@/lib/vapi';
 import { extractAndCreateTimeBlocks } from '@/lib/calendar';
 import Anthropic from '@anthropic-ai/sdk';
-import { format } from 'date-fns';
 
 // Reasons that indicate the user didn't answer — worth retrying
 const MISSED_CALL_REASONS = [
@@ -17,7 +16,7 @@ async function retryCall(briefingId: number, userId: number) {
     const { userQueries: uq } = await import('@/lib/db');
     const user = uq.findById(userId);
     if (!user) return;
-    const phoneNumber = (user as any).phone_number;
+    const phoneNumber = user.phone_number;
     if (!phoneNumber) return;
 
     console.log(`[webhook] Retrying call for user ${userId} in 10 minutes...`);
@@ -26,15 +25,15 @@ async function retryCall(briefingId: number, userId: number) {
     const { initiateCall } = await import('@/lib/vapi');
     const { memoryQueries: mq } = await import('@/lib/db');
     const db = (await import('@/lib/db')).getDb();
-    const briefing = db.prepare('SELECT * FROM briefings WHERE id = ?').get(briefingId) as any;
+    const briefing = db.prepare('SELECT * FROM briefings WHERE id = ?').get(briefingId) as Briefing | undefined;
     if (!briefing || briefing.status === 'completed') return;
 
     const recentMemories = mq.getRecent(userId, 1);
-    const isFirstCall = recentMemories.filter((m: any) => m.type !== 'profile').length === 0;
+    const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
     console.log(`[webhook] Firing retry call for user ${userId}...`);
     const call = await initiateCall(phoneNumber, briefing.content, user.name, isFirstCall);
-    const callId = call.id || (call as any).callId;
+    const callId = call.id;
     if (callId) {
       briefingQueries.update(briefingId, { status: 'calling', vapi_call_id: callId });
       console.log(`[webhook] Retry call initiated: ${callId}`);
@@ -51,13 +50,11 @@ export async function POST(req: NextRequest) {
     const payload = body.message || body;
     const { type, call } = payload;
 
-    console.log('Vapi webhook:', type, 'call id:', call?.id);
-
     if (!call?.id) return NextResponse.json({ received: true });
 
     // Find the briefing with this call ID
     const db = (await import('@/lib/db')).getDb();
-    const briefing = db.prepare('SELECT * FROM briefings WHERE vapi_call_id = ?').get(call.id) as any;
+    const briefing = db.prepare('SELECT * FROM briefings WHERE vapi_call_id = ?').get(call.id) as Briefing & { retry_attempted: number };
 
     if (!briefing) return NextResponse.json({ received: true });
 
@@ -102,7 +99,7 @@ export async function POST(req: NextRequest) {
         const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
         const existingTasks = db2.prepare(
           "SELECT COUNT(*) as count FROM tasks WHERE user_id = ? AND source = 'edg3' AND date = ?"
-        ).get(briefing.user_id, tomorrowStr) as any;
+        ).get(briefing.user_id, tomorrowStr) as { count: number };
 
         if (existingTasks.count === 0) {
           extractTasksFromBriefing(briefing.user_id, briefing.content, user.timezone)

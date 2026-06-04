@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing } from './briefing';
 import { initiateCall } from './vapi';
-import { briefingQueries, userQueries } from './db';
+import { briefingQueries, userQueries, User } from './db';
 
 let schedulerRunning = false;
 
@@ -30,7 +30,7 @@ async function checkAndInitiateCalls() {
     WHERE onboarding_complete = 1
     AND phone_number IS NOT NULL
     AND call_time IS NOT NULL
-  `).all() as any[];
+  `).all() as User[];
 
   for (const user of users) {
     try {
@@ -74,10 +74,10 @@ export async function scheduleBriefingCall(userId: number) {
   const briefingContent = await generateDailyBriefing(userId);
 
   // Create briefing record
-  const result = briefingQueries.create(userId, briefingContent, scheduledFor);
-  const briefingId = (result as any).lastInsertRowid as number;
+  const result = briefingQueries.create(userId, briefingContent, scheduledFor) as { lastInsertRowid: number };
+  const briefingId = result.lastInsertRowid;
 
-  const phoneNumber = (user as any).phone_number;
+  const phoneNumber = user.phone_number;
   if (phoneNumber && process.env.VAPI_API_KEY) {
     briefingQueries.update(briefingId, { status: 'calling' });
 
@@ -87,9 +87,9 @@ export async function scheduleBriefingCall(userId: number) {
 
     console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
     const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall);
-    console.log(`[scheduler] Vapi call initiated for ${user.name}:`, call.id || JSON.stringify(call));
+    console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
 
-    const callId = call.id || (call as any).callId || (call as any).call?.id;
+    const callId = call.id;
     if (callId) briefingQueries.update(briefingId, { vapi_call_id: callId });
   } else {
     console.log(`[scheduler] Skipping call for ${user.name} — no phone or Vapi key`);

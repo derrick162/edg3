@@ -89,9 +89,19 @@ function initSchema(db: Database.Database) {
     );
   `);
 
+  // Indexes for performance
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_priorities_user_id ON priorities(user_id);
+    CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id);
+    CREATE INDEX IF NOT EXISTS idx_briefings_user_id ON briefings(user_id);
+    CREATE INDEX IF NOT EXISTS idx_briefings_vapi_call_id ON briefings(vapi_call_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+  `);
+
   // Migrations for existing databases
   const migrations = [
     "ALTER TABLE briefings ADD COLUMN retry_attempted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN phone_number TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -177,8 +187,11 @@ export const briefingQueries = {
     ).run(userId, content, scheduledFor);
   },
   update: (id: number, data: Partial<Briefing>) => {
-    const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
-    const values = Object.values(data);
+    const ALLOWED_FIELDS = new Set(['status', 'transcript', 'user_response', 'vapi_call_id', 'retry_attempted']);
+    const entries = Object.entries(data).filter(([k]) => ALLOWED_FIELDS.has(k));
+    if (!entries.length) return;
+    const fields = entries.map(([k]) => `${k} = ?`).join(', ');
+    const values = entries.map(([, v]) => v);
     return getDb().prepare(`UPDATE briefings SET ${fields} WHERE id = ?`).run(...values, id);
   },
   getRecent: (userId: number, limit = 10) => {
@@ -262,6 +275,7 @@ export interface User {
   call_time: string;
   timezone: string;
   onboarding_complete: number;
+  phone_number: string | null;
   created_at: string;
 }
 

@@ -82,7 +82,7 @@ export async function POST() {
   const fullUser = userQueries.findById(user.id);
   if (!fullUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  const phoneNumber = (fullUser as any).phone_number;
+  const phoneNumber = fullUser.phone_number;
   if (!phoneNumber) return NextResponse.json({ error: 'No phone number on file' }, { status: 400 });
 
   if (!process.env.VAPI_API_KEY || !process.env.VAPI_PHONE_NUMBER_ID) {

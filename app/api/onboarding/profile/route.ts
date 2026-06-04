@@ -6,7 +6,13 @@ export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { profile_summary } = await req.json();
+  let body: { profile_summary?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { profile_summary } = body;
   if (!profile_summary?.trim()) {
     return NextResponse.json({ error: 'Profile summary required' }, { status: 400 });
   }

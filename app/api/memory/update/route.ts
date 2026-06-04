@@ -6,7 +6,13 @@ export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { content } = await req.json();
+  let body: { content?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { content } = body;
   if (!content?.trim()) return NextResponse.json({ error: 'Content required' }, { status: 400 });
 
   memoryQueries.create(user.id, 'calendar_note', `[USER NOTE]: ${content.trim()}`);

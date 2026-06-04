@@ -9,8 +9,9 @@ export async function POST(req: NextRequest) {
   try {
     const briefingId = await scheduleBriefingCall(user.id);
     return NextResponse.json({ success: true, briefingId });
-  } catch (err: any) {
+  } catch (err) {
     console.error('Call initiation error:', err);
-    return NextResponse.json({ error: err.message || 'Failed to initiate call' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Failed to initiate call';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

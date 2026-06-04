@@ -43,23 +43,28 @@ export async function POST() {
     expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
   });
 
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-  await calendar.events.insert({
-    calendarId: 'primary',
-    requestBody: {
-      summary: 'Edg3 Morning Briefing',
-      description: 'Your daily AI Chief of Staff call. Edge will call you at this time every morning.',
-      start: { dateTime: toLocalISO(startLocal), timeZone: timezone },
-      end: { dateTime: toLocalISO(endLocal), timeZone: timezone },
-      colorId: '9',
-      recurrence: ['RRULE:FREQ=DAILY'],
-      reminders: {
-        useDefault: false,
-        overrides: [{ method: 'popup', minutes: 2 }],
+    await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: 'Edg3 Morning Briefing',
+        description: 'Your daily AI Chief of Staff call. Edge will call you at this time every morning.',
+        start: { dateTime: toLocalISO(startLocal), timeZone: timezone },
+        end: { dateTime: toLocalISO(endLocal), timeZone: timezone },
+        colorId: '9',
+        recurrence: ['RRULE:FREQ=DAILY'],
+        reminders: {
+          useDefault: false,
+          overrides: [{ method: 'popup', minutes: 2 }],
+        },
       },
-    },
-  });
+    });
 
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Failed to create calendar reminder:', err);
+    return NextResponse.json({ error: 'Failed to create calendar event' }, { status: 500 });
+  }
 }

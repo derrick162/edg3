@@ -6,7 +6,13 @@ export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { call_time, timezone, phone_number } = await req.json();
+  let body: { call_time?: string; timezone?: string; phone_number?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { call_time, timezone, phone_number } = body;
 
   if (!call_time || !timezone) {
     return NextResponse.json({ error: 'Call time and timezone required' }, { status: 400 });
@@ -17,12 +23,6 @@ export async function POST(req: NextRequest) {
   // Store phone number if provided
   if (phone_number) {
     const db = (await import('@/lib/db')).getDb();
-    // Add phone_number column if it doesn't exist
-    try {
-      db.exec('ALTER TABLE users ADD COLUMN phone_number TEXT');
-    } catch {
-      // Column already exists
-    }
     db.prepare('UPDATE users SET phone_number = ? WHERE id = ?').run(phone_number, user.id);
   }
 
