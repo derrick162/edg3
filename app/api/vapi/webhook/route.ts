@@ -192,9 +192,15 @@ async function extractTasksFromTranscript(userId: number, transcript: string, ti
     messages: [{
       role: 'user',
       content: `Read this call transcript between a user and their AI Chief of Staff.
-Extract any NEW tasks or action items that were agreed upon DURING the conversation (not from the original briefing).
-Focus on things the user requested, things the AI agreed to add, or new commitments made mid-call.
-Return ONLY a JSON array of short task strings (max 8 words each). If nothing new was agreed on, return [].
+Extract NEW tasks or action items that the USER personally needs to do — things they committed to or agreed to take action on themselves.
+
+IMPORTANT rules:
+- Only include tasks for the USER to complete themselves
+- Do NOT include instructions the user gave to the AI (e.g. "delete that event", "move my meeting", "add hot tub time") — those are requests to Edge, not user tasks
+- Do NOT include calendar management requests — Edge handles those separately
+- Only include real personal actions: calls to make, things to build, workouts, errands, decisions to make, people to contact
+
+Return ONLY a JSON array of short task strings (max 8 words each). If no user tasks were committed to, return [].
 
 Transcript:
 ${transcript}`,
