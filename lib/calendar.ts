@@ -14,12 +14,13 @@ export function getOAuthClient() {
   );
 }
 
-export function getAuthUrl(): string {
+export function getAuthUrl(userId?: number): string {
   const oauth2Client = getOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
     prompt: 'consent',
+    state: userId ? String(userId) : undefined,
   });
 }
 

@@ -10,6 +10,6 @@ export async function GET() {
     return NextResponse.json({ error: 'Google Calendar not configured' }, { status: 503 });
   }
 
-  const url = getAuthUrl();
+  const url = getAuthUrl(user.id);
   return NextResponse.json({ url });
 }
