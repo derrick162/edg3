@@ -489,11 +489,10 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile'>('briefings');
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
-  const [showWelcome, setShowWelcome] = useState(() =>
-    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1'
-  );
+  const isWelcome = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1';
+  const [showWelcome, setShowWelcome] = useState(() => isWelcome);
   const [introCalling, setIntroCalling] = useState(false);
-  const [showNextCallTip, setShowNextCallTip] = useState(false);
+  const [showNextCallTip, setShowNextCallTip] = useState(() => isWelcome);
   const [reminderAdded, setReminderAdded] = useState(false);
 
   const loadData = useCallback(async () => {
