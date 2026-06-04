@@ -454,6 +454,8 @@ interface Briefing {
   scheduled_for: string;
   user_response: string | null;
   transcript: string | null;
+  calendar_actions: string | null;
+  created_at: string;
 }
 
 interface Priority {
@@ -774,7 +776,7 @@ export default function Dashboard() {
                             {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
                           </p>
                           {b.user_response && (
-                            <p className="text-xs mt-1 truncate max-w-sm" style={{ color: '#888899' }}>
+                            <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: '#888899' }}>
                               You said: "{b.user_response}"
                             </p>
                           )}
@@ -790,22 +792,50 @@ export default function Dashboard() {
                           <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#c8c8d8' }}>
                             {b.content}
                           </p>
-                          {b.user_response && (
+
+                          {b.transcript && (
                             <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                              <p className="text-xs font-semibold mb-1" style={{ color: '#6366f1' }}>YOUR RESPONSE</p>
-                              <p className="text-sm leading-relaxed" style={{ color: '#c8c8d8' }}>
-                                "{b.user_response}"
-                              </p>
+                              <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>CALL TRANSCRIPT</p>
+                              <div className="space-y-2">
+                                {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
+                                  const isUser = line.startsWith('User:') || line.startsWith('Customer:');
+                                  const isAI = line.startsWith('Assistant:') || line.startsWith('Bot:') || line.startsWith('AI:');
+                                  const text = line.replace(/^(User:|Customer:|Assistant:|Bot:|AI:)\s*/, '');
+                                  return (
+                                    <div key={i} className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                      <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-xs"
+                                        style={{
+                                          background: isUser ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
+                                          color: isUser ? '#e8e8f0' : '#aaa',
+                                        }}>
+                                        {text}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
-                          {false && b.transcript && (
-                            <>
-                              <p className="text-xs font-semibold mt-4 mb-2" style={{ color: '#6366f1' }}>CALL TRANSCRIPT</p>
-                              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#888899' }}>
-                                {b.transcript}
-                              </p>
-                            </>
-                          )}
+
+                          {(b as any).calendar_actions && (() => {
+                            try {
+                              const actions = JSON.parse((b as any).calendar_actions);
+                              if (!actions.length) return null;
+                              return (
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>📅 CALENDAR ACTIONS</p>
+                                  <div className="space-y-1">
+                                    {actions.map((a: any, i: number) => (
+                                      <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}>
+                                        <span style={{ color: '#4ade80' }}>✓</span> {a.type === 'created' ? 'Added' : a.type} — {a.title}
+                                        {a.start && <span style={{ color: '#888899' }}> · {new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } catch { return null; }
+                          })()}
                         </div>
                       )}
                     </div>

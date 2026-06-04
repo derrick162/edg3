@@ -233,7 +233,7 @@ ${briefingContent}`,
 
       try {
         const event = await createCalendarEvent(userId, `⚡ ${block.title}`, block.start, block.end, timezone);
-        created.push(event);
+        created.push({ title: block.title, start: block.start, end: block.end, eventId: event.id });
       } catch (err) {
         console.error('Failed to create event:', block.title, err);
       }

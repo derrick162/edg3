@@ -90,6 +90,19 @@ export async function POST(req: NextRequest) {
         // Extract calendar blocks from briefing AND transcript conversation
         const combinedContent = briefing.content + (transcript ? '\n\nCONVERSATION TRANSCRIPT:\n' + transcript : '');
         extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone)
+          .then(created => {
+            if (created.length > 0) {
+              const actions = created.map((e: any) => ({
+                type: 'created',
+                title: e.title,
+                start: e.start,
+                end: e.end,
+              }));
+              db.prepare('UPDATE briefings SET calendar_actions = ? WHERE id = ?')
+                .run(JSON.stringify(actions), briefing.id);
+              console.log(`[webhook] Stored ${actions.length} calendar actions for briefing ${briefing.id}`);
+            }
+          })
           .catch(err => console.error('Calendar block creation failed:', err));
 
         // Extract tasks from briefing content
