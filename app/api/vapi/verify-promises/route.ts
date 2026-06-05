@@ -27,6 +27,22 @@ export async function runPromiseVerification(briefing: any, user: any) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const transcript = briefing.transcript;
 
+  // If we have tool_actions, use those as ground truth instead of transcript extraction
+  if (briefing.tool_actions) {
+    try {
+      const toolActions: Array<{ fn: string; args: any; result: string; ts: string }> = JSON.parse(briefing.tool_actions);
+      const executed = toolActions.map(a => `${a.fn}: ${a.result}`);
+      const promises = executed;
+
+      // Save to dashboard
+      const dbInst = (await import('@/lib/db')).getDb();
+      dbInst.prepare('UPDATE briefings SET edge_promises = ? WHERE id = ?').run(JSON.stringify(executed), briefing.id);
+
+      console.log(`[verify-promises] Using tool_actions (${toolActions.length} actions) as ground truth`);
+      return { promises, unfulfilled: [], source: 'tool_actions' };
+    } catch (_e) { /* fall through to transcript-based */ }
+  }
+
   // Step 1: Extract what Edge promised
   const promisesResult = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',

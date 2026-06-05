@@ -243,6 +243,17 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[tool-call] Result: ${result}`);
+
+    // Append to tool_actions log on the briefing
+    if (result && !result.startsWith('Error:')) {
+      try {
+        const existing = db.prepare('SELECT tool_actions FROM briefings WHERE id = ?').get(briefing.id) as { tool_actions: string | null } | undefined;
+        const actions = existing?.tool_actions ? JSON.parse(existing.tool_actions) : [];
+        actions.push({ fn, args, result, ts: new Date().toISOString() });
+        db.prepare('UPDATE briefings SET tool_actions = ? WHERE id = ?').run(JSON.stringify(actions), briefing.id);
+      } catch (_e) { /* non-critical */ }
+    }
+
     return NextResponse.json({ result });
 
   } catch (err) {

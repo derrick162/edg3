@@ -456,6 +456,7 @@ interface Briefing {
   transcript: string | null;
   calendar_actions: string | null;
   edge_promises: string | null;
+  tool_actions: string | null;
   created_at: string;
 }
 
