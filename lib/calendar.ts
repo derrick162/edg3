@@ -539,7 +539,8 @@ Rules:
 - "block off 2 hours for X" → use a sensible time (e.g. 09:00–11:00) if no time given
 - Do NOT extract events already on the calendar
 - Do NOT recreate one-time events that already happened (court hearings, medical appointments)
-- Only extract new blocks being explicitly requested or recommended
+- CRITICAL: If the request is to MOVE, RESCHEDULE, or CHANGE TIME of an existing event (e.g. "move lunch to 12pm", "reschedule dinner to 7pm", "change breakfast to 9am") — do NOT create a new event. These are handled separately. Only create NEW events for things being added fresh.
+- Only extract truly NEW blocks being explicitly requested or recommended
 
 Return ONLY a JSON array of time blocks, nothing else. Format:
 [{"title": "event name", "start": "YYYY-MM-DDTHH:MM:00", "end": "YYYY-MM-DDTHH:MM:00", "timezone": "optional — only include if a specific timezone was mentioned"}]
