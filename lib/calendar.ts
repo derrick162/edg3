@@ -443,9 +443,19 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
           console.log(`[calendar] Deleted event: ${event?.summary} (${action.reason})`);
         } else if (action.action === 'move' && action.eventId && action.newStart && action.newEnd) {
           const event = events.find(e => e.id === action.eventId);
-          await moveCalendarEvent(userId, action.eventId, action.newStart, action.newEnd, timezone);
+          const oac = getOAuthClient();
+          oac.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token || undefined, expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined });
+          const cal = google.calendar({ version: 'v3', auth: oac });
+          const moveTimezone = (action as any).timezone || timezone;
+          const requestBody: Record<string, unknown> = {
+            start: { dateTime: action.newStart, timeZone: moveTimezone },
+            end: { dateTime: action.newEnd, timeZone: moveTimezone },
+          };
+          // Preserve the original color if set
+          if (event?.colorId) requestBody.colorId = event.colorId;
+          await cal.events.patch({ calendarId: calId, eventId: action.eventId, requestBody });
           results.push({ type: 'moved', title: event?.summary || action.eventId, newStart: action.newStart, reason: action.reason });
-          console.log(`[calendar] Moved event: ${event?.summary} to ${action.newStart}`);
+          console.log(`[calendar] Moved event: ${event?.summary} to ${action.newStart} (color preserved: ${event?.colorId || 'default'})`);
         } else if (action.action === 'color' && action.eventId && action.color) {
           const event = events.find(e => e.id === action.eventId);
           const oac = getOAuthClient();
