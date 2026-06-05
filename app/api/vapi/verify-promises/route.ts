@@ -78,11 +78,8 @@ Transcript:\n${transcript}`,
 
   console.log(`[verify-promises] ${unfulfilled.length} unfulfilled:`, unfulfilled.map(u => u.promise));
 
-  // Step 4: Save as memory for next briefing
-  const missedList = unfulfilled.map(u => `- ${u.promise}`).join('\n');
-  memoryQueries.create(user.id, 'calendar_note',
-    `[EDGE MISSED] Promised on last call but not completed:\n${missedList}\nOpen next briefing by acknowledging and fixing these.`
-  );
+  // Step 4: Log only — don't save to memory, auto-retry handles it silently
+  console.log(`[verify-promises] Auto-retrying ${unfulfilled.length} missed items silently`);
 
   // Step 5: Retry automatically
   const retryTranscript = unfulfilled.map(u => `User: Please ${u.promise}`).join('\n');
