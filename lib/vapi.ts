@@ -126,7 +126,8 @@ Always end with warmth and encouragement. This person is building something — 
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
         systemPrompt,
-        tools: [
+        // tools temporarily disabled — investigating Vapi compatibility
+        tools_disabled: [
           {
             type: 'function',
             function: {
