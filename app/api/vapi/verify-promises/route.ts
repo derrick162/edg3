@@ -49,7 +49,7 @@ Transcript:\n${transcript}`,
 
   // Save promises to briefing record so dashboard can show them
   const dbInst = (await import('@/lib/db')).getDb();
-  dbInst.prepare('UPDATE briefings SET edge_promises = ? WHERE id = ?').run(JSON.stringify(promises), briefingId);
+  dbInst.prepare('UPDATE briefings SET edge_promises = ? WHERE id = ?').run(JSON.stringify(promises), briefing.id);
   console.log(`[verify-promises] ${promises.length} promises found:`, promises);
 
   // Step 2: Check calendar state
