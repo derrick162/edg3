@@ -315,6 +315,8 @@ Timezone: ${timezone}
 EXISTING CALENDAR EVENTS (next 14 days):
 ${JSON.stringify(eventList, null, 2)}
 
+NOTE: Events created by Edge are prefixed with "⚡". When matching user requests to events, ignore the "⚡" prefix. e.g. "change breakfast to green" should match "⚡ Breakfast" events.
+
 TRANSCRIPT:
 ${transcript}
 
