@@ -256,7 +256,6 @@ Always end with warmth and encouragement. This person is building something — 
       silenceTimeoutSeconds: 30,
       maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
-      serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai'}/api/vapi/tool-call`,
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
@@ -265,6 +264,7 @@ Always end with warmth and encouragement. This person is building something — 
         systemPrompt,
       },
     } : undefined,
+    serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai'}/api/vapi/tool-call`,
   };
 
   // Remove undefined keys
