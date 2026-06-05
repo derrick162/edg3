@@ -257,7 +257,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ result });
 
   } catch (err) {
-    console.error('[tool-call] Error:', err);
-    return NextResponse.json({ result: `Error: ${String(err)}` });
+    const msg = String(err);
+    console.error('[tool-call] Error:', msg);
+    // Return a user-friendly error Edge can read out
+    const friendly = msg.includes('No calendar connected')
+      ? "I can't access your calendar right now — it may need to be reconnected in the dashboard."
+      : msg.includes('insufficientPermissions') || msg.includes('403')
+      ? "I don't have permission to make that change — you may need to reconnect your calendar."
+      : msg.includes('notFound') || msg.includes('404')
+      ? "I couldn't find that event to modify it."
+      : "Something went wrong — you'll need to make that change manually in your calendar.";
+    return NextResponse.json({ result: friendly });
   }
 }

@@ -101,26 +101,17 @@ export async function POST(req: NextRequest) {
         await analyzeUserResponse(briefing.user_id, userResponse);
       }
 
-      // Auto-create calendar blocks and tasks from briefing + transcript
+      // POST-CALL PROCESSING — simplified to three things only
+      // All calendar changes happen LIVE via tool calling. Nothing here should touch the calendar.
       const user = userQueries.findById(briefing.user_id);
       if (user) {
-        // Detect travel timezone from transcript and save to memory
+        // 1. Detect travel timezone
         if (transcript) {
           detectAndSaveTravelTimezone(briefing.user_id, transcript)
             .catch(err => console.error('Travel timezone detection failed:', err));
         }
 
-        // Detect travel timezone from transcript
-        if (transcript) {
-          detectAndSaveTravelTimezone(briefing.user_id, transcript)
-            .catch(err => console.error('Travel timezone detection failed:', err));
-        }
-
-        // NOTE: Post-call calendar processing (extractAndCreateTimeBlocks, processCalendarEdits) is DISABLED.
-        // All calendar changes now happen live during the call via tool calling.
-        // This ensures speed and clarity — if Edge did it during the call, it's done. No post-processing surprises.
-
-        // Still extract tasks from conversation (these are user tasks, not calendar changes)
+        // 2. Extract user tasks (not calendar changes)
         const db2 = (await import('@/lib/db')).getDb();
         const tomorrow = new Date(new Date().toLocaleString('en-US', { timeZone: user.timezone }));
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -128,46 +119,28 @@ export async function POST(req: NextRequest) {
         const existingTasks = db2.prepare(
           "SELECT COUNT(*) as count FROM tasks WHERE user_id = ? AND source = 'edg3' AND date = ?"
         ).get(briefing.user_id, tomorrowStr) as { count: number };
-
         if (existingTasks.count === 0) {
           extractTasksFromBriefing(briefing.user_id, briefing.content, user.timezone)
             .catch(err => console.error('Task extraction failed:', err));
         }
-
         if (transcript) {
           extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
         }
 
-        // Only run dedup (safe, deterministic) and verify-promises
-        Promise.resolve().then(async () => {
-          const created: any[] = [];
-          const edited: any[] = [];
-          return [created, edited] as const;
-        }).then(async ([created, edited]) => {
-          const actions = [
-            ...created.map((e: any) => ({ type: 'created', title: e.title, start: e.start, end: e.end })),
-            ...edited.map((e: any) => ({ type: e.type, title: e.title, start: e.newStart, reason: e.reason })),
-          ];
-          if (actions.length > 0) {
-            db.prepare('UPDATE briefings SET calendar_actions = ? WHERE id = ?')
-              .run(JSON.stringify(actions), briefing.id);
-            console.log(`[webhook] ${created.length} created, ${edited.length} edited/deleted for briefing ${briefing.id}`);
-          }
-          // Always verify promises — regardless of whether calendar actions ran
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
-          fetch(`${baseUrl}/api/vapi/verify-promises`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ briefingId: briefing.id }),
-          }).then(r => r.json()).then(r => console.log('[webhook] Promise verification:', JSON.stringify(r)))
-            .catch(err => console.error('Promise verification request failed:', err));
-        }).catch(err => console.error('Calendar processing failed:', err));
-
-        // Always run dedup after every call — deterministic, no AI needed
+        // 3. Dedup (safe, deterministic — catches any duplicates from tool calls)
         deduplicateCalendarEvents(briefing.user_id, user.timezone)
-          .then(deleted => { if (deleted.length) console.log(`[webhook] Dedup removed ${deleted.length} duplicate events`); })
+          .then(deleted => { if (deleted.length) console.log(`[webhook] Dedup removed ${deleted.length} events`); })
           .catch(err => console.error('Dedup failed:', err));
+
+        // 4. Verify promises — compare verbal promises vs tool_actions ground truth
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
+        fetch(`${baseUrl}/api/vapi/verify-promises`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ briefingId: briefing.id }),
+        }).then(r => r.json()).then(r => console.log('[webhook] Verify promises:', JSON.stringify(r)))
+          .catch(err => console.error('Promise verification failed:', err));
       }
     } else if (type === 'call-started' || type === 'assistant.started') {
       briefingQueries.update(briefing.id, { status: 'calling' });
