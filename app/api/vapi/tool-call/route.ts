@@ -211,8 +211,9 @@ export async function POST(req: NextRequest) {
     } else if (fn === 'planWeek') {
       const { weekStartDate, focusHoursPerDay, preferences } = args;
       const user = userQueries.findById(briefing.user_id);
-      if (!user) { result = 'User not found'; break; }
-
+      if (!user) {
+        result = 'User not found';
+      } else {
       // Get priorities
       const { format, startOfWeek } = await import('date-fns');
       const weekOf = format(startOfWeek(new Date(weekStartDate)), 'yyyy-MM-dd');
@@ -291,6 +292,7 @@ Only return new blocks to add. Keep it to 3-5 additions max.`,
       result = created.length
         ? `Planned your week! Added ${created.length} focus blocks: ${created.join(', ')}. Aligned to your priorities: ${priorityText}.`
         : 'Your week looks fully packed — no room to add focus blocks without conflicts.';
+      } // end else user found
 
     } else if (fn === 'colorEvent') {
       const { title, date, color } = args;
