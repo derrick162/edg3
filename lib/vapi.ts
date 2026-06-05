@@ -65,6 +65,7 @@ Always end with warmth and encouragement. This person is building something — 
       firstMessage: `... ${briefingContent}`,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 30,
+      responseDelaySeconds: 3,
       maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
     },
