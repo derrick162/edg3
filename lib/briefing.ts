@@ -33,6 +33,55 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+async function sanitizeCalendarReferences(
+  briefingText: string,
+  todayEvents: any[],
+  weekEvents: any[],
+  timezone: string
+): Promise<string> {
+  // Build a set of real event titles (normalised)
+  const allEvents = [...todayEvents, ...weekEvents];
+  const realTitles = new Set(
+    allEvents.map(e => (e.summary || '').replace(/^⚡\s*/, '').toLowerCase().trim())
+  );
+
+  // Ask Claude to remove any specific calendar event references that don't exist
+  const anthropic_check = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const checkResult = await anthropic_check.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1000,
+    messages: [{
+      role: 'user',
+      content: `Review this briefing and remove any references to specific calendar events that are NOT in the provided event list. Replace with something neutral or just remove the sentence entirely.
+
+ACTUAL CALENDAR EVENTS (these are the only real ones):
+${realTitles.size > 0 ? Array.from(realTitles).map(t => `- ${t}`).join('\n') : 'No events today.'}
+
+BRIEFING TO REVIEW:
+${briefingText}
+
+Rules:
+- If the briefing mentions a specific event (e.g. "grocery prep", "meal prep", "morning walk", "drive to X") that is NOT in the event list above → remove that reference
+- Keep all other content intact
+- Do not change tone, structure, or any non-calendar content
+- Return ONLY the corrected briefing text, nothing else`,
+    }],
+  });
+
+  const checked = checkResult.content[0];
+  if (checked.type !== 'text') return briefingText;
+
+  const sanitized = checked.text.trim();
+  if (sanitized.length < briefingText.length * 0.5) {
+    // If too much was removed, something went wrong — return original
+    console.log('[briefing] Sanitization removed too much, using original');
+    return briefingText;
+  }
+
+  console.log('[briefing] Calendar references sanitized');
+  return sanitized;
+}
+
 export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -174,7 +223,9 @@ Write this as a spoken briefing — natural language, no markdown headers, flowi
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  return content.text;
+  // Post-process: verify calendar references against actual calendar data
+  const briefingText = content.text;
+  return sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
 }
 
 export async function analyzeUserResponse(userId: number, response: string): Promise<void> {
