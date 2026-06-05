@@ -437,10 +437,13 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
   const content = response.content[0];
   if (content.type !== 'text') return [];
 
+  console.log(`[calendar] processCalendarEdits raw response: ${content.text.slice(0, 500)}`);
+
   try {
     const match = content.text.match(/\[[\s\S]*\]/);
-    if (!match) return [];
+    if (!match) { console.log('[calendar] No JSON array found in response'); return []; }
     const actions: { action: string; eventId: string; reason: string; newStart?: string; newEnd?: string; color?: string; newTitle?: string }[] = JSON.parse(match[0]);
+    console.log(`[calendar] Extracted ${actions.length} actions:`, JSON.stringify(actions.slice(0, 3)));
 
     const results = [];
     for (const action of actions) {
