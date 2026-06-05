@@ -49,7 +49,7 @@ async function getCalIds(cal: calendar_v3.Calendar): Promise<string[]> {
     .filter(Boolean);
 }
 
-function normTitle(s: string) { return s.replace(/^⚡\s*/, '').toLowerCase().trim(); }
+function normTitle(s: string) { return s.replace(/^⚡\s*/, '').toLowerCase().replace(/\s+/g, '').trim(); }
 
 async function findEv(cal: calendar_v3.Calendar, calIds: string[], title: string, date: string) {
   const tMin = new Date(`${date}T00:00:00Z`).toISOString();
