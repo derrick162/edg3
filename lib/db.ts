@@ -166,10 +166,10 @@ export const memoryQueries = {
     ).all(userId, limit) as Memory[];
   },
   getWeighted: (userId: number, limit = 20) => {
-    const db = getDb();
+    const wdb = getDb();
     // Priority: explicit user notes and priority changes always first,
     // then recent insights, then transcripts (deduped to avoid noise)
-    const high = db.prepare(
+    const high = wdb.prepare(
       `SELECT * FROM memories WHERE user_id = ? AND (
         content LIKE '%[USER NOTE]%' OR
         content LIKE '%[PRIORITY CHANGE]%' OR
@@ -177,12 +177,12 @@ export const memoryQueries = {
       ) ORDER BY created_at DESC LIMIT 10`
     ).all(userId) as Memory[];
 
-    const insights = db.prepare(
+    const insights = wdb.prepare(
       `SELECT * FROM memories WHERE user_id = ? AND type = 'insight'
        ORDER BY created_at DESC LIMIT 8`
     ).all(userId) as Memory[];
 
-    const recent = db.prepare(
+    const recent = wdb.prepare(
       `SELECT * FROM memories WHERE user_id = ? AND type NOT IN ('profile', 'transcript')
        AND content NOT LIKE '%[USER NOTE]%'
        AND content NOT LIKE '%[PRIORITY CHANGE]%'
