@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
           if (!byDay.has(dayLabel)) byDay.set(dayLabel, []);
           byDay.get(dayLabel)!.push(`  ${time}: ${e.summary}${recurring}`);
         }
-        result = Array.from(byDay.entries()).map(([day, evs]) => `${day}:\n${evs.join('\n')}`).join('\n\n');
+        result = `Found ${events.length} event(s):\n` + Array.from(byDay.entries()).map(([day, evs]) => `${day}:\n${evs.join('\n')}`).join('\n\n');
       }
 
     } else if (fn === 'createEvent') {
