@@ -27,20 +27,14 @@ export async function runPromiseVerification(briefing: any, user: any) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const transcript = briefing.transcript;
 
-  // If we have tool_actions, use those as ground truth instead of transcript extraction
+  // Build executed actions from tool_actions (ground truth)
+  let executedSummary: string[] = [];
   if (briefing.tool_actions) {
     try {
-      const toolActions: Array<{ fn: string; args: any; result: string; ts: string }> = JSON.parse(briefing.tool_actions);
-      const executed = toolActions.map(a => `${a.fn}: ${a.result}`);
-      const promises = executed;
-
-      // Save to dashboard
-      const dbInst = (await import('@/lib/db')).getDb();
-      dbInst.prepare('UPDATE briefings SET edge_promises = ? WHERE id = ?').run(JSON.stringify(executed), briefing.id);
-
-      console.log(`[verify-promises] Using tool_actions (${toolActions.length} actions) as ground truth`);
-      return { promises, unfulfilled: [], source: 'tool_actions' };
-    } catch (_e) { /* fall through to transcript-based */ }
+      const toolActions: Array<{ fn: string; args: any; result: string }> = JSON.parse(briefing.tool_actions);
+      executedSummary = toolActions.map(a => `${a.fn}(${JSON.stringify(a.args)}) → ${a.result}`);
+      console.log(`[verify-promises] ${toolActions.length} tool actions found`);
+    } catch (_e) { /* ignore */ }
   }
 
   // Step 1: Extract what Edge promised
@@ -77,13 +71,17 @@ Transcript:\n${transcript}`,
     .map((e: any) => `- ${e.summary} (${e.start?.dateTime?.slice(0, 16) || e.start?.date || 'all day'})`)
     .join('\n') || 'No events';
 
-  // Step 3: Check which were fulfilled
+  // Step 3: Check which were fulfilled — use tool_actions as primary, calendar as fallback
+  const executedContext = executedSummary.length
+    ? `\n\nACTUALLY EXECUTED (tool calls made during the call):\n${executedSummary.join('\n')}`
+    : '';
+
   const checkResult = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 600,
     messages: [{
       role: 'user',
-      content: `Edge promised:\n${promises.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nCurrent calendar:\n${calendarSummary}\n\nWhich promises were NOT fulfilled? Be lenient — similar events count as fulfilled.\nReturn JSON: [{"promise":"text","reason":"why unfulfilled"}]\nIf all done, return [].`,
+      content: `Edge promised:\n${promises.map((p, i) => `${i + 1}. ${p}`).join('\n')}${executedContext}\n\nCurrent calendar:\n${calendarSummary}\n\nWhich promises were NOT fulfilled? Check tool executions first — if a tool was called for the promise, mark it fulfilled. Only mark unfulfilled if no matching tool call AND not on calendar.\nReturn JSON: [{"promise":"text","reason":"why unfulfilled"}]\nIf all done, return [].`,
     }],
   });
 
