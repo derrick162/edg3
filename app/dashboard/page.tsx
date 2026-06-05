@@ -397,42 +397,68 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
 function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [messages, setMessages] = useState<{ role: 'user' | 'edge'; text: string }[]>([
+    { role: 'edge', text: "What's on your mind? I'll remember everything you tell me and bring it up on our next call." }
+  ]);
 
   async function handle(e: React.FormEvent) {
     e.preventDefault();
-    if (!text.trim()) return;
-    setLoading(true);
-    await onSubmit(text);
-    setLoading(false);
+    if (!text.trim() || loading) return;
+    const userMsg = text.trim();
     setText('');
-    setSent(true);
-    setTimeout(() => setSent(false), 3000);
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setLoading(true);
+    await onSubmit(userMsg);
+    setLoading(false);
+    setMessages(prev => [...prev, { role: 'edge', text: "Got it — I'll bring that up on our next call." }]);
   }
 
   return (
-    <div className="glass-card p-5 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
-      <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>
-        ✦ TELL EDG3 SOMETHING
-      </p>
-      <form onSubmit={handle} className="flex gap-3">
+    <div className="glass-card mb-6 overflow-hidden" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
+      <div className="px-5 pt-4 pb-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+        <p className="text-xs font-semibold" style={{ color: '#6366f1' }}>CHAT WITH EDGE</p>
+        <p className="text-xs ml-auto" style={{ color: '#4a4a5a' }}>Saved to memory · used in next briefing</p>
+      </div>
+      <div className="px-5 py-3 space-y-3 overflow-y-auto" style={{ maxHeight: '220px' }}>
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className="text-sm px-3 py-2 rounded-xl max-w-xs leading-relaxed"
+              style={{
+                background: m.role === 'user' ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.06)',
+                color: m.role === 'user' ? '#e8e8f0' : '#c8c8d8',
+                borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+              }}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="text-sm px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.06)', color: '#888899', borderRadius: '18px 18px 18px 4px' }}>
+              <span className="animate-pulse">...</span>
+            </div>
+          </div>
+        )}
+      </div>
+      <form onSubmit={handle} className="px-5 py-3 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
         <input
-          className="input flex-1"
-          placeholder="e.g. I have a foreclosure hearing tomorrow at 10am... I'm feeling overwhelmed today... I just closed a deal..."
+          className="input flex-1 text-sm"
+          style={{ padding: '8px 12px' }}
+          placeholder="Tell Edge something..."
           value={text}
           onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handle(e as any); } }}
         />
         <button
           type="submit"
-          className="btn-primary text-sm py-2 px-5 flex-shrink-0"
+          className="btn-primary text-sm px-4 flex-shrink-0"
+          style={{ padding: '8px 16px' }}
           disabled={loading || !text.trim()}
         >
-          {sent ? '✓ Saved' : loading ? '…' : 'Send'}
+          Send
         </button>
       </form>
-      <p className="text-xs mt-2" style={{ color: '#4a4a5a' }}>
-        EDG3 will remember this and reference it in tomorrow's briefing.
-      </p>
     </div>
   );
 }
