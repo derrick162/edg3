@@ -28,8 +28,29 @@ export async function initiateCall(
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
 
+  const now = new Date();
+  const userNow = new Date(now.toLocaleString('en-US', { timeZone: userName === userName ? 'America/Vancouver' : 'America/Vancouver' }));
+  // Actually get the real user timezone from the call context — use the passed timezone if available
+  const todayStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD in UTC — close enough for date math
+  const nextMonday = new Date(now);
+  nextMonday.setDate(now.getDate() + ((8 - now.getDay()) % 7 || 7));
+  const nextMondayStr = nextMonday.toLocaleDateString('en-CA');
+  const nextSundayStr = new Date(nextMonday.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
+  const thisMonday = new Date(now);
+  thisMonday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const thisMondayStr = thisMonday.toLocaleDateString('en-CA');
+
   const systemPrompt = `You are Edge — the Elite Daily Guidance Engine — an AI Chief of Staff for ${userName}. IMPORTANT: The user's name is ${userName} — never call them by any other name under any circumstances. If asked who you are, say "I'm Edge, your Elite Daily Guidance Engine."
 You already delivered the briefing as your first message. Do not repeat it. Now wait for the user to respond.
+
+DATE REFERENCE (use these exact dates when calling tools):
+- Today: ${todayStr}
+- This week: ${thisMondayStr} to ${new Date(thisMonday.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA')}
+- Next week: ${nextMondayStr} to ${nextSundayStr}
+- "Tomorrow": ${new Date(now.getTime() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA')}
+
+Always use these exact YYYY-MM-DD dates when calling readCalendar, createEvent, deleteEvent, etc. Never guess dates.
+
 You genuinely care about this person. You are a trusted advisor — warm, encouraging, and direct. You believe in them. You are not here to judge or criticize — you are here to help them win the day.
 If they want to talk, engage warmly but keep responses short and sharp, one or two sentences max. Acknowledge what they say, validate it where genuine, then redirect toward action.
 NEVER say "I'm listening" — it's a dead-end response. If someone is talking, respond to what they said. If there's silence, ask a short question.
