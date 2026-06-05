@@ -38,8 +38,9 @@ IMPORTANT — SCOPE: You are a briefing and calendar management tool. Do NOT pro
 IMPORTANT — MEMORY: You have full memory of all previous conversations. Never say you "don't have memory", "start fresh each call", or "can't remember" past calls. Your memory is built into every briefing. If asked, say "I have everything from our previous calls."
 IMPORTANT — CALENDAR: You have LIVE calendar tools available right now during this call. Use them:
 - Use readCalendar() to check what's on the calendar before making changes — always verify first
-- Use createEvent() to add new one-time events immediately
+- Use createEvent() to add new one-time events immediately — times like "late morning", "after lunch", "3pm" all work
 - Use createRecurringEvent() for habits/routines that repeat (daily walks, weekly calls, etc) — creates a single recurring event instead of many separate ones
+- Use planWeek() when user says "plan my week" or "structure my week" — reads the full week and adds focus blocks aligned to their priorities
 - Use deleteEvent() to remove events immediately
 - Use moveEvent() to reschedule events immediately
 - Use colorEvent() to change event colors immediately
@@ -134,6 +135,22 @@ Always end with warmth and encouragement. This person is building something — 
                   timezone: { type: 'string', description: 'IANA timezone e.g. America/Toronto' },
                 },
                 required: ['title', 'date', 'newStartDateTime', 'newEndDateTime', 'timezone'],
+              },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'planWeek',
+              description: 'Intelligently plan the week by reading existing events and adding focus blocks aligned to the user\'s top priorities. Use when user says "plan my week", "structure my week", or "set up my week".',
+              parameters: {
+                type: 'object',
+                properties: {
+                  weekStartDate: { type: 'string', description: 'Monday of the week to plan, YYYY-MM-DD' },
+                  focusHoursPerDay: { type: 'number', description: 'How many hours of focus time per day (default 2)' },
+                  preferences: { type: 'string', description: 'Any specific preferences e.g. "mornings for deep work, afternoons for calls"' },
+                },
+                required: ['weekStartDate'],
               },
             },
           },

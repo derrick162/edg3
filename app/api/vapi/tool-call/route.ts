@@ -1,8 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, getDb } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId } from '@/lib/calendar';
-import { calendarQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
 import { google } from 'googleapis';
+import Anthropic from '@anthropic-ai/sdk';
+
+// Resolve natural language time expressions to HH:MM
+function resolveNaturalTime(timeStr: string): string {
+  const t = timeStr.toLowerCase().trim();
+  const map: Record<string, string> = {
+    'early morning': '06:00', 'morning': '09:00', 'mid morning': '10:00', 'late morning': '11:00',
+    'noon': '12:00', 'midday': '12:00', 'lunch': '12:00', 'lunchtime': '12:00',
+    'early afternoon': '13:00', 'afternoon': '14:00', 'mid afternoon': '15:00', 'late afternoon': '16:00',
+    'end of day': '17:00', 'eod': '17:00', 'evening': '18:00', 'dinner': '19:00',
+    'night': '20:00', 'late night': '22:00',
+    'first thing': '07:00', 'first thing in the morning': '07:00',
+  };
+  if (map[t]) return map[t];
+  // Already HH:MM format
+  if (/^\d{1,2}:\d{2}$/.test(timeStr)) return timeStr.padStart(5, '0');
+  // "3pm", "3:30pm" etc
+  const match = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (match) {
+    let h = parseInt(match[1]);
+    const m = match[2] ? parseInt(match[2]) : 0;
+    const ampm = match[3]?.toLowerCase();
+    if (ampm === 'pm' && h < 12) h += 12;
+    if (ampm === 'am' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  return timeStr;
+}
 
 async function getCalendarClient(userId: number) {
   const tokenRow = calendarQueries.get(userId);
@@ -85,7 +113,17 @@ export async function POST(req: NextRequest) {
       result = events.length ? summary : 'No events found for that period.';
 
     } else if (fn === 'createEvent') {
-      const { title, startDateTime, endDateTime, timezone, color } = args;
+      // Resolve natural language times if needed
+      let { title, startDateTime, endDateTime, timezone, color } = args;
+      // If startDateTime looks like "late morning" rather than a datetime, resolve it
+      if (startDateTime && !startDateTime.includes('T') && !startDateTime.match(/^\d{4}-/)) {
+        const date = new Date().toLocaleDateString('en-CA');
+        startDateTime = `${date}T${resolveNaturalTime(startDateTime)}:00`;
+        if (!endDateTime || (!endDateTime.includes('T') && !endDateTime.match(/^\d{4}-/))) {
+          const [h, m] = resolveNaturalTime(endDateTime || startDateTime).split(':').map(Number);
+          endDateTime = `${date}T${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+        }
+      }
 
       // Conflict check before creating
       const date = startDateTime.slice(0, 10);
@@ -169,6 +207,90 @@ export async function POST(req: NextRequest) {
       };
       await calendar.events.insert({ calendarId: 'primary', requestBody });
       result = `Created recurring "${title}" starting ${startDate} at ${startTime} ${timezone} (${rrule}${untilDate ? ` until ${endDate}` : ''}).`;
+
+    } else if (fn === 'planWeek') {
+      const { weekStartDate, focusHoursPerDay, preferences } = args;
+      const user = userQueries.findById(briefing.user_id);
+      if (!user) { result = 'User not found'; break; }
+
+      // Get priorities
+      const { format, startOfWeek } = await import('date-fns');
+      const weekOf = format(startOfWeek(new Date(weekStartDate)), 'yyyy-MM-dd');
+      const priorities = priorityQueries.getThisWeek(briefing.user_id, weekOf);
+      const priorityText = priorities.map((p, i) => `${i + 1}. ${p.text}`).join(', ') || 'No priorities set';
+
+      // Read the full week's events
+      const weekEnd = new Date(weekStartDate);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const weekEndStr = weekEnd.toLocaleDateString('en-CA');
+      const allEvents: any[] = [];
+      for (const calId of calIds) {
+        const res = await calendar.events.list({
+          calendarId: calId,
+          timeMin: new Date(`${weekStartDate}T00:00:00Z`).toISOString(),
+          timeMax: new Date(`${weekEndStr}T23:59:59Z`).toISOString(),
+          singleEvents: true,
+          orderBy: 'startTime',
+          maxResults: 100,
+        }).catch(() => ({ data: { items: [] } }));
+        allEvents.push(...(res.data.items || []));
+      }
+
+      const eventSummary = allEvents.map(e =>
+        `- ${e.summary}: ${e.start?.dateTime?.slice(0, 16) || e.start?.date || 'all day'} → ${e.end?.dateTime?.slice(11, 16) || 'all day'}`
+      ).join('\n') || 'No events';
+
+      // Use Claude to generate a smart week plan
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const planResult = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: `You are a scheduling assistant. Create a smart week plan.
+
+Week: ${weekStartDate} to ${weekEndStr}
+User timezone: ${user.timezone}
+Top priorities: ${priorityText}
+Focus hours per day: ${focusHoursPerDay || 2}
+Preferences: ${preferences || 'none'}
+
+EXISTING EVENTS:
+${eventSummary}
+
+Create a week plan that:
+1. Adds focus blocks aligned to the top priorities (${focusHoursPerDay || 2}h per day in free slots)
+2. Protects recovery time (no back-to-back focus blocks)
+3. Avoids conflicts with existing events
+4. Works within 8am-8pm
+
+Return a JSON array of events to CREATE (not existing ones):
+[{"title":"event name","startDateTime":"YYYY-MM-DDTHH:MM:00","endDateTime":"YYYY-MM-DDTHH:MM:00","color":"optional"}]
+
+Only return new blocks to add. Keep it to 3-5 additions max.`,
+        }],
+      });
+
+      const planText = planResult.content[0].type === 'text' ? planResult.content[0].text : '[]';
+      const planMatch = planText.match(/\[[\s\S]*\]/);
+      const planEvents = planMatch ? JSON.parse(planMatch[0]) : [];
+
+      const created = [];
+      for (const ev of planEvents) {
+        try {
+          const reqBody: any = {
+            summary: `⚡ ${ev.title}`,
+            start: { dateTime: ev.startDateTime, timeZone: user.timezone },
+            end: { dateTime: ev.endDateTime, timeZone: user.timezone },
+            colorId: ev.color ? getColorId(ev.color) : '9',
+          };
+          await calendar.events.insert({ calendarId: 'primary', requestBody: reqBody });
+          created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
+        } catch { /* skip conflicts */ }
+      }
+      result = created.length
+        ? `Planned your week! Added ${created.length} focus blocks: ${created.join(', ')}. Aligned to your priorities: ${priorityText}.`
+        : 'Your week looks fully packed — no room to add focus blocks without conflicts.';
 
     } else if (fn === 'colorEvent') {
       const { title, date, color } = args;
