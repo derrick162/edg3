@@ -575,6 +575,7 @@ Rules:
 - Do NOT extract events already on the calendar
 - Do NOT recreate one-time events that already happened (court hearings, medical appointments)
 - CRITICAL: If the request is to MOVE, RESCHEDULE, or CHANGE TIME of an existing event (e.g. "move lunch to 12pm", "reschedule dinner to 7pm", "change breakfast to 9am") — do NOT create a new event. These are handled separately. Only create NEW events for things being added fresh.
+- WEEK PROPOSALS: If asked to "structure my week", "propose my week", or "design my schedule", treat recurring habits (walks, gym, meals, focus time) as DAILY entries — create one per day Mon–Fri (or Mon–Sun if weekend included). A "nature walk every day" = 5–7 entries.
 - Only extract truly NEW blocks being explicitly requested or recommended
 
 Return ONLY a JSON array of time blocks, nothing else. Format:
