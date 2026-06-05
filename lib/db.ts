@@ -66,6 +66,7 @@ function initSchema(db: Database.Database) {
       user_response TEXT,
       retry_attempted INTEGER DEFAULT 0,
       calendar_actions TEXT,
+      edge_promises TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -103,6 +104,7 @@ function initSchema(db: Database.Database) {
   const migrations = [
     "ALTER TABLE briefings ADD COLUMN retry_attempted INTEGER DEFAULT 0",
     "ALTER TABLE briefings ADD COLUMN calendar_actions TEXT",
+    "ALTER TABLE briefings ADD COLUMN edge_promises TEXT",
     "ALTER TABLE users ADD COLUMN phone_number TEXT",
   ];
   for (const migration of migrations) {

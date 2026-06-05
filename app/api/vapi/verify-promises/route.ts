@@ -46,6 +46,10 @@ Transcript:\n${transcript}`,
   let promises: string[] = [];
   try { const m = promisesText.match(/\[[\s\S]*\]/); if (m) promises = JSON.parse(m[0]); } catch { return { promises: [], unfulfilled: [] }; }
   if (!promises.length) { console.log('[verify-promises] No promises found'); return { promises: [], unfulfilled: [] }; }
+
+  // Save promises to briefing record so dashboard can show them
+  const dbInst = (await import('@/lib/db')).getDb();
+  dbInst.prepare('UPDATE briefings SET edge_promises = ? WHERE id = ?').run(JSON.stringify(promises), briefingId);
   console.log(`[verify-promises] ${promises.length} promises found:`, promises);
 
   // Step 2: Check calendar state

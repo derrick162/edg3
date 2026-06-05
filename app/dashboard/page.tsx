@@ -455,6 +455,7 @@ interface Briefing {
   user_response: string | null;
   transcript: string | null;
   calendar_actions: string | null;
+  edge_promises: string | null;
   created_at: string;
 }
 
@@ -818,6 +819,25 @@ export default function Dashboard() {
                               </div>
                             </div>
                           )}
+
+                          {b.edge_promises && (() => {
+                            try {
+                              const promises = JSON.parse(b.edge_promises);
+                              if (!promises.length) return null;
+                              return (
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: '#818cf8' }}>✅ EDGE ACTION ITEMS</p>
+                                  <div className="space-y-1">
+                                    {promises.map((p: string, i: number) => (
+                                      <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}>
+                                        <span style={{ color: '#6366f1' }}>→</span> {p}
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } catch { return null; }
+                          })()}
 
                           {(b as any).calendar_actions && (() => {
                             try {
