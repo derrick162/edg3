@@ -48,10 +48,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getRecent(userId, 15);
   const recentBriefings = briefingQueries.getRecent(userId, 5);
-  const [calendarEvents, weekEvents, weatherSummary] = await Promise.all([
+  const [calendarEvents, weekEvents] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
-    getWeatherSummary(userTimezone),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Only kudos for tasks completed since the last briefing
@@ -131,9 +130,6 @@ ${user.profile_summary || 'No profile summary available.'}
 THIS WEEK'S TOP PRIORITIES:
 ${prioritiesText}
 
-TODAY'S WEATHER:
-${weatherSummary || 'Not available.'}
-
 TODAY'S CALENDAR:
 ${calendarText}
 
@@ -158,18 +154,15 @@ ${previousBriefingsText}
 Generate a briefing with these sections:
 CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. Memory, conversation history, and past call transcripts are NOT reliable sources for current calendar events — they may be outdated. Before mentioning ANY event (grocery run, gym, flight, meeting, meal prep, drive, etc.) you MUST confirm it appears in the calendar data above. If it does not appear there, do NOT mention it. Do not say things like "I see you have a grocery run Friday" or "you have your drive to Blue Mountain" unless those exact events appear in the calendar sections above. Treat memory references to calendar events as historical only — not current facts.
 
-1. GREETING & CARRY-FORWARD — Start with "${greeting}, [name]." then follow up on what they said on the last call. If they mentioned something specific they were going to do, ask how it went. IMPORTANT: If they requested calendar changes last call, only confirm those changes if you can see them in the calendar data above — do not assume changes were made. If recently completed tasks exist, give genuine specific kudos. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them directly.
-2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above. ${weatherSummary ? `Weave in the weather naturally if it's relevant — "${weatherSummary}". Only mention it if it actually affects something.` : ''}
+1. GREETING — Start with "${greeting}, [name]." then get straight into the briefing. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them briefly.
+2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
 3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.
-4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today. Be specific. Address every weekly priority. Reference incomplete tasks by name. If a completed task ties to a priority, acknowledge it and ask if they want to swap in a new one.
-5. PATTERN RECOGNITION — One sharp insight from their history that they need to hear. Make it feel like only someone who's been paying close attention would notice this.
-6. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.
-7. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
-   - If they mentioned something big yesterday: "How did [specific thing] go — I want to factor that into tomorrow."
-   - If there's a pattern worth breaking: "What's one thing that keeps getting in the way — I want to help you remove it."
+4. LEVERAGE ACTIONS — The 3 highest-leverage things they should do today. Be specific. Address every weekly priority. Reference incomplete tasks by name.
+5. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.
+6. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
    - If they have a big upcoming event: "What do you need to feel ready for [event]?"
-   - Default if nothing specific stands out: "What's the most important thing I should know before tomorrow's briefing?"
-   Pick ONE and make it feel natural and specific, not generic.
+   - Default: "What's the most important thing I should know before tomorrow's briefing?"
+   Pick ONE and make it feel natural and specific.
 
 Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
 
