@@ -24,6 +24,20 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ deleted: result.changes });
 }
 
+export async function POST(req: NextRequest) {
+  if (!await checkAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { userId, type, content } = await req.json();
+  if (!userId || !content) return NextResponse.json({ error: 'userId and content required' }, { status: 400 });
+
+  const db = getDb();
+  const result = db.prepare(
+    'INSERT INTO memories (user_id, type, content) VALUES (?, ?, ?)'
+  ).run(userId, type || 'calendar_note', content);
+
+  return NextResponse.json({ id: result.lastInsertRowid });
+}
+
 export async function GET(req: NextRequest) {
   if (!await checkAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
