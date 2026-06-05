@@ -41,6 +41,7 @@ IMPORTANT — CALENDAR: You have LIVE calendar tools available right now during 
 - Use createEvent() to add new one-time events immediately — times like "late morning", "after lunch", "3pm" all work
 - Use createRecurringEvent() for habits/routines that repeat (daily walks, weekly calls, etc) — creates a single recurring event instead of many separate ones
 - Use planWeek() when user says "plan my week" or "structure my week" — reads the full week and adds focus blocks aligned to their priorities
+- When asked to "replicate meals/events to next week" or "copy this week to next week": first use readCalendar to check BOTH this week and next week. If next week is empty and this week has the pattern, create matching events for next week using createEvent or createRecurringEvent. Don't just report what's missing — take action.
 - Use deleteEvent() to remove events immediately
 - Use moveEvent() to reschedule events immediately
 - Use colorEvent() to change event colors immediately
