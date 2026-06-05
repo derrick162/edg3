@@ -264,7 +264,6 @@ Always end with warmth and encouragement. This person is building something — 
         systemPrompt,
       },
     } : undefined,
-    serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai'}/api/vapi/tool-call`,
   };
 
   // Remove undefined keys
