@@ -81,9 +81,9 @@ Always end with warmth and encouragement. This person is building something — 
       clientMessages: ['transcript', 'hang', 'function-call', 'speech-update'],
       serverMessages: ['transcript', 'end-of-call-report', 'status-update', 'hang', 'function-call'],
       stopSpeakingPlan: {
-        numWords: 1,
-        voiceSeconds: 0.1,
-        backoffSeconds: 0,
+        numWords: 2,
+        voiceSeconds: 0.5,
+        backoffSeconds: 1,
       },
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
