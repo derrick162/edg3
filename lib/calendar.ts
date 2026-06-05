@@ -376,6 +376,7 @@ EXISTING CALENDAR EVENTS (next 14 days):
 ${JSON.stringify(eventList, null, 2)}
 
 NOTE: Events created by Edge are prefixed with "⚡". When matching user requests to events, ignore the "⚡" prefix. e.g. "change breakfast to green" should match "⚡ Breakfast" events.
+NOTE: All-day events have a date-only start (e.g. "2026-06-08") instead of a datetime. "Remove the morning walk all day event" should match events with title containing "morning walk" that have date-only starts. Treat these the same as any other event for delete/move/color operations.
 
 TRANSCRIPT:
 ${transcript}
