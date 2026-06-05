@@ -36,7 +36,13 @@ NEVER say "I'm listening" — it's a dead-end response. If someone is talking, r
 IMPORTANT: Never tell the user to "text you", "message you", "send you a message", or contact you outside of this call. If you need information from them between calls, always direct them to the dashboard: "You can leave me a note in the dashboard — there's a 'Tell Edge Something' box and I'll read it before our next call."
 IMPORTANT — SCOPE: You are a briefing and calendar management tool. Do NOT promise to research anything, find options, look things up, or prepare information for next call. If asked to do research (e.g. "find me spas", "look up restaurants", "research options"), be honest: "I can't do research — I'm focused on your calendar and briefings. You could use Google or ChatGPT for that." Stick to what you can actually do: read their calendar, book events, move events, delete events, change event colors.
 IMPORTANT — MEMORY: You have full memory of all previous conversations. Never say you "don't have memory", "start fresh each call", or "can't remember" past calls. Your memory is built into every briefing. If asked, say "I have everything from our previous calls."
-IMPORTANT — CALENDAR: You can create, edit, move, delete, and color calendar events. However, changes happen AFTER the call ends — not in real time. When asked to make calendar changes, always say something like "I'll take care of that after the call — give it a few minutes." Never say you're doing it "right now", "done", or "handled" as if it's instant. Be honest that it processes after we hang up.
+IMPORTANT — CALENDAR: You have LIVE calendar tools available right now during this call. Use them:
+- Use readCalendar() to check what's on the calendar before making changes — always verify first
+- Use createEvent() to add new events immediately
+- Use deleteEvent() to remove events immediately
+- Use moveEvent() to reschedule events immediately
+- Use colorEvent() to change event colors immediately
+When the user asks for calendar changes, execute them NOW using the tools. Say "Let me check your calendar" or "Done — I just moved that" because it's actually happening in real time. Always confirm what you did after executing a tool.
 IMPORTANT: Whenever you ask a question — especially the closing question — stop talking completely and wait for the user to respond. Do not continue speaking after asking a question. Give them a full 15 seconds of silence to answer before doing anything else. Do not rush them.
 IMPORTANT: Never end the call abruptly mid-conversation. Always finish your thought, deliver a warm closing line, and only end after a natural pause.
 ${isFirstCall ? 'This is the first call, so keep it short and sweet. Around the 2 minute mark, finish your current sentence and begin closing: "I want to keep today\'s first call short and sweet — we\'ll go deeper tomorrow. Have a focused day." Then end the call.' : 'After delivering the briefing, open it up for conversation — let them respond, ask questions, or share what\'s on their mind. Keep your replies short and sharp, one or two sentences. Let the conversation flow naturally — only wrap up when the user is done or signals they want to end the call.'}
@@ -62,12 +68,98 @@ Always end with warmth and encouragement. This person is building something — 
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
         systemPrompt,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'readCalendar',
+              description: 'Read calendar events for a date range. Use this to check what is on the calendar before making changes.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  startDate: { type: 'string', description: 'Start date in YYYY-MM-DD format' },
+                  endDate: { type: 'string', description: 'End date in YYYY-MM-DD format' },
+                },
+                required: ['startDate', 'endDate'],
+              },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'createEvent',
+              description: 'Create a new calendar event.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Event title' },
+                  startDateTime: { type: 'string', description: 'Start datetime in YYYY-MM-DDTHH:MM:00 local time' },
+                  endDateTime: { type: 'string', description: 'End datetime in YYYY-MM-DDTHH:MM:00 local time' },
+                  timezone: { type: 'string', description: 'IANA timezone e.g. America/Toronto' },
+                  color: { type: 'string', description: 'Optional color name e.g. green, orange, blue' },
+                },
+                required: ['title', 'startDateTime', 'endDateTime', 'timezone'],
+              },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'deleteEvent',
+              description: 'Delete a calendar event by title and date.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Event title (partial match ok)' },
+                  date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
+                  deleteAll: { type: 'boolean', description: 'If true, delete all matching events on that date' },
+                },
+                required: ['title', 'date'],
+              },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'moveEvent',
+              description: 'Move/reschedule a calendar event to a new time.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Event title (partial match ok)' },
+                  date: { type: 'string', description: 'Current date of the event YYYY-MM-DD' },
+                  newStartDateTime: { type: 'string', description: 'New start datetime YYYY-MM-DDTHH:MM:00 local time' },
+                  newEndDateTime: { type: 'string', description: 'New end datetime YYYY-MM-DDTHH:MM:00 local time' },
+                  timezone: { type: 'string', description: 'IANA timezone e.g. America/Toronto' },
+                },
+                required: ['title', 'date', 'newStartDateTime', 'newEndDateTime', 'timezone'],
+              },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'colorEvent',
+              description: 'Change the color of a calendar event.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Event title (partial match ok)' },
+                  date: { type: 'string', description: 'Date of the event YYYY-MM-DD, or "all" to color all matching events' },
+                  color: { type: 'string', description: 'Color name: green, orange, red, blue, purple, yellow, teal, pink' },
+                },
+                required: ['title', 'date', 'color'],
+              },
+            },
+          },
+        ],
       },
       firstMessage: `... ${briefingContent}`,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 30,
       maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
+      serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai'}/api/vapi/tool-call`,
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
