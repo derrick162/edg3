@@ -370,7 +370,20 @@ export async function processCalendarEdits(userId: number, transcript: string, t
       content: `Read this call transcript and extract any requests to DELETE, MOVE, or RESCHEDULE existing calendar events.
 
 Today's date: ${nowStr}
-Timezone: ${timezone}
+User's home timezone: ${timezone}
+
+TIMEZONE REFERENCE:
+- "Pacific" / "PST" / "PDT" / "PT" / "Vancouver" / "LA" → America/Vancouver
+- "Mountain" / "MST" / "MDT" / "Denver" / "Calgary" → America/Denver
+- "Central" / "CST" / "CDT" / "Chicago" / "Dallas" → America/Chicago
+- "Eastern" / "EST" / "EDT" / "Toronto" / "New York" / "Blue Mountain" / "Ontario" → America/Toronto
+- "Atlantic" / "AST" / "Halifax" → America/Halifax
+- "GMT" / "London" / "UK" → Europe/London
+- "CET" / "Paris" / "Berlin" → Europe/Paris
+- "IST" / "India" → Asia/Kolkata
+- "JST" / "Tokyo" → Asia/Tokyo
+- "AEST" / "Sydney" → Australia/Sydney
+- "HKT" / "Hong Kong" / "Singapore" → Asia/Hong_Kong
 
 EXISTING CALENDAR EVENTS (next 14 days):
 ${JSON.stringify(eventList, null, 2)}
@@ -519,14 +532,22 @@ Today's date: ${todayDate} (${new Date(todayDate).toLocaleDateString('en-US', { 
 Tomorrow's date: ${tomorrow} (${new Date(tomorrow).toLocaleDateString('en-US', { weekday: 'long' })})
 User's home timezone: ${timezone}
 
+TIMEZONE REFERENCE (use for any timezone mention, spoken or abbreviated):
+- "Pacific" / "PST" / "PDT" / "PT" / "Vancouver" / "LA" / "Seattle" / "San Francisco" → America/Vancouver
+- "Mountain" / "MST" / "MDT" / "MT" / "Denver" / "Calgary" → America/Denver
+- "Central" / "CST" / "CDT" / "CT" / "Chicago" / "Dallas" / "Houston" → America/Chicago
+- "Eastern" / "EST" / "EDT" / "ET" / "Toronto" / "New York" / "NYC" / "Blue Mountain" / "Ontario" → America/Toronto
+- "Atlantic" / "AST" / "ADT" / "Halifax" → America/Halifax
+- "GMT" / "UTC" / "London" / "UK" → Europe/London
+- "CET" / "Paris" / "Berlin" / "Rome" → Europe/Paris
+- "IST" / "India" / "Mumbai" → Asia/Kolkata
+- "JST" / "Tokyo" / "Japan" → Asia/Tokyo
+- "AEST" / "Sydney" / "Australia" → Australia/Sydney
+- "HKT" / "Hong Kong" / "Singapore" / "SGT" → Asia/Hong_Kong
+
 IMPORTANT — TRAVEL TIMEZONE DETECTION:
-First, check if the user mentions being in a different location or timezone anywhere in the content (e.g. "I'm in Blue Mountain", "I'm in Toronto", "EST", "Eastern time", "I'll be in New York").
+First, check if the user mentions being in a different location or timezone anywhere in the content.
 If they mention a different location/timezone, use THAT timezone for ALL bookings in this session unless a specific event has its own timezone override.
-- "Blue Mountain" / "Toronto" / "Ontario" → America/Toronto (EST/EDT)
-- "New York" / "Eastern" / "EST" / "EDT" → America/New_York
-- "Chicago" / "Central" / "CST" → America/Chicago
-- "Denver" / "Mountain" / "MST" → America/Denver
-- "London" / "UK" / "GMT" / "BST" → Europe/London
 If no travel location is mentioned, use the home timezone: ${timezone}
 
 Calculate upcoming weekday dates from today:
