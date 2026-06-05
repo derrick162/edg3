@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
           try {
             await calendar.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${ev.title}`, start: { dateTime: ev.startDateTime, timeZone: user.timezone }, end: { dateTime: ev.endDateTime, timeZone: user.timezone }, colorId: '9' } });
             created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
-          } catch { /* skip */ }
+          } catch (_e) { /* skip conflicts */ }
         }
         result = created.length ? `Planned your week! Added: ${created.join(', ')}. Priorities: ${priorityText}.` : 'Week is fully packed — no free slots to add focus blocks.';
       }
