@@ -333,48 +333,64 @@ export default function AdminPage() {
                       <span className="text-xs" style={{ color: '#4a4a5a' }}>Briefing #{b.id}</span>
                     </div>
 
-                    {promises.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-semibold mb-2" style={{ color: '#818cf8' }}>PROMISES MADE</p>
-                        <div className="space-y-1">
-                          {promises.map((p, i) => (
-                            <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}>→ {p}</p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {toolActions.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>✅ EXECUTED (live tools)</p>
-                        <div className="space-y-1">
+                    {promises.length > 0 ? (
+                      <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <th className="text-left py-2 pr-4" style={{ color: '#6366f1', fontWeight: 600 }}>PROMISE</th>
+                            <th className="text-center py-2 w-16" style={{ color: '#6366f1', fontWeight: 600 }}>DONE</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {promises.map((p, i) => {
+                            const pNorm = p.toLowerCase();
+                            const done = toolActions.some(a => {
+                              const r = (a.result || '').toLowerCase();
+                              const f = (a.fn || '').toLowerCase();
+                              return !r.startsWith('error') && !r.startsWith('⚠️') && !r.includes('no event') && !r.includes('no events');
+                            }) || calActions.some(a => {
+                              const t = (a.title || '').toLowerCase();
+                              return pNorm.split(' ').some(w => w.length > 4 && t.includes(w));
+                            });
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td className="py-2 pr-4" style={{ color: '#c8c8d8' }}>{p}</td>
+                                <td className="text-center py-2">
+                                  {done
+                                    ? <span style={{ color: '#4ade80', fontSize: 16 }}>✓</span>
+                                    : <span style={{ color: '#ef4444', fontSize: 16 }}>✗</span>
+                                  }
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : toolActions.length > 0 ? (
+                      <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <th className="text-left py-2 pr-4" style={{ color: '#6366f1', fontWeight: 600 }}>ACTION</th>
+                            <th className="text-center py-2 w-16" style={{ color: '#6366f1', fontWeight: 600 }}>DONE</th>
+                          </tr>
+                        </thead>
+                        <tbody>
                           {toolActions.map((a, i) => (
-                            <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}><span style={{ color: '#4ade80' }}>✓</span> {a.fn}: {a.result}</p>
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td className="py-2 pr-4" style={{ color: '#c8c8d8' }}>{a.result}</td>
+                              <td className="text-center py-2">
+                                <span style={{ color: '#4ade80', fontSize: 16 }}>✓</span>
+                              </td>
+                            </tr>
                           ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {calActions.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-semibold mb-2" style={{ color: '#fbbf24' }}>📅 POST-CALL ACTIONS</p>
-                        <div className="space-y-1">
-                          {calActions.map((a, i) => (
-                            <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}><span style={{ color: '#fbbf24' }}>✓</span> {a.type} — {a.title}</p>
-                          ))}
-                        </div>
-                      </div>
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="text-xs" style={{ color: '#4a4a5a' }}>No promises or actions recorded.</p>
                     )}
 
                     {b.user_response && (
-                      <div>
-                        <p className="text-xs font-semibold mb-1" style={{ color: '#6366f1' }}>YOU SAID</p>
-                        <p className="text-xs" style={{ color: '#888899' }}>"{b.user_response}"</p>
-                      </div>
-                    )}
-
-                    {promises.length === 0 && toolActions.length === 0 && calActions.length === 0 && (
-                      <p className="text-xs" style={{ color: '#4a4a5a' }}>No promises or actions recorded for this call.</p>
+                      <p className="text-xs mt-3" style={{ color: '#888899' }}>You said: "{b.user_response}"</p>
                     )}
                   </div>
                 );
