@@ -175,7 +175,7 @@ Write this as a spoken briefing — natural language, no markdown headers, flowi
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 200,
+    max_tokens: 80,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   });
