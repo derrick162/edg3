@@ -165,6 +165,42 @@ export const memoryQueries = {
       'SELECT * FROM memories WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
     ).all(userId, limit) as Memory[];
   },
+  getWeighted: (userId: number, limit = 20) => {
+    const db = getDb();
+    // Priority: explicit user notes and priority changes always first,
+    // then recent insights, then transcripts (deduped to avoid noise)
+    const high = db.prepare(
+      `SELECT * FROM memories WHERE user_id = ? AND (
+        content LIKE '%[USER NOTE]%' OR
+        content LIKE '%[PRIORITY CHANGE]%' OR
+        content LIKE '%[TRAVEL TIMEZONE]%'
+      ) ORDER BY created_at DESC LIMIT 10`
+    ).all(userId) as Memory[];
+
+    const insights = db.prepare(
+      `SELECT * FROM memories WHERE user_id = ? AND type = 'insight'
+       ORDER BY created_at DESC LIMIT 8`
+    ).all(userId) as Memory[];
+
+    const recent = db.prepare(
+      `SELECT * FROM memories WHERE user_id = ? AND type NOT IN ('profile', 'transcript')
+       AND content NOT LIKE '%[USER NOTE]%'
+       AND content NOT LIKE '%[PRIORITY CHANGE]%'
+       AND content NOT LIKE '%[TRAVEL TIMEZONE]%'
+       ORDER BY created_at DESC LIMIT 5`
+    ).all(userId) as Memory[];
+
+    // Deduplicate by id and return up to limit
+    const seen = new Set<number>();
+    const result: Memory[] = [];
+    for (const m of [...high, ...insights, ...recent]) {
+      if (!seen.has(m.id) && result.length < limit) {
+        seen.add(m.id);
+        result.push(m);
+      }
+    }
+    return result;
+  },
   getByType: (userId: number, type: string, limit = 10) => {
     return getDb().prepare(
       'SELECT * FROM memories WHERE user_id = ? AND type = ? ORDER BY created_at DESC LIMIT ?'

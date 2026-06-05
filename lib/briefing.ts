@@ -46,7 +46,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   // Gather context
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
-  const recentMemories = memoryQueries.getRecent(userId, 15);
+  const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 5);
   const [calendarEvents, weekEvents] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
