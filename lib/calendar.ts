@@ -697,9 +697,15 @@ export function getFreeTimeSlots(events: calendar_v3.Schema$Event[], timezone: s
       .filter(e => e.start && e.end)
       .sort((a, b) => a.start!.getTime() - b.start!.getTime());
 
-    // Find gaps
-    const dayStart = new Date(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`);
-    const dayEnd = new Date(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`);
+    // Find gaps — convert local workday boundaries to UTC using timezone
+    const localToUtc = (localStr: string) => {
+      const asIfUtc = new Date(localStr + 'Z');
+      const localDisplay = asIfUtc.toLocaleString('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '').replace(' ', 'T');
+      const localAsUtc = new Date(localDisplay + 'Z');
+      return new Date(asIfUtc.getTime() + (asIfUtc.getTime() - localAsUtc.getTime()));
+    };
+    const dayStart = localToUtc(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`);
+    const dayEnd = localToUtc(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`);
     let cursor = dayStart.getTime();
 
     for (const ev of dayEvents) {
