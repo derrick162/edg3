@@ -214,85 +214,43 @@ export async function POST(req: NextRequest) {
       if (!user) {
         result = 'User not found';
       } else {
-      // Get priorities
-      const { format, startOfWeek } = await import('date-fns');
-      const weekOf = format(startOfWeek(new Date(weekStartDate)), 'yyyy-MM-dd');
-      const priorities = priorityQueries.getThisWeek(briefing.user_id, weekOf);
-      const priorityText = priorities.map((p, i) => `${i + 1}. ${p.text}`).join(', ') || 'No priorities set';
-
-      // Read the full week's events
-      const weekEnd = new Date(weekStartDate);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      const weekEndStr = weekEnd.toLocaleDateString('en-CA');
-      const allEvents: any[] = [];
-      for (const calId of calIds) {
-        const res = await calendar.events.list({
-          calendarId: calId,
-          timeMin: new Date(`${weekStartDate}T00:00:00Z`).toISOString(),
-          timeMax: new Date(`${weekEndStr}T23:59:59Z`).toISOString(),
-          singleEvents: true,
-          orderBy: 'startTime',
-          maxResults: 100,
-        }).catch(() => ({ data: { items: [] } }));
-        allEvents.push(...(res.data.items || []));
+        const { format, startOfWeek } = await import('date-fns');
+        const weekOf = format(startOfWeek(new Date(weekStartDate)), 'yyyy-MM-dd');
+        const priorities = priorityQueries.getThisWeek(briefing.user_id, weekOf);
+        const priorityText = priorities.map((p: any, i: number) => `${i + 1}. ${p.text}`).join(', ') || 'No priorities set';
+        const weekEnd = new Date(weekStartDate);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const weekEndStr = weekEnd.toLocaleDateString('en-CA');
+        const allEvents: any[] = [];
+        for (const calId of calIds) {
+          const res = await calendar.events.list({
+            calendarId: calId,
+            timeMin: new Date(`${weekStartDate}T00:00:00Z`).toISOString(),
+            timeMax: new Date(`${weekEndStr}T23:59:59Z`).toISOString(),
+            singleEvents: true, orderBy: 'startTime', maxResults: 100,
+          }).catch(() => ({ data: { items: [] } }));
+          allEvents.push(...(res.data.items || []));
+        }
+        const eventSummary = allEvents.map((e: any) =>
+          `- ${e.summary}: ${e.start?.dateTime?.slice(0, 16) || e.start?.date || 'all day'}`
+        ).join('\n') || 'No events';
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const planResult = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 600,
+          messages: [{ role: 'user', content: `Plan this week. Priorities: ${priorityText}. Focus ${focusHoursPerDay || 2}h/day. Preferences: ${preferences || 'none'}. Week: ${weekStartDate}-${weekEndStr}. Timezone: ${user.timezone}.\n\nEXISTING:\n${eventSummary}\n\nReturn JSON array of new focus blocks only (3-5 max):\n[{"title":"name","startDateTime":"YYYY-MM-DDTHH:MM:00","endDateTime":"YYYY-MM-DDTHH:MM:00"}]` }],
+        });
+        const planText = planResult.content[0].type === 'text' ? planResult.content[0].text : '[]';
+        const planMatch = planText.match(/\[[\s\S]*\]/);
+        const planEvents = planMatch ? JSON.parse(planMatch[0]) : [];
+        const created: string[] = [];
+        for (const ev of planEvents) {
+          try {
+            await calendar.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${ev.title}`, start: { dateTime: ev.startDateTime, timeZone: user.timezone }, end: { dateTime: ev.endDateTime, timeZone: user.timezone }, colorId: '9' } });
+            created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
+          } catch { /* skip */ }
+        }
+        result = created.length ? `Planned your week! Added: ${created.join(', ')}. Priorities: ${priorityText}.` : 'Week is fully packed — no free slots to add focus blocks.';
       }
-
-      const eventSummary = allEvents.map(e =>
-        `- ${e.summary}: ${e.start?.dateTime?.slice(0, 16) || e.start?.date || 'all day'} → ${e.end?.dateTime?.slice(11, 16) || 'all day'}`
-      ).join('\n') || 'No events';
-
-      // Use Claude to generate a smart week plan
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const planResult = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        messages: [{
-          role: 'user',
-          content: `You are a scheduling assistant. Create a smart week plan.
-
-Week: ${weekStartDate} to ${weekEndStr}
-User timezone: ${user.timezone}
-Top priorities: ${priorityText}
-Focus hours per day: ${focusHoursPerDay || 2}
-Preferences: ${preferences || 'none'}
-
-EXISTING EVENTS:
-${eventSummary}
-
-Create a week plan that:
-1. Adds focus blocks aligned to the top priorities (${focusHoursPerDay || 2}h per day in free slots)
-2. Protects recovery time (no back-to-back focus blocks)
-3. Avoids conflicts with existing events
-4. Works within 8am-8pm
-
-Return a JSON array of events to CREATE (not existing ones):
-[{"title":"event name","startDateTime":"YYYY-MM-DDTHH:MM:00","endDateTime":"YYYY-MM-DDTHH:MM:00","color":"optional"}]
-
-Only return new blocks to add. Keep it to 3-5 additions max.`,
-        }],
-      });
-
-      const planText = planResult.content[0].type === 'text' ? planResult.content[0].text : '[]';
-      const planMatch = planText.match(/\[[\s\S]*\]/);
-      const planEvents = planMatch ? JSON.parse(planMatch[0]) : [];
-
-      const created = [];
-      for (const ev of planEvents) {
-        try {
-          const reqBody: any = {
-            summary: `⚡ ${ev.title}`,
-            start: { dateTime: ev.startDateTime, timeZone: user.timezone },
-            end: { dateTime: ev.endDateTime, timeZone: user.timezone },
-            colorId: ev.color ? getColorId(ev.color) : '9',
-          };
-          await calendar.events.insert({ calendarId: 'primary', requestBody: reqBody });
-          created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
-        } catch { /* skip conflicts */ }
-      }
-      result = created.length
-        ? `Planned your week! Added ${created.length} focus blocks: ${created.join(', ')}. Aligned to your priorities: ${priorityText}.`
-        : 'Your week looks fully packed — no room to add focus blocks without conflicts.';
-      } // end else user found
 
     } else if (fn === 'colorEvent') {
       const { title, date, color } = args;
