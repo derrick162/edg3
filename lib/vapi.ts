@@ -38,7 +38,8 @@ IMPORTANT — SCOPE: You are a briefing and calendar management tool. Do NOT pro
 IMPORTANT — MEMORY: You have full memory of all previous conversations. Never say you "don't have memory", "start fresh each call", or "can't remember" past calls. Your memory is built into every briefing. If asked, say "I have everything from our previous calls."
 IMPORTANT — CALENDAR: You have LIVE calendar tools available right now during this call. Use them:
 - Use readCalendar() to check what's on the calendar before making changes — always verify first
-- Use createEvent() to add new events immediately
+- Use createEvent() to add new one-time events immediately
+- Use createRecurringEvent() for habits/routines that repeat (daily walks, weekly calls, etc) — creates a single recurring event instead of many separate ones
 - Use deleteEvent() to remove events immediately
 - Use moveEvent() to reschedule events immediately
 - Use colorEvent() to change event colors immediately
@@ -133,6 +134,27 @@ Always end with warmth and encouragement. This person is building something — 
                   timezone: { type: 'string', description: 'IANA timezone e.g. America/Toronto' },
                 },
                 required: ['title', 'date', 'newStartDateTime', 'newEndDateTime', 'timezone'],
+              },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'createRecurringEvent',
+              description: 'Create a recurring calendar event (daily, weekly on specific days, etc). Use this for habits like daily walks, weekly meetings, etc.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Event title' },
+                  startTime: { type: 'string', description: 'Start time HH:MM (24h)' },
+                  endTime: { type: 'string', description: 'End time HH:MM (24h)' },
+                  timezone: { type: 'string', description: 'IANA timezone e.g. America/Toronto' },
+                  startDate: { type: 'string', description: 'First occurrence date YYYY-MM-DD' },
+                  endDate: { type: 'string', description: 'Last occurrence date YYYY-MM-DD (optional)' },
+                  recurrence: { type: 'string', description: 'RRULE frequency e.g. FREQ=DAILY, FREQ=WEEKLY;BYDAY=MO,WE,FR, FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR' },
+                  color: { type: 'string', description: 'Optional color name' },
+                },
+                required: ['title', 'startTime', 'endTime', 'timezone', 'startDate', 'recurrence'],
               },
             },
           },

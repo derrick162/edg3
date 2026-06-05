@@ -86,15 +86,35 @@ export async function POST(req: NextRequest) {
 
     } else if (fn === 'createEvent') {
       const { title, startDateTime, endDateTime, timezone, color } = args;
-      const requestBody: any = {
-        summary: `⚡ ${title}`,
-        start: { dateTime: startDateTime, timeZone: timezone },
-        end: { dateTime: endDateTime, timeZone: timezone },
-        colorId: '9',
-      };
-      if (color) requestBody.colorId = getColorId(color);
-      await calendar.events.insert({ calendarId: 'primary', requestBody });
-      result = `Created "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}.`;
+
+      // Conflict check before creating
+      const date = startDateTime.slice(0, 10);
+      const conflicts: string[] = [];
+      for (const calId of calIds) {
+        const res = await calendar.events.list({
+          calendarId: calId,
+          timeMin: new Date(`${startDateTime}Z`).toISOString(),
+          timeMax: new Date(`${endDateTime}Z`).toISOString(),
+          singleEvents: true,
+        }).catch(() => ({ data: { items: [] } }));
+        for (const ev of (res.data.items || [])) {
+          const isPlaceholder = /\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary || '');
+          if (!isPlaceholder && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary || 'Untitled');
+        }
+      }
+      if (conflicts.length > 0) {
+        result = `⚠️ Conflict: "${conflicts.join('", "')}" already exists at that time. Should I still create "${title}" or pick a different time?`;
+      } else {
+        const requestBody: any = {
+          summary: `⚡ ${title}`,
+          start: { dateTime: startDateTime, timeZone: timezone },
+          end: { dateTime: endDateTime, timeZone: timezone },
+          colorId: '9',
+        };
+        if (color) requestBody.colorId = getColorId(color);
+        await calendar.events.insert({ calendarId: 'primary', requestBody });
+        result = `Created "${title}" on ${date} at ${startDateTime.slice(11, 16)} ${timezone}.`;
+      }
 
     } else if (fn === 'deleteEvent') {
       const { title, date, deleteAll } = args;
@@ -132,6 +152,23 @@ export async function POST(req: NextRequest) {
         await calendar.events.patch({ calendarId: found.calId, eventId: found.event.id, requestBody });
         result = `Moved "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}.`;
       }
+
+    } else if (fn === 'createRecurringEvent') {
+      const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args;
+      // Build RRULE — e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR or FREQ=DAILY
+      const rrule = recurrence || 'FREQ=DAILY';
+      const untilDate = endDate ? endDate.replace(/-/g, '') : '';
+      const fullRrule = untilDate ? `RRULE:${rrule};UNTIL=${untilDate}` : `RRULE:${rrule}`;
+
+      const requestBody: any = {
+        summary: `⚡ ${title}`,
+        start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone },
+        end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone },
+        recurrence: [fullRrule],
+        colorId: color ? getColorId(color) : '9',
+      };
+      await calendar.events.insert({ calendarId: 'primary', requestBody });
+      result = `Created recurring "${title}" starting ${startDate} at ${startTime} ${timezone} (${rrule}${untilDate ? ` until ${endDate}` : ''}).`;
 
     } else if (fn === 'colorEvent') {
       const { title, date, color } = args;
