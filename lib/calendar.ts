@@ -394,6 +394,10 @@ RELATIVE TIMING — calculate actual times from context:
 - "Move to first thing in the morning" → use 07:00 same day
 - "Move to end of day" → use 17:00 same day
 
+TIMEZONE CONVERSION — move events to show at same clock time in a different timezone:
+- "Move X from PST to EST" or "X should be EST not PST" → the displayed time stays the same but shifts by the timezone offset. PST is UTC-8 (or UTC-7 PDT), EST is UTC-5 (or UTC-4 EDT). Moving from PST to EST means the event UTC time moves 3 hours EARLIER (e.g. 12:00 PST = 20:00 UTC → 12:00 EST = 17:00 UTC, so newStart = original time minus 3 hours in UTC). Use action "move" with adjusted newStart/newEnd and include "timezone":"America/Toronto" field.
+- "Move all meals to Toronto time" → apply timezone conversion to each matching event
+
 SPECIFIC DAY PATTERNS:
 - "Move X to Monday" → find next Monday, keep same time
 - "Reschedule to this Friday" → calculate correct date
@@ -426,7 +430,11 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
     const results = [];
     for (const action of actions) {
       try {
+        // Try mapped calendar first, fall back to trying all calendars
         const calId = eventCalendarMap.get(action.eventId) || 'primary';
+        const calIdsToTry = calId === 'primary'
+          ? ['primary', ...editCalendarIds.filter(id => id !== 'primary')]
+          : [calId];
         if (action.action === 'delete' && action.eventId) {
           const event = events.find(e => e.id === action.eventId);
           await deleteCalendarEvent(userId, action.eventId);
@@ -442,17 +450,31 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
           const oac = getOAuthClient();
           oac.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token || undefined, expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined });
           const cal = google.calendar({ version: 'v3', auth: oac });
-          await cal.events.patch({ calendarId: calId, eventId: action.eventId, requestBody: { colorId: getColorId(action.color) } });
-          results.push({ type: 'colored', title: event?.summary || action.eventId, color: action.color, reason: action.reason });
-          console.log(`[calendar] Colored event: ${event?.summary} → ${action.color} on calendar ${calId}`);
+          let colored = false;
+          for (const tryCalId of calIdsToTry) {
+            try {
+              await cal.events.patch({ calendarId: tryCalId, eventId: action.eventId, requestBody: { colorId: getColorId(action.color) } });
+              console.log(`[calendar] Colored event: ${event?.summary} → ${action.color} on calendar ${tryCalId}`);
+              colored = true;
+              break;
+            } catch { continue; }
+          }
+          if (colored) results.push({ type: 'colored', title: event?.summary || action.eventId, color: action.color, reason: action.reason });
+          else console.error(`[calendar] Failed to color event ${action.eventId} on any calendar`);
         } else if (action.action === 'rename' && action.eventId && action.newTitle) {
           const event = events.find(e => e.id === action.eventId);
           const oac = getOAuthClient();
           oac.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token || undefined, expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined });
           const cal = google.calendar({ version: 'v3', auth: oac });
-          await cal.events.patch({ calendarId: calId, eventId: action.eventId, requestBody: { summary: action.newTitle } });
-          results.push({ type: 'renamed', title: event?.summary || action.eventId, newTitle: action.newTitle, reason: action.reason });
-          console.log(`[calendar] Renamed: "${event?.summary}" → "${action.newTitle}"`);
+          let renamed = false;
+          for (const tryCalId of calIdsToTry) {
+            try {
+              await cal.events.patch({ calendarId: tryCalId, eventId: action.eventId, requestBody: { summary: action.newTitle } });
+              renamed = true; break;
+            } catch { continue; }
+          }
+          if (renamed) { results.push({ type: 'renamed', title: event?.summary || action.eventId, newTitle: action.newTitle, reason: action.reason }); console.log(`[calendar] Renamed: "${event?.summary}" → "${action.newTitle}"`); }
+          else console.error(`[calendar] Failed to rename event ${action.eventId}`);
         }
       } catch (err) {
         console.error(`[calendar] Failed to ${action.action} event ${action.eventId}:`, err);
