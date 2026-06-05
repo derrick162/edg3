@@ -45,6 +45,17 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+interface Briefing {
+  id: number;
+  user_id: number;
+  status: string;
+  scheduled_for: string;
+  edge_promises: string | null;
+  tool_actions: string | null;
+  calendar_actions: string | null;
+  user_response: string | null;
+}
+
 export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -52,6 +63,15 @@ export default function AdminPage() {
   const [triggerLoading, setTriggerLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [briefings, setBriefings] = useState<Briefing[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+
+  const loadBriefings = async (userId: number) => {
+    setSelectedUserId(userId);
+    const res = await fetch(`/api/admin/briefings?userId=${userId}&limit=10`);
+    const data = await res.json();
+    setBriefings(data.briefings || []);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -241,6 +261,13 @@ export default function AdminPage() {
                       <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button
+                            onClick={() => loadBriefings(user.id)}
+                            className="text-xs px-2 py-1 rounded"
+                            style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                          >
+                            📋 Calls
+                          </button>
+                          <button
                             onClick={() => triggerCall(user.id)}
                             disabled={triggerLoading === user.id}
                             style={{
@@ -284,6 +311,77 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+
+        {/* Briefing promise tracker */}
+        {selectedUserId && briefings.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold">Call History — User #{selectedUserId}</h2>
+              <button onClick={() => { setBriefings([]); setSelectedUserId(null); }} className="text-xs" style={{ color: '#4a4a5a' }}>Close</button>
+            </div>
+            <div className="space-y-4">
+              {briefings.map(b => {
+                const promises: string[] = (() => { try { return b.edge_promises ? JSON.parse(b.edge_promises) : []; } catch { return []; } })();
+                const toolActions: Array<{ fn: string; result: string }> = (() => { try { return b.tool_actions ? JSON.parse(b.tool_actions) : []; } catch { return []; } })();
+                const calActions: Array<{ type: string; title: string }> = (() => { try { return b.calendar_actions ? JSON.parse(b.calendar_actions) : []; } catch { return []; } })();
+
+                return (
+                  <div key={b.id} className="glass-card p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <StatusBadge status={b.status} />
+                      <span className="text-sm font-semibold">{formatDate(b.scheduled_for)}</span>
+                      <span className="text-xs" style={{ color: '#4a4a5a' }}>Briefing #{b.id}</span>
+                    </div>
+
+                    {promises.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#818cf8' }}>PROMISES MADE</p>
+                        <div className="space-y-1">
+                          {promises.map((p, i) => (
+                            <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}>→ {p}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {toolActions.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>✅ EXECUTED (live tools)</p>
+                        <div className="space-y-1">
+                          {toolActions.map((a, i) => (
+                            <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}><span style={{ color: '#4ade80' }}>✓</span> {a.fn}: {a.result}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {calActions.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#fbbf24' }}>📅 POST-CALL ACTIONS</p>
+                        <div className="space-y-1">
+                          {calActions.map((a, i) => (
+                            <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}><span style={{ color: '#fbbf24' }}>✓</span> {a.type} — {a.title}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {b.user_response && (
+                      <div>
+                        <p className="text-xs font-semibold mb-1" style={{ color: '#6366f1' }}>YOU SAID</p>
+                        <p className="text-xs" style={{ color: '#888899' }}>"{b.user_response}"</p>
+                      </div>
+                    )}
+
+                    {promises.length === 0 && toolActions.length === 0 && calActions.length === 0 && (
+                      <p className="text-xs" style={{ color: '#4a4a5a' }}>No promises or actions recorded for this call.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
