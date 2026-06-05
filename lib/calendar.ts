@@ -275,19 +275,20 @@ export async function processCalendarEdits(userId: number, transcript: string, t
   const weekAhead = new Date(now);
   weekAhead.setDate(weekAhead.getDate() + 14);
 
-  const existing = await calendar.events.list({
-    calendarId: 'primary',
-    timeMin: now.toISOString(),
-    timeMax: weekAhead.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 100,
-  });
+  const calList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const editCalendarIds = (calList.data.items || []).filter(c => !c.hidden).map(c => c.id!).filter(Boolean);
 
-  const events = existing.data.items || [];
+  const allCalEvents = await Promise.all(
+    editCalendarIds.map(calId =>
+      calendar.events.list({ calendarId: calId, timeMin: now.toISOString(), timeMax: weekAhead.toISOString(), singleEvents: true, maxResults: 50 })
+        .then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  const events = allCalEvents.flat();
   const eventCalendarMap = new Map<string, string>(); // eventId → calendarId
-  calendarIds.forEach((calId, idx) => {
-    (allEvents[idx] || []).forEach((e: calendar_v3.Schema$Event) => {
+  editCalendarIds.forEach((calId, idx) => {
+    (allCalEvents[idx] || []).forEach((e: calendar_v3.Schema$Event) => {
       if (e.id) eventCalendarMap.set(e.id, calId);
     });
   });
@@ -359,7 +360,7 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
   try {
     const match = content.text.match(/\[[\s\S]*\]/);
     if (!match) return [];
-    const actions: { action: string; eventId: string; reason: string; newStart?: string; newEnd?: string }[] = JSON.parse(match[0]);
+    const actions: { action: string; eventId: string; reason: string; newStart?: string; newEnd?: string; color?: string; newTitle?: string }[] = JSON.parse(match[0]);
 
     const results = [];
     for (const action of actions) {
