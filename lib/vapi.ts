@@ -85,9 +85,6 @@ Always end with warmth and encouragement. This person is building something — 
         voiceSeconds: 0.1,
         backoffSeconds: 0,
       },
-      backchannel: {
-        enabled: true,
-      },
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
