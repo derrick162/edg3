@@ -23,33 +23,64 @@ export async function initiateCall(
   phoneNumber: string,
   briefingContent: string,
   userName: string,
-  isFirstCall: boolean = false
+  isFirstCall: boolean = false,
+  userTimezone: string = 'America/Vancouver'
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
 
-  const now = new Date();
-  const userNow = new Date(now.toLocaleString('en-US', { timeZone: userName === userName ? 'America/Vancouver' : 'America/Vancouver' }));
-  // Actually get the real user timezone from the call context — use the passed timezone if available
-  const todayStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD in UTC — close enough for date math
-  const nextMonday = new Date(now);
-  nextMonday.setDate(now.getDate() + ((8 - now.getDay()) % 7 || 7));
-  const nextMondayStr = nextMonday.toLocaleDateString('en-CA');
-  const nextSundayStr = new Date(nextMonday.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const thisMonday = new Date(now);
-  thisMonday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const thisMondayStr = thisMonday.toLocaleDateString('en-CA');
+  // Calculate all date references in the user's actual timezone
+  const userTzNow = new Date(new Date().toLocaleString('en-US', { timeZone: userTimezone }));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const userHour = userTzNow.getHours();
+  const userDay = userTzNow.getDay(); // 0=Sun, 1=Mon...
+
+  const todayD = new Date(userTzNow); todayD.setHours(0,0,0,0);
+  const todayStr = toDateStr(todayD);
+  const tomorrowStr = toDateStr(new Date(todayD.getTime() + 86400000));
+  const in2DaysStr = toDateStr(new Date(todayD.getTime() + 2*86400000));
+  const in3DaysStr = toDateStr(new Date(todayD.getTime() + 3*86400000));
+
+  // This week Mon-Sun
+  const thisMon = new Date(todayD); thisMon.setDate(todayD.getDate() - ((userDay + 6) % 7));
+  const thisSun = new Date(thisMon.getTime() + 6*86400000);
+  const thisFri = new Date(thisMon.getTime() + 4*86400000);
+  const thisSat = new Date(thisMon.getTime() + 5*86400000);
+
+  // Next week Mon-Sun
+  const nextMon = new Date(thisMon.getTime() + 7*86400000);
+  const nextSun = new Date(nextMon.getTime() + 6*86400000);
+  const nextFri = new Date(nextMon.getTime() + 4*86400000);
+  const nextSat = new Date(nextMon.getTime() + 5*86400000);
+
+  // Named days of this week
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const thisWeekDays = Array.from({length: 7}, (_, i) => `  ${dayNames[(userDay + i) % 7]} (this ${dayNames[(userDay+i)%7]}): ${toDateStr(new Date(todayD.getTime() + i*86400000))}`).join('\n');
 
   const systemPrompt = `You are Edge — the Elite Daily Guidance Engine — an AI Chief of Staff for ${userName}. IMPORTANT: The user's name is ${userName} — never call them by any other name under any circumstances. If asked who you are, say "I'm Edge, your Elite Daily Guidance Engine."
 You already delivered the briefing as your first message. Do not repeat it. Now wait for the user to respond.
 
-DATE REFERENCE (use these exact dates when calling tools):
-- Today: ${todayStr}
-- This week: ${thisMondayStr} to ${new Date(thisMonday.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA')}
-- Next week: ${nextMondayStr} to ${nextSundayStr}
-- "Tomorrow": ${new Date(now.getTime() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA')}
+DATE & TIME REFERENCE — user's timezone: ${userTimezone}, current time: ${pad(userHour)}:${pad(userTzNow.getMinutes())}
+Always use these exact YYYY-MM-DD dates in tool calls. Never calculate dates yourself.
 
-Always use these exact YYYY-MM-DD dates when calling readCalendar, createEvent, deleteEvent, etc. Never guess dates.
+- Today (${dayNames[userDay]}): ${todayStr}
+- Tomorrow (${dayNames[(userDay+1)%7]}): ${tomorrowStr}
+- In 2 days: ${in2DaysStr}
+- In 3 days: ${in3DaysStr}
+- This Friday: ${toDateStr(thisFri)}
+- This Saturday: ${toDateStr(thisSat)}
+- This weekend: ${toDateStr(thisSat)} to ${toDateStr(thisSun)}
+- This week (Mon-Sun): ${toDateStr(thisMon)} to ${toDateStr(thisSun)}
+- Next Monday: ${toDateStr(nextMon)}
+- Next Friday: ${toDateStr(nextFri)}
+- Next weekend: ${toDateStr(nextSat)} to ${toDateStr(nextSun)}
+- Next week (Mon-Sun): ${toDateStr(nextMon)} to ${toDateStr(nextSun)}
+
+Named days this week:
+${thisWeekDays}
+
+TIME AWARENESS: Current hour is ${userHour}. If user says "this afternoon" and it's already evening (after 17:00), clarify if they mean tomorrow afternoon. If they say "this morning" and it's afternoon, ask if they mean tomorrow morning.
 
 You genuinely care about this person. You are a trusted advisor — warm, encouraging, and direct. You believe in them. You are not here to judge or criticize — you are here to help them win the day.
 If they want to talk, engage warmly but keep responses short and sharp, one or two sentences max. Acknowledge what they say, validate it where genuine, then redirect toward action.

@@ -95,7 +95,7 @@ export async function scheduleBriefingCall(userId: number) {
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
     console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall);
+    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, user.timezone || 'America/Vancouver');
     console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
 
     const callId = call.id;
