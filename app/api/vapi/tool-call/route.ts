@@ -95,7 +95,22 @@ export async function POST(req: NextRequest) {
         events.push(...(res.data.items ?? []));
       }
       events.sort((a, b) => (a.start?.dateTime ?? a.start?.date ?? '').localeCompare(b.start?.dateTime ?? b.start?.date ?? ''));
-      result = events.length ? events.map(e => `- ${e.summary}: ${e.start?.dateTime?.slice(0, 16) ?? e.start?.date ?? 'all day'}`).join('\n') : 'No events found.';
+      if (!events.length) {
+        result = 'No events found for that period.';
+      } else {
+        // Group by day for cleaner output
+        const byDay = new Map<string, string[]>();
+        for (const e of events) {
+          const day = (e.start?.dateTime ?? e.start?.date ?? '').slice(0, 10);
+          const dayDate = new Date(`${day}T12:00:00Z`);
+          const dayLabel = dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+          const time = e.start?.dateTime ? e.start.dateTime.slice(11, 16) : 'all day';
+          const recurring = e.recurringEventId ? ' (recurring)' : '';
+          if (!byDay.has(dayLabel)) byDay.set(dayLabel, []);
+          byDay.get(dayLabel)!.push(`  ${time}: ${e.summary}${recurring}`);
+        }
+        result = Array.from(byDay.entries()).map(([day, evs]) => `${day}:\n${evs.join('\n')}`).join('\n\n');
+      }
 
     } else if (fn === 'createEvent') {
       let { title, startDateTime, endDateTime, timezone, color } = args as { title: string; startDateTime: string; endDateTime: string; timezone: string; color?: string };
@@ -131,29 +146,46 @@ export async function POST(req: NextRequest) {
       result = `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
     } else if (fn === 'deleteEvent') {
-      const { title, date, deleteAll } = args as { title: string; date: string; deleteAll?: boolean };
+      const { title, date, deleteAll, recurringScope } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all' };
       const deleted: string[] = [];
       for (const calId of calIds) {
-        const res = await cal.events.list({ calendarId: calId, timeMin: new Date(`${date}T00:00:00Z`).toISOString(), timeMax: new Date(`${date}T23:59:59Z`).toISOString(), singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+        const res = await cal.events.list({ calendarId: calId, timeMin: new Date(`${date}T00:00:00Z`).toISOString(), timeMax: new Date(`${date}T23:59:59Z`).toISOString(), singleEvents: true, showHiddenInvitations: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
         const tn = normTitle(title);
         const matches = (res.data.items ?? []).filter(e => normTitle(e.summary ?? '').includes(tn) || tn.includes(normTitle(e.summary ?? '')));
         for (const ev of (deleteAll ? matches : matches.slice(0, 1))) {
-          await cal.events.delete({ calendarId: calId, eventId: ev.id! }).catch(() => undefined);
+          // Check if recurring
+          if (ev.recurringEventId && !recurringScope) {
+            result = `"${ev.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
+            break;
+          }
+          const sendUpdates = 'none';
+          if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
+            // Delete this and following by updating the series end date
+            await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g,'')}`] } }).catch(() => undefined);
+          } else if (ev.recurringEventId && recurringScope === 'all') {
+            await cal.events.delete({ calendarId: calId, eventId: ev.recurringEventId }).catch(() => undefined);
+          } else {
+            await cal.events.delete({ calendarId: calId, eventId: ev.id! }).catch(() => undefined);
+          }
           deleted.push(ev.summary ?? ev.id!);
         }
+        if (result) break;
       }
-      result = deleted.length ? `Deleted: ${deleted.join(', ')}` : `No event matching "${title}" on ${date}.`;
+      if (!result) result = deleted.length ? `Deleted: ${deleted.join(', ')}` : `No event matching "${title}" on ${date}.`;
 
     } else if (fn === 'moveEvent') {
-      const { title, date, newStartDateTime, newEndDateTime, timezone } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; timezone: string };
+      const { title, date, newStartDateTime, newEndDateTime, timezone, recurringScope } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; timezone: string; recurringScope?: 'this' | 'all' };
       const found = await findEv(cal, calIds, title, date);
       if (!found) {
         result = `No event matching "${title}" on ${date}.`;
+      } else if (found.event.recurringEventId && !recurringScope) {
+        result = `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
       } else {
+        const eventId = (recurringScope === 'all' && found.event.recurringEventId) ? found.event.recurringEventId : found.event.id!;
         const rb: calendar_v3.Schema$Event = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
         if (found.event.colorId) rb.colorId = found.event.colorId;
-        await cal.events.patch({ calendarId: found.calId, eventId: found.event.id!, requestBody: rb });
-        result = `Moved "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}.`;
+        await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb });
+        result = `Moved "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
       }
 
     } else if (fn === 'colorEvent') {
