@@ -146,16 +146,14 @@ export async function POST(req: NextRequest) {
               .run(JSON.stringify(actions), briefing.id);
             console.log(`[webhook] ${created.length} created, ${edited.length} edited/deleted for briefing ${briefing.id}`);
           }
-          // Verify promises via dedicated endpoint so it survives the webhook response
-          if (transcript) {
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
-            fetch(`${baseUrl}/api/vapi/verify-promises`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ briefingId: briefing.id }),
-            }).then(r => r.json()).then(r => console.log('[webhook] Promise verification:', JSON.stringify(r)))
-              .catch(err => console.error('Promise verification request failed:', err));
-          }
+          // Always verify promises — regardless of whether calendar actions ran
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
+          fetch(`${baseUrl}/api/vapi/verify-promises`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ briefingId: briefing.id }),
+          }).then(r => r.json()).then(r => console.log('[webhook] Promise verification:', JSON.stringify(r)))
+            .catch(err => console.error('Promise verification request failed:', err));
         }).catch(err => console.error('Calendar processing failed:', err));
 
         // Always run dedup after every call — deterministic, no AI needed
