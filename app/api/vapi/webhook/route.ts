@@ -110,9 +110,17 @@ export async function POST(req: NextRequest) {
             .catch(err => console.error('Travel timezone detection failed:', err));
         }
 
-        // Extract calendar blocks from briefing AND transcript conversation
-        const combinedContent = briefing.content + (transcript ? '\n\nCONVERSATION TRANSCRIPT:\n' + transcript : '');
-        // Extract tasks from briefing content
+        // Detect travel timezone from transcript
+        if (transcript) {
+          detectAndSaveTravelTimezone(briefing.user_id, transcript)
+            .catch(err => console.error('Travel timezone detection failed:', err));
+        }
+
+        // NOTE: Post-call calendar processing (extractAndCreateTimeBlocks, processCalendarEdits) is DISABLED.
+        // All calendar changes now happen live during the call via tool calling.
+        // This ensures speed and clarity — if Edge did it during the call, it's done. No post-processing surprises.
+
+        // Still extract tasks from conversation (these are user tasks, not calendar changes)
         const db2 = (await import('@/lib/db')).getDb();
         const tomorrow = new Date(new Date().toLocaleString('en-US', { timeZone: user.timezone }));
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -131,10 +139,10 @@ export async function POST(req: NextRequest) {
             .catch(err => console.error('Transcript task extraction failed:', err));
         }
 
-        // Run creates FIRST, then edits/colors (so color changes can find newly created events)
+        // Only run dedup (safe, deterministic) and verify-promises
         Promise.resolve().then(async () => {
-          const created = await extractAndCreateTimeBlocks(briefing.user_id, combinedContent, user.timezone);
-          const edited = transcript ? await processCalendarEdits(briefing.user_id, transcript, user.timezone) : [];
+          const created: any[] = [];
+          const edited: any[] = [];
           return [created, edited] as const;
         }).then(async ([created, edited]) => {
           const actions = [
