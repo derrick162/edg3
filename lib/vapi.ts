@@ -156,6 +156,7 @@ Always end with warmth and encouragement. This person is building something — 
 
   if (!response.ok) {
     const error = await response.text();
+    console.error(`[vapi] Call failed. Status: ${response.status}. Body: ${error}`);
     throw new Error(`Vapi call failed: ${error}`);
   }
 
