@@ -225,15 +225,24 @@ async function detectAndSaveTravelTimezone(userId: number, transcript: string) {
     max_tokens: 100,
     messages: [{
       role: 'user',
-      content: `Read this transcript. If the user mentions being in a different city/location/timezone than their home, return the IANA timezone for that location.
-Return ONLY the timezone string (e.g. "America/Toronto") or "none" if no travel location is mentioned.
+      content: `Read this transcript.
+If the user mentions being BACK HOME, back in Vancouver, or returning from a trip → return "home".
+If the user mentions being in a different city/location/timezone → return the IANA timezone (e.g. "America/Toronto").
+Otherwise → return "none".
 Common mappings: Blue Mountain/Toronto/Ontario → America/Toronto, New York/Eastern/EST → America/New_York, London → Europe/London
 Transcript: ${transcript.slice(0, 1000)}`,
     }],
   });
   const tz = result.content[0].type === 'text' ? result.content[0].text.trim() : 'none';
-  if (tz && tz !== 'none' && tz.includes('/')) {
-    const { memoryQueries } = await import('@/lib/db');
+  const { memoryQueries, getDb } = await import('@/lib/db');
+  const db = getDb();
+  if (tz === 'home') {
+    // Clear all travel timezone memories
+    db.prepare("DELETE FROM memories WHERE user_id = ? AND content LIKE '%TRAVEL TIMEZONE%'").run(userId);
+    console.log(`[webhook] Travel timezone cleared — user is back home`);
+  } else if (tz && tz !== 'none' && tz.includes('/')) {
+    // Clear old travel timezone then save new one
+    db.prepare("DELETE FROM memories WHERE user_id = ? AND content LIKE '%TRAVEL TIMEZONE%'").run(userId);
     memoryQueries.create(userId, 'calendar_note', `[TRAVEL TIMEZONE] User is currently in timezone: ${tz}. Use this for all calendar bookings until further notice.`);
     console.log(`[webhook] Travel timezone detected and saved: ${tz}`);
   }
