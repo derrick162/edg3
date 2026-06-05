@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { extractUserResponseFromTranscript } from '@/lib/vapi';
-import { extractAndCreateTimeBlocks, processCalendarEdits } from '@/lib/calendar';
+import { extractAndCreateTimeBlocks, processCalendarEdits, deduplicateCalendarEvents } from '@/lib/calendar';
 import Anthropic from '@anthropic-ai/sdk';
 
 // Reasons that indicate the user didn't answer — worth retrying
@@ -157,6 +157,11 @@ export async function POST(req: NextRequest) {
               .catch(err => console.error('Promise verification request failed:', err));
           }
         }).catch(err => console.error('Calendar processing failed:', err));
+
+        // Always run dedup after every call — deterministic, no AI needed
+        deduplicateCalendarEvents(briefing.user_id, user.timezone)
+          .then(deleted => { if (deleted.length) console.log(`[webhook] Dedup removed ${deleted.length} duplicate events`); })
+          .catch(err => console.error('Dedup failed:', err));
       }
     } else if (type === 'call-started' || type === 'assistant.started') {
       briefingQueries.update(briefing.id, { status: 'calling' });

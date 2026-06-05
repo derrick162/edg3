@@ -255,6 +255,65 @@ export async function moveCalendarEvent(
   });
 }
 
+export async function deduplicateCalendarEvents(userId: number, timezone: string) {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return [];
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const twoWeeks = new Date(now);
+  twoWeeks.setDate(twoWeeks.getDate() + 14);
+
+  // Fetch from all calendars
+  const calList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calIds = (calList.data.items || []).filter(c => !c.hidden).map(c => c.id!).filter(Boolean);
+
+  const allEvts = await Promise.all(
+    calIds.map(calId =>
+      calendar.events.list({ calendarId: calId, timeMin: now.toISOString(), timeMax: twoWeeks.toISOString(), singleEvents: true, maxResults: 200 })
+        .then(r => (r.data.items || []).map(e => ({ ...e, _calId: calId }))).catch(() => [])
+    )
+  );
+
+  const events = allEvts.flat() as (calendar_v3.Schema$Event & { _calId: string })[];
+
+  // Group by title + day
+  const groups = new Map<string, typeof events>();
+  for (const ev of events) {
+    const day = (ev.start?.dateTime || ev.start?.date || '').slice(0, 10);
+    const title = (ev.summary || '').toLowerCase().trim();
+    const key = `${day}::${title}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(ev);
+  }
+
+  const deleted: string[] = [];
+  for (const [, group] of groups) {
+    if (group.length <= 1) continue;
+    // Sort by start time, keep earliest, delete the rest
+    group.sort((a, b) => (a.start?.dateTime || a.start?.date || '').localeCompare(b.start?.dateTime || b.start?.date || ''));
+    const toDelete = group.slice(1);
+    for (const ev of toDelete) {
+      try {
+        await calendar.events.delete({ calendarId: ev._calId, eventId: ev.id! });
+        deleted.push(ev.summary || ev.id!);
+        console.log(`[calendar] Dedup deleted: "${ev.summary}" on ${(ev.start?.dateTime || ev.start?.date || '').slice(0, 10)}`);
+      } catch (err) {
+        console.error(`[calendar] Dedup delete failed for ${ev.id}:`, err);
+      }
+    }
+  }
+
+  return deleted;
+}
+
 export async function processCalendarEdits(userId: number, transcript: string, timezone: string) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
