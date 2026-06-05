@@ -269,7 +269,7 @@ export async function deduplicateCalendarEvents(userId: number, timezone: string
   const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
   const twoWeeks = new Date(now);
-  twoWeeks.setDate(twoWeeks.getDate() + 14);
+  twoWeeks.setDate(twoWeeks.getDate() + 30);
 
   // Fetch from all calendars
   const calList = await calendar.calendarList.list({ minAccessRole: 'reader' });
@@ -284,11 +284,12 @@ export async function deduplicateCalendarEvents(userId: number, timezone: string
 
   const events = allEvts.flat() as (calendar_v3.Schema$Event & { _calId: string })[];
 
-  // Group by title + day
+  // Group by normalised title + day (strip ⚡ prefix, lowercase, trim)
+  const normalizeTitle = (s: string) => s.replace(/^⚡\s*/, '').toLowerCase().trim();
   const groups = new Map<string, typeof events>();
   for (const ev of events) {
     const day = (ev.start?.dateTime || ev.start?.date || '').slice(0, 10);
-    const title = (ev.summary || '').toLowerCase().trim();
+    const title = normalizeTitle(ev.summary || '');
     const key = `${day}::${title}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(ev);
