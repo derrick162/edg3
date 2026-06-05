@@ -76,6 +76,7 @@ export async function getCalendarEvents(userId: number) {
         timeMin: startOfDay.toISOString(),
         timeMax: endOfDay.toISOString(),
         singleEvents: true,
+        showHiddenInvitations: true,
         orderBy: 'startTime',
         maxResults: 20,
       }).then(r => r.data.items || []).catch(() => [])
@@ -121,6 +122,7 @@ export async function getWeekEvents(userId: number) {
         timeMin: now.toISOString(),
         timeMax: endOfWeek.toISOString(),
         singleEvents: true,
+        showHiddenInvitations: true,
         orderBy: 'startTime',
         maxResults: 50,
       }).then(r => r.data.items || []).catch(() => [])
@@ -277,7 +279,7 @@ export async function deduplicateCalendarEvents(userId: number, timezone: string
 
   const allEvts = await Promise.all(
     calIds.map(calId =>
-      calendar.events.list({ calendarId: calId, timeMin: now.toISOString(), timeMax: twoWeeks.toISOString(), singleEvents: true, maxResults: 200 })
+      calendar.events.list({ calendarId: calId, timeMin: now.toISOString(), timeMax: twoWeeks.toISOString(), singleEvents: true, showHiddenInvitations: true, maxResults: 200 })
         .then(r => (r.data.items || []).map(e => ({ ...e, _calId: calId }))).catch(() => [])
     )
   );
@@ -340,7 +342,7 @@ export async function processCalendarEdits(userId: number, transcript: string, t
 
   const allCalEvents = await Promise.all(
     editCalendarIds.map(calId =>
-      calendar.events.list({ calendarId: calId, timeMin: now.toISOString(), timeMax: weekAhead.toISOString(), singleEvents: true, maxResults: 50 })
+      calendar.events.list({ calendarId: calId, timeMin: now.toISOString(), timeMax: weekAhead.toISOString(), singleEvents: true, showHiddenInvitations: true, maxResults: 50 })
         .then(r => r.data.items || []).catch(() => [])
     )
   );
@@ -630,6 +632,7 @@ ${briefingContent}`,
         timeMin: dayStart.toISOString(),
         timeMax: dayEnd.toISOString(),
         singleEvents: true,
+        showHiddenInvitations: true,
         maxResults: 100,
       });
       existingEvents = existing.data.items || [];
