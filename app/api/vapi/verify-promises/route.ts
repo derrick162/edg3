@@ -99,10 +99,12 @@ Transcript:\n${transcript}`,
   // Step 4: Log only — don't save to memory, auto-retry handles it silently
   console.log(`[verify-promises] Auto-retrying ${unfulfilled.length} missed items silently`);
 
-  // Step 5: Retry — only use processCalendarEdits (not createTimeBlocks) since missed items are moves/colors/deletes
+  // Step 5: Retry — use both create and edit for missed items
   const retryTranscript = unfulfilled.map(u => `User: Please ${u.promise}`).join('\n');
-  const retryEdited = await processCalendarEdits(user.id, retryTranscript, user.timezone).catch(() => []);
-  const retryCreated: any[] = [];
+  const [retryCreated, retryEdited] = await Promise.all([
+    extractAndCreateTimeBlocks(user.id, retryTranscript, user.timezone).catch(() => []),
+    processCalendarEdits(user.id, retryTranscript, user.timezone).catch(() => []),
+  ]);
 
   console.log(`[verify-promises] Retried — created: ${retryCreated.length}, edited: ${retryEdited.length}`);
   return { promises, unfulfilled, retried: { created: retryCreated.length, edited: retryEdited.length } };
