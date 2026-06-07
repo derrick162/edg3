@@ -126,15 +126,6 @@ Always end with warmth and encouragement. This person is building something — 
         model: 'claude-haiku-4-5-20251001',
         systemPrompt,
       },
-      tools: [
-        { type: 'function', function: { name: 'readCalendar' }, toolId: 'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c' },
-        { type: 'function', function: { name: 'createEvent' }, toolId: '4ac1508f-e8b1-46d4-aacf-2e7122f4594e' },
-        { type: 'function', function: { name: 'deleteEvent' }, toolId: '734cc748-4604-4637-80df-f760b1ca5707' },
-        { type: 'function', function: { name: 'moveEvent' }, toolId: 'c45c579a-3b6a-4587-a134-7e271d3bc601' },
-        { type: 'function', function: { name: 'colorEvent' }, toolId: '22d56b6f-5e86-4eaf-bebf-4067d9db6005' },
-        { type: 'function', function: { name: 'createRecurringEvent' }, toolId: '057c20b1-32ec-4956-b1cc-908b60238a90' },
-        { type: 'function', function: { name: 'planWeek' }, toolId: '782462ad-1c4d-4c82-ac3c-02576aeb2622' },
-      ],
       firstMessage: briefingContent,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
       silenceTimeoutSeconds: 30,
@@ -144,10 +135,17 @@ Always end with warmth and encouragement. This person is building something — 
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
-      model: {
-        systemPrompt,
-      },
+      model: { systemPrompt },
     } : undefined,
+    toolIds: [
+      'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c',
+      '4ac1508f-e8b1-46d4-aacf-2e7122f4594e',
+      '734cc748-4604-4637-80df-f760b1ca5707',
+      'c45c579a-3b6a-4587-a134-7e271d3bc601',
+      '22d56b6f-5e86-4eaf-bebf-4067d9db6005',
+      '057c20b1-32ec-4956-b1cc-908b60238a90',
+      '782462ad-1c4d-4c82-ac3c-02576aeb2622',
+    ],
   };
 
   // Remove undefined keys
