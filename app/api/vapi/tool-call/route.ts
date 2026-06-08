@@ -29,6 +29,29 @@ function resolveNaturalTime(timeStr: string): string {
   return timeStr;
 }
 
+// Convert a wall-clock local datetime ("YYYY-MM-DDTHH:MM:SS", no offset) in an IANA timezone
+// to the correct UTC instant. The old approach appended 'Z', which wrongly treated the user's
+// local time as UTC and shifted conflict windows by the zone offset.
+function zonedWallTimeToUtc(localDateTime: string, timeZone: string): Date {
+  const guess = new Date(`${localDateTime}Z`);
+  if (isNaN(guess.getTime())) return new Date(localDateTime);
+  const offsetAt = (instant: Date): number => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(instant);
+    const m: Record<string, number> = {};
+    for (const p of parts) if (p.type !== 'literal') m[p.type] = Number(p.value);
+    return Date.UTC(m.year, m.month - 1, m.day, m.hour, m.minute, m.second) - instant.getTime();
+  };
+  const offset = offsetAt(guess);
+  let utc = new Date(guess.getTime() - offset);
+  const offset2 = offsetAt(utc); // refine across a possible DST boundary
+  if (offset2 !== offset) utc = new Date(guess.getTime() - offset2);
+  return utc;
+}
+
 async function getCalClient(userId: number) {
   const tokenRow = calendarQueries.get(userId);
   if (!tokenRow) throw new Error('No calendar connected');
@@ -116,9 +139,14 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       }
     }
     const conflicts: string[] = [];
+    const tz = timezone || 'America/Vancouver';
+    const winMin = zonedWallTimeToUtc(startDateTime, tz).toISOString();
+    const winMax = zonedWallTimeToUtc(endDateTime, tz).toISOString();
     for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: new Date(`${startDateTime}Z`).toISOString(), timeMax: new Date(`${endDateTime}Z`).toISOString(), singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+      const res = await cal.events.list({ calendarId: calId, timeMin: winMin, timeMax: winMax, singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
       for (const ev of (res.data.items ?? [])) {
+        // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
+        if (ev.start?.date && !ev.start?.dateTime) continue;
         if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
       }
     }
