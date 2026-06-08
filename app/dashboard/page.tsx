@@ -181,7 +181,8 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
-  const todayTasks = tasks.filter(t => t.date === today || t.date === tomorrowStr);
+  // Newest first (id is autoincrement) so freshly added tasks appear at the top.
+  const todayTasks = tasks.filter(t => t.date === today || t.date === tomorrowStr).sort((a, b) => b.id - a.id);
   const pastTasks = tasks.filter(t => t.date < today && !t.completed);
 
   // Every incomplete task currently shown in the list (today/tomorrow + carried over)

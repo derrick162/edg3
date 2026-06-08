@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getOAuthClient, getColorId } from '@/lib/calendar';
+import { getOAuthClient, getColorId, zonedWallTimeToUtc } from '@/lib/calendar';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
@@ -27,29 +27,6 @@ function resolveNaturalTime(timeStr: string): string {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
   return timeStr;
-}
-
-// Convert a wall-clock local datetime ("YYYY-MM-DDTHH:MM:SS", no offset) in an IANA timezone
-// to the correct UTC instant. The old approach appended 'Z', which wrongly treated the user's
-// local time as UTC and shifted conflict windows by the zone offset.
-function zonedWallTimeToUtc(localDateTime: string, timeZone: string): Date {
-  const guess = new Date(`${localDateTime}Z`);
-  if (isNaN(guess.getTime())) return new Date(localDateTime);
-  const offsetAt = (instant: Date): number => {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone, hourCycle: 'h23',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    }).formatToParts(instant);
-    const m: Record<string, number> = {};
-    for (const p of parts) if (p.type !== 'literal') m[p.type] = Number(p.value);
-    return Date.UTC(m.year, m.month - 1, m.day, m.hour, m.minute, m.second) - instant.getTime();
-  };
-  const offset = offsetAt(guess);
-  let utc = new Date(guess.getTime() - offset);
-  const offset2 = offsetAt(utc); // refine across a possible DST boundary
-  if (offset2 !== offset) utc = new Date(guess.getTime() - offset2);
-  return utc;
 }
 
 async function getCalClient(userId: number) {
@@ -129,7 +106,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title, timezone, color } = args as { title: string; timezone: string; color?: string };
+    const { title, timezone, color, overrideConflicts } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean };
     if (startDateTime && !startDateTime.includes('T')) {
       const date = new Date().toLocaleDateString('en-CA');
       startDateTime = `${date}T${resolveNaturalTime(startDateTime)}:00`;
@@ -138,24 +115,27 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
         endDateTime = `${date}T${String(h + 1).padStart(2, '0')}:00:00`;
       }
     }
-    const conflicts: string[] = [];
-    const tz = timezone || 'America/Vancouver';
-    const winMin = zonedWallTimeToUtc(startDateTime, tz).toISOString();
-    const winMax = zonedWallTimeToUtc(endDateTime, tz).toISOString();
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: winMin, timeMax: winMax, singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      for (const ev of (res.data.items ?? [])) {
-        // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
-        if (ev.start?.date && !ev.start?.dateTime) continue;
-        if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
+    // Skip the conflict check when the user has explicitly asked to book over existing events.
+    if (!overrideConflicts) {
+      const conflicts: string[] = [];
+      const tz = timezone || 'America/Vancouver';
+      const winMin = zonedWallTimeToUtc(startDateTime, tz).toISOString();
+      const winMax = zonedWallTimeToUtc(endDateTime, tz).toISOString();
+      for (const calId of calIds) {
+        const res = await cal.events.list({ calendarId: calId, timeMin: winMin, timeMax: winMax, singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+        for (const ev of (res.data.items ?? [])) {
+          // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
+          if (ev.start?.date && !ev.start?.dateTime) continue;
+          if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
+        }
       }
-    }
-    if (conflicts.length > 0) {
-      return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Still create "${title}"?`;
+      if (conflicts.length > 0) {
+        return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
+      }
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
     await cal.events.insert({ calendarId: 'primary', requestBody: rb });
-    return `Created "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}.`;
+    return `Created "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events as requested)' : ''}.`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };

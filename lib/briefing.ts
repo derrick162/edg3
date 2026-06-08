@@ -86,10 +86,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
-  const today = format(new Date(), 'yyyy-MM-dd');
   const userTimezone = user.timezone || 'America/Los_Angeles';
-  const localTime = new Date().toLocaleTimeString('en-US', { timeZone: userTimezone, hour: 'numeric', minute: '2-digit', hour12: true });
-  const localHour = parseInt(new Date().toLocaleString('en-US', { timeZone: userTimezone, hour: 'numeric', hour12: false }));
+  const now = new Date();
+  // Compute "today" in the USER's timezone, not the server's (Railway runs UTC). Otherwise a
+  // late-evening call rolls the date forward and tomorrow's events get briefed as today's.
+  const today = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
+  const todayLabel = now.toLocaleDateString('en-US', { timeZone: userTimezone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const localTime = now.toLocaleTimeString('en-US', { timeZone: userTimezone, hour: 'numeric', minute: '2-digit', hour12: true });
+  const localHour = parseInt(now.toLocaleString('en-US', { timeZone: userTimezone, hour: 'numeric', hour12: false }));
   const greeting = localHour >= 18 ? 'Good evening' : localHour >= 12 ? 'Good afternoon' : 'Good morning';
   const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
 
@@ -172,7 +176,7 @@ IMPORTANT — CALENDAR CAPABILITIES: You can read, create, edit, move, and delet
 IMPORTANT: The user's name is ${user.name.split(' ')[0]} — always address them by this name and no other.
 IMPORTANT: The product is spelled "Edg3" but should be pronounced "Edge" — always write it as "Edge" in the text so it is spoken correctly.`;
 
-  const userPrompt = `Generate today's (${format(new Date(), 'EEEE, MMMM d, yyyy')}) morning briefing for ${user.name}.
+  const userPrompt = `Generate today's (${todayLabel}) morning briefing for ${user.name}.
 
 USER PROFILE:
 ${user.profile_summary || 'No profile summary available.'}
