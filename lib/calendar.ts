@@ -790,7 +790,8 @@ export function getFreeTimeSlots(events: calendar_v3.Schema$Event[], timezone: s
     };
     const dayStart = localToUtc(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`);
     const dayEnd = localToUtc(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`);
-    let cursor = dayStart.getTime();
+    // For today, never offer slots that have already passed — start from the current moment.
+    let cursor = d === 0 ? Math.max(dayStart.getTime(), Date.now()) : dayStart.getTime();
 
     for (const ev of dayEvents) {
       const evStart = ev.start!.getTime();

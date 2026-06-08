@@ -72,6 +72,7 @@ ${isOpenCall ? `This is an open conversation that ${userName} requested — ther
 
 DATE & TIME REFERENCE — user's timezone: ${userTimezone}, current time: ${pad(userHour)}:${pad(userTzNow.getMinutes())}
 Always use these exact YYYY-MM-DD dates in tool calls. Never calculate dates yourself.
+When the user says a relative day ("tomorrow", "tonight", "this weekend"), map it to the matching date in the list above and pass THAT exact date. Never add or subtract days based on surrounding context (e.g. do not shift "tomorrow" to a later day just because it follows an event). "Tomorrow" is always the Tomorrow date listed above.
 
 - Today (${dayNames[userDay]}): ${todayStr}
 - Tomorrow (${dayNames[(userDay+1)%7]}): ${tomorrowStr}
