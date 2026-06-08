@@ -1027,6 +1027,30 @@ export default function Dashboard() {
                               );
                             } catch { return null; }
                           })()}
+
+                          {b.tool_actions && (() => {
+                            try {
+                              const actions = JSON.parse(b.tool_actions);
+                              if (!actions.length) return null;
+                              return (
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: '#818cf8' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
+                                  <div className="space-y-1.5">
+                                    {actions.map((a: { fn: string; args?: { title?: string; sourceDate?: string; date?: string }; result?: string; ok?: boolean }, i: number) => (
+                                      <div key={i} className="text-xs flex items-start gap-2" style={{ color: '#c8c8d8' }}>
+                                        <span style={{ color: a.ok ? '#4ade80' : '#f59e0b' }}>{a.ok ? '✓' : '⚠'}</span>
+                                        <span>
+                                          <span style={{ color: '#818cf8' }}>{a.fn}</span>
+                                          {a.args?.title ? ` — ${a.args.title}` : a.args?.sourceDate ? ` — from ${a.args.sourceDate}` : ''}
+                                          {a.result && <span style={{ color: '#888899' }}> · {a.result}</span>}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } catch { return null; }
+                          })()}
                         </div>
                       )}
                     </div>

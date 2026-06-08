@@ -77,6 +77,21 @@ function friendlyError(err: unknown): string {
   return "Something went wrong — you'll need to make that change manually in your calendar.";
 }
 
+// Result strings that indicate the action did NOT succeed (used for the activity log status).
+// Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
+const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day)/i;
+
+// Write-confirmation: re-read an event by id to verify the write actually persisted.
+async function confirmExists(cal: calendar_v3.Calendar, calId: string, eventId: string | null | undefined): Promise<boolean> {
+  if (!eventId) return false;
+  try {
+    const e = await cal.events.get({ calendarId: calId, eventId });
+    return !!e.data?.id && e.data.status !== 'cancelled';
+  } catch {
+    return false;
+  }
+}
+
 interface ToolContext {
   cal: calendar_v3.Calendar;
   calIds: string[];
@@ -121,10 +136,12 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     if (allDay) {
       const dateOnly = (startDateTime || endDateTime || '').slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return "I didn't catch the date for that all-day event — what day is it?";
-      await cal.events.insert({ calendarId: 'primary', requestBody: {
+      const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: dateOnly }, end: { date: nextDay(dateOnly) }, colorId: color ? getColorId(color) : '9',
       } });
-      return `Created all-day "${title}" on ${dateOnly}.`;
+      return (await confirmExists(cal, 'primary', insAllDay.data.id))
+        ? `Created and confirmed all-day "${title}" on ${dateOnly}.`
+        : `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
     }
 
     if (startDateTime && !startDateTime.includes('T')) {
@@ -155,8 +172,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       }
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
-    await cal.events.insert({ calendarId: 'primary', requestBody: rb });
-    return `Created "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events as requested)' : ''}.`;
+    const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
+    if (!(await confirmExists(cal, 'primary', insTimed.data.id))) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
+    return `Created and confirmed "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
@@ -212,8 +230,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const eventId = (recurringScope === 'all' && found.event.recurringEventId) ? found.event.recurringEventId : found.event.id!;
     const rb: calendar_v3.Schema$Event = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
     if (found.event.colorId) rb.colorId = found.event.colorId;
-    await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb });
-    return `Moved "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
+    const patched = await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb });
+    if (!(await confirmExists(cal, found.calId, patched.data.id))) return `Couldn't confirm the move of "${found.event.summary}" — please double-check your calendar.`;
+    return `Moved and confirmed "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
 
   } else if (fn === 'colorEvent') {
     const { title, date, color } = args as { title: string; date: string; color: string };
@@ -378,29 +397,32 @@ export async function POST(req: NextRequest) {
     const results: { toolCallId: string | null; result: string }[] = [];
     for (const tc of calls) {
       let result: string;
+      let ok = true;
       if (ctxError) {
         result = ctxError;
+        ok = false;
       } else {
         try {
           console.log(`[tool-call] ${tc.name}(${JSON.stringify(tc.args)}) user=${briefing.user_id}`);
           result = await executeTool(tc.name, tc.args, ctx!);
+          if (FAILURE_RE.test(result)) ok = false;
         } catch (err) {
           console.error(`[tool-call] ${tc.name} failed:`, err);
           result = friendlyError(err);
+          ok = false;
         }
       }
-      console.log(`[tool-call] Result: ${result}`);
+      console.log(`[tool-call] Result (ok=${ok}): ${result}`);
       results.push({ toolCallId: tc.id, result });
 
-      // Append to tool_actions log on the briefing (skip errors)
-      if (result && !result.startsWith('Error:')) {
-        try {
-          const existing = db.prepare('SELECT tool_actions FROM briefings WHERE id = ?').get(briefing.id) as { tool_actions: string | null } | undefined;
-          const actions = existing?.tool_actions ? JSON.parse(existing.tool_actions) : [];
-          actions.push({ fn: tc.name, args: tc.args, result, ts: new Date().toISOString() });
-          db.prepare('UPDATE briefings SET tool_actions = ? WHERE id = ?').run(JSON.stringify(actions), briefing.id);
-        } catch (_e) { /* non-critical */ }
-      }
+      // Activity log: record EVERY action (successes and failures) so it's visible on the
+      // dashboard without having to pull call transcripts. Keep the last 50 per briefing.
+      try {
+        const existing = db.prepare('SELECT tool_actions FROM briefings WHERE id = ?').get(briefing.id) as { tool_actions: string | null } | undefined;
+        const actions = existing?.tool_actions ? JSON.parse(existing.tool_actions) : [];
+        actions.push({ fn: tc.name, args: tc.args, result, ok, ts: new Date().toISOString() });
+        db.prepare('UPDATE briefings SET tool_actions = ? WHERE id = ?').run(JSON.stringify(actions.slice(-50)), briefing.id);
+      } catch (_e) { /* non-critical */ }
     }
 
     return NextResponse.json(
