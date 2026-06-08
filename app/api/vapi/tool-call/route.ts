@@ -53,9 +53,12 @@ async function getCalIds(cal: calendar_v3.Calendar): Promise<string[]> {
 
 function normTitle(s: string) { return s.replace(/^⚡\s*/, '').toLowerCase().replace(/\s+/g, '').trim(); }
 
-async function findEv(cal: calendar_v3.Calendar, calIds: string[], title: string, date: string) {
-  const tMin = new Date(`${date}T00:00:00Z`).toISOString();
-  const tMax = new Date(`${date}T23:59:59Z`).toISOString();
+async function findEv(cal: calendar_v3.Calendar, calIds: string[], title: string, date: string, tz: string) {
+  // Use the user's local day window, not UTC — a late-evening event (e.g. 8:35pm ET) lands on
+  // the next UTC day, so a UTC "June 25" lookup would miss it.
+  const { start, end } = dayRangeUtc(tz, date);
+  const tMin = start.toISOString();
+  const tMax = end.toISOString();
   const tn = normTitle(title);
   for (const calId of calIds) {
     const res = await cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
@@ -78,17 +81,20 @@ interface ToolContext {
   cal: calendar_v3.Calendar;
   calIds: string[];
   userId: number;
+  tz: string;
 }
 
 // Execute a single tool call and return the human-readable result string.
 async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
-  const { cal, calIds, userId } = ctx;
+  const { cal, calIds, userId, tz } = ctx;
 
   if (fn === 'readCalendar') {
     const { startDate, endDate } = args as { startDate: string; endDate: string };
     const events: calendar_v3.Schema$Event[] = [];
+    const rcMin = dayRangeUtc(tz, startDate).start.toISOString();
+    const rcMax = dayRangeUtc(tz, endDate).end.toISOString();
     for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: new Date(`${startDate}T00:00:00Z`).toISOString(), timeMax: new Date(`${endDate}T23:59:59Z`).toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 50 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+      const res = await cal.events.list({ calendarId: calId, timeMin: rcMin, timeMax: rcMax, singleEvents: true, orderBy: 'startTime', maxResults: 50 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
       events.push(...(res.data.items ?? []));
     }
     events.sort((a, b) => (a.start?.dateTime ?? a.start?.date ?? '').localeCompare(b.start?.dateTime ?? b.start?.date ?? ''));
@@ -169,8 +175,10 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const { title, date, deleteAll, recurringScope } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all' };
     const deleted: string[] = [];
     let prompt = '';
+    const delMin = dayRangeUtc(tz, date).start.toISOString();
+    const delMax = dayRangeUtc(tz, date).end.toISOString();
     for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: new Date(`${date}T00:00:00Z`).toISOString(), timeMax: new Date(`${date}T23:59:59Z`).toISOString(), singleEvents: true, showHiddenInvitations: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+      const res = await cal.events.list({ calendarId: calId, timeMin: delMin, timeMax: delMax, singleEvents: true, showHiddenInvitations: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
       const tn = normTitle(title);
       const matches = (res.data.items ?? []).filter(e => normTitle(e.summary ?? '').includes(tn) || tn.includes(normTitle(e.summary ?? '')));
       for (const ev of (deleteAll ? matches : matches.slice(0, 1))) {
@@ -196,7 +204,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
 
   } else if (fn === 'moveEvent') {
     const { title, date, newStartDateTime, newEndDateTime, timezone, recurringScope } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; timezone: string; recurringScope?: 'this' | 'all' };
-    const found = await findEv(cal, calIds, title, date);
+    const found = await findEv(cal, calIds, title, date, tz);
     if (!found) return `No event matching "${title}" on ${date}.`;
     if (found.event.recurringEventId && !recurringScope) {
       return `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
@@ -211,9 +219,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const { title, date, color } = args as { title: string; date: string; color: string };
     const colorId = getColorId(color);
     let count = 0;
+    const tMin = date === 'all' ? new Date().toISOString() : dayRangeUtc(tz, date).start.toISOString();
+    const tMax = date === 'all' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : dayRangeUtc(tz, date).end.toISOString();
     for (const calId of calIds) {
-      const tMin = date === 'all' ? new Date().toISOString() : new Date(`${date}T00:00:00Z`).toISOString();
-      const tMax = date === 'all' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : new Date(`${date}T23:59:59Z`).toISOString();
       const res = await cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 100 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
       const tn = normTitle(title);
       for (const ev of (res.data.items ?? []).filter(e => normTitle(e.summary ?? '').includes(tn) || tn.includes(normTitle(e.summary ?? '')))) {
@@ -361,7 +369,8 @@ export async function POST(req: NextRequest) {
     try {
       const cal = await getCalClient(briefing.user_id);
       const calIds = await getCalIds(cal);
-      ctx = { cal, calIds, userId: briefing.user_id };
+      const tz = effectiveTimezone(userQueries.findById(briefing.user_id) ?? {});
+      ctx = { cal, calIds, userId: briefing.user_id, tz };
     } catch (err) {
       ctxError = friendlyError(err);
     }
