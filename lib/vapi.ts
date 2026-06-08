@@ -19,6 +19,14 @@ const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 
+// Public URL Vapi calls back when a call starts/ends. Must be a real https domain —
+// a localhost value (e.g. in local dev) is unreachable by Vapi, so fall back to prod.
+function resolveWebhookUrl(): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+  const base = appUrl.startsWith('https://') ? appUrl : 'https://www.edg3.ai';
+  return `${base.replace(/\/$/, '')}/api/vapi/webhook`;
+}
+
 export async function initiateCall(
   phoneNumber: string,
   briefingContent: string,
@@ -114,6 +122,9 @@ Always end with warmth and encouragement. This person is building something — 
     },
     assistant: VAPI_ASSISTANT_ID ? undefined : {
       name: 'EDG3',
+      server: {
+        url: resolveWebhookUrl(),
+      },
       voice: {
         provider: '11labs',
         voiceId: '3WqHLnw80rOZqJzW9YRB', // Daniel

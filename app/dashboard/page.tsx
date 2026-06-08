@@ -167,20 +167,25 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   );
 }
 
-function TasksTab({ tasks, onToggle, onAdd, onDelete }: {
+function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
   tasks: Task[];
   onToggle: (id: number, completed: boolean) => Promise<void>;
   onAdd: (text: string) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onCompleteAll: (ids: number[]) => Promise<void>;
 }) {
   const [newTask, setNewTask] = useState('');
   const [adding, setAdding] = useState(false);
+  const [completingAll, setCompletingAll] = useState(false);
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
   const todayTasks = tasks.filter(t => t.date === today || t.date === tomorrowStr);
   const pastTasks = tasks.filter(t => t.date < today && !t.completed);
+
+  // Every incomplete task currently shown in the list (today/tomorrow + carried over)
+  const incompleteVisible = [...todayTasks, ...pastTasks].filter(t => !t.completed);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -191,13 +196,32 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete }: {
     setAdding(false);
   }
 
+  async function handleCompleteAll() {
+    if (!incompleteVisible.length || completingAll) return;
+    setCompletingAll(true);
+    await onCompleteAll(incompleteVisible.map(t => t.id));
+    setCompletingAll(false);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">{todayTasks.some(t => t.date === tomorrowStr) && !todayTasks.some(t => t.date === today) ? "Tomorrow's tasks" : "Today's tasks"}</h2>
-        <span className="badge badge-info">
-          {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
-        </span>
+        <div className="flex items-center gap-3">
+          {incompleteVisible.length > 0 && (
+            <button
+              onClick={handleCompleteAll}
+              disabled={completingAll}
+              className="text-xs font-medium transition-colors"
+              style={{ color: completingAll ? '#4a4a5a' : '#10b981' }}
+            >
+              {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
+            </button>
+          )}
+          <span className="badge badge-info">
+            {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
+          </span>
+        </div>
       </div>
 
       {/* Add task */}
@@ -531,20 +555,24 @@ export default function Dashboard() {
   const [introCalling, setIntroCalling] = useState(false);
   const [showNextCallTip, setShowNextCallTip] = useState(() => isWelcome);
   const [reminderAdded, setReminderAdded] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes] = await Promise.all([
+    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes] = await Promise.all([
       fetch('/api/auth/me'),
       fetch('/api/briefing/history'),
       fetch('/api/onboarding/priorities'),
       fetch('/api/memory'),
       fetch('/api/tasks'),
+      fetch('/api/calendar/status'),
     ]);
 
     if (!meRes.ok) { router.push('/login'); return; }
 
-    const [me, br, pr, mem, tk] = await Promise.all([
-      meRes.json(), briefingsRes.json(), prioritiesRes.json(), memoriesRes.json(), tasksRes.json()
+    const [me, br, pr, mem, tk, cal] = await Promise.all([
+      meRes.json(), briefingsRes.json(), prioritiesRes.json(), memoriesRes.json(), tasksRes.json(),
+      calendarRes.ok ? calendarRes.json() : Promise.resolve({ connected: false }),
     ]);
 
     setUser(me);
@@ -552,6 +580,7 @@ export default function Dashboard() {
     setPriorities(pr.priorities || []);
     setMemories(mem.memories || []);
     setTasks(tk.tasks || []);
+    setCalendarConnected(!!cal.connected);
   }, [router]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -606,6 +635,25 @@ export default function Dashboard() {
       body: JSON.stringify({ content: text }),
     });
     loadData();
+  }
+
+  async function connectCalendar() {
+    const res = await fetch('/api/calendar/connect');
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  }
+
+  async function disconnectCalendar() {
+    if (!confirm('Disconnect your Google Calendar? Edg3 will stop reading your schedule and can no longer add or change calendar events until you reconnect.')) return;
+    setDisconnectingCalendar(true);
+    const res = await fetch('/api/calendar/disconnect', { method: 'POST' });
+    setDisconnectingCalendar(false);
+    if (res.ok) {
+      setCalendarConnected(false);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to disconnect calendar');
+    }
   }
 
   if (!user) {
@@ -709,17 +757,39 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-            <button
-              onClick={async () => {
-                const res = await fetch('/api/calendar/connect');
-                const data = await res.json();
-                if (data.url) window.location.href = data.url;
-              }}
-              className="w-full text-xs py-2 text-left px-2 rounded"
-              style={{ color: '#4a4a5a' }}
-            >
-              📅 Reconnect calendar
-            </button>
+            {calendarConnected === false ? (
+              <button
+                onClick={connectCalendar}
+                className="w-full text-xs py-2 text-left px-2 rounded"
+                style={{ color: '#4a4a5a' }}
+              >
+                📅 Connect calendar
+              </button>
+            ) : calendarConnected ? (
+              <div className="px-2 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span style={{ color: '#10b981', fontSize: 11 }}>●</span>
+                  <p className="text-xs" style={{ color: '#888899' }}>Calendar connected</p>
+                </div>
+                <div className="flex items-center gap-3 pl-3.5">
+                  <button
+                    onClick={connectCalendar}
+                    className="text-xs"
+                    style={{ color: '#4a4a5a' }}
+                  >
+                    Reconnect
+                  </button>
+                  <button
+                    onClick={disconnectCalendar}
+                    disabled={disconnectingCalendar}
+                    className="text-xs"
+                    style={{ color: '#ef4444' }}
+                  >
+                    {disconnectingCalendar ? 'Disconnecting…' : 'Disconnect'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {briefings.length === 0 && (
               <button
                 onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
@@ -911,6 +981,13 @@ export default function Dashboard() {
               loadData();
             }} onDelete={async (id) => {
               await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+              loadData();
+            }} onCompleteAll={async (ids) => {
+              await fetch('/api/tasks/complete-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids }),
+              });
               loadData();
             }} />
           )}

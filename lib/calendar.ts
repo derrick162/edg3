@@ -30,6 +30,24 @@ export async function exchangeCode(code: string) {
   return tokens;
 }
 
+// Disconnect a user's Google Calendar: revoke the grant at Google, then delete the
+// stored tokens. Best-effort on the Google side — even if revoke fails (e.g. token
+// already expired), we always remove the local tokens so the app treats it as disconnected.
+export async function disconnectCalendar(userId: number): Promise<void> {
+  const tokenRow = calendarQueries.get(userId);
+  if (tokenRow) {
+    const tokenToRevoke = tokenRow.refresh_token || tokenRow.access_token;
+    if (tokenToRevoke) {
+      try {
+        await getOAuthClient().revokeToken(tokenToRevoke);
+      } catch (err) {
+        console.error(`[calendar] Google token revoke failed for user ${userId} (deleting locally anyway):`, err);
+      }
+    }
+  }
+  calendarQueries.delete(userId);
+}
+
 export async function getCalendarEvents(userId: number) {
   const tokenRow = calendarQueries.get(userId);
   if (!tokenRow) return [];

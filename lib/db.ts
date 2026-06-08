@@ -264,6 +264,9 @@ export const calendarQueries = {
   get: (userId: number) => {
     return getDb().prepare('SELECT * FROM calendar_tokens WHERE user_id = ?').get(userId) as CalendarToken | undefined;
   },
+  delete: (userId: number) => {
+    return getDb().prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
+  },
 };
 
 // Task queries
@@ -291,6 +294,19 @@ export const taskQueries = {
     return getDb().prepare(
       "UPDATE tasks SET completed = 1, completed_at = datetime('now') WHERE id = ? AND user_id = ?"
     ).run(id, userId);
+  },
+  completeMany: (ids: number[], userId: number) => {
+    if (!ids.length) return 0;
+    const db = getDb();
+    const stmt = db.prepare(
+      "UPDATE tasks SET completed = 1, completed_at = datetime('now') WHERE id = ? AND user_id = ? AND completed = 0"
+    );
+    const tx = db.transaction((taskIds: number[]) => {
+      let changes = 0;
+      for (const id of taskIds) changes += stmt.run(id, userId).changes;
+      return changes;
+    });
+    return tx(ids) as number;
   },
   uncomplete: (id: number, userId: number) => {
     return getDb().prepare(
