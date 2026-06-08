@@ -148,6 +148,12 @@ Always end with warmth and encouragement. This person is building something — 
       },
       firstMessage: briefingContent,
       endCallMessage: "Understood. I'll factor that into tomorrow's briefing. Have a focused day.",
+      // Noise/interruption tuning: require ~2 transcribed words (not raw voice-activity
+      // detection) before Edge stops talking, and denoise the caller's audio — so a cough,
+      // a door, or background chatter no longer cuts him off mid-sentence.
+      backgroundDenoisingEnabled: true,
+      backgroundSound: 'off',
+      stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
       silenceTimeoutSeconds: 30,
       maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
