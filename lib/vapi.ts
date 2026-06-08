@@ -33,7 +33,8 @@ export async function initiateCall(
   userName: string,
   isFirstCall: boolean = false,
   userTimezone: string = 'America/Vancouver',
-  isOpenCall: boolean = false
+  isOpenCall: boolean = false,
+  prioritiesText: string = ''
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
@@ -69,10 +70,12 @@ export async function initiateCall(
 
   const systemPrompt = `You are Edge — the Elite Daily Guidance Engine — an AI Chief of Staff for ${userName}. IMPORTANT: The user's name is ${userName} — never call them by any other name under any circumstances. If asked who you are, say "I'm Edge, your Elite Daily Guidance Engine."
 ${isOpenCall ? `This is an open conversation that ${userName} requested — there is NO daily briefing on this call. You have just greeted them. Do NOT deliver a briefing or recap their day unless they explicitly ask. Have a natural, warm, helpful conversation: find out what is on their mind and help with whatever comes up — calendar changes, thinking through priorities, or just talking it through.` : `You already delivered the briefing as your first message. Do not repeat it. Now wait for the user to respond.`}
+${prioritiesText ? `\n${userName}'S CURRENT TOP PRIORITIES (you ALREADY know these — never ask them to repeat their priorities; if they say "same as my current priorities" or similar, use exactly these):\n${prioritiesText}\n` : ''}
 
 DATE & TIME REFERENCE — user's timezone: ${userTimezone}, current time: ${pad(userHour)}:${pad(userTzNow.getMinutes())}
 Always use these exact YYYY-MM-DD dates in tool calls. Never calculate dates yourself.
 When the user says a relative day ("tomorrow", "tonight", "this weekend"), map it to the matching date in the list above and pass THAT exact date. Never add or subtract days based on surrounding context (e.g. do not shift "tomorrow" to a later day just because it follows an event). "Tomorrow" is always the Tomorrow date listed above.
+When the user names a future week ("next week", "the week of June fifteenth"), book into THAT week — use that week's Monday as the start (the Next week dates above for "next week"), never the current week. Double-check the month and day before booking a multi-day or week plan.
 
 - Today (${dayNames[userDay]}): ${todayStr}
 - Tomorrow (${dayNames[(userDay+1)%7]}): ${tomorrowStr}

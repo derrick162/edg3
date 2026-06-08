@@ -229,7 +229,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     if (!user) return 'User not found';
     const { format, startOfWeek } = await import('date-fns');
     const weekOf = format(startOfWeek(new Date(weekStartDate)), 'yyyy-MM-dd');
-    const priorities = priorityQueries.getThisWeek(userId, weekOf);
+    let priorities = priorityQueries.getThisWeek(userId, weekOf);
+    if (!priorities.length) priorities = priorityQueries.getMostRecent(userId); // carry over "same as current"
     const priorityText = priorities.map((p, i) => `${i + 1}. ${(p as { text: string }).text}`).join(', ') || 'No priorities set';
     const weekEnd = new Date(weekStartDate);
     weekEnd.setDate(weekEnd.getDate() + 6);

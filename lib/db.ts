@@ -154,6 +154,13 @@ export const priorityQueries = {
       'SELECT * FROM priorities WHERE user_id = ? AND week_of = ? ORDER BY rank'
     ).all(userId, weekOf) as Priority[];
   },
+  // The user's most recently set priorities (any week) — used as a carry-over fallback
+  // when a target week has none, so "same as my current priorities" works.
+  getMostRecent: (userId: number) => {
+    return getDb().prepare(
+      'SELECT * FROM priorities WHERE user_id = ? AND week_of = (SELECT MAX(week_of) FROM priorities WHERE user_id = ?) ORDER BY rank'
+    ).all(userId, userId) as Priority[];
+  },
   deleteThisWeek: (userId: number, weekOf: string) => {
     return getDb().prepare('DELETE FROM priorities WHERE user_id = ? AND week_of = ?').run(userId, weekOf);
   },

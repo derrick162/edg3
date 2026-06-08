@@ -1,9 +1,17 @@
 import cron from 'node-cron';
 import { format } from 'date-fns';
 import { getDb } from './db';
-import { generateDailyBriefing } from './briefing';
+import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
-import { briefingQueries, userQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, effectiveTimezone, User } from './db';
+
+// The user's current top priorities as prompt text — this week's, falling back to the most
+// recent set so Edge always knows them on a call (especially open calls, which have no briefing).
+function currentPrioritiesText(userId: number): string {
+  const prios = priorityQueries.getThisWeek(userId, getWeekOf());
+  const eff = prios.length ? prios : priorityQueries.getMostRecent(userId);
+  return eff.length ? eff.map((p, i) => `${i + 1}. ${p.text}`).join('\n') : '';
+}
 
 let schedulerRunning = false;
 
@@ -95,7 +103,7 @@ export async function scheduleBriefingCall(userId: number) {
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
     console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user));
+    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId));
     console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
 
     const callId = call.id;
@@ -133,7 +141,7 @@ export async function scheduleOpenCall(userId: number) {
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
     console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
-    const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true);
+    const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId));
     console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
 
     if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
