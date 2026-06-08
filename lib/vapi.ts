@@ -149,6 +149,7 @@ Always end with warmth and encouragement. This person is building something — 
           '22d56b6f-5e86-4eaf-bebf-4067d9db6005',
           '057c20b1-32ec-4956-b1cc-908b60238a90',
           '782462ad-1c4d-4c82-ac3c-02576aeb2622',
+          '44037a74-6488-4239-b354-a7075b673b6a', // copyDayEvents
         ],
       },
       firstMessage: briefingContent,

@@ -88,6 +88,13 @@ export function formatInTz(instant: Date, timeZone: string, opts: Intl.DateTimeF
   return instant.toLocaleString('en-US', { ...opts, timeZone });
 }
 
+/** The calendar date after `date` ("YYYY-MM-DD"). Used for all-day events, whose end date is exclusive. */
+export function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * RRULE UNTIL value (UTC, "YYYYMMDDTHHMMSSZ") for the END of `endDate` in `timeZone`.
  * Using end-of-day keeps the final day inclusive — a bare-date UNTIL (midnight) drops the

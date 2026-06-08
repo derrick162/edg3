@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc } from '@/lib/calendar';
-import { rruleUntilUtc } from '@/lib/time';
+import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc } from '@/lib/time';
+import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
@@ -107,7 +108,19 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title, timezone, color, overrideConflicts } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean };
+    const { title, timezone, color, overrideConflicts, allDay } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean };
+    if (!title) return "I didn't catch what to call that event — what's the title?";
+
+    // All-day event: date-only start/end (Google's end date is exclusive, so the next day).
+    if (allDay) {
+      const dateOnly = (startDateTime || endDateTime || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return "I didn't catch the date for that all-day event — what day is it?";
+      await cal.events.insert({ calendarId: 'primary', requestBody: {
+        summary: `⚡ ${title}`, start: { date: dateOnly }, end: { date: nextDay(dateOnly) }, colorId: color ? getColorId(color) : '9',
+      } });
+      return `Created all-day "${title}" on ${dateOnly}.`;
+    }
+
     if (startDateTime && !startDateTime.includes('T')) {
       const date = new Date().toLocaleDateString('en-CA');
       startDateTime = `${date}T${resolveNaturalTime(startDateTime)}:00`;
@@ -116,6 +129,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
         endDateTime = `${date}T${String(h + 1).padStart(2, '0')}:00:00`;
       }
     }
+    if (!startDateTime || !endDateTime) return "I didn't catch the time for that event — when should it be?";
     // Skip the conflict check when the user has explicitly asked to book over existing events.
     if (!overrideConflicts) {
       const conflicts: string[] = [];
@@ -242,6 +256,45 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       } catch (_e) { /* skip conflicts */ }
     }
     return created.length ? `Planned your week! Added: ${created.join(', ')}. Priorities: ${priorityText}.` : 'Week fully packed — no free slots.';
+
+  } else if (fn === 'copyDayEvents') {
+    // Replicate all timed events from one day onto one or more other days, preserving the
+    // wall-clock time of each event. One reliable call instead of many individual createEvents.
+    const { sourceDate, targetDates } = args as { sourceDate: string; targetDates: string[] };
+    if (!sourceDate || !Array.isArray(targetDates) || !targetDates.length) {
+      return 'I need the day to copy from and the day(s) to copy to.';
+    }
+    const userTz = effectiveTimezone(userQueries.findById(userId) ?? {});
+    const { start: sMin, end: sMax } = dayRangeUtc(userTz, sourceDate);
+    const src: calendar_v3.Schema$Event[] = [];
+    for (const calId of calIds) {
+      const res = await cal.events.list({ calendarId: calId, timeMin: sMin.toISOString(), timeMax: sMax.toISOString(), singleEvents: true, orderBy: 'startTime' }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+      for (const e of (res.data.items ?? [])) {
+        if (e.start?.dateTime && e.end?.dateTime) src.push(e); // timed events only (skip all-day)
+      }
+    }
+    if (!src.length) return `No timed events found on ${sourceDate} to copy.`;
+
+    let created = 0;
+    const titles = new Set<string>();
+    for (const target of targetDates) {
+      for (const ev of src) {
+        const evTz = ev.start!.timeZone || userTz;
+        const startWall = ev.start!.dateTime!.slice(11, 19); // HH:MM:SS in the event's local time
+        const durMs = new Date(ev.end!.dateTime!).getTime() - new Date(ev.start!.dateTime!).getTime();
+        const newStart = wallTimeToUtc(`${target}T${startWall}`, evTz);
+        const newEnd = new Date(newStart.getTime() + durMs);
+        await cal.events.insert({ calendarId: 'primary', requestBody: {
+          summary: ev.summary || '⚡ Event',
+          start: { dateTime: newStart.toISOString() },
+          end: { dateTime: newEnd.toISOString() },
+          colorId: ev.colorId || undefined,
+        } }).then(() => { created++; titles.add((ev.summary || '').replace(/^⚡\s*/, '')); }).catch(() => undefined);
+      }
+    }
+    return created
+      ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
+      : `Couldn't copy events from ${sourceDate}.`;
   }
 
   return `Error: unknown tool "${fn}"`;

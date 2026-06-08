@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -90,6 +90,14 @@ describe('rruleUntilUtc — "Tuesday to Thursday" must include Thursday', () => 
   });
   it('Pacific end date', () => {
     expect(rruleUntilUtc('2026-06-11', LA)).toBe('20260612T065959Z'); // 23:59:59 PDT
+  });
+});
+
+describe('nextDay', () => {
+  it('advances one day, incl. month and year rollovers', () => {
+    expect(nextDay('2026-06-15')).toBe('2026-06-16');
+    expect(nextDay('2026-06-30')).toBe('2026-07-01');
+    expect(nextDay('2026-12-31')).toBe('2027-01-01');
   });
 });
 
