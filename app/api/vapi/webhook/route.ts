@@ -213,17 +213,13 @@ Transcript: ${transcript.slice(0, 1000)}`,
     }],
   });
   const tz = result.content[0].type === 'text' ? result.content[0].text.trim() : 'none';
-  const { memoryQueries, getDb } = await import('@/lib/db');
-  const db = getDb();
+  const { userQueries } = await import('@/lib/db');
   if (tz === 'home') {
-    // Clear all travel timezone memories
-    db.prepare("DELETE FROM memories WHERE user_id = ? AND content LIKE '%TRAVEL TIMEZONE%'").run(userId);
+    userQueries.setCurrentTimezone(userId, null);
     console.log(`[webhook] Travel timezone cleared — user is back home`);
   } else if (tz && tz !== 'none' && tz.includes('/')) {
-    // Clear old travel timezone then save new one
-    db.prepare("DELETE FROM memories WHERE user_id = ? AND content LIKE '%TRAVEL TIMEZONE%'").run(userId);
-    memoryQueries.create(userId, 'calendar_note', `[TRAVEL TIMEZONE] User is currently in timezone: ${tz}. Use this for all calendar bookings until further notice.`);
-    console.log(`[webhook] Travel timezone detected and saved: ${tz}`);
+    userQueries.setCurrentTimezone(userId, tz);
+    console.log(`[webhook] Current timezone set to ${tz}`);
   }
 }
 

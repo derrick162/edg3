@@ -1,29 +1,10 @@
 import { google, calendar_v3 } from 'googleapis';
 import { calendarQueries, userQueries } from './db';
+import { wallTimeToUtc, dayRangeUtc } from './time';
 
-// Convert a wall-clock local datetime ("YYYY-MM-DDTHH:MM:SS", no offset) in an IANA timezone
-// to the correct UTC instant. Lets us build day windows in the USER's timezone instead of the
-// server's (Railway runs UTC) — otherwise a late-evening call rolls the date forward and
-// tomorrow's events look like today's.
-export function zonedWallTimeToUtc(localDateTime: string, timeZone: string): Date {
-  const guess = new Date(`${localDateTime}Z`);
-  if (isNaN(guess.getTime())) return new Date(localDateTime);
-  const offsetAt = (instant: Date): number => {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone, hourCycle: 'h23',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    }).formatToParts(instant);
-    const m: Record<string, number> = {};
-    for (const p of parts) if (p.type !== 'literal') m[p.type] = Number(p.value);
-    return Date.UTC(m.year, m.month - 1, m.day, m.hour, m.minute, m.second) - instant.getTime();
-  };
-  const offset = offsetAt(guess);
-  let utc = new Date(guess.getTime() - offset);
-  const offset2 = offsetAt(utc); // refine across a possible DST boundary
-  if (offset2 !== offset) utc = new Date(guess.getTime() - offset2);
-  return utc;
-}
+// Re-exported under its historical name for existing importers (the Vapi tool-call route).
+// The single implementation now lives in lib/time.ts.
+export const zonedWallTimeToUtc = wallTimeToUtc;
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
@@ -100,9 +81,7 @@ export async function getCalendarEvents(userId: number) {
   // Compute "today" in the user's timezone (not the server's UTC), so an evening call
   // doesn't pull tomorrow's early events into today's briefing.
   const tz = userQueries.findById(userId)?.timezone || 'America/Los_Angeles';
-  const localDate = new Date().toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
-  const startOfDay = zonedWallTimeToUtc(`${localDate}T00:00:00`, tz);
-  const endOfDay = zonedWallTimeToUtc(`${localDate}T23:59:59`, tz);
+  const { start: startOfDay, end: endOfDay } = dayRangeUtc(tz);
 
   // Fetch from all calendars
   const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
@@ -781,15 +760,9 @@ export function getFreeTimeSlots(events: calendar_v3.Schema$Event[], timezone: s
       .filter(e => e.start && e.end)
       .sort((a, b) => a.start!.getTime() - b.start!.getTime());
 
-    // Find gaps — convert local workday boundaries to UTC using timezone
-    const localToUtc = (localStr: string) => {
-      const asIfUtc = new Date(localStr + 'Z');
-      const localDisplay = asIfUtc.toLocaleString('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '').replace(' ', 'T');
-      const localAsUtc = new Date(localDisplay + 'Z');
-      return new Date(asIfUtc.getTime() + (asIfUtc.getTime() - localAsUtc.getTime()));
-    };
-    const dayStart = localToUtc(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`);
-    const dayEnd = localToUtc(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`);
+    // Workday boundaries → UTC via the canonical helper.
+    const dayStart = wallTimeToUtc(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`, timezone);
+    const dayEnd = wallTimeToUtc(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`, timezone);
     // For today, never offer slots that have already passed — start from the current moment.
     let cursor = d === 0 ? Math.max(dayStart.getTime(), Date.now()) : dayStart.getTime();
 

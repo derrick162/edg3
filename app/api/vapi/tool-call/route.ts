@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc } from '@/lib/calendar';
+import { rruleUntilUtc } from '@/lib/time';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
@@ -139,8 +140,13 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
-    const untilDate = endDate ? endDate.replace(/-/g, '') : '';
-    const fullRrule = untilDate ? `RRULE:${recurrence};UNTIL=${untilDate}` : `RRULE:${recurrence}`;
+    // UNTIL must be a UTC instant. A bare date (UNTIL=YYYYMMDD) means midnight, which drops the
+    // last day's occurrence (e.g. a 10am event on the end date). Use end-of-day in the event's
+    // timezone so the final day is inclusive — "Tuesday to Thursday" books all three days.
+    let fullRrule = `RRULE:${recurrence}`;
+    if (endDate) {
+      fullRrule = `RRULE:${recurrence};UNTIL=${rruleUntilUtc(endDate, timezone || 'America/Vancouver')}`;
+    }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
     await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;

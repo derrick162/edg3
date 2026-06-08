@@ -34,6 +34,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  const [currentTimezone, setCurrentTimezone] = useState(''); // '' = home (no override)
+  const [savingTz, setSavingTz] = useState(false);
+
   useEffect(() => {
     fetch('/api/profile')
       .then(r => r.json())
@@ -41,9 +44,22 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         setProfile(d.profile_summary || '');
         if (d.call_time) setCallTime(d.call_time);
         if (d.timezone) setTimezone(d.timezone);
+        setCurrentTimezone(d.current_timezone || '');
         setLoading(false);
       });
   }, []);
+
+  async function saveCurrentTimezone(tz: string) {
+    setSavingTz(true);
+    setCurrentTimezone(tz);
+    await fetch('/api/profile/timezone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_timezone: tz || null }),
+    });
+    setSavingTz(false);
+    onSettingsSaved?.();
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -112,6 +128,39 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             {settingsSaved && <span className="text-sm" style={{ color: '#10b981' }}>✓ Saved</span>}
           </div>
         </form>
+      </div>
+
+      {/* Traveling this week */}
+      <div>
+        <h2 className="text-lg font-bold mb-1">Traveling this week?</h2>
+        <p className="text-sm mb-4" style={{ color: '#888899' }}>
+          Set the timezone you're currently in. Edge uses it for your briefings and bookings until you clear it.
+        </p>
+        <div className="glass-card p-6">
+          {currentTimezone ? (
+            <div className="flex items-center gap-3 flex-wrap mb-4">
+              <span className="badge badge-info">📍 Currently in {TIMEZONES.find(t => t.value === currentTimezone)?.label || currentTimezone}</span>
+              <button onClick={() => saveCurrentTimezone('')} disabled={savingTz} className="text-xs" style={{ color: '#ef4444' }}>
+                {savingTz ? 'Saving…' : "Clear — I'm home"}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm mb-4" style={{ color: '#888899' }}>Using your home timezone.</p>
+          )}
+          <label className="block text-xs mb-1" style={{ color: '#888899' }}>I'm currently in</label>
+          <select
+            className="input"
+            style={{ background: '#1a1a2e', color: '#e8e8f0', maxWidth: 360 }}
+            value={currentTimezone}
+            onChange={e => saveCurrentTimezone(e.target.value)}
+            disabled={savingTz}
+          >
+            <option value="" style={{ background: '#1a1a2e', color: '#e8e8f0' }}>Home ({TIMEZONES.find(t => t.value === timezone)?.label || timezone})</option>
+            {TIMEZONES.map(tz => (
+              <option key={tz.value} value={tz.value} style={{ background: '#1a1a2e', color: '#e8e8f0' }}>{tz.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Profile */}

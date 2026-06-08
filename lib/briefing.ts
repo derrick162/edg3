@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, User } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, effectiveTimezone, User } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
@@ -86,7 +86,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
-  const userTimezone = user.timezone || 'America/Los_Angeles';
+  const userTimezone = effectiveTimezone(user);
   const now = new Date();
   // Compute "today" in the USER's timezone, not the server's (Railway runs UTC). Otherwise a
   // late-evening call rolls the date forward and tomorrow's events get briefed as today's.
@@ -150,13 +150,6 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const lastCallResponse = recentBriefings.find(b => b.user_response);
 
   const isFirstCall = recentMemories.length === 0;
-
-  // Check if user has a travel timezone saved in memory
-  const travelTzMemory = recentMemories.find(m => m.content?.includes('[TRAVEL TIMEZONE]'));
-  const travelTimezone = travelTzMemory
-    ? travelTzMemory.content.match(/timezone: ([^\s.]+)/)?.[1]
-    : null;
-  const effectiveTimezone = travelTimezone || userTimezone;
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.

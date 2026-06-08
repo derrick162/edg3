@@ -108,6 +108,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE briefings ADD COLUMN edge_promises TEXT",
     "ALTER TABLE briefings ADD COLUMN tool_actions TEXT",
     "ALTER TABLE users ADD COLUMN phone_number TEXT",
+    "ALTER TABLE users ADD COLUMN current_timezone TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -132,6 +133,9 @@ export const userQueries = {
   },
   updateCallTime: (id: number, callTime: string, timezone: string) => {
     return getDb().prepare('UPDATE users SET call_time = ?, timezone = ? WHERE id = ?').run(callTime, timezone, id);
+  },
+  setCurrentTimezone: (id: number, currentTimezone: string | null) => {
+    return getDb().prepare('UPDATE users SET current_timezone = ? WHERE id = ?').run(currentTimezone, id);
   },
   completeOnboarding: (id: number) => {
     return getDb().prepare('UPDATE users SET onboarding_complete = 1 WHERE id = ?').run(id);
@@ -334,7 +338,14 @@ export interface User {
   timezone: string;
   onboarding_complete: number;
   phone_number: string | null;
+  current_timezone: string | null;
   created_at: string;
+}
+
+// The timezone EDG3 should treat the user as currently in: a travel override if set,
+// otherwise their home timezone. Use this anywhere a call/briefing needs "the user's timezone".
+export function effectiveTimezone(user: { current_timezone?: string | null; timezone?: string | null }): string {
+  return user.current_timezone || user.timezone || 'America/Los_Angeles';
 }
 
 export interface Priority {

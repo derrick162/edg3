@@ -11,6 +11,7 @@ export async function GET() {
     profile_summary: fullUser?.profile_summary || '',
     call_time: fullUser?.call_time || '07:00',
     timezone: fullUser?.timezone || 'America/Vancouver',
+    current_timezone: fullUser?.current_timezone || null,
   });
 }
 

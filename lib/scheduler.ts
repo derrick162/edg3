@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing } from './briefing';
 import { initiateCall } from './vapi';
-import { briefingQueries, userQueries, User } from './db';
+import { briefingQueries, userQueries, effectiveTimezone, User } from './db';
 
 let schedulerRunning = false;
 
@@ -95,7 +95,7 @@ export async function scheduleBriefingCall(userId: number) {
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
     console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, user.timezone || 'America/Vancouver');
+    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user));
     console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
 
     const callId = call.id;
@@ -113,7 +113,7 @@ export async function scheduleOpenCall(userId: number) {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
-  const timezone = user.timezone || 'America/Vancouver';
+  const timezone = effectiveTimezone(user);
   const scheduledFor = new Date().toISOString();
 
   const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
