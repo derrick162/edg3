@@ -204,22 +204,28 @@ async function detectAndSaveTravelTimezone(userId: number, transcript: string) {
     max_tokens: 100,
     messages: [{
       role: 'user',
-      content: `Read this transcript.
-If the user mentions being BACK HOME, back in Vancouver, or returning from a trip → return "home".
-If the user mentions being in a different city/location/timezone → return the IANA timezone (e.g. "America/Toronto").
-Otherwise → return "none".
+      content: `Read this transcript. Respond with ONLY a single token — no explanation, no punctuation:
+- "home" if the user mentions being BACK HOME, back in Vancouver, or returning from a trip
+- an IANA timezone (e.g. America/Toronto) if they mention being in a different city/location/timezone
+- "none" otherwise
 Common mappings: Blue Mountain/Toronto/Ontario → America/Toronto, New York/Eastern/EST → America/New_York, London → Europe/London
 Transcript: ${transcript.slice(0, 1000)}`,
     }],
   });
-  const tz = result.content[0].type === 'text' ? result.content[0].text.trim() : 'none';
+  const raw = result.content[0].type === 'text' ? result.content[0].text.trim() : 'none';
+  // The model should return one token, but can be verbose — take the first token and validate it.
+  // Never persist a non-IANA value; current_timezone is used as a real timezone and would crash calls.
+  const token = (raw.split(/\s+/)[0] || '').replace(/['".,]/g, '');
   const { userQueries } = await import('@/lib/db');
-  if (tz === 'home') {
+  const { isValidTimeZone } = await import('@/lib/time');
+  if (token.toLowerCase() === 'home') {
     userQueries.setCurrentTimezone(userId, null);
     console.log(`[webhook] Travel timezone cleared — user is back home`);
-  } else if (tz && tz !== 'none' && tz.includes('/')) {
-    userQueries.setCurrentTimezone(userId, tz);
-    console.log(`[webhook] Current timezone set to ${tz}`);
+  } else if (isValidTimeZone(token)) {
+    userQueries.setCurrentTimezone(userId, token);
+    console.log(`[webhook] Current timezone set to ${token}`);
+  } else {
+    console.log(`[webhook] No valid travel timezone detected (got "${raw.slice(0, 40)}") — left unchanged`);
   }
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries, memoryQueries } from '@/lib/db';
+import { isValidTimeZone } from '@/lib/time';
 
 export async function GET() {
   const user = await getSession();
@@ -11,7 +12,7 @@ export async function GET() {
     profile_summary: fullUser?.profile_summary || '',
     call_time: fullUser?.call_time || '07:00',
     timezone: fullUser?.timezone || 'America/Vancouver',
-    current_timezone: fullUser?.current_timezone || null,
+    current_timezone: isValidTimeZone(fullUser?.current_timezone) ? fullUser!.current_timezone : null,
   });
 }
 

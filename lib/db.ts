@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { isValidTimeZone } from './time';
 
 // On Railway, use the mounted volume at /data. Locally, use ./data
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'edg3.db');
@@ -352,7 +353,10 @@ export interface User {
 // The timezone EDG3 should treat the user as currently in: a travel override if set,
 // otherwise their home timezone. Use this anywhere a call/briefing needs "the user's timezone".
 export function effectiveTimezone(user: { current_timezone?: string | null; timezone?: string | null }): string {
-  return user.current_timezone || user.timezone || 'America/Los_Angeles';
+  // Validate each candidate — a stale/garbage current_timezone must never crash a call.
+  if (isValidTimeZone(user.current_timezone)) return user.current_timezone!;
+  if (isValidTimeZone(user.timezone)) return user.timezone!;
+  return 'America/Los_Angeles';
 }
 
 export interface Priority {

@@ -88,6 +88,17 @@ export function formatInTz(instant: Date, timeZone: string, opts: Intl.DateTimeF
   return instant.toLocaleString('en-US', { ...opts, timeZone });
 }
 
+/** True only if `tz` is a usable IANA timezone (e.g. "America/Toronto"). Guards against garbage. */
+export function isValidTimeZone(tz: string | null | undefined): boolean {
+  if (!tz || typeof tz !== 'string' || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The calendar date after `date` ("YYYY-MM-DD"). Used for all-day events, whose end date is exclusive. */
 export function nextDay(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);

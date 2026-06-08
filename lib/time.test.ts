@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, isValidTimeZone } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -90,6 +90,23 @@ describe('rruleUntilUtc — "Tuesday to Thursday" must include Thursday', () => 
   });
   it('Pacific end date', () => {
     expect(rruleUntilUtc('2026-06-11', LA)).toBe('20260612T065959Z'); // 23:59:59 PDT
+  });
+});
+
+describe('isValidTimeZone — rejects garbage that would crash a call', () => {
+  it('accepts real IANA zones', () => {
+    expect(isValidTimeZone('America/Toronto')).toBe(true);
+    expect(isValidTimeZone('America/Los_Angeles')).toBe(true);
+    expect(isValidTimeZone('UTC')).toBe(true);
+  });
+  it('rejects null, empty, and non-zones', () => {
+    expect(isValidTimeZone(null)).toBe(false);
+    expect(isValidTimeZone('')).toBe(false);
+    expect(isValidTimeZone('Eastern')).toBe(false);
+  });
+  it('rejects a verbose LLM reply that happens to contain a slash', () => {
+    // The exact failure: a "none" answer mentioning "city/location/timezone" got saved.
+    expect(isValidTimeZone('Based on the transcript, the user does not mention a different city/location/timezone. Answer: none')).toBe(false);
   });
 });
 
