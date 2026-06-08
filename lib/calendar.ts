@@ -823,3 +823,62 @@ export function formatEventsForBriefing(events: calendar_v3.Schema$Event[], time
     return `- ${startStr}: ${title}${flags ? ' ' + flags : ''}`;
   }).join('\n');
 }
+
+// Find open slots of at least `minMinutes` between startDate and endDate (inclusive), within
+// an 8am–8pm window in the user's timezone. Never suggests times that have already passed today.
+// `events` should already be the user's events across that range.
+export function findFreeSlots(
+  events: calendar_v3.Schema$Event[],
+  timezone: string,
+  startDate: string,
+  endDate: string,
+  minMinutes = 30,
+): string {
+  const workdayStart = 8;
+  const workdayEnd = 20;
+  const now = Date.now();
+  const slots: string[] = [];
+
+  const dStart = new Date(`${startDate}T00:00:00Z`);
+  const dEnd = new Date(`${endDate}T00:00:00Z`);
+  if (isNaN(dStart.getTime()) || isNaN(dEnd.getTime())) return 'I need a valid start and end date to check availability.';
+
+  for (const day = new Date(dStart); day <= dEnd; day.setUTCDate(day.getUTCDate() + 1)) {
+    const dayStr = day.toISOString().slice(0, 10);
+
+    const dayEvents = events
+      .filter(e => e.start?.dateTime && e.end?.dateTime &&
+        new Date(e.start.dateTime).toLocaleDateString('en-CA', { timeZone: timezone }) === dayStr)
+      .map(e => ({ start: new Date(e.start!.dateTime!).getTime(), end: new Date(e.end!.dateTime!).getTime() }))
+      .filter(e => !isNaN(e.start) && !isNaN(e.end))
+      // Ignore day-spanning timed events (e.g. a 00:00–23:59 "all-day" block) — they're context,
+      // not real busy time, and would otherwise make a whole day look fully booked.
+      .filter(e => e.end - e.start < 23 * 3600000)
+      .sort((a, b) => a.start - b.start);
+
+    const dayEndUtc = wallTimeToUtc(`${dayStr}T${String(workdayEnd).padStart(2, '0')}:00:00`, timezone).getTime();
+    // Start at 8am local, but never before "now" (so today's past hours aren't offered).
+    let cursor = Math.max(wallTimeToUtc(`${dayStr}T${String(workdayStart).padStart(2, '0')}:00:00`, timezone).getTime(), now);
+
+    const label = new Date(`${dayStr}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const pushGap = (from: number, to: number) => {
+      const mins = (to - from) / 60000;
+      if (mins >= minMinutes) {
+        const f = new Date(from).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
+        const t = new Date(to).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
+        slots.push(`${label}: ${f}–${t} (${Math.floor(mins / 30) * 30} min free)`);
+      }
+    };
+
+    for (const ev of dayEvents) {
+      if (ev.start > cursor) pushGap(cursor, ev.start);
+      cursor = Math.max(cursor, ev.end);
+    }
+    if (cursor < dayEndUtc) pushGap(cursor, dayEndUtc);
+  }
+
+  if (!slots.length) return `No open blocks of at least ${minMinutes} minutes between ${startDate} and ${endDate} (within 8am–8pm).`;
+  const shown = slots.slice(0, 14);
+  const more = slots.length > shown.length ? `\n…and ${slots.length - shown.length} more.` : '';
+  return `Open time (at least ${minMinutes} minutes, 8am–8pm):\n${shown.join('\n')}${more}`;
+}

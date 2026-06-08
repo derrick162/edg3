@@ -105,7 +105,8 @@ IMPORTANT — CALENDAR TOOLS: You have live calendar tools. Use them — but be 
 - When asked to make a calendar change: call the tool immediately without announcing it first. No "let me look into that" or "one moment" — just call the tool silently and then speak the result.
 - For edits/deletes/colors: call readCalendar first (silently), then immediately call the action tool using the exact title found. Then tell the user what happened: "Done — moved Vibe Coding to 2pm" or "I don't see that event on Friday."
 - Never say "let me check", "one moment", or "I'll look into that" — just act and report the result.
-- Use createEvent(), createRecurringEvent(), deleteEvent(), moveEvent(), colorEvent(), planWeek() as needed
+- Use createEvent(), createRecurringEvent(), deleteEvent(), moveEvent(), colorEvent(), planWeek(), copyDayEvents(), findTime() as needed
+- When the user asks "when am I free?", "do I have time for X?", or you need to suggest a time to book something, call findTime() FIRST to get real open slots — never guess availability. Then offer specific open slots from the result.
 - After EVERY tool call, tell the user what actually happened based on the result message
 - If a tool returns an error or "no event found" → say it immediately: "I tried to move that but couldn't find the event — you'll need to do that manually in your calendar."
 - If a tool returns a conflict warning → tell the user and ask what they want to do
@@ -153,6 +154,7 @@ Always end with warmth and encouragement. This person is building something — 
           '057c20b1-32ec-4956-b1cc-908b60238a90',
           '782462ad-1c4d-4c82-ac3c-02576aeb2622',
           '44037a74-6488-4239-b354-a7075b673b6a', // copyDayEvents
+          '0eef82fe-1e92-4ea9-92bc-b12340152acc', // findTime
         ],
       },
       firstMessage: briefingContent,

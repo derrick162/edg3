@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getOAuthClient, getColorId, zonedWallTimeToUtc } from '@/lib/calendar';
+import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc } from '@/lib/time';
 import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
@@ -126,6 +126,19 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       byDay.get(dayLabel)!.push(`  ${time}: ${e.summary}${recurring}`);
     }
     return `Found ${events.length} event(s):\n` + Array.from(byDay.entries()).map(([day, evs]) => `${day}:\n${evs.join('\n')}`).join('\n\n');
+
+  } else if (fn === 'findTime') {
+    const { startDate, endDate, minimumMinutes } = args as { startDate: string; endDate?: string; minimumMinutes?: number };
+    if (!startDate) return 'I need at least a date to check your availability.';
+    const end = endDate || startDate;
+    const evMin = dayRangeUtc(tz, startDate).start.toISOString();
+    const evMax = dayRangeUtc(tz, end).end.toISOString();
+    const evts: calendar_v3.Schema$Event[] = [];
+    for (const calId of calIds) {
+      const res = await cal.events.list({ calendarId: calId, timeMin: evMin, timeMax: evMax, singleEvents: true, orderBy: 'startTime', maxResults: 250 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+      evts.push(...(res.data.items ?? []));
+    }
+    return findFreeSlots(evts, tz, startDate, end, minimumMinutes && minimumMinutes > 0 ? minimumMinutes : 30);
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
