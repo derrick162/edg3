@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, memoryQueries } from '@/lib/db';
 import Anthropic from '@anthropic-ai/sdk';
-import { getCalendarEvents, getWeekEvents, extractAndCreateTimeBlocks, processCalendarEdits } from '@/lib/calendar';
+import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 
 export async function POST(req: NextRequest) {
   try {
@@ -96,16 +96,14 @@ Transcript:\n${transcript}`,
 
   console.log(`[verify-promises] ${unfulfilled.length} unfulfilled:`, unfulfilled.map(u => u.promise));
 
-  // Step 4: Log only — don't save to memory, auto-retry handles it silently
-  console.log(`[verify-promises] Auto-retrying ${unfulfilled.length} missed items silently`);
+  // Flag only — never re-mutate the calendar. The live in-call tools are the single source of
+  // truth; re-creating from the transcript here caused duplicate events (and is why a dedup
+  // band-aid existed). Surface the gap in memory so the NEXT briefing addresses it directly,
+  // and on the dashboard via edge_promises (saved above).
+  const missedList = unfulfilled.map(u => `- ${u.promise}`).join('\n');
+  memoryQueries.create(user.id, 'calendar_note',
+    `[EDGE MISSED] Promised on the last call but not completed:\n${missedList}\nOpen the next briefing by addressing these directly.`
+  );
 
-  // Step 5: Retry — use both create and edit for missed items
-  const retryTranscript = unfulfilled.map(u => `User: Please ${u.promise}`).join('\n');
-  const [retryCreated, retryEdited] = await Promise.all([
-    extractAndCreateTimeBlocks(user.id, retryTranscript, user.timezone).catch(() => []),
-    processCalendarEdits(user.id, retryTranscript, user.timezone).catch(() => []),
-  ]);
-
-  console.log(`[verify-promises] Retried — created: ${retryCreated.length}, edited: ${retryEdited.length}`);
-  return { promises, unfulfilled, retried: { created: retryCreated.length, edited: retryEdited.length } };
+  return { promises, unfulfilled };
 }

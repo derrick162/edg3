@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { extractUserResponseFromTranscript } from '@/lib/vapi';
-import { extractAndCreateTimeBlocks, processCalendarEdits, deduplicateCalendarEvents } from '@/lib/calendar';
 import Anthropic from '@anthropic-ai/sdk';
 
 // Reasons that indicate the user didn't answer — worth retrying
@@ -128,12 +127,9 @@ export async function POST(req: NextRequest) {
             .catch(err => console.error('Transcript task extraction failed:', err));
         }
 
-        // 3. Dedup (safe, deterministic — catches any duplicates from tool calls)
-        deduplicateCalendarEvents(briefing.user_id, user.timezone)
-          .then(deleted => { if (deleted.length) console.log(`[webhook] Dedup removed ${deleted.length} events`); })
-          .catch(err => console.error('Dedup failed:', err));
-
-        // 4. Verify promises — compare verbal promises vs tool_actions ground truth
+        // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and
+        //    flags any gaps for the next briefing. Never re-mutates the calendar (the live tools
+        //    are the single source of truth), so no auto-dedup is needed anymore.
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
         fetch(`${baseUrl}/api/vapi/verify-promises`, {
           method: 'POST',
@@ -227,68 +223,6 @@ Transcript: ${transcript.slice(0, 1000)}`,
   } else {
     console.log(`[webhook] No valid travel timezone detected (got "${raw.slice(0, 40)}") — left unchanged`);
   }
-}
-
-async function verifyEdgePromises(userId: number, briefingId: number, transcript: string, timezone: string) {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const promisesResult = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 500,
-    messages: [{
-      role: 'user',
-      content: `Read this call transcript between a user and their AI Chief of Staff called Edge.
-Extract every specific promise Edge made — things Edge said it would do, book, add, change, research, or handle.
-Focus on: calendar bookings, event color changes, event moves/deletes, research tasks, reminders.
-Return ONLY a JSON array of promise strings. If Edge made no clear promises, return [].
-Example: ["Book focus build time 1:30-3:30pm Mon-Fri next week", "Make MVP goal event green on June 12"]
-Transcript:\n${transcript}`,
-    }],
-  });
-
-  const promisesText = promisesResult.content[0].type === 'text' ? promisesResult.content[0].text : '[]';
-  let promises: string[] = [];
-  try { const m = promisesText.match(/\[[\s\S]*\]/); if (m) promises = JSON.parse(m[0]); } catch { return; }
-  if (!promises.length) return;
-  console.log(`[promises] Edge made ${promises.length} promises:`, promises);
-
-  const { getCalendarEvents, getWeekEvents, extractAndCreateTimeBlocks, processCalendarEdits } = await import('@/lib/calendar');
-  const [todayEvts, weekEvts] = await Promise.all([
-    getCalendarEvents(userId).catch(() => []),
-    getWeekEvents(userId).catch(() => []),
-  ]);
-  const calendarSummary = [...todayEvts, ...weekEvts]
-    .map(e => `- ${e.summary} (${e.start?.dateTime?.slice(0, 16) || e.start?.date || 'all day'})`)
-    .join('\n') || 'No events';
-
-  const checkResult = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 600,
-    messages: [{
-      role: 'user',
-      content: `Edge promised:\n${promises.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nCurrent calendar:\n${calendarSummary}\n\nReturn JSON array of unfulfilled promises only. Be lenient — if similar event exists, mark fulfilled.\nFormat: [{"promise":"text","reason":"why unfulfilled"}]\nIf all done, return [].`,
-    }],
-  });
-
-  const checkText = checkResult.content[0].type === 'text' ? checkResult.content[0].text : '[]';
-  let unfulfilled: { promise: string; reason: string }[] = [];
-  try { const m = checkText.match(/\[[\s\S]*\]/); if (m) unfulfilled = JSON.parse(m[0]); } catch { return; }
-
-  if (!unfulfilled.length) { console.log(`[promises] All ${promises.length} promises verified ✓`); return; }
-  console.log(`[promises] ${unfulfilled.length} unfulfilled:`, unfulfilled.map(u => u.promise));
-
-  const { memoryQueries } = await import('@/lib/db');
-  const missedList = unfulfilled.map(u => `- ${u.promise}`).join('\n');
-  memoryQueries.create(userId, 'calendar_note',
-    `[EDGE MISSED] Promised on last call but not completed:\n${missedList}\nOpen next briefing by addressing these directly.`
-  );
-
-  const retryTranscript = unfulfilled.map(u => `User: Please ${u.promise}`).join('\n');
-  await Promise.all([
-    extractAndCreateTimeBlocks(userId, retryTranscript, timezone),
-    processCalendarEdits(userId, retryTranscript, timezone),
-  ]).catch(err => console.error('[promises] Retry failed:', err));
-  console.log(`[promises] Retried ${unfulfilled.length} items`);
 }
 
 async function extractTasksFromTranscript(userId: number, transcript: string, timezone: string) {

@@ -78,15 +78,6 @@ export async function scheduleBriefingCall(userId: number) {
   const now = new Date();
   const scheduledFor = now.toISOString();
 
-  // Pre-call calendar check — silently fix duplicates before briefing
-  try {
-    const { deduplicateCalendarEvents } = await import('./calendar');
-    const removed = await deduplicateCalendarEvents(userId, user.timezone);
-    if (removed.length) console.log(`[scheduler] Pre-call dedup removed ${removed.length} events for ${user.name}`);
-  } catch (err) {
-    console.error(`[scheduler] Pre-call dedup failed:`, err);
-  }
-
   console.log(`[scheduler] Generating briefing for ${user.name}...`);
   const briefingContent = await generateDailyBriefing(userId);
 

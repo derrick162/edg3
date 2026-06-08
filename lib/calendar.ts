@@ -338,6 +338,9 @@ export async function deduplicateCalendarEvents(userId: number, timezone: string
   return deleted;
 }
 
+/** @deprecated RETIRED — the post-call "second writer". No longer called: the live in-call tools
+ * are the single source of truth. Re-creating events from the transcript here caused duplicates.
+ * Do not re-wire. Safe to physically delete in a follow-up. */
 export async function processCalendarEdits(userId: number, transcript: string, timezone: string) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -537,6 +540,9 @@ Example: [{"action":"color","eventId":"abc123","color":"green","reason":"MVP goa
   }
 }
 
+/** @deprecated RETIRED — the post-call "second writer". No longer called: the live in-call tools
+ * are the single source of truth. Re-creating events from the transcript here caused duplicates.
+ * Do not re-wire. Safe to physically delete in a follow-up. */
 export async function extractAndCreateTimeBlocks(userId: number, briefingContent: string, timezone: string) {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
