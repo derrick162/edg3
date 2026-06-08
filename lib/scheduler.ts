@@ -106,3 +106,40 @@ export async function scheduleBriefingCall(userId: number) {
 
   return briefingId;
 }
+
+// Open call: an on-demand, no-briefing conversation. We still create a briefing record so the
+// webhook, transcript, memory extraction, and live calendar tools can tie back to the call.
+export async function scheduleOpenCall(userId: number) {
+  const user = userQueries.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  const timezone = user.timezone || 'America/Vancouver';
+  const scheduledFor = new Date().toISOString();
+
+  const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
+  const greet = hour >= 18 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning';
+  const firstName = user.name.split(' ')[0];
+  const opener = `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
+
+  const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
+  const briefingId = result.lastInsertRowid;
+
+  const phoneNumber = user.phone_number;
+  if (phoneNumber && process.env.VAPI_API_KEY) {
+    briefingQueries.update(briefingId, { status: 'calling' });
+
+    const { memoryQueries } = await import('./db');
+    const recentMemories = memoryQueries.getRecent(userId, 1);
+    const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
+
+    console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
+    const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true);
+    console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
+
+    if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
+  } else {
+    console.log(`[scheduler] Skipping open call for ${user.name} — no phone or Vapi key`);
+  }
+
+  return briefingId;
+}

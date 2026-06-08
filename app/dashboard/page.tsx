@@ -542,6 +542,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
   const [initiatingCall, setInitiatingCall] = useState(false);
+  const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile'>('briefings');
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
@@ -619,6 +620,19 @@ export default function Dashboard() {
       alert(data.error || 'Failed to initiate call');
     } else {
       alert('Call initiated! EDG3 will call you shortly.');
+      loadData();
+    }
+  }
+
+  async function openCall() {
+    setOpeningCall(true);
+    const res = await fetch('/api/briefing/open-call', { method: 'POST' });
+    const data = await res.json();
+    setOpeningCall(false);
+    if (!res.ok) {
+      alert(data.error || 'Failed to start open call');
+    } else {
+      alert('Calling you now for an open conversation — no briefing.');
       loadData();
     }
   }
@@ -825,6 +839,14 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex gap-3">
+              <button
+                onClick={openCall}
+                disabled={openingCall}
+                className="btn-secondary text-sm py-2 px-4"
+                title="An open conversation — no briefing"
+              >
+                {openingCall ? 'Calling…' : '💬 Open call'}
+              </button>
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
