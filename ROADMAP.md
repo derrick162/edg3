@@ -91,7 +91,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — email-drafting PREP committed to `core`: `lib/gmail.ts` + tests, green. ⏳ Awaiting 🔒 Security's Gmail OAuth scope before wiring `draftEmail` into route.ts / touching `lib/undo.ts`. Not merged to master.)_ | — | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — STEP 1 done: composition moved to `lib/outreach.ts` (+ tests, 39/39 green); deleted my `lib/gmail.ts` to free the filename for Security. Merging to master. ⏳ HOLDING for PM "scope landed" signal before wiring `draftEmail`.)_ | — | 2026-06-09 |
 | 🔒 Security | `security` | _(idle — ★ next: Gmail OAuth scope for email, top priority)_ | — | 2026-06-09 |
 
 ---

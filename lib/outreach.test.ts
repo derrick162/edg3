@@ -1,34 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRawMessage, emailableRecipients, formatSlotsForEmail, buildOutreachBody } from './gmail';
-
-// Decode the base64url MIME back to a string for assertions.
-function decodeRaw(raw: string): string {
-  return Buffer.from(raw, 'base64url').toString('utf8');
-}
-
-describe('buildRawMessage', () => {
-  it('produces base64url MIME with headers and body, plain-text only', () => {
-    const raw = buildRawMessage({ to: 'Jane <jane@example.com>', subject: 'Hello', body: 'Line one\nLine two' });
-    const mime = decodeRaw(raw);
-    expect(mime).toContain('To: Jane <jane@example.com>');
-    expect(mime).toContain('Subject: Hello');
-    expect(mime).toContain('Content-Type: text/plain; charset="UTF-8"');
-    // header/body separator + body present
-    expect(mime).toContain('\r\n\r\nLine one\nLine two');
-  });
-
-  it('RFC 2047 encodes non-ASCII subjects', () => {
-    const raw = buildRawMessage({ to: 'a@b.com', subject: 'Café ☕', body: 'hi' });
-    const mime = decodeRaw(raw);
-    expect(mime).toContain('Subject: =?UTF-8?B?');
-    expect(mime).not.toContain('Subject: Café');
-  });
-
-  it('base64url has no +, / or = padding', () => {
-    const raw = buildRawMessage({ to: 'a@b.com', subject: 'x'.repeat(40), body: 'y'.repeat(40) });
-    expect(raw).not.toMatch(/[+/=]/);
-  });
-});
+import { emailableRecipients, formatSlotsForEmail, buildOutreachBody } from './outreach';
 
 describe('emailableRecipients', () => {
   it('keeps valid emails and skips missing / "not found"', () => {
