@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc } from '@/lib/time';
+import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
@@ -176,6 +176,17 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       evts.push(...(res.data.items ?? []));
     }
     return findFreeSlots(evts, tz, startDate, end, minimumMinutes && minimumMinutes > 0 ? minimumMinutes : 30);
+
+  } else if (fn === 'setMyTimezone') {
+    const { timezone } = args as { timezone?: string };
+    if (!timezone) return "I didn't catch which timezone to set.";
+    if (timezone.trim().toLowerCase() === 'home') {
+      userQueries.setCurrentTimezone(userId, null);
+      return 'Got it — back to your home timezone from now on.';
+    }
+    if (!isValidTimeZone(timezone)) return `"${timezone}" isn't a timezone I recognize — try one like America/Toronto.`;
+    userQueries.setCurrentTimezone(userId, timezone);
+    return `Got it — I'll use ${timezone} for your calendar and briefings from now on.`;
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
