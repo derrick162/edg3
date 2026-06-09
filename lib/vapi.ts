@@ -191,6 +191,9 @@ Always end with warmth and encouragement. This person is building something — 
       backgroundDenoisingEnabled: true,
       backgroundSound: 'off',
       stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
+      // Smart endpointing: start replying as soon as it detects the user is actually done,
+      // rather than always waiting a fixed gap — Edge feels noticeably snappier.
+      startSpeakingPlan: { waitSeconds: 0.4, smartEndpointingPlan: { provider: 'livekit' } },
       silenceTimeoutSeconds: 30,
       maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
