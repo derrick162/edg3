@@ -104,6 +104,15 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-09** — **INCIDENT (resolved in ~15 min): all calls failing** with
+  `anthropic-400-bad-request-validation-failed` right after adding the `draftEmail`
+  Vapi tool. Cause: the Vapi tool editor injected `"default": ""` on every param,
+  including a `boolean` (`proposeAvailability`) — an empty-string default on a
+  boolean is an invalid input_schema, and since all tools are sent to the model
+  every call, one bad tool broke every call. Fix: stripped the `default` fields
+  from the tool via the Vapi API (no redeploy). **Learning / potential Core hardening:**
+  any tool authored in the Vapi editor carries `default:""` cruft — sanitize tool
+  schemas (strip empty/`type`-mismatched defaults) before they reach Anthropic.
 - **2026-06-09** — **Email feature DEPLOYED.** Pushed master to production (Railway)
   and wired the `draftEmail` Vapi tool ID (`e62078db…`) into `lib/vapi.ts`. Also
   set `DATA_ENCRYPTION_KEY` on Railway (encryption now active). **Remaining for the
