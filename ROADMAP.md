@@ -90,7 +90,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle)_ | — | — |
-| 🔒 Security | `security` | _(idle)_ | — | — |
+| 🔒 Security | `security` | Shipped #4 (at-rest encryption) + #5 code-side (snapshots) → ready to merge `security`→`master`. Next: #2 Vapi secret, then #3 idempotency — **will claim `tool-call/route.ts` before touching; coordinate w/ Core's multi-day rewrite first** | `lib/crypto.ts`, `lib/backup.ts`, `lib/db.ts`, `app/api/admin/backup/**` (none shared) | 2026-06-09 |
 
 ---
 

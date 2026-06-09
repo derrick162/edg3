@@ -8,6 +8,18 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-09** — Shipped **#4 Data-at-rest encryption** + **#5 code-side
+  durability** (commit `80b4d30`). `lib/crypto.ts`: AES-256-GCM field encryption,
+  transparent + backward-compatible (legacy plaintext passes through; no-op until
+  `DATA_ENCRYPTION_KEY` is set → fail-safe rollout, lazy re-encrypt on next write;
+  8/8 unit tests green). Wired in `lib/db.ts` to encrypt `calendar_tokens`
+  (access/refresh) **and** `briefings` PII (`transcript`, `user_response`) on write,
+  decrypt on read; read sites (admin briefings, verify-promises, webhook) decrypt
+  via `decryptBriefingRow`. `lib/backup.ts`: online `.backup()` SQLite snapshots w/
+  rotation + opportunistic `maybeDailyBackup()`; admin-gated `app/api/admin/backup`.
+  H1 ✅, Transcript-PII ✅. **Ops follow-up:** set `DATA_ENCRYPTION_KEY` on Railway
+  (until then encryption no-ops); off-box replication (Litestream) for volume-loss
+  is the remaining ops half of #5.
 - **2026-06-09** — Shipped **#6 Undo** (commit `28f364d`): every mutation records
   inverse ops in a new `undo_log`; reversible by voice (`undoLastAction`) and
   dashboard. H3 now ✅. Defused **#1 JWT fallback** in code (`lib/auth.ts` fails
@@ -30,15 +42,15 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 | C1 | Vapi webhook auth | ⚠️ Built but **fail-open** — `checkVapiSecret` accepts mismatches unless `VAPI_SECRET_ENFORCE=true`. See `lib/vapi.ts:36`. |
 | C2 | Unauthorized/cross-user mutation | ✅ Mitigated — user is bound server-side via `call.id → briefing.user_id`. Model can't pick the user. |
 | C3 | Idempotency on writes | ❌ Absent — `createEvent` inserts directly. Retries/double-calls duplicate. |
-| H1 | Token encryption | ❌ Plaintext `calendar_tokens` (`lib/db.ts:75`). |
+| H1 | Token encryption | ✅ Done (`80b4d30`) — `calendar_tokens` encrypted at rest (AES-256-GCM via `lib/crypto.ts`); transparent legacy read. _Ops: set `DATA_ENCRYPTION_KEY` on Railway to activate._ |
 | H2 | Action audit log | ⚠️ Partial — `tool_actions` JSON exists but mutable, capped 50, no before/after snapshots. |
 | H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
 | H4 | Rate limiting | ❌ Absent on all endpoints. |
-| H5 | Backups / PITR | ❌ SQLite single volume; needs Litestream/snapshots (not RDS-PITR). |
+| H5 | Backups / PITR | ⚠️ Code-side done (`80b4d30`) — rotating on-volume `.backup()` snapshots + `maybeDailyBackup()`. Off-box replication (Litestream) for volume-loss still pending (ops). |
 | H6 | Destructive confirmation | ✅ Done (`tool-call/route.ts:350`); soft spot: model could self-confirm. |
 | M4 | Timezone/recurring | ✅ Mostly handled — IANA passed + validated everywhere. |
 | — | **JWT fallback secret** | ✅ Fixed in code — `lib/auth.ts` fails closed (throws if `JWT_SECRET` unset, no public default). ⚠️ **Ops:** still rotate the secret on Railway. |
-| — | Transcript PII | 🔴 `briefings.transcript` stored plaintext — bigger surface than tokens. |
+| — | Transcript PII | ✅ Done (`80b4d30`) — `briefings.transcript` + `user_response` encrypted at rest (same `lib/crypto.ts` path). |
 | — | Retry reliability | ⚠️ `retryCall` uses in-process `setTimeout(10m)` — lost on deploy/restart. |
 
 ---
@@ -52,8 +64,12 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
   - ⚠️ **Coupled to Core's multi-day all-day rewrite** (`ROADMAP-CORE.md` ticket #1): that change rewrites the event-creation path. Land idempotency alongside it so the new all-day/span logic can't duplicate-on-retry. Coordinate before either side merges `tool-call/route.ts`.
 
 ### Week 2 — Protect data at rest
-- [ ] **4. Encrypt** `calendar_tokens` **and** `transcripts` (envelope encryption, decrypt in-memory). _2–3d_
-- [ ] **5. SQLite durability** — Litestream continuous replication + one real restore drill. _1d + drill_
+- [x] **4. Encrypt** `calendar_tokens` **and** `transcripts` — done (`80b4d30`): AES-256-GCM
+  field encryption (`lib/crypto.ts`), transparent/backward-compatible, no-op until
+  `DATA_ENCRYPTION_KEY` set. _Ops follow-up: set the key on Railway to activate._ _2–3d_
+- [~] **5. SQLite durability** — code-side done (`80b4d30`): rotating on-volume
+  `.backup()` snapshots + `maybeDailyBackup()` + admin endpoint. _Still pending:
+  Litestream off-box replication + one real restore drill._ _1d + drill_
 
 ### Week 3 — Finish half-built trust features
 - [x] **6. Wire the undo_log** — done (`28f364d`): inverse ops recorded on every mutation; "undo last action" in dashboard + voice. _1.5–2d_
