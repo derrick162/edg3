@@ -104,6 +104,16 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-09** — **Email feature DEPLOYED.** Pushed master to production (Railway)
+  and wired the `draftEmail` Vapi tool ID (`e62078db…`) into `lib/vapi.ts`. Also
+  set `DATA_ENCRYPTION_KEY` on Railway (encryption now active). **Remaining for the
+  user:** reconnect Google (grant Gmail) + test on a call.
+  ⚠️ **NEW Core ticket — privacy policy is inaccurate & blocks Gmail verification:**
+  `app/privacy/page.tsx:45` claims calendar access is "read-only" and Edge "never
+  modifies/deletes" events — but the app has `calendar.events` write scope and
+  creates/moves/deletes events. It also says nothing about **Gmail**. Must be
+  corrected to reflect actual calendar read-write use + Gmail draft creation
+  (required for Google OAuth verification + basic accuracy). Route to Core.
 - **2026-06-09** — **Email drafting feature is code-complete & merged to master,
   green (61/61, tsc clean).** Full pipeline: Core composition (`lib/outreach.ts`)
   → Security guarded draft-only `createDraft` (`lib/gmail.ts` + `lib/google-auth.ts`)
