@@ -9,6 +9,24 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-09** — Shipped both **Now** tickets in one pass (`app/api/vapi/tool-call/route.ts` + `lib/vapi.ts`):
+  - **Multi-day all-day + editable all-day.** `createEvent` all-day branch now takes an inclusive
+    `endDate` and writes one spanning event (Google `end.date = nextDay(endDate)`) instead of forcing
+    a per-day loop. `moveEvent` now re-dates all-day events via date-only `newStartDate`/`newEndDate`
+    (auto-detected for any all-day target), so "make it just the 26th" / "extend it to the 30th" works;
+    delete already worked. System prompt in `lib/vapi.ts` instructs the model to make ONE spanning
+    event for a range and to use `moveEvent` date params to fix it.
+  - **Research replaces, not piles up.** `researchToEvent` wraps findings in `--- Edge research ---`
+    delimiters; each call strips the prior research block and writes only the latest, while preserving
+    the user's own typed notes (`stripResearchBlock`).
+  - ⚠️ **External step (Vapi dashboard, cannot be done from code):** the tool param schemas live in
+    Vapi (referenced by `toolIds` in `lib/vapi.ts`), not the repo. Add `endDate` (string, date) to the
+    **createEvent** tool and `newStartDate`/`newEndDate` (string, date) to the **moveEvent** tool so the
+    model can pass them. Until then route.ts degrades safely (single-day all-day; re-date still works for
+    detected all-day events via the existing datetime params sliced to a date).
+  - 🤝 **Security coupling (#3 idempotency):** this rewrite makes the all-day path a *single* insert
+    (was a model-driven multi-call loop), so it reduces — not increases — duplicate-on-retry surface.
+    No dedupe added here (Security's lane). Sync before the `tool-call/route.ts` master merge.
 - **2026-06-09** — Lane created (renamed from "Builder" → "Core"). Mandate set:
   ship new user-facing features for the Edg3 voice/calendar assistant. Backlog
   below is a **seed** — the PM refines it from user feedback.
@@ -27,7 +45,7 @@ priority from user feedback.
 
 ## Backlog (seed — PM refines from user feedback)
 ### Now
-- [ ] **Multi-day all-day events + ability to edit/fix them** — _from a real user call, 2026-06-09._
+- [x] **Multi-day all-day events + ability to edit/fix them** — _from a real user call, 2026-06-09._ **✅ Shipped 2026-06-09 (see changelog).**
   - **Symptom:** User asked Edge to "create all-day events from June 25–28." Edge made four separate one-day all-day events instead of one spanning event, then could not fix it when asked.
   - **Root cause:**
     - `createEvent` all-day branch (`app/api/vapi/tool-call/route.ts:279`) hardcodes `end: { date: nextDay(dateOnly) }` → it can only make a *single-day* all-day event. No range param, so the model is forced to loop one-per-day.
@@ -38,7 +56,7 @@ priority from user feedback.
     3. Update the `createEvent` tool schema + system-prompt guidance in `lib/vapi.ts` so the model passes one spanning all-day event for a date range instead of looping.
   - **Acceptance:** "Create an all-day event from June 25 to 28" → one event spanning 25–28. "Actually just the 26th" → adjusts in place. "Remove it" → gone in one action.
   - **Coordination:** touches `app/api/vapi/tool-call/route.ts` + `lib/vapi.ts` (Shared — constitution §5). Core owns the calendar behavior; ping Security since these are vapi-path files.
-- [ ] **Research notes should replace, not pile up** — _from a real user call, 2026-06-09 (Hong Kong gyms w/ sauna)._
+- [x] **Research notes should replace, not pile up** — _from a real user call, 2026-06-09 (Hong Kong gyms w/ sauna)._ **✅ Shipped 2026-06-09 (see changelog).**
   - **Symptom:** Re-running research on an event stacks the new findings on top of the old research. Notes should show only the newest / most relevant, not an accumulating pile.
   - **Root cause:** `researchToEvent` (`app/api/vapi/tool-call/route.ts:268`) always appends — `description: e.description ? \`${e.description}\n\n${block}\` : block`. No replace/dedupe of prior research.
   - **Fix:** Wrap each research block in a recognizable delimiter (e.g. a marker header). On every research call, strip any prior research block(s) and write only the fresh findings, while **preserving the user's own (non-research) notes** in the description. Keep the existing "most relevant first, up to 6" prompt.
@@ -46,13 +64,21 @@ priority from user feedback.
   - **Coordination:** same Shared file as the all-day ticket (`tool-call/route.ts`) — batch them; both touch event description/creation logic.
 
 ### Next (decided)
+- [ ] **★ TOP PRIORITY: Email drafting — outreach with calendar availability (draft-only Gmail)** — _PM decision 2026-06-09, user request._
+  - **Goal:** After research (e.g. plumbers), Edge drafts a personalized outreach email per contact asking their availability this week and **proposing the user's real open calendar slots**, saved as a **Gmail draft** for the user to review + send. Draft-only — Edge NEVER sends.
+  - **Depends on 🔒 Security:** the Gmail OAuth scope + a safe draft-create helper (see `ROADMAP-SECURITY.md` "Gmail access"). Gate on that landing first.
+  - **New tool:** `draftEmail` in `tool-call/route.ts` — params: `recipients` (name + email, from research results), `ask` (e.g. "when can you come this week"), `proposeAvailability` (bool), `dateRange` (defaults to this week).
+  - **Implementation:** (a) pull availability by reusing `findFreeSlots` → format proposed times in the user's tz; (b) compose a short, polite plain-text email per recipient (Claude) including the ask + proposed slots; (c) create the draft via `gmail.users.drafts.create` (new `lib/gmail.ts` wrapper using the OAuth client Security extends); (d) gracefully skip recipients with no email ("Email: not found") and tell the user which lacked one; (e) `recordUndo` = delete the draft.
+  - **Trust:** never call `messages.send`. Confirm back: "Drafted N emails in your Gmail — review and send."
+  - **Acceptance:** After researching plumbers, "draft emails asking when they can come this week and suggest my availability" → N Gmail drafts, each with the ask + the user's real open slots; nothing sent.
+  - **Coordination:** touches Shared `tool-call/route.ts`; `lib/gmail.ts` is Core-owned but rides on the OAuth scope/token Security manages. Effort ~2–3d after scope lands.
 - [ ] **"Recent activity" review surface** — _PM decision 2026-06-09. Root-cause fix for the recurring "Edge's edits are messy" trust problem._
   - **Why:** The user keeps discovering messy calendar edits mid-call (duplicate all-day events, piled-up research). A dashboard feed of what Edge did — with one-tap undo/correct — turns silent frustration into something visible and fixable.
   - **Scope:** Dashboard view listing recent actions Edge took (newest first): what changed, when, on which event, with an **Undo** affordance per row (reuse the existing `undo_log` inverse ops shipped in `28f364d`).
   - **Dependency (cross-lane):** wants a clean, append-only activity feed as its data source → **Security item #7 (harden audit log: before/after snapshots, append-only table)**. Two-phase: Security #7 builds the backbone, Core builds the view on top. A quick v0 can read the current `undo_log` if we want something shippable before #7 lands.
   - **Acceptance:** From the dashboard the user can see the last N actions Edge took and undo any one of them without a voice call.
 
-- [ ] **Travel price lookup (flights + hotels) → trip event** — _PM decision 2026-06-09, user request._
+- [ ] **Travel price lookup (flights + hotels) → trip event** — ⏸ **PARKED 2026-06-09** (user deprioritized in favor of email drafting; resume later). _PM decision 2026-06-09, user request._
   - **Goal:** On a call, Edge looks up **real** flight/hotel prices and saves the options to a calendar trip event. Voice flow: "What are flights to Hong Kong on June 25?" → Edge fetches options → reads them back → attaches them to a trip event.
   - **Data source (decided):** a real travel-pricing API, **not** web search — fares must be quotable with confidence. Candidate: **Amadeus Self-Service** (flight offers search + hotel search, free test tier). Wrap in a new `lib/travel.ts`.
   - **New tool:** `researchTravel` in `tool-call/route.ts` — params: `type` (flight|hotel), `origin`, `destination`, `departDate` (YYYY-MM-DD), `returnDate?`, `passengers?`, `nights?`. Format results as clean plain-text (reuse the `researchToEvent` note-cleaning), then patch onto a trip event (create one if none exists) via the same `recordUndo` path.

@@ -89,12 +89,18 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle)_ | — | — |
-| 🔒 Security | `security` | Shipped #4 (at-rest encryption) + #5 code-side (snapshots) → ready to merge `security`→`master`. Next: #2 Vapi secret, then #3 idempotency — **will claim `tool-call/route.ts` before touching; coordinate w/ Core's multi-day rewrite first** | `lib/crypto.ts`, `lib/backup.ts`, `lib/db.ts`, `app/api/admin/backup/**` (none shared) | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — all-day + research ✅ merged to master & verified green; next: email drafting, gated on Security Gmail scope)_ | — | 2026-06-09 |
+| 🔒 Security | `security` | **★ Gmail draft-only scope (top priority, gates Core email)** — adding `gmail.compose` + extracting shared `lib/google-auth.ts`; drafts-only helper + re-consent + audit/rate-limit. ⚠️ **claiming `lib/calendar.ts` SCOPES** (Core-owned) — additive scope edit only, coordinated w/ PM | `lib/google-auth.ts` (new), `lib/gmail.ts` (new), `lib/calendar.ts` (SCOPES only ⚠️), `lib/db.ts` | 2026-06-09 |
 
 ---
 
 ## Changelog
+- **2026-06-09** — Core's first two tickets (multi-day all-day + research-replace)
+  **merged to master & verified green** (tsc clean, 33/33 tests). One external
+  step remains for the user: add the new tool params (`endDate` on createEvent,
+  `newStartDate`/`newEndDate` on moveEvent) in the **Vapi dashboard** — they live
+  there, not in the repo. Route degrades safely until then. Email drafting is the
+  new top priority (Security Gmail scope gates it).
 - **2026-06-09** — Established the PM + two-engineer model. Renamed the features
   lane to **Core** (branch `core`, folder `edg3-core`, `ROADMAP-CORE.md`).
 - **2026-06-09** — Split the single roadmap into two lanes governed by this
