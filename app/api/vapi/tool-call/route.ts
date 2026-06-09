@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone } from '@/lib/time';
+import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, undoQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
+import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
+import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -530,6 +532,83 @@ Query: ${query}` }],
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
       : `Couldn't copy events from ${sourceDate}.`;
+
+  } else if (fn === 'draftEmail') {
+    // Draft (never send) a personalized outreach email per recipient, optionally proposing the
+    // user's real open slots. Composition lives in lib/outreach.ts (Core); the actual draft is
+    // created by Security's guarded, draft-only createDraft (lib/gmail.ts). Undo deletes the drafts.
+    const { recipients, ask, proposeAvailability, startDate, endDate, subject } = args as {
+      recipients?: { name?: string; email?: string }[];
+      ask?: string;
+      proposeAvailability?: boolean;
+      startDate?: string;
+      endDate?: string;
+      subject?: string;
+    };
+    if (!Array.isArray(recipients) || !recipients.length) return 'I need at least one recipient (a name and email) to draft an email.';
+    if (!ask || !ask.trim()) return 'What should I ask them in the email?';
+
+    const { ok, skipped } = emailableRecipients(recipients);
+    if (!ok.length) {
+      return `I couldn't draft anything — none of those contacts had a usable email${skipped.length ? ` (missing for ${skipped.join(', ')})` : ''}. Research them first to find emails, then try again.`;
+    }
+
+    const senderName = (userQueries.findById(userId)?.name ?? '').trim() || 'Me';
+
+    // Availability: default to a one-week window starting today (in the user's tz).
+    let slots: string[] = [];
+    if (proposeAvailability !== false) {
+      const start = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : todayInTz(tz);
+      let end = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : '';
+      if (!end || end < start) {
+        const d = new Date(`${start}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 6);
+        end = d.toISOString().slice(0, 10);
+      }
+      const evMin = dayRangeUtc(tz, start).start.toISOString();
+      const evMax = dayRangeUtc(tz, end).end.toISOString();
+      const evts: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
+        cal.events.list({ calendarId: calId, timeMin: evMin, timeMax: evMax, singleEvents: true, orderBy: 'startTime', maxResults: 250 }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+      ))).flat();
+      slots = formatSlotsForEmail(findFreeSlots(evts, tz, start, end, 30));
+    }
+
+    const undoOps: UndoOp[] = [];
+    const draftedFor: string[] = [];
+    const failed: string[] = [];
+    try {
+      for (const recipient of ok) {
+        try {
+          const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject });
+          const to = recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email;
+          const { draftId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
+          undoOps.push({ type: 'deleteDraft', userId, draftId });
+          draftedFor.push(recipient.name || recipient.email);
+        } catch (perErr) {
+          if (perErr instanceof GmailScopeError || perErr instanceof GmailRateLimitError) throw perErr;
+          console.error(`[draftEmail] draft failed for ${recipient.email}:`, perErr);
+          failed.push(recipient.name || recipient.email);
+        }
+      }
+    } catch (fatal) {
+      // Record undo for any drafts already created before the loop aborted.
+      if (undoOps.length) recordUndo(userId, `drafted ${undoOps.length} email(s)`, undoOps);
+      if (fatal instanceof GmailScopeError) {
+        return "I can't create email drafts yet — you'll need to re-approve Google so I can use Gmail. Open the dashboard and reconnect your Google account; this time it'll ask for email/draft permission.";
+      }
+      if (fatal instanceof GmailRateLimitError) {
+        return `Couldn't finish — ${fatal.message}${undoOps.length ? ` I did draft ${undoOps.length} before hitting the limit; they're in your Gmail.` : ''}`;
+      }
+      throw fatal;
+    }
+
+    if (undoOps.length) recordUndo(userId, `drafted ${undoOps.length} email(s)`, undoOps);
+    if (!draftedFor.length) return `Couldn't create any drafts${failed.length ? ` — Gmail errored for ${failed.join(', ')}` : ''}. Please try again.`;
+    const notes = [
+      skipped.length ? `skipped ${skipped.join(', ')} (no email on file)` : '',
+      failed.length ? `couldn't draft for ${failed.join(', ')}` : '',
+    ].filter(Boolean);
+    return `Drafted ${draftedFor.length} email(s) in your Gmail — review and send.${notes.length ? ` I ${notes.join('; and ')}.` : ''}`;
 
   } else if (fn === 'undoLastAction') {
     const last = undoQueries.getLatest(userId);

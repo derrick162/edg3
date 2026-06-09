@@ -9,6 +9,24 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-09** — ★ **Email drafting SHIPPED (draft-only)** — `draftEmail` handler wired in
+  `app/api/vapi/tool-call/route.ts` (Shared, claimed first; additive) + tool/system-prompt guidance in
+  `lib/vapi.ts`. Flow: `emailableRecipients` (skip no-email contacts, report them) → `findFreeSlots` over a
+  one-week window (default today→+6, or `startDate`/`endDate`) → `formatSlotsForEmail` → per recipient
+  `composeOutreachEmail` (lib/outreach.ts) → Security's `createDraft(userId, {to, subject, body})`
+  (lib/gmail.ts, guarded/draft-only) → `recordUndo` with one `deleteDraft` op per draft. Never sends.
+  `GmailScopeError` → tells the user to reconnect Google (re-consent); `GmailRateLimitError` → reports the
+  cap and keeps/undoes drafts already made. Returns "Drafted N emails in your Gmail — review and send."
+  Verified green: tsc clean, 61/61 tests, eslint clean (only pre-existing `_e` warnings).
+  - ⚠️ **External step (Vapi dashboard) — the model can't call `draftEmail` until its tool is created there.**
+    Add a new tool named **`draftEmail`** with these params:
+    - `recipients` — **array** of objects `{ name (string), email (string) }`. The people to email (from research results). Required.
+    - `ask` — **string**. What to ask them, e.g. "when they can come by this week". Required.
+    - `proposeAvailability` — **boolean**. Include the user's real open calendar slots in the email. Default true.
+    - `startDate` — **string** (YYYY-MM-DD), optional. Start of the availability window. Defaults to today.
+    - `endDate` — **string** (YYYY-MM-DD), optional. End of the availability window. Defaults to 6 days after start (this week).
+    - `subject` — **string**, optional. Overrides the auto-generated subject.
+    Then paste the tool's Vapi ID into the `toolIds` array in `lib/vapi.ts` (placeholder comment marks the spot).
 - **2026-06-09** — Ownership-split fix (PM ruling, ROADMAP §3): both lanes had created `lib/gmail.ts`.
   Resolved — `lib/gmail.ts`/`lib/google-auth.ts` are 🔒 Security's (the Gmail access primitive +
   guarded `createDraft`); Core's **composition** lives in new `lib/outreach.ts`. Deleted my

@@ -91,7 +91,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — STEP 1 done: composition moved to `lib/outreach.ts` (+ tests, 39/39 green); deleted my `lib/gmail.ts` to free the filename for Security. Merging to master. ⏳ HOLDING for PM "scope landed" signal before wiring `draftEmail`.)_ | — | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — ★ `draftEmail` SHIPPED & green (61/61): handler in route.ts + tool/prompt guidance in lib/vapi.ts, calls Security's `createDraft`, undo via `deleteDraft`. Ready for master merge. ⚠️ User must create the `draftEmail` tool in the Vapi dashboard — params in ROADMAP-CORE.md changelog.)_ | — | 2026-06-09 |
 | 🔒 Security | `security` | ✅ **★ Gmail primitive DELIVERED** (`lib/gmail.ts` `createDraft`/`deleteDraft` guarded + `lib/google-auth.ts` scope + `deleteDraft` undo op) — synced with master (Core's `lib/outreach.ts` landed), green, ready to merge `security`→`master`. **Core, after scope lands: `createDraft(userId, {to: recipient.email, subject, body})` from `draftEmail`; record `deleteDraft` undo; handle `GmailScopeError`→re-consent.** Touched Core-owned `lib/calendar.ts` (scopes, additive) + `calendar/callback` (persist scope). Next: #2 Vapi secret | `lib/gmail.ts`,`lib/google-auth.ts` (new), `lib/undo.ts`, `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
 
 ---
