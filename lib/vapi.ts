@@ -185,9 +185,7 @@ Always end with warmth and encouragement. This person is building something — 
           '07bcbdab-c4fb-4219-a468-4b7afd48fcfa', // editEvent
           '69615e5d-90e2-4f5f-8293-ad9c00e5794c', // researchToEvent
           '2c1c3ad9-da5f-4c61-b6ba-b2233be72e29', // undoLastAction
-          // draftEmail — handler is live in tool-call/route.ts. ADD THE VAPI DASHBOARD TOOL ID HERE
-          // once the user creates the `draftEmail` tool in Vapi (params documented in ROADMAP-CORE.md
-          // changelog). Until the ID is added, the model can't call draftEmail.
+          'e62078db-fbf4-4f58-b17f-5a620d751d17', // draftEmail
         ],
       },
       firstMessage: briefingContent,
