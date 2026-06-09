@@ -90,6 +90,20 @@ function describeOptions(matches: { event: calendar_v3.Schema$Event }[], tz: str
   }).join(', ');
 }
 
+// Human-readable description of what a delete will remove — for the confirmation read-back.
+function describeDeleteTargets(targets: { event: calendar_v3.Schema$Event }[], recurringScope: string | undefined, tz: string): string {
+  if (targets.length > 1) {
+    const name = (targets[0].event.summary ?? '').replace(/^⚡\s*/, '');
+    return `all ${targets.length} "${name}" events that day`;
+  }
+  const e = targets[0].event;
+  const name = (e.summary ?? '').replace(/^⚡\s*/, '');
+  if (e.recurringEventId && recurringScope === 'all') return `the entire "${name}" recurring series — every occurrence`;
+  if (e.recurringEventId && recurringScope === 'thisAndFollowing') return `"${name}" and all its future occurrences`;
+  const when = e.start?.dateTime ? ` at ${new Date(e.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })}` : '';
+  return `"${name}"${when}`;
+}
+
 type ResolveResult =
   | { kind: 'one'; event: calendar_v3.Schema$Event; calId: string }
   | { kind: 'ambiguous'; message: string }
@@ -311,7 +325,7 @@ Query: ${query}` }],
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
-    const { title, date, deleteAll, recurringScope, currentTime } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string };
+    const { title, date, deleteAll, recurringScope, currentTime, confirmed } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmed?: boolean };
     const dayMatches = await eventsOnDay(cal, calIds, date, tz);
 
     // Which events to delete: all title matches (deleteAll), or one precisely-resolved event.
@@ -326,11 +340,19 @@ Query: ${query}` }],
       toDelete = [{ event: r.event, calId: r.calId }];
     }
 
+    // Recurring scope must be known before we can confirm or delete.
+    const needsScope = toDelete.find(({ event }) => event.recurringEventId && !recurringScope);
+    if (needsScope) {
+      return `"${needsScope.event.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
+    }
+
+    // CONFIRMATION GATE — deleting is destructive and hard to undo, so require an explicit yes.
+    if (!confirmed) {
+      return `⚠️ Just confirming before I delete ${describeDeleteTargets(toDelete, recurringScope, tz)} — should I go ahead? Ask the user, and ONLY if they say yes, call deleteEvent again with confirmed set to true (keep the same title, date, currentTime and recurringScope).`;
+    }
+
     const deleted: string[] = [];
     for (const { event: ev, calId } of toDelete) {
-      if (ev.recurringEventId && !recurringScope) {
-        return `"${ev.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
-      }
       if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
         await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g, '')}`] } }).catch(() => undefined);
       } else if (ev.recurringEventId && recurringScope === 'all') {
