@@ -73,7 +73,10 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
   - **Hard guardrails:** expose only a `drafts.create` helper; never wire `messages.send`. Add audit logging of drafts created + a per-user rate limit (anti-spam).
   - ⚠️ **Production landmine:** `gmail.compose` is a Google **restricted scope** → public/production use requires Google **OAuth app verification + a CASA security assessment** (can take weeks). Fine now in "testing" mode with the user as a test user, but this is a hard gate before rolling email out to all users. Flag early.
   - Deliver: the scope + a safe draft-create helper Core can call. Effort ~2d (excl. Google verification lead time). Coordinate before Core merges its `draftEmail` tool.
-  - 🔄 **Parallel user-side track (started 2026-06-09):** user is setting up Google Cloud Console — enable Gmail API, add `gmail.compose` to the OAuth consent screen, add self as Test user (works now in Testing mode), and begin OAuth verification + CASA for production (long lead). The scope string in code MUST match what's added on the consent screen: `https://www.googleapis.com/auth/gmail.compose`.
+  - 🔄 **Parallel user-side track (Google Cloud Console):**
+    - ✅ Gmail API enabled (2026-06-09).
+    - ✅ `gmail.compose` scope added under Data Access (2026-06-09). Code scope string MUST match: `https://www.googleapis.com/auth/gmail.compose`.
+    - ⏳ App is **"In production"** → restricted-scope rollout to all users needs Google **verification + CASA** (multi-week, long lead). Owner can dogfood now via the unverified-app path; PM offered to draft the verification packet (scope justification, demo-video script, Gmail privacy-policy language).
 - [ ] **Secure the travel API credential** — ⏸ PARKED (travel feature parked 2026-06-09). When resumed: own the `AMADEUS_*` secret + a rate-limit/cost guardrail on the lookup endpoint.
 
 ### Closed / deprioritized (do not re-open without reason)
