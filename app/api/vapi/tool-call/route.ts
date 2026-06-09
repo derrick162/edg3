@@ -188,6 +188,62 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     userQueries.setCurrentTimezone(userId, timezone);
     return `Got it — I'll use ${timezone} for your calendar and briefings from now on.`;
 
+  } else if (fn === 'getEventDetails') {
+    const { title, date, currentTime } = args as { title: string; date: string; currentTime?: string };
+    const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
+    if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one?`;
+    const e = r.event;
+    const when = e.start?.dateTime
+      ? `at ${new Date(e.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })}`
+      : '(all day)';
+    const lines = [`"${(e.summary ?? '').replace(/^⚡\s*/, '')}" on ${date} ${when}`];
+    if (e.location) lines.push(`Location: ${e.location}`);
+    if (e.attendees?.length) lines.push(`Attendees: ${e.attendees.map(a => a.displayName || a.email).filter(Boolean).join(', ')}`);
+    lines.push(e.description ? `Notes: ${e.description}` : 'No notes/description.');
+    return lines.join('\n');
+
+  } else if (fn === 'editEvent') {
+    const { title, date, currentTime, description, appendDescription, location } = args as { title: string; date: string; currentTime?: string; description?: string; appendDescription?: boolean; location?: string };
+    const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
+    if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I edit? Re-call with currentTime set to its start time.`;
+    const e = r.event;
+    const body: calendar_v3.Schema$Event = {};
+    if (typeof location === 'string') body.location = location;
+    if (typeof description === 'string') body.description = (appendDescription && e.description) ? `${e.description}\n${description}` : description;
+    if (!Object.keys(body).length) return 'Tell me what to change — a description/note or a location.';
+    await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: body });
+    if (!(await confirmExists(cal, r.calId, e.id))) return `Couldn't confirm the update to "${e.summary}" — please double-check your calendar.`;
+    return `Updated and confirmed "${(e.summary ?? '').replace(/^⚡\s*/, '')}"${body.location ? ` — location: ${body.location}` : ''}${body.description ? ' — notes updated' : ''}.`;
+
+  } else if (fn === 'researchToEvent') {
+    const { title, date, query, currentTime } = args as { title: string; date: string; query: string; currentTime?: string };
+    if (!query) return 'What should I research?';
+    const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
+    if (r.kind === 'none') return `No event matching "${title}" on ${date} to attach research to.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one? Re-call with currentTime set.`;
+    let findings = '';
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const res = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] as never,
+        messages: [{ role: 'user', content: `Research this and return a concise, practical summary to save in a calendar note. Include names, phone numbers, and addresses where relevant. 4–7 short lines, no preamble.\n\n${query}` }],
+      });
+      findings = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('\n').trim();
+    } catch (err) {
+      console.error('[researchToEvent] web search failed:', err);
+      return `I tried to research "${query}" but the lookup failed — you may need to do that one manually.`;
+    }
+    if (!findings) return `I couldn't find useful results for "${query}".`;
+    const e = r.event;
+    const block = `[Edge research: ${query}]\n${findings}`;
+    await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: e.description ? `${e.description}\n\n${block}` : block } });
+    if (!(await confirmExists(cal, r.calId, e.id))) return `I researched "${query}" but couldn't confirm it saved — please double-check.`;
+    return `Done — researched "${query}" and added the findings to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"'s notes.`;
+
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
     const { title, timezone, color, overrideConflicts, allDay } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean };
