@@ -56,10 +56,13 @@ export async function POST(req: NextRequest) {
     if (!call?.id) return NextResponse.json({ received: true });
 
     // Find the briefing with this call ID
-    const db = (await import('@/lib/db')).getDb();
-    const briefing = db.prepare('SELECT * FROM briefings WHERE vapi_call_id = ?').get(call.id) as Briefing & { retry_attempted: number };
+    const dbmod = await import('@/lib/db');
+    const db = dbmod.getDb();
+    const briefingRaw = db.prepare('SELECT * FROM briefings WHERE vapi_call_id = ?').get(call.id) as (Briefing & { retry_attempted: number }) | undefined;
 
-    if (!briefing) return NextResponse.json({ received: true });
+    if (!briefingRaw) return NextResponse.json({ received: true });
+    // Decrypt PII columns at rest (transcript / user_response) before any use.
+    const briefing = dbmod.decryptBriefingRow(briefingRaw);
 
     if ((type === 'call-ended' || type === 'end-of-call-report') && briefing.status !== 'completed') {
       // Fetch full transcript from Vapi API — webhook payload often only has partial transcript
@@ -103,6 +106,9 @@ export async function POST(req: NextRequest) {
       if (userResponse) {
         await analyzeUserResponse(briefing.user_id, userResponse);
       }
+
+      // Opportunistic durability: self-throttling daily DB snapshot (fire-and-forget).
+      import('@/lib/backup').then(m => m.maybeDailyBackup()).catch(() => {});
 
       // POST-CALL PROCESSING — simplified to three things only
       // All calendar changes happen LIVE via tool calling. Nothing here should touch the calendar.

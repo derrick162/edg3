@@ -8,9 +8,11 @@ export async function POST(req: NextRequest) {
     const { briefingId } = await req.json();
     if (!briefingId) return NextResponse.json({ error: 'briefingId required' }, { status: 400 });
 
-    const db = (await import('@/lib/db')).getDb();
-    const briefing = db.prepare('SELECT * FROM briefings WHERE id = ?').get(briefingId) as any;
-    if (!briefing?.transcript) return NextResponse.json({ skipped: 'no transcript' });
+    const dbmod = await import('@/lib/db');
+    const briefingRaw = dbmod.getDb().prepare('SELECT * FROM briefings WHERE id = ?').get(briefingId) as any;
+    if (!briefingRaw?.transcript) return NextResponse.json({ skipped: 'no transcript' });
+    // Decrypt PII columns (transcript / user_response) at rest before use.
+    const briefing = dbmod.decryptBriefingRow(briefingRaw);
 
     const user = userQueries.findById(briefing.user_id);
     if (!user) return NextResponse.json({ error: 'user not found' }, { status: 404 });

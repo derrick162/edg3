@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { getDb, decryptBriefingRow } from '@/lib/db';
 
 async function checkAdmin() {
   const cookieStore = await cookies();
@@ -18,9 +18,10 @@ export async function GET(req: NextRequest) {
     ? 'SELECT id, user_id, status, scheduled_for, edge_promises, tool_actions, calendar_actions, user_response, created_at FROM briefings WHERE user_id = ? ORDER BY id DESC LIMIT ?'
     : 'SELECT id, user_id, status, scheduled_for, edge_promises, tool_actions, calendar_actions, user_response, created_at FROM briefings ORDER BY id DESC LIMIT ?';
 
-  const briefings = userId
+  const briefings = (userId
     ? db.prepare(query).all(userId, limit)
-    : db.prepare(query).all(limit);
+    : db.prepare(query).all(limit)) as Array<{ user_response?: string | null }>;
 
-  return NextResponse.json({ briefings });
+  // Decrypt the encrypted PII column (user_response) at rest before returning.
+  return NextResponse.json({ briefings: briefings.map(decryptBriefingRow) });
 }

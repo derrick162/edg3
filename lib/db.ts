@@ -2,9 +2,10 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { isValidTimeZone } from './time';
+import { encryptField, encryptNullable, decryptField, decryptNullable } from './crypto';
 
 // On Railway, use the mounted volume at /data. Locally, use ./data
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'edg3.db');
+export const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'edg3.db');
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);
@@ -254,20 +255,32 @@ export const briefingQueries = {
     const entries = Object.entries(data).filter(([k]) => ALLOWED_FIELDS.has(k));
     if (!entries.length) return;
     const fields = entries.map(([k]) => `${k} = ?`).join(', ');
-    const values = entries.map(([, v]) => v);
+    // Encrypt PII columns (call transcript + the captured user response) at rest.
+    const values = entries.map(([k, v]) => (ENCRYPTED_BRIEFING_FIELDS.has(k) && typeof v === 'string') ? encryptField(v) : v);
     return getDb().prepare(`UPDATE briefings SET ${fields} WHERE id = ?`).run(...values, id);
   },
   getRecent: (userId: number, limit = 10) => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM briefings WHERE user_id = ? ORDER BY scheduled_for DESC LIMIT ?'
-    ).all(userId, limit) as Briefing[];
+    ).all(userId, limit) as Briefing[]).map(decryptBriefingRow);
   },
   getLatest: (userId: number) => {
-    return getDb().prepare(
+    const row = getDb().prepare(
       'SELECT * FROM briefings WHERE user_id = ? ORDER BY scheduled_for DESC LIMIT 1'
     ).get(userId) as Briefing | undefined;
+    return row ? decryptBriefingRow(row) : undefined;
   },
 };
+
+// PII columns on `briefings` that are encrypted at rest.
+const ENCRYPTED_BRIEFING_FIELDS = new Set(['transcript', 'user_response']);
+
+// Decrypt the encrypted columns of a briefing row in place (legacy plaintext passes through).
+export function decryptBriefingRow<T extends { transcript?: string | null; user_response?: string | null }>(row: T): T {
+  if (row.transcript != null) row.transcript = decryptField(row.transcript);
+  if (row.user_response != null) row.user_response = decryptField(row.user_response);
+  return row;
+}
 
 // Calendar token queries
 export const calendarQueries = {
@@ -280,10 +293,15 @@ export const calendarQueries = {
         refresh_token = excluded.refresh_token,
         expiry = excluded.expiry,
         updated_at = excluded.updated_at
-    `).run(userId, accessToken, refreshToken, expiry);
+    `).run(userId, encryptField(accessToken), encryptNullable(refreshToken) ?? '', expiry);
   },
   get: (userId: number) => {
-    return getDb().prepare('SELECT * FROM calendar_tokens WHERE user_id = ?').get(userId) as CalendarToken | undefined;
+    const row = getDb().prepare('SELECT * FROM calendar_tokens WHERE user_id = ?').get(userId) as CalendarToken | undefined;
+    if (!row) return undefined;
+    // Decrypt transparently — legacy plaintext rows pass through unchanged.
+    row.access_token = decryptField(row.access_token);
+    row.refresh_token = decryptNullable(row.refresh_token);
+    return row;
   },
   delete: (userId: number) => {
     return getDb().prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
