@@ -89,7 +89,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — all-day + research ✅ merged to master & verified green; next: email drafting, gated on Security Gmail scope)_ | — | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — email-drafting PREP committed to `core`: `lib/gmail.ts` + tests, green. ⏳ Awaiting 🔒 Security's Gmail OAuth scope before wiring `draftEmail` into route.ts / touching `lib/undo.ts`. Not merged to master.)_ | — | 2026-06-09 |
 | 🔒 Security | `security` | _(idle — ★ next: Gmail OAuth scope for email, top priority)_ | — | 2026-06-09 |
 
 ---
