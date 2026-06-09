@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
       userId,
       tokens.access_token!,
       tokens.refresh_token || '',
-      tokens.expiry_date?.toString() || ''
+      tokens.expiry_date?.toString() || '',
+      tokens.scope // persist granted scopes so we can detect Gmail re-consent needs
     );
     // Return a page that messages the opener and closes itself
     const html = `<!DOCTYPE html><html><body><script>

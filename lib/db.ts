@@ -79,7 +79,20 @@ function initSchema(db: Database.Database) {
       access_token TEXT NOT NULL,
       refresh_token TEXT,
       expiry TEXT,
+      scope TEXT,
       updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Append-only audit of Gmail drafts created on a user's behalf (draft-only;
+    -- we never send). Recipient + subject are encrypted at rest (PII). Doubles as
+    -- the source for the per-user anti-spam rate limit (count rows in a window).
+    CREATE TABLE IF NOT EXISTS gmail_drafts_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      recipient TEXT,
+      subject TEXT,
+      draft_id TEXT,
+      created_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -110,6 +123,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_briefings_user_id ON briefings(user_id);
     CREATE INDEX IF NOT EXISTS idx_briefings_vapi_call_id ON briefings(vapi_call_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+    CREATE INDEX IF NOT EXISTS idx_gmail_drafts_user ON gmail_drafts_log(user_id, created_at);
   `);
 
   // Migrations for existing databases
@@ -120,6 +134,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE briefings ADD COLUMN tool_actions TEXT",
     "ALTER TABLE users ADD COLUMN phone_number TEXT",
     "ALTER TABLE users ADD COLUMN current_timezone TEXT",
+    "ALTER TABLE calendar_tokens ADD COLUMN scope TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -284,16 +299,20 @@ export function decryptBriefingRow<T extends { transcript?: string | null; user_
 
 // Calendar token queries
 export const calendarQueries = {
-  upsert: (userId: number, accessToken: string, refreshToken: string, expiry: string) => {
+  // `scope` is the space-delimited set of scopes Google reported as granted. It is
+  // optional so token-*refresh* callers (which don't change the grant) can omit it —
+  // COALESCE then preserves the previously stored scope rather than nulling it.
+  upsert: (userId: number, accessToken: string, refreshToken: string, expiry: string, scope?: string | null) => {
     return getDb().prepare(`
-      INSERT INTO calendar_tokens (user_id, access_token, refresh_token, expiry, updated_at)
-      VALUES (?, ?, ?, ?, datetime('now'))
+      INSERT INTO calendar_tokens (user_id, access_token, refresh_token, expiry, scope, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET
         access_token = excluded.access_token,
         refresh_token = excluded.refresh_token,
         expiry = excluded.expiry,
+        scope = COALESCE(excluded.scope, calendar_tokens.scope),
         updated_at = excluded.updated_at
-    `).run(userId, encryptField(accessToken), encryptNullable(refreshToken) ?? '', expiry);
+    `).run(userId, encryptField(accessToken), encryptNullable(refreshToken) ?? '', expiry, scope ?? null);
   },
   get: (userId: number) => {
     const row = getDb().prepare('SELECT * FROM calendar_tokens WHERE user_id = ?').get(userId) as CalendarToken | undefined;
@@ -305,6 +324,30 @@ export const calendarQueries = {
   },
   delete: (userId: number) => {
     return getDb().prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
+  },
+};
+
+// Gmail draft audit + rate-limit queries. recipient/subject are PII → encrypted at
+// rest with the same field cipher as tokens/transcripts (#4).
+export const gmailQueries = {
+  logDraft: (userId: number, recipient: string, subject: string, draftId: string) => {
+    return getDb().prepare(
+      'INSERT INTO gmail_drafts_log (user_id, recipient, subject, draft_id, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(userId, encryptNullable(recipient), encryptNullable(subject), draftId, Date.now());
+  },
+  // How many drafts this user created since `sinceMs` (epoch ms) — drives the rate limit.
+  countSince: (userId: number, sinceMs: number): number => {
+    const row = getDb().prepare(
+      'SELECT COUNT(*) AS n FROM gmail_drafts_log WHERE user_id = ? AND created_at >= ?'
+    ).get(userId, sinceMs) as { n: number };
+    return row.n;
+  },
+  // Recent drafts for admin/audit display (recipient/subject decrypted).
+  recent: (userId: number, limit = 50) => {
+    const rows = getDb().prepare(
+      'SELECT id, user_id, recipient, subject, draft_id, created_at FROM gmail_drafts_log WHERE user_id = ? ORDER BY id DESC LIMIT ?'
+    ).all(userId, limit) as GmailDraftLog[];
+    return rows.map((r) => ({ ...r, recipient: decryptNullable(r.recipient), subject: decryptNullable(r.subject) }));
   },
 };
 
@@ -446,5 +489,15 @@ export interface CalendarToken {
   access_token: string;
   refresh_token: string | null;
   expiry: string | null;
+  scope: string | null;
   updated_at: string;
+}
+
+export interface GmailDraftLog {
+  id: number;
+  user_id: number;
+  recipient: string | null;
+  subject: string | null;
+  draft_id: string;
+  created_at: number;
 }

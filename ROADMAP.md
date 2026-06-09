@@ -90,7 +90,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — all-day + research ✅ merged to master & verified green; next: email drafting, gated on Security Gmail scope)_ | — | 2026-06-09 |
-| 🔒 Security | `security` | **★ Gmail draft-only scope (top priority, gates Core email)** — adding `gmail.compose` + extracting shared `lib/google-auth.ts`; drafts-only helper + re-consent + audit/rate-limit. ⚠️ **claiming `lib/calendar.ts` SCOPES** (Core-owned) — additive scope edit only, coordinated w/ PM | `lib/google-auth.ts` (new), `lib/gmail.ts` (new), `lib/calendar.ts` (SCOPES only ⚠️), `lib/db.ts` | 2026-06-09 |
+| 🔒 Security | `security` | ✅ **★ Gmail draft-only scope DELIVERED** (53/53 green, tsc clean) → ready to merge `security`→`master`. Core can call `lib/gmail.ts createDraft()`; handle `GmailScopeError`→re-consent. Touched Core-owned `lib/calendar.ts` (SCOPES→google-auth, additive) + `calendar/callback` (persist scope) — **Core: sync down before editing those.** Next: #2 Vapi secret | `lib/google-auth.ts`+`lib/gmail.ts` (new), `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
 
 ---
 

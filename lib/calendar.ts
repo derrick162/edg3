@@ -1,6 +1,7 @@
 import { google, calendar_v3 } from 'googleapis';
 import { calendarQueries, userQueries } from './db';
 import { wallTimeToUtc, dayRangeUtc } from './time';
+import { GOOGLE_SCOPES } from './google-auth';
 
 const BRIEFING_EVENT_TITLE = 'Edg3 Morning Briefing';
 
@@ -31,10 +32,10 @@ export async function addSummaryToTodaysBriefingEvent(userId: number, timezone: 
 // The single implementation now lives in lib/time.ts.
 export const zonedWallTimeToUtc = wallTimeToUtc;
 
-const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/calendar.events',
-];
+// Scopes are owned by lib/google-auth.ts (shared by Calendar + Gmail). Adding
+// gmail.compose there means existing calendar-only users will be missing it and
+// must re-consent — detect via google-auth `hasGmailScope`/`missingRequiredScopes`.
+const SCOPES = GOOGLE_SCOPES;
 
 export function getOAuthClient() {
   return new google.auth.OAuth2(
@@ -50,6 +51,9 @@ export function getAuthUrl(userId?: number): string {
     access_type: 'offline',
     scope: SCOPES,
     prompt: 'consent',
+    // Incremental auth: keep previously-granted scopes when a calendar-only user
+    // re-consents to add Gmail, so we never silently drop calendar access.
+    include_granted_scopes: true,
     state: userId ? String(userId) : undefined,
   });
 }

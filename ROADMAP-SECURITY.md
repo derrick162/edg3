@@ -8,6 +8,17 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-09** — Shipped **★ Gmail draft-only scope + guardrails** (Security half;
+  gates Core's email feature). New `lib/google-auth.ts` (scope authority incl.
+  `gmail.compose` + `hasGmailScope`/`missingRequiredScopes`) and `lib/gmail.ts`
+  (`createDraft` — drafts.create ONLY, no `messages.send`; typed `GmailScopeError`/
+  `GmailRateLimitError`; hourly per-user rate limit; append-only `gmail_drafts_log`
+  audit with recipient/subject encrypted at rest). `calendar_tokens.scope` now
+  persisted (re-consent detection); `lib/calendar.ts` requests the Gmail scope +
+  `include_granted_scopes`. 53/53 tests, tsc clean. **Handed to Core:** call
+  `createDraft()` from `draftEmail`, handle `GmailScopeError`→re-consent. ⚠️ Prod
+  landmine flagged: `gmail.compose` is a restricted scope (Google verification +
+  CASA assessment) before rollout beyond testing-mode users.
 - **2026-06-09** — Shipped **#4 Data-at-rest encryption** + **#5 code-side
   durability** (commit `80b4d30`). `lib/crypto.ts`: AES-256-GCM field encryption,
   transparent + backward-compatible (legacy plaintext passes through; no-op until
@@ -82,13 +93,15 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 
 ### Incoming from PM (coordinate with Core)
-- [ ] **★ TOP PRIORITY: Gmail access for draft-only email (scope + guardrails)** — _gates Core's email-drafting feature (`ROADMAP-CORE.md`)._
-  - Add the Gmail scope to OAuth (`gmail.compose`) in `lib/calendar.ts` SCOPES (consider extracting a shared `lib/google-auth.ts`). The scope technically allows sending — **the draft-only limit is enforced in our code, not the scope.**
-  - **Re-consent flow:** existing users granted only calendar scopes — they must re-authorize Google for Gmail. Detect the missing scope gracefully and prompt re-auth (onboarding/settings).
-  - **Token sensitivity:** a Gmail-enabled token is higher-value — ensure it's covered by encryption-at-rest (#4).
-  - **Hard guardrails:** expose only a `drafts.create` helper; never wire `messages.send`. Add audit logging of drafts created + a per-user rate limit (anti-spam).
-  - ⚠️ **Production landmine:** `gmail.compose` is a Google **restricted scope** → public/production use requires Google **OAuth app verification + a CASA security assessment** (can take weeks). Fine now in "testing" mode with the user as a test user, but this is a hard gate before rolling email out to all users. Flag early.
-  - Deliver: the scope + a safe draft-create helper Core can call. Effort ~2d (excl. Google verification lead time). Coordinate before Core merges its `draftEmail` tool.
+- [x] **★ TOP PRIORITY: Gmail access for draft-only email (scope + guardrails)** — **Security half DELIVERED** (this commit); gates Core's email-drafting feature (`ROADMAP-CORE.md`).
+  - ✅ **Scope:** `gmail.compose` added via new Security-owned **`lib/google-auth.ts`** (scope authority + `hasGmailScope`/`missingRequiredScopes`); `lib/calendar.ts` sources scopes from it and requests `include_granted_scopes` so calendar-only users re-consent without dropping calendar.
+  - ✅ **Draft helper Core can call:** **`lib/gmail.ts` → `createDraft(userId, {to, subject, body, cc?, bcc?})`**. Exposes ONLY `users.drafts.create` — `messages.send` is never imported/wired (test asserts it's never called). Returns `{ draftId, messageId }`.
+  - ✅ **Re-consent detection:** granted scopes persisted on `calendar_tokens.scope` (callback passes `tokens.scope`); `userHasGmailScope(userId)` + `missingRequiredScopes()` let onboarding/settings prompt re-auth. **Core builds the actual prompt UI.**
+  - ✅ **Token sensitivity:** the Gmail-enabled token rides the same encrypted `calendar_tokens` row as #4 (encrypted at rest).
+  - ✅ **Guardrails:** per-user hourly rate limit (`GMAIL_DRAFTS_PER_HOUR`, default 20) + append-only audit log (`gmail_drafts_log`, recipient/subject encrypted at rest). Throws typed `GmailScopeError` / `GmailRateLimitError`.
+  - ✅ Tests: `lib/gmail.test.ts` + `lib/google-auth.test.ts` (12 cases) — scope gate, rate limit, draft-only, MIME/base64url, re-consent detection. Full suite 53/53, tsc clean.
+  - ⚠️ **Production landmine (still open, ops/PM):** `gmail.compose` is a Google **restricted scope** → public/production use requires Google **OAuth app verification + a CASA security assessment** (weeks). Fine now in "testing" mode with the owner as a test user; **hard gate before rolling email to all users.** Flagged to PM.
+  - **Handoff to Core:** call `createDraft()` from the `draftEmail` Vapi tool; handle `GmailScopeError` → trigger re-consent; coordinate before merging the `draftEmail` tool into `tool-call/route.ts`.
 - [ ] **Secure the travel API credential** — ⏸ PARKED (travel feature parked 2026-06-09). When resumed: own the `AMADEUS_*` secret + a rate-limit/cost guardrail on the lookup endpoint.
 
 ### Closed / deprioritized (do not re-open without reason)
