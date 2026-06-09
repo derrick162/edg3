@@ -7,6 +7,11 @@
 > `docs/EDG3-Roadmap.xlsx` — **that spreadsheet is deprecated.**
 
 ## Changelog
+- **2026-06-09** — Shipped **#6 Undo** (commit `28f364d`): every mutation records
+  inverse ops in a new `undo_log`; reversible by voice (`undoLastAction`) and
+  dashboard. H3 now ✅. Defused **#1 JWT fallback** in code (`lib/auth.ts` fails
+  closed — throws if `JWT_SECRET` unset, no public default). **Ops follow-up
+  still open:** rotate `JWT_SECRET` on Railway (invalidates existing sessions).
 - **2026-06-09** — Roadmap re-derived from a verified code audit (not the
   spreadsheet). Re-ranked around trust + cost-to-fix. Added the JWT fallback
   landmine as the new #1 (previously unlisted). Confirmed H6 done, C2 mitigated,
@@ -26,12 +31,12 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 | C3 | Idempotency on writes | ❌ Absent — `createEvent` inserts directly. Retries/double-calls duplicate. |
 | H1 | Token encryption | ❌ Plaintext `calendar_tokens` (`lib/db.ts:75`). |
 | H2 | Action audit log | ⚠️ Partial — `tool_actions` JSON exists but mutable, capped 50, no before/after snapshots. |
-| H3 | Undo last action | ⚠️ Scaffolded but dead — `undo_log` + `undoQueries` exist, `undoQueries.record` never called. |
+| H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
 | H4 | Rate limiting | ❌ Absent on all endpoints. |
 | H5 | Backups / PITR | ❌ SQLite single volume; needs Litestream/snapshots (not RDS-PITR). |
 | H6 | Destructive confirmation | ✅ Done (`tool-call/route.ts:350`); soft spot: model could self-confirm. |
 | M4 | Timezone/recurring | ✅ Mostly handled — IANA passed + validated everywhere. |
-| — | **JWT fallback secret** | 🔴 **NEW CRITICAL** — `lib/auth.ts:6` falls back to a public hardcoded secret. Account-takeover if env unset. |
+| — | **JWT fallback secret** | ✅ Fixed in code — `lib/auth.ts` fails closed (throws if `JWT_SECRET` unset, no public default). ⚠️ **Ops:** still rotate the secret on Railway. |
 | — | Transcript PII | 🔴 `briefings.transcript` stored plaintext — bigger surface than tokens. |
 | — | Retry reliability | ⚠️ `retryCall` uses in-process `setTimeout(10m)` — lost on deploy/restart. |
 
@@ -40,7 +45,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 ## 30-Day plan
 
 ### Week 1 — Defuse landmines (cheap, catastrophic if left)
-- [ ] **1. Remove JWT fallback** → throw if `JWT_SECRET` unset; rotate secret. _½d_
+- [x] **1. Remove JWT fallback** → code fails closed (throws if `JWT_SECRET` unset). _Ops follow-up: rotate the secret on Railway._ _½d_
 - [ ] **2. Enforce Vapi secret** — confirm Vapi sends `x-vapi-secret`, then set `VAPI_SECRET_ENFORCE=true` (keep fail-open log 24h first). _½d_
 - [ ] **3. Idempotency** on `createEvent` / `createRecurringEvent` / `copyDayEvents` — dedupe key per (user, title-hash, start-minute) + TTL. _1–2d_
 
@@ -49,7 +54,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [ ] **5. SQLite durability** — Litestream continuous replication + one real restore drill. _1d + drill_
 
 ### Week 3 — Finish half-built trust features
-- [ ] **6. Wire the undo_log** — call `undoQueries.record` with before-snapshot in delete/move/edit; expose "undo last action" in dashboard + voice. _1.5–2d_
+- [x] **6. Wire the undo_log** — done (`28f364d`): inverse ops recorded on every mutation; "undo last action" in dashboard + voice. _1.5–2d_
 - [ ] **7. Harden audit log** — before/after snapshots, own append-only table (drop the 50-cap), "Recent activity" view. _2d_
 
 ### Week 4 — Abuse + correctness hardening

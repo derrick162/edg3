@@ -3,8 +3,19 @@ import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { userQueries, User } from './db';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'edg3-secret-change-in-production';
 const COOKIE_NAME = 'edg3_session';
+
+// Fail closed: never fall back to a hardcoded secret. An unset JWT_SECRET would
+// let anyone forge a session cookie (account takeover), so we refuse to sign or
+// verify rather than silently using a public default. Resolved lazily so a build
+// without runtime env doesn't crash at import — only actual auth operations throw.
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is not set — refusing to sign/verify sessions with a fallback secret.');
+  }
+  return secret;
+}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -15,12 +26,16 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function createToken(userId: number): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ userId }, getJwtSecret(), { expiresIn: '30d' });
 }
 
 export function verifyToken(token: string): { userId: number } | null {
+  // Resolve the secret outside the try so a misconfigured server surfaces loudly
+  // (500) instead of silently treating every session as invalid; only a genuinely
+  // bad/expired token falls through to null.
+  const secret = getJwtSecret();
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: number };
+    return jwt.verify(token, secret) as { userId: number };
   } catch {
     return null;
   }
