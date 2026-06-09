@@ -89,12 +89,18 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — all-day + research shipped to `core`; ⚠️ sync w/ Security #3 idempotency before master merge of tool-call/route.ts)_ | — | 2026-06-09 |
-| 🔒 Security | `security` | _(idle)_ | — | — |
+| 🛠️ Core | `core` | _(idle — all-day + research ✅ merged to master & verified green; next: email drafting, gated on Security Gmail scope)_ | — | 2026-06-09 |
+| 🔒 Security | `security` | _(idle — ★ next: Gmail OAuth scope for email, top priority)_ | — | 2026-06-09 |
 
 ---
 
 ## Changelog
+- **2026-06-09** — Core's first two tickets (multi-day all-day + research-replace)
+  **merged to master & verified green** (tsc clean, 33/33 tests). One external
+  step remains for the user: add the new tool params (`endDate` on createEvent,
+  `newStartDate`/`newEndDate` on moveEvent) in the **Vapi dashboard** — they live
+  there, not in the repo. Route degrades safely until then. Email drafting is the
+  new top priority (Security Gmail scope gates it).
 - **2026-06-09** — Established the PM + two-engineer model. Renamed the features
   lane to **Core** (branch `core`, folder `edg3-core`, `ROADMAP-CORE.md`).
 - **2026-06-09** — Split the single roadmap into two lanes governed by this
