@@ -65,6 +65,7 @@ Stay in your lane's files — this is what makes parallel work conflict-free.
 
 **⚠️ Shared — coordinate before touching** (see §5):
 - `lib/db.ts` (schema — both lanes add tables/columns)
+- `app/api/vapi/tool-call/route.ts` and `lib/vapi.ts` — **Core owns the calendar tool *behavior*** (the `createEvent`/`moveEvent`/etc. handlers + the tool/system-prompt guidance); **Security owns the *auth/secret + webhook integrity*** of these same files.
 - `CLAUDE.md`, `AGENTS.md`, this `ROADMAP.md`, both lane roadmaps' structure
 - Anything not clearly in one lane above
 
