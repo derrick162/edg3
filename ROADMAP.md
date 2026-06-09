@@ -91,12 +91,27 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ★ `draftEmail` SHIPPED & green (61/61): handler in route.ts + tool/prompt guidance in lib/vapi.ts, calls Security's `createDraft`, undo via `deleteDraft`. Ready for master merge. ⚠️ User must create the `draftEmail` tool in the Vapi dashboard — params in ROADMAP-CORE.md changelog.)_ | — | 2026-06-09 |
-| 🔒 Security | `security` | ✅ **★ Gmail primitive DELIVERED** (`lib/gmail.ts` `createDraft`/`deleteDraft` guarded + `lib/google-auth.ts` scope + `deleteDraft` undo op) — synced with master (Core's `lib/outreach.ts` landed), green, ready to merge `security`→`master`. **Core, after scope lands: `createDraft(userId, {to: recipient.email, subject, body})` from `draftEmail`; record `deleteDraft` undo; handle `GmailScopeError`→re-consent.** Touched Core-owned `lib/calendar.ts` (scopes, additive) + `calendar/callback` (persist scope). Next: #2 Vapi secret | `lib/gmail.ts`,`lib/google-auth.ts` (new), `lib/undo.ts`, `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — ✅ `draftEmail` MERGED to master & green (61/61). Email feature is code-complete. Remaining = go-live config, not code: deploy + create the `draftEmail` Vapi tool + user re-consents Google.)_ | — | 2026-06-09 |
+| 🔒 Security | `security` | _(idle — Gmail primitive + encryption + backups all merged to master & green. Next: #2 Vapi secret.)_ | — | 2026-06-09 |
+
+> **★ Email feature go-live checklist (code done — these remain):**
+> 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
+> 2. Deploy master to production.
+> 3. Create the `draftEmail` tool in the Vapi dashboard (params below) + add its tool ID in `lib/vapi.ts:188`.
+> 4. User re-consents Google (reconnect account → grants Gmail).
+> 5. `draftEmail` Vapi params: `recipients` (array of {name, email}), `ask` (string), `proposeAvailability` (boolean), `startDate` (string/date), `endDate` (string/date), `subject` (string, optional).
 
 ---
 
 ## Changelog
+- **2026-06-09** — **Email drafting feature is code-complete & merged to master,
+  green (61/61, tsc clean).** Full pipeline: Core composition (`lib/outreach.ts`)
+  → Security guarded draft-only `createDraft` (`lib/gmail.ts` + `lib/google-auth.ts`)
+  → `draftEmail` tool wired in `tool-call/route.ts` + `lib/vapi.ts`, undo via
+  `deleteDraft`. Resolved the dual-`gmail.ts` collision (Security owns the access
+  primitive; Core owns composition in `lib/outreach.ts`). Remaining = go-live
+  config (see checklist above): deploy, create the Vapi `draftEmail` tool, user
+  re-consents Google.
 - **2026-06-09** — User added the all-day tool params (`endDate` on createEvent;
   `newStartDate`/`newEndDate` on moveEvent) in the Vapi dashboard → the multi-day
   all-day fix is now **fully live**, pending a confirming voice-call test.
