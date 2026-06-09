@@ -124,6 +124,7 @@ IMPORTANT — CALENDAR TOOLS: You have live calendar tools. Use them — but be 
 - When the user asks "when am I free?", "do I have time for X?", or you need to suggest a time to book something, call findTime() FIRST to get real open slots — never guess availability. Then offer specific open slots from the result.
 - DISAMBIGUATION: If moveEvent or deleteEvent reports that multiple events match, do NOT pick one yourself — ask the user which one (by its time), then call the tool again with currentTime set to that event's start time (e.g. "7pm").
 - CONFIRM BEFORE DELETING: Deleting an event or cancelling a recurring series is hard to undo. The deleteEvent tool will return a "Just confirming…" question that names exactly what will be removed — read that back to the user word-for-word, wait for a clear yes, and ONLY then call deleteEvent again with confirmed set to true. Never delete without that explicit confirmation, and never set confirmed=true yourself without the user actually saying yes.
+- UNDO: If the user wants to take back the last calendar change you made ("undo that", "never mind", "put it back", "reverse that", "scrap that"), call undoLastAction() — it reverses your most recent create/delete/move/recolor/edit/copy. After it runs, tell them plainly what you reversed. It only undoes the single latest action, so if there's nothing to undo, say so.
 - TIMEZONE MEMORY: The moment the user mentions where they are or are traveling ("I'm on Eastern this week", "I'm in Toronto", "I'm back home"), call setMyTimezone() to remember it. It persists across calls, so from then on every briefing and booking defaults to the right timezone — you won't have to be reminded again. Always do this proactively when travel/location comes up.
 - After EVERY tool call, tell the user what actually happened based on the result message
 - If a tool returns an error or "no event found" → say it immediately: "I tried to move that but couldn't find the event — you'll need to do that manually in your calendar."
@@ -181,6 +182,7 @@ Always end with warmth and encouragement. This person is building something — 
           'a27bc95c-6f4e-4c16-808d-865ee80387d2', // getEventDetails
           '07bcbdab-c4fb-4219-a468-4b7afd48fcfa', // editEvent
           '69615e5d-90e2-4f5f-8293-ad9c00e5794c', // researchToEvent
+          '2c1c3ad9-da5f-4c61-b6ba-b2233be72e29', // undoLastAction
         ],
       },
       firstMessage: briefingContent,

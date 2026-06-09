@@ -91,6 +91,15 @@ function initSchema(db: Database.Database) {
       date TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS undo_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      label TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      undone INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -332,6 +341,19 @@ export const taskQueries = {
     return getDb().prepare(
       "SELECT * FROM tasks WHERE user_id = ? AND completed = 0 AND date >= date('now', '-1 days') ORDER BY date ASC"
     ).all(userId) as Task[];
+  },
+};
+
+// Undo log — records the inverse of each calendar action so it can be reversed.
+export const undoQueries = {
+  record: (userId: number, label: string, payload: unknown) => {
+    return getDb().prepare('INSERT INTO undo_log (user_id, label, payload) VALUES (?, ?, ?)').run(userId, label, JSON.stringify(payload));
+  },
+  getLatest: (userId: number) => {
+    return getDb().prepare('SELECT * FROM undo_log WHERE user_id = ? AND undone = 0 ORDER BY id DESC LIMIT 1').get(userId) as { id: number; label: string; payload: string } | undefined;
+  },
+  markUndone: (id: number) => {
+    return getDb().prepare('UPDATE undo_log SET undone = 1 WHERE id = ?').run(id);
   },
 };
 

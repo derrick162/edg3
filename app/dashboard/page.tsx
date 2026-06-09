@@ -609,9 +609,11 @@ export default function Dashboard() {
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
+  const [undoLabel, setUndoLabel] = useState<string | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes, reminderRes] = await Promise.all([
+    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes, reminderRes, undoRes] = await Promise.all([
       fetch('/api/auth/me'),
       fetch('/api/briefing/history'),
       fetch('/api/onboarding/priorities'),
@@ -619,14 +621,16 @@ export default function Dashboard() {
       fetch('/api/tasks'),
       fetch('/api/calendar/status'),
       fetch('/api/calendar/reminder'),
+      fetch('/api/undo'),
     ]);
 
     if (!meRes.ok) { router.push('/login'); return; }
 
-    const [me, br, pr, mem, tk, cal, rem] = await Promise.all([
+    const [me, br, pr, mem, tk, cal, rem, undo] = await Promise.all([
       meRes.json(), briefingsRes.json(), prioritiesRes.json(), memoriesRes.json(), tasksRes.json(),
       calendarRes.ok ? calendarRes.json() : Promise.resolve({ connected: false }),
       reminderRes.ok ? reminderRes.json() : Promise.resolve({ exists: false }),
+      undoRes.ok ? undoRes.json() : Promise.resolve({ available: false, label: null }),
     ]);
 
     setUser(me);
@@ -636,7 +640,18 @@ export default function Dashboard() {
     setTasks(tk.tasks || []);
     setCalendarConnected(!!cal.connected);
     setReminderInCalendar(!!rem.exists);
+    setUndoLabel(undo.available ? undo.label : null);
   }, [router]);
+
+  async function handleUndo() {
+    if (!undoLabel) return;
+    setUndoBusy(true);
+    const res = await fetch('/api/undo', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    setUndoBusy(false);
+    if (res.ok && data.success) { setUndoLabel(null); loadData(); }
+    else alert('Could not undo that — please check your calendar.');
+  }
 
   async function addDailyCallReminder() {
     setReminderBusy(true);
@@ -831,6 +846,21 @@ export default function Dashboard() {
                   </button>
                 ) : null}
               </div>
+              {undoLabel && (
+                <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-xs" style={{ color: '#a8a8b8' }}>
+                    Last change — Edge {undoLabel}
+                  </span>
+                  <button
+                    onClick={handleUndo}
+                    disabled={undoBusy}
+                    className="text-xs py-1 px-2 rounded ml-auto"
+                    style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}
+                  >
+                    {undoBusy ? 'Undoing…' : '↩ Undo'}
+                  </button>
+                </div>
+              )}
             </div>
             {calendarConnected === false ? (
               <button

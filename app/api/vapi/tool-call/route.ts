@@ -5,7 +5,8 @@ import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone } f
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, undoQueries } from '@/lib/db';
+import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -104,6 +105,7 @@ function describeDeleteTargets(targets: { event: calendar_v3.Schema$Event }[], r
   const when = e.start?.dateTime ? ` at ${new Date(e.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })}` : '';
   return `"${name}"${when}`;
 }
+
 
 type ResolveResult =
   | { kind: 'one'; event: calendar_v3.Schema$Event; calId: string }
@@ -216,8 +218,12 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     if (typeof location === 'string') body.location = location;
     if (typeof description === 'string') body.description = (appendDescription && e.description) ? `${e.description}\n${description}` : description;
     if (!Object.keys(body).length) return 'Tell me what to change — a description/note or a location.';
+    const undoBody: calendar_v3.Schema$Event = {};
+    if ('location' in body) undoBody.location = e.location ?? '';
+    if ('description' in body) undoBody.description = e.description ?? '';
     const editPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: body });
     if (!editPatched.data.id) return `Couldn't confirm the update to "${e.summary}" — please double-check your calendar.`;
+    recordUndo(userId, `edited "${(e.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: r.calId, eventId: e.id!, requestBody: undoBody }]);
     return `Updated and confirmed "${(e.summary ?? '').replace(/^⚡\s*/, '')}"${body.location ? ` — location: ${body.location}` : ''}${body.description ? ' — notes updated' : ''}.`;
 
   } else if (fn === 'researchToEvent') {
@@ -261,6 +267,7 @@ Query: ${query}` }],
     const block = `${query}:\n${findings}`;
     const researchPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: e.description ? `${e.description}\n\n${block}` : block } });
     if (!researchPatched.data.id) return `I researched "${query}" but couldn't confirm it saved — please double-check.`;
+    recordUndo(userId, `added research notes to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: r.calId, eventId: e.id!, requestBody: { description: e.description ?? '' } }]);
     return `Done — researched "${query}" and added the findings to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"'s notes.`;
 
   } else if (fn === 'createEvent') {
@@ -275,9 +282,9 @@ Query: ${query}` }],
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: dateOnly }, end: { date: nextDay(dateOnly) }, colorId: color ? getColorId(color) : '9',
       } });
-      return insAllDay.data.id
-        ? `Created and confirmed all-day "${title}" on ${dateOnly}.`
-        : `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
+      if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
+      recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
+      return `Created and confirmed all-day "${title}" on ${dateOnly}.`;
     }
 
     if (startDateTime && !startDateTime.includes('T')) {
@@ -310,6 +317,7 @@ Query: ${query}` }],
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
+    recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
     return `Created and confirmed "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
 
   } else if (fn === 'createRecurringEvent') {
@@ -322,7 +330,8 @@ Query: ${query}` }],
       fullRrule = `RRULE:${recurrence};UNTIL=${rruleUntilUtc(endDate, timezone || 'America/Vancouver')}`;
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
-    await cal.events.insert({ calendarId: 'primary', requestBody: rb });
+    const insRec = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
+    if (insRec.data.id) recordUndo(userId, `created recurring "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insRec.data.id }]);
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
@@ -363,6 +372,9 @@ Query: ${query}` }],
       }
       deleted.push(ev.summary ?? ev.id!);
     }
+    // Record undo (recreate) for the non-recurring single events we removed.
+    const recreates: UndoOp[] = toDelete.filter(({ event }) => !event.recurringEventId).map(({ event, calId }) => ({ type: 'recreate', calId, event: cleanForRecreate(event) }));
+    if (recreates.length) recordUndo(userId, `deleted ${describeDeleteTargets(toDelete, recurringScope, tz)}`, recreates);
     return deleted.length ? `Deleted: ${deleted.join(', ')}` : `No event matching "${title}" on ${date}.`;
 
   } else if (fn === 'moveEvent') {
@@ -377,8 +389,14 @@ Query: ${query}` }],
     const eventId = (recurringScope === 'all' && found.event.recurringEventId) ? found.event.recurringEventId : found.event.id!;
     const rb: calendar_v3.Schema$Event = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
     if (found.event.colorId) rb.colorId = found.event.colorId;
+    const origStart = found.event.start;
+    const origEnd = found.event.end;
     const patched = await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb });
     if (!patched.data.id) return `Couldn't confirm the move of "${found.event.summary}" — please double-check your calendar.`;
+    // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
+    if (recurringScope !== 'all' && origStart && origEnd) {
+      recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
+    }
     return `Moved and confirmed "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
 
   } else if (fn === 'colorEvent') {
@@ -389,8 +407,9 @@ Query: ${query}` }],
     const lists = await Promise.all(calIds.map(calId =>
       cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 100 }).then(r => ({ calId, items: r.data.items ?? [] })).catch(() => ({ calId, items: [] as calendar_v3.Schema$Event[] }))
     ));
-    const toColor = lists.flatMap(l => l.items.filter(e => titleMatchScore(e.summary ?? '', title) > 0).map(e => ({ calId: l.calId, id: e.id! })));
+    const toColor = lists.flatMap(l => l.items.filter(e => titleMatchScore(e.summary ?? '', title) > 0).map(e => ({ calId: l.calId, id: e.id!, prevColor: e.colorId ?? '9' })));
     await Promise.all(toColor.map(x => cal.events.patch({ calendarId: x.calId, eventId: x.id, requestBody: { colorId } }).catch(() => undefined)));
+    if (toColor.length) recordUndo(userId, `recolored ${toColor.length} "${title}" event(s)`, toColor.map(x => ({ type: 'patch', calId: x.calId, eventId: x.id, requestBody: { colorId: x.prevColor } })));
     return toColor.length ? `Changed ${toColor.length} "${title}" event(s) to ${color}.` : `No events matching "${title}" found.`;
 
   } else if (fn === 'planWeek') {
@@ -442,6 +461,7 @@ Query: ${query}` }],
 
     let created = 0;
     const titles = new Set<string>();
+    const createdIds: string[] = [];
     const inserts: Promise<unknown>[] = [];
     for (const target of targetDates) {
       for (const ev of src) {
@@ -455,13 +475,23 @@ Query: ${query}` }],
           start: { dateTime: newStart.toISOString() },
           end: { dateTime: newEnd.toISOString() },
           colorId: ev.colorId || undefined,
-        } }).then(() => { created++; titles.add((ev.summary || '').replace(/^⚡\s*/, '')); }).catch(() => undefined));
+        } }).then(r => { created++; titles.add((ev.summary || '').replace(/^⚡\s*/, '')); if (r.data.id) createdIds.push(r.data.id); }).catch(() => undefined));
       }
     }
     await Promise.all(inserts);
+    if (createdIds.length) recordUndo(userId, `copied ${src.length} event(s) to ${targetDates.length} day(s)`, [{ type: 'deleteMany', calId: 'primary', eventIds: createdIds }]);
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
       : `Couldn't copy events from ${sourceDate}.`;
+
+  } else if (fn === 'undoLastAction') {
+    const last = undoQueries.getLatest(userId);
+    if (!last) return "There's nothing for me to undo.";
+    const ok = await executeUndo(cal, parseUndoOps(last.payload));
+    undoQueries.markUndone(last.id);
+    return ok
+      ? `Done — I reversed that: ${last.label}.`
+      : `I tried to undo "${last.label}" but couldn't fully reverse it — please double-check your calendar.`;
   }
 
   return `Error: unknown tool "${fn}"`;
