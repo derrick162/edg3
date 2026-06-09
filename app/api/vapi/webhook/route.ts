@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
-import { extractUserResponseFromTranscript } from '@/lib/vapi';
+import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
 import Anthropic from '@anthropic-ai/sdk';
 
 // Reasons that indicate the user didn't answer — worth retrying
@@ -45,6 +45,10 @@ async function retryCall(briefingId: number, userId: number) {
 // Vapi webhook handler for call status updates
 export async function POST(req: NextRequest) {
   try {
+    const sec = checkVapiSecret(req.headers.get('x-vapi-secret'));
+    if (sec.status !== 'accepted') console.warn(`[webhook] Vapi secret ${sec.status}`);
+    if (!sec.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
     const body = await req.json();
     const payload = body.message || body;
     const { type, call } = payload;

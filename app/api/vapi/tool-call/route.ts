@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
+import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
 import { google, calendar_v3 } from 'googleapis';
@@ -494,6 +495,10 @@ function extractToolCalls(message: Record<string, unknown>): { calls: ParsedTool
 
 export async function POST(req: NextRequest) {
   try {
+    const sec = checkVapiSecret(req.headers.get('x-vapi-secret'));
+    if (sec.status !== 'accepted') console.warn(`[tool-call] Vapi secret ${sec.status}`);
+    if (!sec.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
     const body = await req.json();
     const message = (body.message ?? body) as Record<string, unknown>;
     const type = message.type;

@@ -27,6 +27,21 @@ function resolveWebhookUrl(): string {
   return `${base.replace(/\/$/, '')}/api/vapi/webhook`;
 }
 
+// Verify a request to our Vapi server endpoints (tool-call / webhook) carries the shared secret
+// Vapi sends as the X-Vapi-Secret header. Two-stage rollout to never lock out a live call:
+//  - VAPI_SERVER_SECRET unset            -> accept everything (not configured yet)
+//  - set, header matches                 -> accept
+//  - set, header missing/wrong, ENFORCE off -> ACCEPT but log (Stage A, fail-open)
+//  - set, header missing/wrong, ENFORCE on  -> REJECT (Stage B)
+export function checkVapiSecret(provided: string | null): { ok: boolean; status: 'accepted' | 'mismatch-allowed' | 'rejected' } {
+  const expected = process.env.VAPI_SERVER_SECRET;
+  if (!expected) return { ok: true, status: 'accepted' };
+  if (provided && provided === expected) return { ok: true, status: 'accepted' };
+  return process.env.VAPI_SECRET_ENFORCE === 'true'
+    ? { ok: false, status: 'rejected' }
+    : { ok: true, status: 'mismatch-allowed' };
+}
+
 export async function initiateCall(
   phoneNumber: string,
   briefingContent: string,
@@ -139,6 +154,7 @@ Always end with warmth and encouragement. This person is building something — 
       name: 'EDG3',
       server: {
         url: resolveWebhookUrl(),
+        ...(process.env.VAPI_SERVER_SECRET ? { secret: process.env.VAPI_SERVER_SECRET } : {}),
       },
       voice: {
         provider: '11labs',
