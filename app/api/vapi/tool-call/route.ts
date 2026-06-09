@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc } from '@/lib/time';
+import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries } from '@/lib/db';
 import { google, calendar_v3 } from 'googleapis';
@@ -51,21 +52,57 @@ async function getCalIds(cal: calendar_v3.Calendar): Promise<string[]> {
     .filter(Boolean);
 }
 
-function normTitle(s: string) { return s.replace(/^⚡\s*/, '').toLowerCase().replace(/\s+/g, '').trim(); }
+// Start time of an event as minutes-since-midnight in the user's timezone (null for all-day).
+function startMinutesInTz(e: calendar_v3.Schema$Event, tz: string): number | null {
+  if (!e.start?.dateTime) return null;
+  const m = new Date(e.start.dateTime).toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).match(/^(\d{2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
 
-async function findEv(cal: calendar_v3.Calendar, calIds: string[], title: string, date: string, tz: string) {
-  // Use the user's local day window, not UTC — a late-evening event (e.g. 8:35pm ET) lands on
-  // the next UTC day, so a UTC "June 25" lookup would miss it.
+// Parse a spoken/typed time hint ("7pm", "19:00", "noon") to minutes-since-midnight.
+function parseTimeMinutes(s?: string): number | null {
+  if (!s) return null;
+  const m = resolveNaturalTime(s).match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+// All events on `date` (user's local day window — a late-evening event rolls to the next UTC
+// day, so a UTC window would miss it), each tagged with its calendar id.
+async function eventsOnDay(cal: calendar_v3.Calendar, calIds: string[], date: string, tz: string): Promise<{ event: calendar_v3.Schema$Event; calId: string }[]> {
   const { start, end } = dayRangeUtc(tz, date);
-  const tMin = start.toISOString();
-  const tMax = end.toISOString();
-  const tn = normTitle(title);
+  const out: { event: calendar_v3.Schema$Event; calId: string }[] = [];
   for (const calId of calIds) {
-    const res = await cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-    const match = (res.data.items ?? []).find((e) => normTitle(e.summary ?? '').includes(tn) || tn.includes(normTitle(e.summary ?? '')));
-    if (match) return { event: match, calId };
+    const res = await cal.events.list({ calendarId: calId, timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: true, showHiddenInvitations: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+    for (const e of (res.data.items ?? [])) out.push({ event: e, calId });
   }
-  return null;
+  return out;
+}
+
+function describeOptions(matches: { event: calendar_v3.Schema$Event }[], tz: string): string {
+  return matches.map(m => {
+    const t = m.event.start?.dateTime
+      ? new Date(m.event.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+      : 'all day';
+    return `"${(m.event.summary ?? '').replace(/^⚡\s*/, '')}" at ${t}`;
+  }).join(', ');
+}
+
+type ResolveResult =
+  | { kind: 'one'; event: calendar_v3.Schema$Event; calId: string }
+  | { kind: 'ambiguous'; message: string }
+  | { kind: 'none' };
+
+// Resolve which event the user means by title + an optional time hint, instead of grabbing the
+// first loose title match. Ambiguous → caller asks the user which one.
+function resolveEvent(matches: { event: calendar_v3.Schema$Event; calId: string }[], title: string, tz: string, currentTime?: string): ResolveResult {
+  const sel = selectEvent(
+    matches.map(m => ({ title: m.event.summary ?? '', startMinutes: startMinutesInTz(m.event, tz) })),
+    title,
+    parseTimeMinutes(currentTime),
+  );
+  if (sel.kind === 'none') return { kind: 'none' };
+  if (sel.kind === 'one') return { kind: 'one', event: matches[sel.index].event, calId: matches[sel.index].calId };
+  return { kind: 'ambiguous', message: describeOptions(sel.indexes.map(i => matches[i]), tz) };
 }
 
 // Translate an exception into something Edge can read out to the user.
@@ -203,40 +240,43 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
-    const { title, date, deleteAll, recurringScope } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all' };
-    const deleted: string[] = [];
-    let prompt = '';
-    const delMin = dayRangeUtc(tz, date).start.toISOString();
-    const delMax = dayRangeUtc(tz, date).end.toISOString();
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: delMin, timeMax: delMax, singleEvents: true, showHiddenInvitations: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      const tn = normTitle(title);
-      const matches = (res.data.items ?? []).filter(e => normTitle(e.summary ?? '').includes(tn) || tn.includes(normTitle(e.summary ?? '')));
-      for (const ev of (deleteAll ? matches : matches.slice(0, 1))) {
-        // Check if recurring
-        if (ev.recurringEventId && !recurringScope) {
-          prompt = `"${ev.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
-          break;
-        }
-        if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
-          // Delete this and following by updating the series end date
-          await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g, '')}`] } }).catch(() => undefined);
-        } else if (ev.recurringEventId && recurringScope === 'all') {
-          await cal.events.delete({ calendarId: calId, eventId: ev.recurringEventId }).catch(() => undefined);
-        } else {
-          await cal.events.delete({ calendarId: calId, eventId: ev.id! }).catch(() => undefined);
-        }
-        deleted.push(ev.summary ?? ev.id!);
-      }
-      if (prompt) break;
+    const { title, date, deleteAll, recurringScope, currentTime } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string };
+    const dayMatches = await eventsOnDay(cal, calIds, date, tz);
+
+    // Which events to delete: all title matches (deleteAll), or one precisely-resolved event.
+    let toDelete: { event: calendar_v3.Schema$Event; calId: string }[];
+    if (deleteAll) {
+      toDelete = dayMatches.filter(m => titleMatchScore(m.event.summary ?? '', title) > 0);
+      if (!toDelete.length) return `No event matching "${title}" on ${date}.`;
+    } else {
+      const r = resolveEvent(dayMatches, title, tz, currentTime);
+      if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
+      if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I delete? Ask the user, then call deleteEvent again with currentTime set to that event's start time (e.g. "7pm").`;
+      toDelete = [{ event: r.event, calId: r.calId }];
     }
-    if (prompt) return prompt;
+
+    const deleted: string[] = [];
+    for (const { event: ev, calId } of toDelete) {
+      if (ev.recurringEventId && !recurringScope) {
+        return `"${ev.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
+      }
+      if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
+        await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g, '')}`] } }).catch(() => undefined);
+      } else if (ev.recurringEventId && recurringScope === 'all') {
+        await cal.events.delete({ calendarId: calId, eventId: ev.recurringEventId }).catch(() => undefined);
+      } else {
+        await cal.events.delete({ calendarId: calId, eventId: ev.id! }).catch(() => undefined);
+      }
+      deleted.push(ev.summary ?? ev.id!);
+    }
     return deleted.length ? `Deleted: ${deleted.join(', ')}` : `No event matching "${title}" on ${date}.`;
 
   } else if (fn === 'moveEvent') {
-    const { title, date, newStartDateTime, newEndDateTime, timezone, recurringScope } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; timezone: string; recurringScope?: 'this' | 'all' };
-    const found = await findEv(cal, calIds, title, date, tz);
-    if (!found) return `No event matching "${title}" on ${date}.`;
+    const { title, date, newStartDateTime, newEndDateTime, timezone, recurringScope, currentTime } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string };
+    const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
+    if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I move? Ask the user, then call moveEvent again with currentTime set to that event's start time (e.g. "7pm").`;
+    const found = r;
     if (found.event.recurringEventId && !recurringScope) {
       return `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
     }
@@ -255,8 +295,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const tMax = date === 'all' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : dayRangeUtc(tz, date).end.toISOString();
     for (const calId of calIds) {
       const res = await cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 100 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      const tn = normTitle(title);
-      for (const ev of (res.data.items ?? []).filter(e => normTitle(e.summary ?? '').includes(tn) || tn.includes(normTitle(e.summary ?? '')))) {
+      for (const ev of (res.data.items ?? []).filter(e => titleMatchScore(e.summary ?? '', title) > 0)) {
         await cal.events.patch({ calendarId: calId, eventId: ev.id!, requestBody: { colorId } }).catch(() => undefined);
         count++;
       }

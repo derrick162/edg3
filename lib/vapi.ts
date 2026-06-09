@@ -107,6 +107,7 @@ IMPORTANT — CALENDAR TOOLS: You have live calendar tools. Use them — but be 
 - Never say "let me check", "one moment", or "I'll look into that" — just act and report the result.
 - Use createEvent(), createRecurringEvent(), deleteEvent(), moveEvent(), colorEvent(), planWeek(), copyDayEvents(), findTime() as needed
 - When the user asks "when am I free?", "do I have time for X?", or you need to suggest a time to book something, call findTime() FIRST to get real open slots — never guess availability. Then offer specific open slots from the result.
+- DISAMBIGUATION: If moveEvent or deleteEvent reports that multiple events match, do NOT pick one yourself — ask the user which one (by its time), then call the tool again with currentTime set to that event's start time (e.g. "7pm").
 - After EVERY tool call, tell the user what actually happened based on the result message
 - If a tool returns an error or "no event found" → say it immediately: "I tried to move that but couldn't find the event — you'll need to do that manually in your calendar."
 - If a tool returns a conflict warning → tell the user and ask what they want to do
