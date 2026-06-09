@@ -89,12 +89,15 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — all-day + research ✅ merged to master & verified green; next: email drafting, gated on Security Gmail scope)_ | — | 2026-06-09 |
-| 🔒 Security | `security` | ✅ **★ Gmail draft-only scope DELIVERED** (53/53 green, tsc clean) → ready to merge `security`→`master`. Core can call `lib/gmail.ts createDraft()`; handle `GmailScopeError`→re-consent. Touched Core-owned `lib/calendar.ts` (SCOPES→google-auth, additive) + `calendar/callback` (persist scope) — **Core: sync down before editing those.** Next: #2 Vapi secret | `lib/google-auth.ts`+`lib/gmail.ts` (new), `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — email-drafting PREP committed to `core`: `lib/gmail.ts` + tests, green. ⏳ Awaiting 🔒 Security's Gmail OAuth scope before wiring `draftEmail` into route.ts / touching `lib/undo.ts`. Not merged to master.)_ | — | 2026-06-09 |
+| 🔒 Security | `security` | ✅ **★ Gmail scope + guardrails + `deleteDraft` undo op DELIVERED** → ready to merge `security`→`master`. Core's `lib/gmail.ts` is canonical; Security adds scope (`lib/google-auth.ts`), `lib/gmailGuard.ts` (`assertCanDraft`/`recordDraftCreated`/`userHasGmailScope`), `calendar_tokens.scope` + `deleteDraft` op in `lib/undo.ts`. **Core, after sync: call `assertCanDraft` before / `recordDraftCreated` after `createGmailDraft`; record `deleteDraft` undo.** Touched Core-owned `lib/calendar.ts` (scopes, additive) + `calendar/callback` (persist scope) — sync before editing. Next: #2 Vapi secret | `lib/google-auth.ts`,`lib/gmailGuard.ts` (new), `lib/undo.ts`, `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
 
 ---
 
 ## Changelog
+- **2026-06-09** — User added the all-day tool params (`endDate` on createEvent;
+  `newStartDate`/`newEndDate` on moveEvent) in the Vapi dashboard → the multi-day
+  all-day fix is now **fully live**, pending a confirming voice-call test.
 - **2026-06-09** — Core's first two tickets (multi-day all-day + research-replace)
   **merged to master & verified green** (tsc clean, 33/33 tests). One external
   step remains for the user: add the new tool params (`endDate` on createEvent,

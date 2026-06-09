@@ -1,105 +1,95 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GOOGLE_SCOPES, CALENDAR_SCOPES } from './google-auth';
+import { describe, it, expect } from 'vitest';
+import { buildRawMessage, emailableRecipients, formatSlotsForEmail, buildOutreachBody } from './gmail';
 
-// --- Mocks for the I/O boundaries createDraft depends on --------------------
-const h = vi.hoisted(() => {
-  const draftsCreate = vi.fn(async () => ({ data: { id: 'draft_123', message: { id: 'msg_456' } } }));
-  const messagesSend = vi.fn(); // must NEVER be called — draft-only guarantee
-  return {
-    draftsCreate,
-    messagesSend,
-    calGet: vi.fn(),
-    upsert: vi.fn(),
-    countSince: vi.fn(() => 0),
-    logDraft: vi.fn(),
-    oauthClient: { setCredentials: vi.fn(), on: vi.fn() },
-  };
-});
+// Decode the base64url MIME back to a string for assertions.
+function decodeRaw(raw: string): string {
+  return Buffer.from(raw, 'base64url').toString('utf8');
+}
 
-vi.mock('./calendar', () => ({ getOAuthClient: () => h.oauthClient }));
-vi.mock('./db', () => ({
-  calendarQueries: { get: h.calGet, upsert: h.upsert },
-  gmailQueries: { countSince: h.countSince, logDraft: h.logDraft },
-}));
-vi.mock('googleapis', () => ({
-  google: {
-    gmail: () => ({
-      users: {
-        drafts: { create: h.draftsCreate },
-        messages: { send: h.messagesSend },
-      },
-    }),
-  },
-}));
-
-import { createDraft, userHasGmailScope, GmailScopeError, GmailRateLimitError } from './gmail';
-
-const WITH_GMAIL = { access_token: 'a', refresh_token: 'r', expiry: null, scope: GOOGLE_SCOPES.join(' ') };
-const CAL_ONLY = { access_token: 'a', refresh_token: 'r', expiry: null, scope: CALENDAR_SCOPES.join(' ') };
-const validInput = { to: 'friend@example.com', subject: 'Lunch', body: 'Want to grab lunch?' };
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  h.countSince.mockReturnValue(0);
-});
-
-describe('createDraft guardrails', () => {
-  it('refuses (GmailScopeError) when no Google account is connected', async () => {
-    h.calGet.mockReturnValue(undefined);
-    await expect(createDraft(1, validInput)).rejects.toBeInstanceOf(GmailScopeError);
-    expect(h.draftsCreate).not.toHaveBeenCalled();
+describe('buildRawMessage', () => {
+  it('produces base64url MIME with headers and body, plain-text only', () => {
+    const raw = buildRawMessage({ to: 'Jane <jane@example.com>', subject: 'Hello', body: 'Line one\nLine two' });
+    const mime = decodeRaw(raw);
+    expect(mime).toContain('To: Jane <jane@example.com>');
+    expect(mime).toContain('Subject: Hello');
+    expect(mime).toContain('Content-Type: text/plain; charset="UTF-8"');
+    // header/body separator + body present
+    expect(mime).toContain('\r\n\r\nLine one\nLine two');
   });
 
-  it('refuses (GmailScopeError) when the user granted calendar but not Gmail', async () => {
-    h.calGet.mockReturnValue(CAL_ONLY);
-    await expect(createDraft(1, validInput)).rejects.toBeInstanceOf(GmailScopeError);
-    expect(h.draftsCreate).not.toHaveBeenCalled();
+  it('RFC 2047 encodes non-ASCII subjects', () => {
+    const raw = buildRawMessage({ to: 'a@b.com', subject: 'Café ☕', body: 'hi' });
+    const mime = decodeRaw(raw);
+    expect(mime).toContain('Subject: =?UTF-8?B?');
+    expect(mime).not.toContain('Subject: Café');
   });
 
-  it('enforces the per-user hourly rate limit', async () => {
-    h.calGet.mockReturnValue(WITH_GMAIL);
-    h.countSince.mockReturnValue(20); // default cap
-    await expect(createDraft(1, validInput)).rejects.toBeInstanceOf(GmailRateLimitError);
-    expect(h.draftsCreate).not.toHaveBeenCalled();
-  });
-
-  it('requires a recipient', async () => {
-    h.calGet.mockReturnValue(WITH_GMAIL);
-    await expect(createDraft(1, { ...validInput, to: '  ' })).rejects.toThrow(/recipient/);
-  });
-
-  it('creates a DRAFT (never sends) and audit-logs it', async () => {
-    h.calGet.mockReturnValue(WITH_GMAIL);
-    const res = await createDraft(1, validInput);
-
-    expect(res).toEqual({ draftId: 'draft_123', messageId: 'msg_456' });
-    expect(h.draftsCreate).toHaveBeenCalledTimes(1);
-    expect(h.messagesSend).not.toHaveBeenCalled(); // ← the whole point
-    expect(h.logDraft).toHaveBeenCalledWith(1, 'friend@example.com', 'Lunch', 'draft_123');
-  });
-
-  it('encodes the message as base64url that decodes to a valid MIME draft', async () => {
-    h.calGet.mockReturnValue(WITH_GMAIL);
-    await createDraft(1, validInput);
-
-    const raw = (h.draftsCreate.mock.calls as any[])[0][0].requestBody.message.raw as string;
-    expect(raw).not.toMatch(/[+/=]/); // base64url, not standard base64
-    const mime = Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-    expect(mime).toContain('To: friend@example.com');
-    expect(mime).toContain('Subject: Lunch');
-    // body is base64-encoded in the MIME part
-    const body = mime.split('\r\n\r\n')[1];
-    expect(Buffer.from(body, 'base64').toString('utf8')).toBe('Want to grab lunch?');
+  it('base64url has no +, / or = padding', () => {
+    const raw = buildRawMessage({ to: 'a@b.com', subject: 'x'.repeat(40), body: 'y'.repeat(40) });
+    expect(raw).not.toMatch(/[+/=]/);
   });
 });
 
-describe('userHasGmailScope', () => {
-  it('reflects the stored grant', () => {
-    h.calGet.mockReturnValue(WITH_GMAIL);
-    expect(userHasGmailScope(1)).toBe(true);
-    h.calGet.mockReturnValue(CAL_ONLY);
-    expect(userHasGmailScope(1)).toBe(false);
-    h.calGet.mockReturnValue(undefined);
-    expect(userHasGmailScope(1)).toBe(false);
+describe('emailableRecipients', () => {
+  it('keeps valid emails and skips missing / "not found"', () => {
+    const { ok, skipped } = emailableRecipients([
+      { name: 'Alice', email: 'alice@plumb.co' },
+      { name: 'Bob', email: 'Email: not found' },
+      { name: 'Carol' },
+      { name: 'Dave', email: 'not-an-email' },
+    ]);
+    expect(ok).toEqual([{ name: 'Alice', email: 'alice@plumb.co' }]);
+    expect(skipped).toEqual(['Bob', 'Carol', 'Dave']);
+  });
+
+  it('trims whitespace and tolerates empty input', () => {
+    const { ok } = emailableRecipients([{ name: '  Eve  ', email: '  eve@x.io  ' }]);
+    expect(ok).toEqual([{ name: 'Eve', email: 'eve@x.io' }]);
+    expect(emailableRecipients([]).ok).toEqual([]);
+    expect(emailableRecipients(undefined as never).skipped).toEqual([]);
+  });
+});
+
+describe('formatSlotsForEmail', () => {
+  it('strips header, "min free" suffix, and the "…and N more" trailer', () => {
+    const input = [
+      'Open time (at least 30 minutes, 8am–8pm):',
+      'Mon, Jun 9: 9:00 AM–11:00 AM (90 min free)',
+      'Tue, Jun 10: 1:00 PM–3:00 PM (120 min free)',
+      '…and 4 more.',
+    ].join('\n');
+    expect(formatSlotsForEmail(input)).toEqual([
+      'Mon, Jun 9: 9:00 AM–11:00 AM',
+      'Tue, Jun 10: 1:00 PM–3:00 PM',
+    ]);
+  });
+
+  it('returns [] for the no-availability and error messages', () => {
+    expect(formatSlotsForEmail('No open blocks of at least 30 minutes between 2026-06-09 and 2026-06-13 (within 8am–8pm).')).toEqual([]);
+    expect(formatSlotsForEmail('I need a valid start and end date to check availability.')).toEqual([]);
+    expect(formatSlotsForEmail('')).toEqual([]);
+  });
+});
+
+describe('buildOutreachBody', () => {
+  it('includes greeting, ask, slots, and sign-off when slots exist', () => {
+    const body = buildOutreachBody({
+      recipientName: 'Alice',
+      senderName: 'Derrick',
+      ask: 'When could you come by this week?',
+      slots: ['Mon, Jun 9: 9:00 AM–11:00 AM', 'Tue, Jun 10: 1:00 PM–3:00 PM'],
+    });
+    expect(body).toMatch(/^Hi Alice,/);
+    expect(body).toContain('When could you come by this week?');
+    expect(body).toContain('  - Mon, Jun 9: 9:00 AM–11:00 AM');
+    expect(body).toContain('  - Tue, Jun 10: 1:00 PM–3:00 PM');
+    expect(body.trimEnd().endsWith('Derrick')).toBe(true);
+  });
+
+  it('falls back to a generic availability line and "Hello," when no name/slots', () => {
+    const body = buildOutreachBody({ senderName: 'Derrick', ask: 'Are you available this week?', slots: [] });
+    expect(body).toMatch(/^Hello,/);
+    expect(body).toContain("Let me know what times work for you");
+    expect(body).not.toContain('  - ');
   });
 });
