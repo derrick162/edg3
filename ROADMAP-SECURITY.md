@@ -71,7 +71,8 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
   - **Re-consent flow:** existing users granted only calendar scopes — they must re-authorize Google for Gmail. Detect the missing scope gracefully and prompt re-auth (onboarding/settings).
   - **Token sensitivity:** a Gmail-enabled token is higher-value — ensure it's covered by encryption-at-rest (#4).
   - **Hard guardrails:** expose only a `drafts.create` helper; never wire `messages.send`. Add audit logging of drafts created + a per-user rate limit (anti-spam).
-  - Deliver: the scope + a safe draft-create helper Core can call. Effort ~2d. Coordinate before Core merges its `draftEmail` tool.
+  - ⚠️ **Production landmine:** `gmail.compose` is a Google **restricted scope** → public/production use requires Google **OAuth app verification + a CASA security assessment** (can take weeks). Fine now in "testing" mode with the user as a test user, but this is a hard gate before rolling email out to all users. Flag early.
+  - Deliver: the scope + a safe draft-create helper Core can call. Effort ~2d (excl. Google verification lead time). Coordinate before Core merges its `draftEmail` tool.
 - [ ] **Secure the travel API credential** — ⏸ PARKED (travel feature parked 2026-06-09). When resumed: own the `AMADEUS_*` secret + a rate-limit/cost guardrail on the lookup endpoint.
 
 ### Closed / deprioritized (do not re-open without reason)
