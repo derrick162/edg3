@@ -73,4 +73,6 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 On Railway, confirm both are set correctly — these are the difference between
 the landmines being armed or defused:
 - `JWT_SECRET` — must be a real random secret (not unset → fallback).
+  **2026-06-09: fresh secret generated; rotate on Railway (set + redeploy).**
+  Logs out all sessions once — that's expected. Confirm here once saved.
 - `VAPI_SECRET_ENFORCE=true` — and `VAPI_SERVER_SECRET` set.
