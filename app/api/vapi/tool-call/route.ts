@@ -136,7 +136,26 @@ function friendlyError(err: unknown): string {
 
 // Result strings that indicate the action did NOT succeed (used for the activity log status).
 // Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
-const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day)/i;
+const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date)/i;
+
+// Research notes Edge attaches are wrapped in these delimiters so a later research call can
+// REPLACE the prior block (not stack on it) while leaving the user's own typed notes intact.
+const RESEARCH_OPEN = '--- Edge research (latest) ---';
+const RESEARCH_CLOSE = '--- end Edge research ---';
+
+// Return a description with any delimited Edge-research block(s) removed — i.e. just the user's
+// own notes. Index-based (no regex) so the marker text needs no escaping.
+function stripResearchBlock(desc: string | null | undefined): string {
+  let out = desc ?? '';
+  for (;;) {
+    const s = out.indexOf(RESEARCH_OPEN);
+    if (s === -1) break;
+    const e = out.indexOf(RESEARCH_CLOSE, s);
+    if (e === -1) { out = out.slice(0, s); break; }
+    out = out.slice(0, s) + out.slice(e + RESEARCH_CLOSE.length);
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
 
 interface ToolContext {
   cal: calendar_v3.Calendar;
@@ -264,27 +283,36 @@ Query: ${query}` }],
       return `I searched for "${query}" but couldn't find solid results, so I didn't add anything — you may want to refine the request.`;
     }
     const e = r.event;
-    const block = `${query}:\n${findings}`;
-    const researchPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: e.description ? `${e.description}\n\n${block}` : block } });
+    // Replace any prior research block but KEEP the user's own typed notes, so re-researching
+    // shows only the latest findings instead of an ever-growing pile.
+    const userNotes = stripResearchBlock(e.description);
+    const block = `${RESEARCH_OPEN}\n${query}:\n${findings}\n${RESEARCH_CLOSE}`;
+    const newDescription = userNotes ? `${userNotes}\n\n${block}` : block;
+    const researchPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: newDescription } });
     if (!researchPatched.data.id) return `I researched "${query}" but couldn't confirm it saved — please double-check.`;
     recordUndo(userId, `added research notes to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: r.calId, eventId: e.id!, requestBody: { description: e.description ?? '' } }]);
     return `Done — researched "${query}" and added the findings to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"'s notes.`;
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title, timezone, color, overrideConflicts, allDay } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean };
+    const { title, timezone, color, overrideConflicts, allDay, endDate } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string };
     if (!title) return "I didn't catch what to call that event — what's the title?";
 
-    // All-day event: date-only start/end (Google's end date is exclusive, so the next day).
+    // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
+    // Google's end.date is exclusive, so we store the day after. One spanning event for a range —
+    // no per-day loop. Omit endDate for a single-day all-day event.
     if (allDay) {
-      const dateOnly = (startDateTime || endDateTime || '').slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return "I didn't catch the date for that all-day event — what day is it?";
+      const startOnly = (startDateTime || endDateTime || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startOnly)) return "I didn't catch the date for that all-day event — what day is it?";
+      const endOnly = (endDate || '').slice(0, 10);
+      const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endOnly) && endOnly >= startOnly ? endOnly : startOnly;
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
-        summary: `⚡ ${title}`, start: { date: dateOnly }, end: { date: nextDay(dateOnly) }, colorId: color ? getColorId(color) : '9',
+        summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
       } });
       if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
-      return `Created and confirmed all-day "${title}" on ${dateOnly}.`;
+      const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
+      return `Created and confirmed all-day "${title}" ${span}.`;
     }
 
     if (startDateTime && !startDateTime.includes('T')) {
@@ -378,7 +406,7 @@ Query: ${query}` }],
     return deleted.length ? `Deleted: ${deleted.join(', ')}` : `No event matching "${title}" on ${date}.`;
 
   } else if (fn === 'moveEvent') {
-    const { title, date, newStartDateTime, newEndDateTime, timezone, recurringScope, currentTime } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string };
+    const { title, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string };
     const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
     if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I move? Ask the user, then call moveEvent again with currentTime set to that event's start time (e.g. "7pm").`;
@@ -387,7 +415,26 @@ Query: ${query}` }],
       return `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
     }
     const eventId = (recurringScope === 'all' && found.event.recurringEventId) ? found.event.recurringEventId : found.event.id!;
-    const rb: calendar_v3.Schema$Event = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
+
+    // All-day events are re-dated by DATE, not datetime (Google end.date is exclusive). Detect an
+    // all-day target — or an explicit date-only request — and build a date patch so "make it just
+    // the 26th" / "extend it to the 30th" works. `newEndDate` is the inclusive last day.
+    const isAllDay = !!(found.event.start?.date && !found.event.start?.dateTime);
+    const dateMove = isAllDay || !!newStartDate || !!newEndDate;
+    let rb: calendar_v3.Schema$Event;
+    let confirmWhen: string;
+    if (dateMove) {
+      const existingStart = (found.event.start?.date ?? '').slice(0, 10);
+      const startD = (newStartDate || newStartDateTime || existingStart || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startD)) return "I need a date to move that all-day event to — what day should it start?";
+      const endIn = (newEndDate || newEndDateTime || '').slice(0, 10);
+      const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endIn) && endIn >= startD ? endIn : startD;
+      rb = { start: { date: startD }, end: { date: nextDay(lastDay) } };
+      confirmWhen = lastDay === startD ? startD : `${startD} to ${lastDay}`;
+    } else {
+      rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
+      confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
+    }
     if (found.event.colorId) rb.colorId = found.event.colorId;
     const origStart = found.event.start;
     const origEnd = found.event.end;
@@ -397,7 +444,7 @@ Query: ${query}` }],
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
     }
-    return `Moved and confirmed "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
+    return `Moved and confirmed "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" to ${confirmWhen}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
 
   } else if (fn === 'colorEvent') {
     const { title, date, color } = args as { title: string; date: string; color: string };

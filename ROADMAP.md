@@ -89,7 +89,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | Multi-day all-day events + research-replaces (one pass) | `app/api/vapi/tool-call/route.ts`, `lib/vapi.ts` | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — all-day + research shipped to `core`; ⚠️ sync w/ Security #3 idempotency before master merge of tool-call/route.ts)_ | — | 2026-06-09 |
 | 🔒 Security | `security` | _(idle)_ | — | — |
 
 ---
