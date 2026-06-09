@@ -95,6 +95,9 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-09** — User added the all-day tool params (`endDate` on createEvent;
+  `newStartDate`/`newEndDate` on moveEvent) in the Vapi dashboard → the multi-day
+  all-day fix is now **fully live**, pending a confirming voice-call test.
 - **2026-06-09** — Core's first two tickets (multi-day all-day + research-replace)
   **merged to master & verified green** (tsc clean, 33/33 tests). One external
   step remains for the user: add the new tool params (`endDate` on createEvent,
