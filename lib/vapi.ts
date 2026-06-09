@@ -185,9 +185,7 @@ Always end with warmth and encouragement. This person is building something — 
           '07bcbdab-c4fb-4219-a468-4b7afd48fcfa', // editEvent
           '69615e5d-90e2-4f5f-8293-ad9c00e5794c', // researchToEvent
           '2c1c3ad9-da5f-4c61-b6ba-b2233be72e29', // undoLastAction
-          // 'e62078db-fbf4-4f58-b17f-5a620d751d17', // draftEmail — TEMPORARILY DISABLED 2026-06-09:
-          //   this tool's schema makes Anthropic reject EVERY call (400 validation-failed), since all
-          //   tools are sent on every turn. Re-enable once the schema is confirmed Anthropic-valid.
+          'e62078db-fbf4-4f58-b17f-5a620d751d17', // draftEmail (verified Anthropic-valid 2026-06-09)
         ],
       },
       firstMessage: briefingContent,

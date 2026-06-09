@@ -104,15 +104,18 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
-- **2026-06-09** — **INCIDENT (resolved in ~15 min): all calls failing** with
-  `anthropic-400-bad-request-validation-failed` right after adding the `draftEmail`
-  Vapi tool. Cause: the Vapi tool editor injected `"default": ""` on every param,
-  including a `boolean` (`proposeAvailability`) — an empty-string default on a
-  boolean is an invalid input_schema, and since all tools are sent to the model
-  every call, one bad tool broke every call. Fix: stripped the `default` fields
-  from the tool via the Vapi API (no redeploy). **Learning / potential Core hardening:**
-  any tool authored in the Vapi editor carries `default:""` cruft — sanitize tool
-  schemas (strip empty/`type`-mismatched defaults) before they reach Anthropic.
+- **2026-06-09** — **INCIDENT — all calls failing** with `anthropic-400-bad-request-
+  validation-failed`. **TRUE root cause (found by replaying all 15 tools against the
+  Anthropic API with the user's key):** the `moveEvent` Vapi tool had a parameter
+  named `"newStartDate "` **with a trailing space** (added via the Vapi editor with
+  the all-day fields) — Anthropic requires property keys to match `^[a-zA-Z0-9_.-]{1,64}$`,
+  so it rejected EVERY call (all tools sent each turn). Fixed by renaming the key via
+  the Vapi API (no redeploy). The trailing space had ALSO silently broken the all-day
+  *re-date* feature (handler reads `newStartDate`, model was passing `"newStartDate "`).
+  `draftEmail` was a **red herring** — it validated fine on its own; re-enabled after
+  verifying all 15 tools pass Anthropic (HTTP 200). Earlier note about `default:""`
+  was a real-but-minor cleanup, not the cause. **Hardening (Core):** sanitize Vapi
+  tool schemas — trim whitespace in property keys + strip empty defaults — before use.
 - **2026-06-09** — **Email feature DEPLOYED.** Pushed master to production (Railway)
   and wired the `draftEmail` Vapi tool ID (`e62078db…`) into `lib/vapi.ts`. Also
   set `DATA_ENCRYPTION_KEY` on Railway (encryption now active). **Remaining for the
