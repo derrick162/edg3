@@ -65,6 +65,9 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [ ] **9. Hard delete-confirm** — server issues one-time confirm token; model can't self-confirm. _1d_
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 
+### Incoming from PM (coordinate with Core)
+- [ ] **Secure the travel API credential** — Core is building travel price lookup (`ROADMAP-CORE.md`), which needs an external API key (`AMADEUS_*`). Own the secret handling (env + encryption-at-rest consistency with #4), and add a **rate-limit / cost guardrail** on the lookup endpoint since these calls cost money and are rate-limited. Coordinate before Core merges.
+
 ### Closed / deprioritized (do not re-open without reason)
 - H6 confirmation gate — **done**.
 - C2 cross-user mutation — **mitigated** (server-side user binding); monitor only.
