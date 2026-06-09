@@ -537,18 +537,52 @@ Query: ${query}` }],
     // Draft (never send) a personalized outreach email per recipient, optionally proposing the
     // user's real open slots. Composition lives in lib/outreach.ts (Core); the actual draft is
     // created by Security's guarded, draft-only createDraft (lib/gmail.ts). Undo deletes the drafts.
-    const { recipients, ask, proposeAvailability, startDate, endDate, subject } = args as {
+    const { recipients, title, date, ask, proposeAvailability, startDate, endDate, subject } = args as {
       recipients?: { name?: string; email?: string }[];
+      title?: string;
+      date?: string;
       ask?: string;
       proposeAvailability?: boolean;
       startDate?: string;
       endDate?: string;
       subject?: string;
     };
-    if (!Array.isArray(recipients) || !recipients.length) return 'I need at least one recipient (a name and email) to draft an email.';
     if (!ask || !ask.trim()) return 'What should I ask them in the email?';
 
-    const { ok, skipped } = emailableRecipients(recipients);
+    // Pull {name,email} contacts out of an event's saved research notes. Far more reliable than
+    // asking the voice model to hand-assemble a structured recipients array from free-text notes —
+    // the model just names the event (title + date) and the server extracts the contacts.
+    const recipientsFromNotes = (notes: string): { name?: string; email?: string }[] => {
+      if (!notes) return [];
+      const cleaned = notes.replace(/-{2,}\s*(?:end\s+)?edge research\s*-{2,}/gi, '');
+      const out: { name?: string; email?: string }[] = [];
+      const seen = new Set<string>();
+      for (const block of cleaned.split(/\n\s*\n/)) {
+        const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+        const emailLine = lines.find(l => /^email\s*:/i.test(l));
+        if (!emailLine) continue;
+        const email = emailLine.replace(/^email\s*:/i, '').trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || /not found/i.test(email) || seen.has(email.toLowerCase())) continue;
+        const name = lines.find(l => !/^(?:phone|email|website|address)\s*:/i.test(l) && !/:\s*$/.test(l));
+        seen.add(email.toLowerCase());
+        out.push({ name, email });
+      }
+      return out;
+    };
+
+    // Recipients: prefer an explicit list; otherwise read them from the research notes on the
+    // referenced event (title + date) — the model only has to name the event, not build the list.
+    let sourceRecipients: { name?: string; email?: string }[] = Array.isArray(recipients) ? recipients : [];
+    if (!sourceRecipients.length && title && date) {
+      const er = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz);
+      if (er.kind === 'none') return `I couldn't find an event matching "${title}" on ${date} to pull contacts from.`;
+      if (er.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${er.message}. Which one has the contacts?`;
+      sourceRecipients = recipientsFromNotes(er.event.description ?? '');
+      if (!sourceRecipients.length) return `I found "${title}" on ${date}, but couldn't pull any contacts with emails from its notes. Research them first so the emails are saved.`;
+    }
+    if (!sourceRecipients.length) return "Tell me who to email — point me to the event that has the research, or give me names and emails.";
+
+    const { ok, skipped } = emailableRecipients(sourceRecipients);
     if (!ok.length) {
       return `I couldn't draft anything — none of those contacts had a usable email${skipped.length ? ` (missing for ${skipped.join(', ')})` : ''}. Research them first to find emails, then try again.`;
     }
@@ -573,36 +607,37 @@ Query: ${query}` }],
       slots = formatSlotsForEmail(findFreeSlots(evts, tz, start, end, 30));
     }
 
+    // Compose + draft all recipients in PARALLEL so the tool returns quickly — a sequential
+    // per-recipient Claude+Gmail loop was slow enough to trip the call's 30s silence timeout.
+    const results = await Promise.all(ok.map(async (recipient): Promise<{ ok: true; name: string; draftId: string } | { ok: false; name: string; fatal: unknown }> => {
+      try {
+        const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject });
+        const to = recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email;
+        const { draftId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
+        return { ok: true, name: recipient.name || recipient.email, draftId };
+      } catch (perErr) {
+        if (perErr instanceof GmailScopeError || perErr instanceof GmailRateLimitError) return { ok: false, name: recipient.name || recipient.email, fatal: perErr };
+        console.error(`[draftEmail] draft failed for ${recipient.email}:`, perErr);
+        return { ok: false, name: recipient.name || recipient.email, fatal: null };
+      }
+    }));
+
     const undoOps: UndoOp[] = [];
     const draftedFor: string[] = [];
     const failed: string[] = [];
-    try {
-      for (const recipient of ok) {
-        try {
-          const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject });
-          const to = recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email;
-          const { draftId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
-          undoOps.push({ type: 'deleteDraft', userId, draftId });
-          draftedFor.push(recipient.name || recipient.email);
-        } catch (perErr) {
-          if (perErr instanceof GmailScopeError || perErr instanceof GmailRateLimitError) throw perErr;
-          console.error(`[draftEmail] draft failed for ${recipient.email}:`, perErr);
-          failed.push(recipient.name || recipient.email);
-        }
-      }
-    } catch (fatal) {
-      // Record undo for any drafts already created before the loop aborted.
-      if (undoOps.length) recordUndo(userId, `drafted ${undoOps.length} email(s)`, undoOps);
-      if (fatal instanceof GmailScopeError) {
-        return "I can't create email drafts yet — you'll need to re-approve Google so I can use Gmail. Open the dashboard and reconnect your Google account; this time it'll ask for email/draft permission.";
-      }
-      if (fatal instanceof GmailRateLimitError) {
-        return `Couldn't finish — ${fatal.message}${undoOps.length ? ` I did draft ${undoOps.length} before hitting the limit; they're in your Gmail.` : ''}`;
-      }
-      throw fatal;
+    let fatalErr: unknown = null;
+    for (const res of results) {
+      if (res.ok) { undoOps.push({ type: 'deleteDraft', userId, draftId: res.draftId }); draftedFor.push(res.name); }
+      else if (res.fatal) { fatalErr = res.fatal; }
+      else { failed.push(res.name); }
     }
-
     if (undoOps.length) recordUndo(userId, `drafted ${undoOps.length} email(s)`, undoOps);
+    if (fatalErr instanceof GmailScopeError) {
+      return "I can't create email drafts yet — you'll need to re-approve Google so I can use Gmail. Open the dashboard and reconnect your Google account; this time it'll ask for email/draft permission.";
+    }
+    if (fatalErr instanceof GmailRateLimitError) {
+      return `Couldn't finish — ${fatalErr.message}${undoOps.length ? ` I did draft ${undoOps.length} before hitting the limit; they're in your Gmail.` : ''}`;
+    }
     if (!draftedFor.length) return `Couldn't create any drafts${failed.length ? ` — Gmail errored for ${failed.join(', ')}` : ''}. Please try again.`;
     const notes = [
       skipped.length ? `skipped ${skipped.join(', ')} (no email on file)` : '',
