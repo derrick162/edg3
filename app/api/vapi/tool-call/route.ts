@@ -218,16 +218,32 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 900,
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }] as never,
-        messages: [{ role: 'user', content: `Research this for a calendar note. For EACH result, on its own line, ALWAYS include contact info: name, phone number, and email or website (plus address if relevant). Search specifically for the phone AND email/website of each one. For ANY field you still can't find after searching, write it explicitly as "phone: not found" or "email: not found" — never silently leave a field out, and never invent contact details. Up to 6 results. No preamble — just the list.\n\n${query}` }],
+        messages: [{ role: 'user', content: `Research this and produce ONLY clean plain-text notes for a calendar event — nothing else.
+Rules:
+- One result per block. For each: Name, then "Phone: ...", "Email: ...", "Website: ...", "Address: ..." (include a field only if it applies; for contact fields you can't find after searching, write "Phone: not found" / "Email: not found").
+- Always try to find a phone AND an email/website for each.
+- NO markdown (no asterisks, no bold, no headings). NO introduction, NO commentary, NO "I cannot find", NO "please verify", NO questions back to me.
+- Up to 6 results, most relevant first.
+- If you genuinely find nothing relevant, output exactly: NO_RESULTS
+
+Query: ${query}` }],
       });
-      findings = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('\n').trim();
+      // Keep only the FINAL text block — the model narrates "I'll search…" in earlier text
+      // blocks between web searches, which would otherwise pollute the note.
+      const textBlocks = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text);
+      findings = (textBlocks[textBlocks.length - 1] ?? '').trim();
+      // Clean up: strip markdown, list bullets, collapse blank lines.
+      findings = findings.replace(/[*_#`]+/g, '').replace(/^\s*[-•]\s*/gm, '').replace(/\n{3,}/g, '\n\n').trim();
     } catch (err) {
       console.error('[researchToEvent] web search failed:', err);
       return `I tried to research "${query}" but the lookup failed — you may need to do that one manually.`;
     }
-    if (!findings) return `I couldn't find useful results for "${query}".`;
+    // Don't pollute the notes with "couldn't find / please verify" rambles.
+    if (!findings || /^NO_RESULTS/i.test(findings) || /^(i (can'?t|cannot|could ?n'?t|was unable)|please verify|i'?m unable|no results)/i.test(findings)) {
+      return `I searched for "${query}" but couldn't find solid results, so I didn't add anything — you may want to refine the request.`;
+    }
     const e = r.event;
-    const block = `[Edge research: ${query}]\n${findings}`;
+    const block = `${query}:\n${findings}`;
     const researchPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: e.description ? `${e.description}\n\n${block}` : block } });
     if (!researchPatched.data.id) return `I researched "${query}" but couldn't confirm it saved — please double-check.`;
     return `Done — researched "${query}" and added the findings to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"'s notes.`;
