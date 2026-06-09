@@ -44,12 +44,16 @@ async function getCalClient(userId: number) {
   return google.calendar({ version: 'v3', auth: oauth2Client });
 }
 
-async function getCalIds(cal: calendar_v3.Calendar): Promise<string[]> {
+// The visible calendar list barely changes but costs ~500ms, and we fetch it on every tool
+// call. Cache it per user for a few minutes to cut that latency from every interaction.
+const calIdsCache = new Map<string, { ids: string[]; exp: number }>();
+async function getCalIds(cal: calendar_v3.Calendar, userKey: string): Promise<string[]> {
+  const cached = calIdsCache.get(userKey);
+  if (cached && cached.exp > Date.now()) return cached.ids;
   const list = await cal.calendarList.list({ minAccessRole: 'reader' });
-  return (list.data.items ?? [])
-    .filter((c) => !c.hidden)
-    .map((c) => c.id!)
-    .filter(Boolean);
+  const ids = (list.data.items ?? []).filter(c => !c.hidden).map(c => c.id!).filter(Boolean);
+  calIdsCache.set(userKey, { ids, exp: Date.now() + 5 * 60 * 1000 });
+  return ids;
 }
 
 // Start time of an event as minutes-since-midnight in the user's timezone (null for all-day).
@@ -70,12 +74,11 @@ function parseTimeMinutes(s?: string): number | null {
 // day, so a UTC window would miss it), each tagged with its calendar id.
 async function eventsOnDay(cal: calendar_v3.Calendar, calIds: string[], date: string, tz: string): Promise<{ event: calendar_v3.Schema$Event; calId: string }[]> {
   const { start, end } = dayRangeUtc(tz, date);
-  const out: { event: calendar_v3.Schema$Event; calId: string }[] = [];
-  for (const calId of calIds) {
+  const perCal = await Promise.all(calIds.map(async calId => {
     const res = await cal.events.list({ calendarId: calId, timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: true, showHiddenInvitations: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-    for (const e of (res.data.items ?? [])) out.push({ event: e, calId });
-  }
-  return out;
+    return (res.data.items ?? []).map(e => ({ event: e, calId }));
+  }));
+  return perCal.flat();
 }
 
 function describeOptions(matches: { event: calendar_v3.Schema$Event }[], tz: string): string {
@@ -118,17 +121,6 @@ function friendlyError(err: unknown): string {
 // Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
 const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day)/i;
 
-// Write-confirmation: re-read an event by id to verify the write actually persisted.
-async function confirmExists(cal: calendar_v3.Calendar, calId: string, eventId: string | null | undefined): Promise<boolean> {
-  if (!eventId) return false;
-  try {
-    const e = await cal.events.get({ calendarId: calId, eventId });
-    return !!e.data?.id && e.data.status !== 'cancelled';
-  } catch {
-    return false;
-  }
-}
-
 interface ToolContext {
   cal: calendar_v3.Calendar;
   calIds: string[];
@@ -142,13 +134,11 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
 
   if (fn === 'readCalendar') {
     const { startDate, endDate } = args as { startDate: string; endDate: string };
-    const events: calendar_v3.Schema$Event[] = [];
     const rcMin = dayRangeUtc(tz, startDate).start.toISOString();
     const rcMax = dayRangeUtc(tz, endDate).end.toISOString();
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: rcMin, timeMax: rcMax, singleEvents: true, orderBy: 'startTime', maxResults: 50 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      events.push(...(res.data.items ?? []));
-    }
+    const events: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: rcMin, timeMax: rcMax, singleEvents: true, orderBy: 'startTime', maxResults: 50 }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
     events.sort((a, b) => (a.start?.dateTime ?? a.start?.date ?? '').localeCompare(b.start?.dateTime ?? b.start?.date ?? ''));
     if (!events.length) return 'No events found for that period.';
     // Group by day for cleaner output
@@ -170,11 +160,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const end = endDate || startDate;
     const evMin = dayRangeUtc(tz, startDate).start.toISOString();
     const evMax = dayRangeUtc(tz, end).end.toISOString();
-    const evts: calendar_v3.Schema$Event[] = [];
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: evMin, timeMax: evMax, singleEvents: true, orderBy: 'startTime', maxResults: 250 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      evts.push(...(res.data.items ?? []));
-    }
+    const evts: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: evMin, timeMax: evMax, singleEvents: true, orderBy: 'startTime', maxResults: 250 }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
     return findFreeSlots(evts, tz, startDate, end, minimumMinutes && minimumMinutes > 0 ? minimumMinutes : 30);
 
   } else if (fn === 'setMyTimezone') {
@@ -213,8 +201,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     if (typeof location === 'string') body.location = location;
     if (typeof description === 'string') body.description = (appendDescription && e.description) ? `${e.description}\n${description}` : description;
     if (!Object.keys(body).length) return 'Tell me what to change — a description/note or a location.';
-    await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: body });
-    if (!(await confirmExists(cal, r.calId, e.id))) return `Couldn't confirm the update to "${e.summary}" — please double-check your calendar.`;
+    const editPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: body });
+    if (!editPatched.data.id) return `Couldn't confirm the update to "${e.summary}" — please double-check your calendar.`;
     return `Updated and confirmed "${(e.summary ?? '').replace(/^⚡\s*/, '')}"${body.location ? ` — location: ${body.location}` : ''}${body.description ? ' — notes updated' : ''}.`;
 
   } else if (fn === 'researchToEvent') {
@@ -240,8 +228,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     if (!findings) return `I couldn't find useful results for "${query}".`;
     const e = r.event;
     const block = `[Edge research: ${query}]\n${findings}`;
-    await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: e.description ? `${e.description}\n\n${block}` : block } });
-    if (!(await confirmExists(cal, r.calId, e.id))) return `I researched "${query}" but couldn't confirm it saved — please double-check.`;
+    const researchPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: { description: e.description ? `${e.description}\n\n${block}` : block } });
+    if (!researchPatched.data.id) return `I researched "${query}" but couldn't confirm it saved — please double-check.`;
     return `Done — researched "${query}" and added the findings to "${(e.summary ?? '').replace(/^⚡\s*/, '')}"'s notes.`;
 
   } else if (fn === 'createEvent') {
@@ -256,7 +244,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: dateOnly }, end: { date: nextDay(dateOnly) }, colorId: color ? getColorId(color) : '9',
       } });
-      return (await confirmExists(cal, 'primary', insAllDay.data.id))
+      return insAllDay.data.id
         ? `Created and confirmed all-day "${title}" on ${dateOnly}.`
         : `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
     }
@@ -276,13 +264,13 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       const tz = timezone || 'America/Vancouver';
       const winMin = zonedWallTimeToUtc(startDateTime, tz).toISOString();
       const winMax = zonedWallTimeToUtc(endDateTime, tz).toISOString();
-      for (const calId of calIds) {
-        const res = await cal.events.list({ calendarId: calId, timeMin: winMin, timeMax: winMax, singleEvents: true }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-        for (const ev of (res.data.items ?? [])) {
-          // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
-          if (ev.start?.date && !ev.start?.dateTime) continue;
-          if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
-        }
+      const winEvents = (await Promise.all(calIds.map(calId =>
+        cal.events.list({ calendarId: calId, timeMin: winMin, timeMax: winMax, singleEvents: true }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+      ))).flat();
+      for (const ev of winEvents) {
+        // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
+        if (ev.start?.date && !ev.start?.dateTime) continue;
+        if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
       }
       if (conflicts.length > 0) {
         return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
@@ -290,7 +278,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
-    if (!(await confirmExists(cal, 'primary', insTimed.data.id))) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
+    if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
     return `Created and confirmed "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
 
   } else if (fn === 'createRecurringEvent') {
@@ -351,23 +339,20 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const rb: calendar_v3.Schema$Event = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
     if (found.event.colorId) rb.colorId = found.event.colorId;
     const patched = await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb });
-    if (!(await confirmExists(cal, found.calId, patched.data.id))) return `Couldn't confirm the move of "${found.event.summary}" — please double-check your calendar.`;
+    if (!patched.data.id) return `Couldn't confirm the move of "${found.event.summary}" — please double-check your calendar.`;
     return `Moved and confirmed "${found.event.summary}" to ${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
 
   } else if (fn === 'colorEvent') {
     const { title, date, color } = args as { title: string; date: string; color: string };
     const colorId = getColorId(color);
-    let count = 0;
     const tMin = date === 'all' ? new Date().toISOString() : dayRangeUtc(tz, date).start.toISOString();
     const tMax = date === 'all' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : dayRangeUtc(tz, date).end.toISOString();
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 100 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      for (const ev of (res.data.items ?? []).filter(e => titleMatchScore(e.summary ?? '', title) > 0)) {
-        await cal.events.patch({ calendarId: calId, eventId: ev.id!, requestBody: { colorId } }).catch(() => undefined);
-        count++;
-      }
-    }
-    return count ? `Changed ${count} "${title}" event(s) to ${color}.` : `No events matching "${title}" found.`;
+    const lists = await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 100 }).then(r => ({ calId, items: r.data.items ?? [] })).catch(() => ({ calId, items: [] as calendar_v3.Schema$Event[] }))
+    ));
+    const toColor = lists.flatMap(l => l.items.filter(e => titleMatchScore(e.summary ?? '', title) > 0).map(e => ({ calId: l.calId, id: e.id! })));
+    await Promise.all(toColor.map(x => cal.events.patch({ calendarId: x.calId, eventId: x.id, requestBody: { colorId } }).catch(() => undefined)));
+    return toColor.length ? `Changed ${toColor.length} "${title}" event(s) to ${color}.` : `No events matching "${title}" found.`;
 
   } else if (fn === 'planWeek') {
     const { weekStartDate, focusHoursPerDay, preferences } = args as { weekStartDate: string; focusHoursPerDay?: number; preferences?: string };
@@ -381,11 +366,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const weekEnd = new Date(weekStartDate);
     weekEnd.setDate(weekEnd.getDate() + 6);
     const weekEndStr = weekEnd.toLocaleDateString('en-CA');
-    const allEvents: calendar_v3.Schema$Event[] = [];
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: new Date(`${weekStartDate}T00:00:00Z`).toISOString(), timeMax: new Date(`${weekEndStr}T23:59:59Z`).toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 100 }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      allEvents.push(...(res.data.items ?? []));
-    }
+    const allEvents: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: new Date(`${weekStartDate}T00:00:00Z`).toISOString(), timeMax: new Date(`${weekEndStr}T23:59:59Z`).toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 100 }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
     const eventSummary = allEvents.map(e => `- ${e.summary}: ${e.start?.dateTime?.slice(0, 16) ?? e.start?.date ?? 'all day'}`).join('\n') || 'No events';
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const planResult = await anthropic.messages.create({
@@ -413,17 +396,14 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     }
     const userTz = effectiveTimezone(userQueries.findById(userId) ?? {});
     const { start: sMin, end: sMax } = dayRangeUtc(userTz, sourceDate);
-    const src: calendar_v3.Schema$Event[] = [];
-    for (const calId of calIds) {
-      const res = await cal.events.list({ calendarId: calId, timeMin: sMin.toISOString(), timeMax: sMax.toISOString(), singleEvents: true, orderBy: 'startTime' }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
-      for (const e of (res.data.items ?? [])) {
-        if (e.start?.dateTime && e.end?.dateTime) src.push(e); // timed events only (skip all-day)
-      }
-    }
+    const src: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: sMin.toISOString(), timeMax: sMax.toISOString(), singleEvents: true, orderBy: 'startTime' }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat().filter(e => e.start?.dateTime && e.end?.dateTime); // timed events only (skip all-day)
     if (!src.length) return `No timed events found on ${sourceDate} to copy.`;
 
     let created = 0;
     const titles = new Set<string>();
+    const inserts: Promise<unknown>[] = [];
     for (const target of targetDates) {
       for (const ev of src) {
         const evTz = ev.start!.timeZone || userTz;
@@ -431,14 +411,15 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
         const durMs = new Date(ev.end!.dateTime!).getTime() - new Date(ev.start!.dateTime!).getTime();
         const newStart = wallTimeToUtc(`${target}T${startWall}`, evTz);
         const newEnd = new Date(newStart.getTime() + durMs);
-        await cal.events.insert({ calendarId: 'primary', requestBody: {
+        inserts.push(cal.events.insert({ calendarId: 'primary', requestBody: {
           summary: ev.summary || '⚡ Event',
           start: { dateTime: newStart.toISOString() },
           end: { dateTime: newEnd.toISOString() },
           colorId: ev.colorId || undefined,
-        } }).then(() => { created++; titles.add((ev.summary || '').replace(/^⚡\s*/, '')); }).catch(() => undefined);
+        } }).then(() => { created++; titles.add((ev.summary || '').replace(/^⚡\s*/, '')); }).catch(() => undefined));
       }
     }
+    await Promise.all(inserts);
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
       : `Couldn't copy events from ${sourceDate}.`;
@@ -506,7 +487,7 @@ export async function POST(req: NextRequest) {
     let ctxError: string | null = null;
     try {
       const cal = await getCalClient(briefing.user_id);
-      const calIds = await getCalIds(cal);
+      const calIds = await getCalIds(cal, String(briefing.user_id));
       const tz = effectiveTimezone(userQueries.findById(briefing.user_id) ?? {});
       ctx = { cal, calIds, userId: briefing.user_id, tz };
     } catch (err) {
