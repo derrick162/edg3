@@ -137,6 +137,12 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({ briefingId: briefing.id }),
         }).then(r => r.json()).then(r => console.log('[webhook] Verify promises:', JSON.stringify(r)))
           .catch(err => console.error('Promise verification failed:', err));
+
+        // 4. Save a call summary (discussion + action items) into today's briefing calendar event.
+        if (transcript) {
+          saveCallSummaryToCalendar(briefing, user)
+            .catch(err => console.error('Call summary save failed:', err));
+        }
       }
     } else if (type === 'call-started' || type === 'assistant.started') {
       briefingQueries.update(briefing.id, { status: 'calling' });
@@ -223,6 +229,39 @@ Transcript: ${transcript.slice(0, 1000)}`,
   } else {
     console.log(`[webhook] No valid travel timezone detected (got "${raw.slice(0, 40)}") — left unchanged`);
   }
+}
+
+async function saveCallSummaryToCalendar(briefing: { user_id: number; transcript: string | null; tool_actions?: string | null }, user: { name: string; timezone: string }) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  let toolSummary = 'None';
+  try {
+    const ta = JSON.parse(briefing.tool_actions || '[]') as { fn: string; result: string }[];
+    if (ta.length) toolSummary = ta.map(a => `${a.fn}: ${a.result}`).join('\n');
+  } catch { /* ignore */ }
+  const firstName = (user.name || 'the user').split(' ')[0];
+  const res = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `Summarize this AI Chief of Staff phone call for a calendar note. Plain text only — NO markdown, no preamble. Use exactly these three labeled sections:
+
+Discussed: 2-3 sentences on what was covered.
+Edge's action items: short dash bullets of what Edge (the assistant) did or will do — use the executed tool actions below as ground truth. If none, write "None".
+Your action items: short dash bullets of what ${firstName} personally agreed to do. If none, write "None".
+
+TRANSCRIPT:
+${briefing.transcript}
+
+TOOL ACTIONS EDGE EXECUTED:
+${toolSummary}`,
+    }],
+  });
+  const summary = res.content[0].type === 'text' ? res.content[0].text.trim() : '';
+  if (!summary) return;
+  const { addSummaryToTodaysBriefingEvent } = await import('@/lib/calendar');
+  const ok = await addSummaryToTodaysBriefingEvent(briefing.user_id, user.timezone, summary);
+  console.log(`[webhook] Call summary ${ok ? 'saved to briefing event' : '(no briefing event found)'} for user ${briefing.user_id}`);
 }
 
 async function extractTasksFromTranscript(userId: number, transcript: string, timezone: string) {

@@ -2,6 +2,31 @@ import { google, calendar_v3 } from 'googleapis';
 import { calendarQueries, userQueries } from './db';
 import { wallTimeToUtc, dayRangeUtc } from './time';
 
+const BRIEFING_EVENT_TITLE = 'Edg3 Morning Briefing';
+
+// Write a post-call summary into today's "Edg3 Morning Briefing" calendar event (the daily
+// reminder the user added). Each day's instance is its own event, so the summary is set per day.
+// Returns false if the user has no calendar or hasn't added the daily reminder.
+export async function addSummaryToTodaysBriefingEvent(userId: number, timezone: string, summary: string): Promise<boolean> {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return false;
+  const o = getOAuthClient();
+  o.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+  const cal = google.calendar({ version: 'v3', auth: o });
+  const { start, end } = dayRangeUtc(timezone);
+  const res = await cal.events.list({ calendarId: 'primary', timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: true, q: BRIEFING_EVENT_TITLE }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+  const ev = (res.data.items ?? []).find(e => e.summary === BRIEFING_EVENT_TITLE);
+  if (!ev?.id) return false;
+  const dateLabel = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'short', month: 'short', day: 'numeric' });
+  const description = `Your daily AI Chief of Staff call.\n\n— Call summary · ${dateLabel} —\n${summary}`;
+  await cal.events.patch({ calendarId: 'primary', eventId: ev.id, requestBody: { description } });
+  return true;
+}
+
 // Re-exported under its historical name for existing importers (the Vapi tool-call route).
 // The single implementation now lives in lib/time.ts.
 export const zonedWallTimeToUtc = wallTimeToUtc;

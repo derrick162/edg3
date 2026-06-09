@@ -605,25 +605,28 @@ export default function Dashboard() {
   });
   const [introCalling, setIntroCalling] = useState(false);
   const [showNextCallTip, setShowNextCallTip] = useState(() => isWelcome);
-  const [reminderAdded, setReminderAdded] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
+  const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
+  const [reminderBusy, setReminderBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes] = await Promise.all([
+    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes, reminderRes] = await Promise.all([
       fetch('/api/auth/me'),
       fetch('/api/briefing/history'),
       fetch('/api/onboarding/priorities'),
       fetch('/api/memory'),
       fetch('/api/tasks'),
       fetch('/api/calendar/status'),
+      fetch('/api/calendar/reminder'),
     ]);
 
     if (!meRes.ok) { router.push('/login'); return; }
 
-    const [me, br, pr, mem, tk, cal] = await Promise.all([
+    const [me, br, pr, mem, tk, cal, rem] = await Promise.all([
       meRes.json(), briefingsRes.json(), prioritiesRes.json(), memoriesRes.json(), tasksRes.json(),
       calendarRes.ok ? calendarRes.json() : Promise.resolve({ connected: false }),
+      reminderRes.ok ? reminderRes.json() : Promise.resolve({ exists: false }),
     ]);
 
     setUser(me);
@@ -632,7 +635,22 @@ export default function Dashboard() {
     setMemories(mem.memories || []);
     setTasks(tk.tasks || []);
     setCalendarConnected(!!cal.connected);
+    setReminderInCalendar(!!rem.exists);
   }, [router]);
+
+  async function addDailyCallReminder() {
+    setReminderBusy(true);
+    const res = await fetch('/api/calendar/reminder', { method: 'POST' });
+    setReminderBusy(false);
+    if (res.ok) setReminderInCalendar(true);
+    else alert('Could not add it — make sure your Google Calendar is connected.');
+  }
+  async function removeDailyCallReminder() {
+    setReminderBusy(true);
+    await fetch('/api/calendar/reminder', { method: 'DELETE' });
+    setReminderBusy(false);
+    setReminderInCalendar(false);
+  }
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -794,32 +812,25 @@ export default function Dashboard() {
               <p className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>
                 {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
               </p>
-              {showNextCallTip && (
-                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(99,102,241,0.15)' }}>
-                  {!reminderAdded ? (
-                    <>
-                      <p className="text-xs mb-2" style={{ color: '#888899' }}>
-                        Add a daily reminder so you're ready when Edg3 calls.
-                      </p>
-                      <button
-                        onClick={async () => {
-                          const res = await fetch('/api/calendar/reminder', { method: 'POST' });
-                          if (res.ok) { setReminderAdded(true); }
-                        }}
-                        className="btn-primary w-full py-2 text-xs"
-                      >
-                        📅 Add to calendar
-                      </button>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span style={{ color: '#6366f1' }}>✓</span>
-                      <p className="text-xs" style={{ color: '#888899' }}>Added to your calendar.</p>
-                      <button onClick={() => setShowNextCallTip(false)} className="ml-auto text-xs" style={{ color: '#4a4a5a' }}>Dismiss</button>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                {reminderInCalendar === true ? (
+                  <>
+                    <span className="text-xs" style={{ color: '#10b981' }}>✓ On your calendar</span>
+                    <button onClick={removeDailyCallReminder} disabled={reminderBusy} className="text-xs ml-auto" style={{ color: '#4a4a5a' }}>
+                      {reminderBusy ? '…' : 'Remove'}
+                    </button>
+                  </>
+                ) : reminderInCalendar === false ? (
+                  <button
+                    onClick={addDailyCallReminder}
+                    disabled={reminderBusy}
+                    className="text-xs py-1 px-2 rounded"
+                    style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.2)' }}
+                  >
+                    {reminderBusy ? 'Adding…' : '📅 Add daily call to calendar'}
+                  </button>
+                ) : null}
+              </div>
             </div>
             {calendarConnected === false ? (
               <button
