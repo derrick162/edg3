@@ -216,9 +216,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const res = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 700,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] as never,
-        messages: [{ role: 'user', content: `Research this and return a concise, practical summary to save in a calendar note. Include names, phone numbers, and addresses where relevant. 4–7 short lines, no preamble.\n\n${query}` }],
+        max_tokens: 900,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }] as never,
+        messages: [{ role: 'user', content: `Research this for a calendar note. For EACH result, on its own line, ALWAYS include contact info: name, phone number, and email or website (plus address if relevant). Search specifically for the phone AND email/website of each one. For ANY field you still can't find after searching, write it explicitly as "phone: not found" or "email: not found" — never silently leave a field out, and never invent contact details. Up to 6 results. No preamble — just the list.\n\n${query}` }],
       });
       findings = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('\n').trim();
     } catch (err) {
