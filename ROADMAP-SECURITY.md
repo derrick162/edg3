@@ -66,7 +66,13 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 
 ### Incoming from PM (coordinate with Core)
-- [ ] **Secure the travel API credential** — Core is building travel price lookup (`ROADMAP-CORE.md`), which needs an external API key (`AMADEUS_*`). Own the secret handling (env + encryption-at-rest consistency with #4), and add a **rate-limit / cost guardrail** on the lookup endpoint since these calls cost money and are rate-limited. Coordinate before Core merges.
+- [ ] **★ TOP PRIORITY: Gmail access for draft-only email (scope + guardrails)** — _gates Core's email-drafting feature (`ROADMAP-CORE.md`)._
+  - Add the Gmail scope to OAuth (`gmail.compose`) in `lib/calendar.ts` SCOPES (consider extracting a shared `lib/google-auth.ts`). The scope technically allows sending — **the draft-only limit is enforced in our code, not the scope.**
+  - **Re-consent flow:** existing users granted only calendar scopes — they must re-authorize Google for Gmail. Detect the missing scope gracefully and prompt re-auth (onboarding/settings).
+  - **Token sensitivity:** a Gmail-enabled token is higher-value — ensure it's covered by encryption-at-rest (#4).
+  - **Hard guardrails:** expose only a `drafts.create` helper; never wire `messages.send`. Add audit logging of drafts created + a per-user rate limit (anti-spam).
+  - Deliver: the scope + a safe draft-create helper Core can call. Effort ~2d. Coordinate before Core merges its `draftEmail` tool.
+- [ ] **Secure the travel API credential** — ⏸ PARKED (travel feature parked 2026-06-09). When resumed: own the `AMADEUS_*` secret + a rate-limit/cost guardrail on the lookup endpoint.
 
 ### Closed / deprioritized (do not re-open without reason)
 - H6 confirmation gate — **done**.
