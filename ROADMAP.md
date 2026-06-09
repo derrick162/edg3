@@ -53,12 +53,14 @@ Stay in your lane's files — this is what makes parallel work conflict-free.
 
 **🛠️ Core owns** — the product / feature surface:
 - `lib/calendar.ts`, `lib/briefing.ts`, `lib/eventMatch.ts`, `lib/time.ts`
+- `lib/outreach.ts` — email **composition** (body, availability formatting, recipient filtering); calls Security's `lib/gmail.ts` to actually create the draft.
 - `app/dashboard/**`, `app/onboarding/**`
 - `app/api/briefing/**`, `app/api/calendar/**`, `app/api/memory/**`, `app/api/profile/**`, `app/api/tasks/**`, `app/api/onboarding/**`, `app/api/undo/**` (the *user-facing* side)
 - New UI, new product flows
 
 **🔒 Security & Reliability owns** — the trust / secrets / infra surface:
 - `lib/auth.ts`, `lib/crypto.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `lib/undo.ts` (the *recording* side)
+- `lib/gmail.ts` + `lib/google-auth.ts` — Gmail **access primitive** (guarded `createDraft`, scope authority, rate limit, audit). Core composes; Security executes the send/draft. _(Resolves the 2026-06-09 dual-`gmail.ts` collision.)_
 - `app/api/auth/**`, `app/api/admin/**`, `app/api/vapi/**`
 - `app/login/**`, `app/admin-login/**`, `app/signup/**`
 - Cross-cutting: rate limiting, encryption-at-rest, audit logging, idempotency, backups/durability
