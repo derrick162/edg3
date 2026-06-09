@@ -45,8 +45,14 @@ priority from user feedback.
   - **Acceptance:** Researching the same event twice → description shows only the latest research plus any user-typed notes; no duplicated/stacked piles.
   - **Coordination:** same Shared file as the all-day ticket (`tool-call/route.ts`) — batch them; both touch event description/creation logic.
 
-### Next (candidate ideas, not yet committed)
-- [ ] Dashboard: surface "Recent activity" / what Edge did, so users can see and trust actions.
+### Next (decided)
+- [ ] **"Recent activity" review surface** — _PM decision 2026-06-09. Root-cause fix for the recurring "Edge's edits are messy" trust problem._
+  - **Why:** The user keeps discovering messy calendar edits mid-call (duplicate all-day events, piled-up research). A dashboard feed of what Edge did — with one-tap undo/correct — turns silent frustration into something visible and fixable.
+  - **Scope:** Dashboard view listing recent actions Edge took (newest first): what changed, when, on which event, with an **Undo** affordance per row (reuse the existing `undo_log` inverse ops shipped in `28f364d`).
+  - **Dependency (cross-lane):** wants a clean, append-only activity feed as its data source → **Security item #7 (harden audit log: before/after snapshots, append-only table)**. Two-phase: Security #7 builds the backbone, Core builds the view on top. A quick v0 can read the current `undo_log` if we want something shippable before #7 lands.
+  - **Acceptance:** From the dashboard the user can see the last N actions Edge took and undo any one of them without a voice call.
+
+### Later / candidates (not yet committed)
 - [ ] Onboarding: smoother first-run (connect calendar → first briefing) flow.
 - [ ] Briefing: richer briefing content / personalization controls.
 - [ ] Calendar: better event review & edit UX from the dashboard.
