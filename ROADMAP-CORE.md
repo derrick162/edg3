@@ -9,17 +9,19 @@
 > backlog below.
 
 ## Changelog
-- **2026-06-09** — Email-drafting **prep landed on `core`** (NOT merged to master — gated on Security's
-  Gmail OAuth scope). New Core-owned `lib/gmail.ts` with the scope-independent pieces, all unit-tested
-  (`lib/gmail.test.ts`, 9 tests): `buildRawMessage` (base64url plain-text MIME), `emailableRecipients`
-  (filters out "not found"/missing emails), `formatSlotsForEmail` (cleans `findFreeSlots` output for an
-  email), `buildOutreachBody` + `composeOutreachEmail` (template + optional Claude polish, never sends),
-  and the gated `createGmailDraft`/`deleteGmailDraft` (drafts only — no `messages.send`). The planned
-  `draftEmail` tool params + remaining wiring steps are documented in the file header.
-  - ⏳ **Blocked on 🔒 Security:** add a Gmail scope (e.g. `gmail.compose`) to the Google OAuth grant so
-    the stored token authorizes Gmail. **Coordinate via Status Board before** wiring `draftEmail` into
-    `tool-call/route.ts` (Shared) and before adding a draft-delete `UndoOp` to `lib/undo.ts` (Security-owned).
-    Then add `draftEmail` params to the Vapi dashboard tool schema. Did NOT merge to master.
+- **2026-06-09** — Ownership-split fix (PM ruling, ROADMAP §3): both lanes had created `lib/gmail.ts`.
+  Resolved — `lib/gmail.ts`/`lib/google-auth.ts` are 🔒 Security's (the Gmail access primitive +
+  guarded `createDraft`); Core's **composition** lives in new `lib/outreach.ts`. Deleted my
+  `lib/gmail.ts`/`lib/gmail.test.ts`; ported the composition helpers to `lib/outreach.ts`
+  (`emailableRecipients`, `formatSlotsForEmail`, `buildOutreachBody`, `composeOutreachEmail` →
+  `{recipient, subject, body}`) with unit tests in `lib/outreach.test.ts` (6 pure-helper tests). Dropped
+  the Gmail primitives (`buildRawMessage`/`createGmailDraft`/`deleteGmailDraft`) — those are Security's;
+  the future `draftEmail` handler will call Security's `createDraft` + `deleteDraft` undo op. Full suite
+  39/39 green, tsc + eslint clean. Frees the `gmail.ts` filename so Security's foundation merges cleanly.
+  - ⏳ **Still gated on 🔒 Security** (Gmail scope + `createDraft` + `deleteDraft` UndoOp on master).
+    On the PM's "scope landed" signal: `git merge master`, claim `tool-call/route.ts` (Shared), wire
+    `draftEmail`, merge. Then user adds `draftEmail` params to the Vapi dashboard. Remaining wiring steps
+    documented in `lib/outreach.ts` header.
 - **2026-06-09** — Shipped both **Now** tickets in one pass (`app/api/vapi/tool-call/route.ts` + `lib/vapi.ts`):
   - **Multi-day all-day + editable all-day.** `createEvent` all-day branch now takes an inclusive
     `endDate` and writes one spanning event (Google `end.date = nextDay(endDate)`) instead of forcing

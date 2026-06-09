@@ -8,21 +8,21 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
-- **2026-06-09** — Shipped **★ Gmail draft-only: scope + guardrails + undo op**
-  (Security half; gates Core's email feature). Core owns the draft mechanics
-  (`lib/gmail.ts` `createGmailDraft`/`deleteGmailDraft`, merged to master); Security
-  delivered the trust surface around it: new `lib/google-auth.ts` (scope authority
-  incl. `gmail.compose` + `hasGmailScope`/`missingRequiredScopes`); new
-  `lib/gmailGuard.ts` (`assertCanDraft` scope-gate + hourly per-user rate limit →
-  typed `GmailScopeError`/`GmailRateLimitError`, `recordDraftCreated` append-only
-  `gmail_drafts_log` audit w/ recipient+subject encrypted at rest, `userHasGmailScope`);
-  `calendar_tokens.scope` persisted for re-consent detection; `lib/calendar.ts`
-  requests the Gmail scope + `include_granted_scopes`; new **`deleteDraft` UndoOp**
-  in `lib/undo.ts` calling Core's `deleteGmailDraft`. **Core wiring (2 call points):**
-  `assertCanDraft(userId)` before each `createGmailDraft`, `recordDraftCreated(...)`
-  after; record undo via `deleteDraft`. ⚠️ Prod landmine flagged: `gmail.compose`
-  is a Google restricted scope (OAuth verification + CASA) before rollout beyond
-  testing-mode users.
+- **2026-06-09** — Shipped **★ Gmail draft-only access primitive + scope + undo op**
+  (gates Core's email feature). Per PM ownership ruling, `lib/gmail.ts` +
+  `lib/google-auth.ts` are Security's guarded primitive; Core's `lib/outreach.ts`
+  composes and calls it. Delivered: `lib/google-auth.ts` (scope authority incl.
+  `gmail.compose` + `hasGmailScope`/`missingRequiredScopes`); `lib/gmail.ts`
+  `createDraft(userId, {to,subject,body})` with built-in scope gate (`GmailScopeError`),
+  per-user hourly rate limit (`GMAIL_DRAFTS_PER_HOUR` → `GmailRateLimitError`), and
+  append-only `gmail_drafts_log` audit (recipient/subject encrypted at rest) — exposes
+  only `drafts.create`/`drafts.delete`, never `messages.send`; plus `deleteDraft` +
+  `userHasGmailScope`. `calendar_tokens.scope` persisted (re-consent detection);
+  `lib/calendar.ts` requests the scope + `include_granted_scopes`; new **`deleteDraft`
+  UndoOp** in `lib/undo.ts` → Security's `deleteDraft`. **Core wiring:** `createDraft(
+  userId, { to: recipient.email, subject, body })` then record `deleteDraft` undo.
+  ⚠️ Prod landmine: `gmail.compose` is a Google restricted scope (verification + CASA)
+  before rollout beyond the owner dogfooding via the unverified-app path.
 - **2026-06-09** — Shipped **#4 Data-at-rest encryption** + **#5 code-side
   durability** (commit `80b4d30`). `lib/crypto.ts`: AES-256-GCM field encryption,
   transparent + backward-compatible (legacy plaintext passes through; no-op until
@@ -97,16 +97,19 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 
 ### Incoming from PM (coordinate with Core)
-- [x] **★ TOP PRIORITY: Gmail access for draft-only email (scope + guardrails)** — **Security half DELIVERED**; gates Core's email-drafting feature (`ROADMAP-CORE.md`). Core owns the draft mechanics in `lib/gmail.ts` (`createGmailDraft`/`deleteGmailDraft`, outreach helpers); Security owns the scope, re-consent, guardrails, and the undo op.
-  - ✅ **Scope:** `gmail.compose` added via new Security-owned **`lib/google-auth.ts`** (scope authority + `hasGmailScope`/`missingRequiredScopes`). Scope string matches the consent screen exactly: `https://www.googleapis.com/auth/gmail.compose`. `lib/calendar.ts` sources scopes from it + requests `include_granted_scopes` so calendar-only users re-consent without dropping calendar.
-  - ✅ **Re-consent detection:** granted scopes persisted on `calendar_tokens.scope` (callback passes `tokens.scope`); `userHasGmailScope(userId)` (in `lib/gmailGuard.ts`) + `missingRequiredScopes()` let onboarding/settings prompt re-auth. **Core builds the prompt UI.**
+- [x] **★ TOP PRIORITY: Gmail access for draft-only email (scope + guardrails)** — **Security side DELIVERED** (per PM ownership ruling: `lib/gmail.ts` + `lib/google-auth.ts` are Security's guarded access primitive; Core's `lib/outreach.ts` composes and calls `createDraft`).
+  - ✅ **Scope:** `gmail.compose` via new **`lib/google-auth.ts`** (scope authority + `hasGmailScope`/`missingRequiredScopes`). Scope string matches the consent screen: `https://www.googleapis.com/auth/gmail.compose`. `lib/calendar.ts` sources scopes from it + requests `include_granted_scopes` so calendar-only users re-consent without dropping calendar.
+  - ✅ **Guarded primitive Core calls** — **`lib/gmail.ts`**: `createDraft(userId, {to, subject, body, cc?, bcc?})` → `{draftId, messageId}`. Built-in scope gate (`GmailScopeError`→re-consent), per-user hourly rate limit (`GMAIL_DRAFTS_PER_HOUR` default 20 → `GmailRateLimitError`), and append-only `gmail_drafts_log` audit (recipient/subject encrypted at rest). Exposes ONLY `drafts.create` + `drafts.delete` — `messages.send` is never imported (test asserts it's never called).
+  - ✅ **Re-consent detection:** granted scopes persisted on `calendar_tokens.scope` (callback passes `tokens.scope`); `userHasGmailScope(userId)` + `missingRequiredScopes()` let onboarding/settings prompt re-auth. **Core builds the prompt UI.**
   - ✅ **Token sensitivity:** the Gmail-enabled token rides the same encrypted `calendar_tokens` row as #4 (encrypted at rest).
-  - ✅ **Guardrails as a Security-owned wrapper Core calls** — **`lib/gmailGuard.ts`**: `assertCanDraft(userId)` (scope gate → `GmailScopeError`; per-user hourly rate limit `GMAIL_DRAFTS_PER_HOUR` default 20 → `GmailRateLimitError`) and `recordDraftCreated(userId, to, subject, draftId)` (append-only `gmail_drafts_log` audit, recipient/subject encrypted at rest). Draft-only itself is structurally guaranteed by Core's module (no `messages.send` anywhere).
-  - ✅ **Undo op:** new `deleteDraft` UndoOp in `lib/undo.ts` → calls Core's `deleteGmailDraft(userId, draftId)`. Core's `draftEmail` handler records it per draft.
-  - ✅ Tests: `lib/gmailGuard.test.ts` + `lib/google-auth.test.ts` (Security) alongside Core's `lib/gmail.test.ts`. Full suite green, tsc clean.
-  - ⚠️ **Production landmine (still open, ops/PM):** `gmail.compose` is a Google **restricted scope** → public/production use requires Google **OAuth app verification + a CASA security assessment** (weeks). Fine now in "testing" mode with the owner as a test user; **hard gate before rolling email to all users.** Flagged to PM.
-  - 🔄 **Parallel user-side track (started 2026-06-09):** user is setting up Google Cloud Console — enable Gmail API, add `gmail.compose` to the OAuth consent screen, add self as Test user (works now in Testing mode), and begin OAuth verification + CASA for production (long lead). The scope string in code MUST match the consent screen: `https://www.googleapis.com/auth/gmail.compose`.
-  - **Handoff to Core (the two call points):** in the `draftEmail` handler — `await assertCanDraft(userId)` *before* each `createGmailDraft`, then `recordDraftCreated(...)` *after*; record undo via the new `deleteDraft` op; handle `GmailScopeError`→re-consent, `GmailRateLimitError`→back off. Coordinate before merging into `tool-call/route.ts`.
+  - ✅ **Undo op:** new `deleteDraft` UndoOp in `lib/undo.ts` → calls Security's `deleteDraft(userId, draftId)` (`drafts.delete`, not rate-limited so undo always cleans up).
+  - ✅ Tests: `lib/gmail.test.ts` (createDraft guardrails + deleteDraft + draft-only) + `lib/google-auth.test.ts`. Full suite green, tsc clean.
+  - ⚠️ **Production landmine (still open, ops/PM):** `gmail.compose` is a Google **restricted scope** → public/production rollout requires Google **OAuth app verification + a CASA security assessment** (weeks). Owner can dogfood now via the unverified-app path; **hard gate before rolling email to all users.**
+  - 🔄 **Parallel user-side track (Google Cloud Console):**
+    - ✅ Gmail API enabled (2026-06-09).
+    - ✅ `gmail.compose` scope added under Data Access (2026-06-09). Code scope string matches: `https://www.googleapis.com/auth/gmail.compose`.
+    - ⏳ App is **"In production"** → restricted-scope rollout to all users needs Google **verification + CASA** (multi-week, long lead). Owner can dogfood now via the unverified-app path; PM offered to draft the verification packet (scope justification, demo-video script, Gmail privacy-policy language).
+  - **Handoff to Core:** `outreach.ts` composes `{recipient, subject, body}` → in the `draftEmail` handler call `await createDraft(userId, { to: recipient.email, subject, body })`; record undo via the `deleteDraft` op; handle `GmailScopeError`→re-consent, `GmailRateLimitError`→back off. Coordinate before merging into `tool-call/route.ts`.
 - [ ] **Secure the travel API credential** — ⏸ PARKED (travel feature parked 2026-06-09). When resumed: own the `AMADEUS_*` secret + a rate-limit/cost guardrail on the lookup endpoint.
 
 ### Closed / deprioritized (do not re-open without reason)

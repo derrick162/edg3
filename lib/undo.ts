@@ -1,12 +1,12 @@
 import { calendar_v3 } from 'googleapis';
 import { undoQueries } from '@/lib/db';
-import { deleteGmailDraft } from './gmail';
+import { deleteDraft } from './gmail';
 
 // A reversible operation. Each mutation Edge performs records the inverse op(s)
 // so the most recent action can be rolled back from a call ("undo that") or the dashboard.
 //
-// `deleteDraft` is the inverse of Core's createGmailDraft (lib/gmail.ts). It carries
-// its own userId so executeUndo can resolve the user's Gmail client without a signature
+// `deleteDraft` is the inverse of Security's createDraft (lib/gmail.ts). It carries its
+// own userId so executeUndo can resolve the user's Gmail client without a signature
 // change — the Gmail draft API is per-user and not the shared calendar client.
 export type UndoOp =
   | { type: 'delete'; calId: string; eventId: string }
@@ -28,7 +28,7 @@ export async function executeUndo(cal: calendar_v3.Calendar, ops: UndoOp[]): Pro
       else if (op.type === 'deleteMany') { await Promise.all(op.eventIds.map(id => cal.events.delete({ calendarId: op.calId, eventId: id }).catch(() => undefined))); any = true; }
       else if (op.type === 'patch') { await cal.events.patch({ calendarId: op.calId, eventId: op.eventId, requestBody: op.requestBody }); any = true; }
       else if (op.type === 'recreate') { await cal.events.insert({ calendarId: op.calId, requestBody: op.event }); any = true; }
-      else if (op.type === 'deleteDraft') { await deleteGmailDraft(op.userId, op.draftId); any = true; }
+      else if (op.type === 'deleteDraft') { await deleteDraft(op.userId, op.draftId); any = true; }
     } catch { /* skip individual failures */ }
   }
   return any;

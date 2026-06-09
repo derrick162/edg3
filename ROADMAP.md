@@ -53,12 +53,14 @@ Stay in your lane's files — this is what makes parallel work conflict-free.
 
 **🛠️ Core owns** — the product / feature surface:
 - `lib/calendar.ts`, `lib/briefing.ts`, `lib/eventMatch.ts`, `lib/time.ts`
+- `lib/outreach.ts` — email **composition** (body, availability formatting, recipient filtering); calls Security's `lib/gmail.ts` to actually create the draft.
 - `app/dashboard/**`, `app/onboarding/**`
 - `app/api/briefing/**`, `app/api/calendar/**`, `app/api/memory/**`, `app/api/profile/**`, `app/api/tasks/**`, `app/api/onboarding/**`, `app/api/undo/**` (the *user-facing* side)
 - New UI, new product flows
 
 **🔒 Security & Reliability owns** — the trust / secrets / infra surface:
 - `lib/auth.ts`, `lib/crypto.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `lib/undo.ts` (the *recording* side)
+- `lib/gmail.ts` + `lib/google-auth.ts` — Gmail **access primitive** (guarded `createDraft`, scope authority, rate limit, audit). Core composes; Security executes the send/draft. _(Resolves the 2026-06-09 dual-`gmail.ts` collision.)_
 - `app/api/auth/**`, `app/api/admin/**`, `app/api/vapi/**`
 - `app/login/**`, `app/admin-login/**`, `app/signup/**`
 - Cross-cutting: rate limiting, encryption-at-rest, audit logging, idempotency, backups/durability
@@ -89,8 +91,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — email-drafting PREP committed to `core`: `lib/gmail.ts` + tests, green. ⏳ Awaiting 🔒 Security's Gmail OAuth scope before wiring `draftEmail` into route.ts / touching `lib/undo.ts`. Not merged to master.)_ | — | 2026-06-09 |
-| 🔒 Security | `security` | ✅ **★ Gmail scope + guardrails + `deleteDraft` undo op DELIVERED** → ready to merge `security`→`master`. Core's `lib/gmail.ts` is canonical; Security adds scope (`lib/google-auth.ts`), `lib/gmailGuard.ts` (`assertCanDraft`/`recordDraftCreated`/`userHasGmailScope`), `calendar_tokens.scope` + `deleteDraft` op in `lib/undo.ts`. **Core, after sync: call `assertCanDraft` before / `recordDraftCreated` after `createGmailDraft`; record `deleteDraft` undo.** Touched Core-owned `lib/calendar.ts` (scopes, additive) + `calendar/callback` (persist scope) — sync before editing. Next: #2 Vapi secret | `lib/google-auth.ts`,`lib/gmailGuard.ts` (new), `lib/undo.ts`, `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — STEP 1 done: composition moved to `lib/outreach.ts` (+ tests, 39/39 green); deleted my `lib/gmail.ts` to free the filename for Security. Merging to master. ⏳ HOLDING for PM "scope landed" signal before wiring `draftEmail`.)_ | — | 2026-06-09 |
+| 🔒 Security | `security` | ✅ **★ Gmail primitive DELIVERED** (`lib/gmail.ts` `createDraft`/`deleteDraft` guarded + `lib/google-auth.ts` scope + `deleteDraft` undo op) — synced with master (Core's `lib/outreach.ts` landed), green, ready to merge `security`→`master`. **Core, after scope lands: `createDraft(userId, {to: recipient.email, subject, body})` from `draftEmail`; record `deleteDraft` undo; handle `GmailScopeError`→re-consent.** Touched Core-owned `lib/calendar.ts` (scopes, additive) + `calendar/callback` (persist scope). Next: #2 Vapi secret | `lib/gmail.ts`,`lib/google-auth.ts` (new), `lib/undo.ts`, `lib/db.ts`, `lib/calendar.ts` ⚠️, `app/api/calendar/callback` ⚠️ | 2026-06-09 |
 
 ---
 
