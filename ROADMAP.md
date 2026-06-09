@@ -3,10 +3,11 @@
 > **This file is the shared constitution for every EDG3 session.** It is
 > auto-loaded into every session via `CLAUDE.md`. It does **not** hold the task
 > backlog — it defines *how the parallel lanes work together without colliding*.
-> The actual work lives in two lane roadmaps:
+> The product manager routes feedback into the right lane; engineers build only
+> in their lane. The work lives in two lane roadmaps:
 >
+> - 🛠️ **[`ROADMAP-CORE.md`](ROADMAP-CORE.md)** — the Core (features/product) lane.
 > - 🔒 **[`ROADMAP-SECURITY.md`](ROADMAP-SECURITY.md)** — the Security & Reliability lane.
-> - 🛠️ **[`ROADMAP-BUILDER.md`](ROADMAP-BUILDER.md)** — the Master Builder (features/product) lane.
 >
 > Read this constitution, then read **only your own lane's roadmap**. Do not plan
 > from memory or from `docs/EDG3-Roadmap.xlsx` — **that spreadsheet is deprecated.**
@@ -16,12 +17,19 @@ worktree and branch, and integrates to `master` in small, frequent merges.
 
 ---
 
+## 0. Roles
+- **Product Manager (you + the Chief-of-Staff session)** — takes product feedback
+  from the user, decides which engineer/lane owns it, writes it into that lane's
+  roadmap, and keeps the lanes from colliding. Does not write feature code.
+- **Core Engineer** — builds user-facing product (see `ROADMAP-CORE.md`).
+- **Security & Reliability Engineer** — builds trust/secrets/infra (see `ROADMAP-SECURITY.md`).
+
 ## 1. Who am I? (pick your lane)
 | If your session is… | Lane | Roadmap | Branch | Worktree folder |
 |---|---|---|---|---|
-| **Edg3 Security & Reliability** | 🔒 Security | `ROADMAP-SECURITY.md` | `security` | `C:\Users\Derrick\edg3-security` |
-| **Edg3 Master Builder** | 🛠️ Builder | `ROADMAP-BUILDER.md` | `builder` | `C:\Users\Derrick\edg3-builder` |
-| **Chief of Staff / coordinator** | — | this file | `master` | `C:\Users\Derrick\edg3` |
+| **Edg3 Engineer (Core)** | 🛠️ Core | `ROADMAP-CORE.md` | `core` | `C:\Users\Derrick\edg3-core` |
+| **Edg3 Engineer (Security & Reliability)** | 🔒 Security | `ROADMAP-SECURITY.md` | `security` | `C:\Users\Derrick\edg3-security` |
+| **Product Manager / coordinator** | — | this file | `master` | `C:\Users\Derrick\edg3` |
 
 If you don't know which you are, **stop and ask the user** before editing anything.
 
@@ -33,8 +41,8 @@ worktree (separate folder, separate branch, one underlying repo). One-time setup
 run from `C:\Users\Derrick\edg3`:
 
 ```powershell
+git worktree add ../edg3-core     -b core
 git worktree add ../edg3-security -b security
-git worktree add ../edg3-builder  -b builder
 ```
 
 Then point each desktop-app session at its own folder. After that, a lane only
@@ -43,17 +51,17 @@ ever edits files inside **its own** worktree folder.
 ## 3. Ownership map (who owns which files)
 Stay in your lane's files — this is what makes parallel work conflict-free.
 
+**🛠️ Core owns** — the product / feature surface:
+- `lib/calendar.ts`, `lib/briefing.ts`, `lib/eventMatch.ts`, `lib/time.ts`
+- `app/dashboard/**`, `app/onboarding/**`
+- `app/api/briefing/**`, `app/api/calendar/**`, `app/api/memory/**`, `app/api/profile/**`, `app/api/tasks/**`, `app/api/onboarding/**`, `app/api/undo/**` (the *user-facing* side)
+- New UI, new product flows
+
 **🔒 Security & Reliability owns** — the trust / secrets / infra surface:
 - `lib/auth.ts`, `lib/crypto.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `lib/undo.ts` (the *recording* side)
 - `app/api/auth/**`, `app/api/admin/**`, `app/api/vapi/**`
 - `app/login/**`, `app/admin-login/**`, `app/signup/**`
 - Cross-cutting: rate limiting, encryption-at-rest, audit logging, idempotency, backups/durability
-
-**🛠️ Master Builder owns** — the product / feature surface:
-- `lib/calendar.ts`, `lib/briefing.ts`, `lib/eventMatch.ts`, `lib/time.ts`
-- `app/dashboard/**`, `app/onboarding/**`
-- `app/api/briefing/**`, `app/api/calendar/**`, `app/api/memory/**`, `app/api/profile/**`, `app/api/tasks/**`, `app/api/onboarding/**`, `app/api/undo/**` (the *user-facing* side)
-- New UI, new product flows
 
 **⚠️ Shared — coordinate before touching** (see §5):
 - `lib/db.ts` (schema — both lanes add tables/columns)
@@ -71,22 +79,23 @@ Stay in your lane's files — this is what makes parallel work conflict-free.
 For anything in the ⚠️ Shared list:
 1. **Claim it** in the Status Board (§6) before editing.
 2. Prefer **additive** changes (new column, new function) over rewrites.
-3. Merge to `master` **immediately** after, then have the coordinator tell the other lane to sync down.
-4. Tie-breaks: Security wins on security-sensitive files; Builder wins on feature files; the coordinator breaks any remaining tie.
+3. Merge to `master` **immediately** after, then have the PM tell the other lane to sync down.
+4. Tie-breaks: Security wins on security-sensitive files; Core wins on feature files; the PM breaks any remaining tie.
 
 ## 6. Status Board (live — keep it current)
 Each lane edits **only its own row** when it starts/stops a unit of work, so the
-other lane and the Chief of Staff can see live ownership claims.
+other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
+| 🛠️ Core | `core` | _(idle)_ | — | — |
 | 🔒 Security | `security` | _(idle)_ | — | — |
-| 🛠️ Builder | `builder` | _(idle)_ | — | — |
 
 ---
 
 ## Changelog
-- **2026-06-09** — Split the single roadmap into two lanes (Security & Reliability,
-  Master Builder) governed by this constitution. Adopted git-worktree isolation
-  (one folder + branch per lane) and small/frequent direct merges to `master`.
-  Security backlog moved to `ROADMAP-SECURITY.md`; feature backlog to `ROADMAP-BUILDER.md`.
+- **2026-06-09** — Established the PM + two-engineer model. Renamed the features
+  lane to **Core** (branch `core`, folder `edg3-core`, `ROADMAP-CORE.md`).
+- **2026-06-09** — Split the single roadmap into two lanes governed by this
+  constitution. Adopted git-worktree isolation (one folder + branch per lane) and
+  small/frequent direct merges to `master`.
