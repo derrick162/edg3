@@ -624,6 +624,9 @@ export default function Dashboard() {
   const [notifUnread, setNotifUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifChecking, setNotifChecking] = useState(false);
+  const [bookFor, setBookFor] = useState<{ id: number } | null>(null);
+  const [bookForm, setBookForm] = useState({ title: '', date: '', time: '14:00', duration: 30 });
+  const [booking, setBooking] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -688,6 +691,24 @@ export default function Dashboard() {
     });
     if (action === 'check') setNotifChecking(false);
     if (r.ok) { const d = await r.json(); setNotifs(d.notifications || []); setNotifUnread(d.unread || 0); }
+  }
+
+  function openBook(n: { id: number; title: string | null }) {
+    const who = (n.title || '').split(' replied')[0].split(' · ')[0].trim() || 'contact';
+    const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+    setBookForm({ title: `Meeting with ${who}`, date: today, time: '14:00', duration: 30 });
+    setBookFor({ id: n.id });
+  }
+  async function submitBook() {
+    if (!bookForm.title.trim() || !bookForm.date || !bookForm.time) { alert('Add a title, date and time.'); return; }
+    setBooking(true);
+    const r = await fetch('/api/calendar/book', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: bookForm.title, date: bookForm.date, time: bookForm.time, durationMins: bookForm.duration, notificationId: bookFor?.id }),
+    });
+    setBooking(false);
+    if (r.ok) { setBookFor(null); loadNotifs(); loadData(); }
+    else { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not book that.'); }
   }
 
   // After re-linking Google, the callback returns to /dashboard?linked=1 — show a brief
@@ -842,13 +863,49 @@ export default function Dashboard() {
                 <div key={n.id} className="py-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', opacity: n.read ? 0.6 : 1 }}>
                   <p className="text-xs font-semibold" style={{ color: '#e8e8f0' }}>{n.title}</p>
                   {n.body && <p className="text-xs mt-0.5" style={{ color: '#a8a8b8' }}>{n.body}</p>}
-                  <p className="text-xs mt-1" style={{ color: '#4a4a5a' }}>{new Date(n.created_at).toLocaleString()}</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs" style={{ color: '#4a4a5a' }}>{new Date(n.created_at).toLocaleString()}</p>
+                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: '#818cf8' }}>📅 Book a time</button>
+                  </div>
                 </div>
               ))
             )}
           </div>
         )}
       </div>
+
+      {/* Quick-book modal (from a notification's "Book a time") */}
+      {bookFor && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setBookFor(null)}>
+          <div className="glass-card" style={{ width: 380, maxWidth: '100%', padding: 22 }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-bold mb-1" style={{ color: '#e8e8f0' }}>Book a time</p>
+            <p className="text-xs mb-4" style={{ color: '#888899' }}>Confirm the details and Edge will add it to your calendar.</p>
+            <label className="text-xs" style={{ color: '#888899' }}>Title</label>
+            <input className="input mt-1 mb-3" value={bookForm.title} onChange={(e) => setBookForm(f => ({ ...f, title: e.target.value }))} />
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1">
+                <label className="text-xs" style={{ color: '#888899' }}>Date</label>
+                <input type="date" className="input mt-1" value={bookForm.date} onChange={(e) => setBookForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs" style={{ color: '#888899' }}>Time</label>
+                <input type="time" className="input mt-1" value={bookForm.time} onChange={(e) => setBookForm(f => ({ ...f, time: e.target.value }))} />
+              </div>
+            </div>
+            <label className="text-xs" style={{ color: '#888899' }}>Duration</label>
+            <select className="input mt-1 mb-5" value={bookForm.duration} onChange={(e) => setBookForm(f => ({ ...f, duration: Number(e.target.value) }))}>
+              <option value={30} style={{ background: '#1a1a2e' }}>30 minutes</option>
+              <option value={60} style={{ background: '#1a1a2e' }}>1 hour</option>
+              <option value={90} style={{ background: '#1a1a2e' }}>1.5 hours</option>
+              <option value={120} style={{ background: '#1a1a2e' }}>2 hours</option>
+            </select>
+            <div className="flex gap-2">
+              <button className="btn-primary text-sm py-2 px-5" onClick={submitBook} disabled={booking}>{booking ? 'Booking…' : 'Book it'}</button>
+              <button className="btn-secondary text-sm py-2 px-4" onClick={() => setBookFor(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sidebar + main layout */}
       <div className="relative z-10 flex min-h-screen">
