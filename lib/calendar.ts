@@ -189,6 +189,61 @@ export async function getWeekEvents(userId: number) {
   return merged;
 }
 
+// Fetch events for the next `days` days (defaults to 7). Used by the admin
+// CoS calendar API — supports arbitrary day windows, not just today or this week.
+export async function getUpcomingEvents(userId: number, days: number = 7) {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return [];
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  oauth2Client.on('tokens', (tokens) => {
+    if (tokens.access_token) {
+      calendarQueries.upsert(
+        userId,
+        tokens.access_token,
+        tokens.refresh_token || tokenRow.refresh_token || '',
+        tokens.expiry_date?.toString() || ''
+      );
+    }
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const now = new Date();
+  const timeMax = new Date(now.getTime() + days * 86400000);
+
+  const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calendarIds = (calendarList.data.items || [])
+    .filter(c => !c.hidden)
+    .map(c => c.id!)
+    .filter(Boolean);
+
+  const allEvents = await Promise.all(
+    calendarIds.map(calendarId =>
+      calendar.events.list({
+        calendarId,
+        timeMin: now.toISOString(),
+        timeMax: timeMax.toISOString(),
+        singleEvents: true,
+        showHiddenInvitations: true,
+        orderBy: 'startTime',
+        maxResults: 50,
+      }).then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  return allEvents.flat().sort((a, b) => {
+    const aTime = a.start?.dateTime || a.start?.date || '';
+    const bTime = b.start?.dateTime || b.start?.date || '';
+    return aTime.localeCompare(bTime);
+  });
+}
+
 export async function createCalendarEvent(
   userId: number,
   title: string,
