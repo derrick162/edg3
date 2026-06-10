@@ -95,7 +95,19 @@ priority from user feedback.
   - **Coordination:** same Shared file as the all-day ticket (`tool-call/route.ts`) — batch them; both touch event description/creation logic.
 
 ### Next (decided)
-- [ ] **★ TOP PRIORITY: Email drafting — outreach with calendar availability (draft-only Gmail)** — _PM decision 2026-06-09, user request._
+- [ ] **★ TOP PRIORITY (2026-06-10): Email-reply tracking → proactive surfacing in the briefing** — _PM + user decision. Extends the outreach chain: research → draft → (user sends) → **Edge watches the reply → raises it in the briefing → tees up the next action**._
+  - **Locked decisions:** (1) watch **ONLY the threads Edge started** (the outreach it drafted) — never the whole inbox; (2) surface replies **proactively in the daily briefing** (not on-demand only).
+  - **Depends on 🔒 Security:** `gmail.readonly` scope + a guarded `readThread(userId, threadId)` primitive + `createDraft` extended to return `threadId` (see `ROADMAP-SECURITY.md`). Build the no-scope parts in parallel; gate the actual read on Security landing.
+  - **Core scope:**
+    1. **Register watched threads:** when `draftEmail` creates drafts, store each `threadId` + context (recipient, the research event it relates to, the ask) in a new `watched_threads` table, with a `last_seen` marker. (db.ts schema — Shared, coordinate.)
+    2. **Detect replies:** at briefing-generation time (and/or a scheduler tick), for each open watched thread call Security's `readThread` and find inbound messages newer than `last_seen`.
+    3. **Understand the reply (Claude):** classify (proposes a time / declines / asks a question / other), extract any proposed time(s), and produce a one-line summary + suggested next action.
+    4. **Surface in the daily briefing** (`lib/briefing.ts`): a "Replies to your outreach" section so Edge raises it on the call — "Wilmec replied, can come Thursday 2pm. Book it?"
+    5. **Act:** on confirmation, create the calendar event (reuse `createEvent`); mark the thread handled.
+  - **Trust/privacy:** only threads Edge started; never read other mail; summaries derived solely from those threads.
+  - **Acceptance:** after the user sends a drafted email and a reply arrives, the next briefing surfaces "X replied — [summary] — want me to [action]?" and Edge can act on a yes.
+  - **Coordination:** Shared `lib/db.ts` (watched_threads) + `lib/briefing.ts`; rides on Security's read scope. Effort ~3–4d after scope. User must re-approve Google (read permission) — same flow as the draft scope.
+- [ ] **★ TOP PRIORITY: Email drafting — outreach with calendar availability (draft-only Gmail)** — _PM decision 2026-06-09, user request._ **✅ SHIPPED & working end-to-end 2026-06-09 (after fixing moveEvent trailing-space key + setting the draftEmail tool server URL). Left here for reference; superseded by the reply-tracking ticket above.**
   - **Goal:** After research (e.g. plumbers), Edge drafts a personalized outreach email per contact asking their availability this week and **proposing the user's real open calendar slots**, saved as a **Gmail draft** for the user to review + send. Draft-only — Edge NEVER sends.
   - **Depends on 🔒 Security:** the Gmail OAuth scope + a safe draft-create helper (see `ROADMAP-SECURITY.md` "Gmail access"). Gate on that landing first.
   - **New tool:** `draftEmail` in `tool-call/route.ts` — params: `recipients` (name + email, from research results), `ask` (e.g. "when can you come this week"), `proposeAvailability` (bool), `dateRange` (defaults to this week).
