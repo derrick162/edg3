@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scheduleBriefingCall } from '@/lib/scheduler';
 import { checkRateLimit, getClientIP, rateLimitResponse } from '@/lib/rateLimit';
-
-function checkAdminAuth(req: NextRequest): boolean {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  const cookie = req.cookies.get('edg3_admin');
-  return !!(adminPassword && cookie && cookie.value === adminPassword);
-}
+import { checkAdminAuth } from '@/lib/adminAuth';
 
 export async function POST(req: NextRequest) {
   if (!checkAdminAuth(req)) {

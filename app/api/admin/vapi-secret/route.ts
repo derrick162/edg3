@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { vapiAuthLogQueries } from '@/lib/db';
-
-function checkAdminAuth(req: NextRequest): boolean {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  const cookie = req.cookies.get('edg3_admin');
-  return !!(adminPassword && cookie && cookie.value === adminPassword);
-}
+import { checkAdminAuth } from '@/lib/adminAuth';
 
 // Admin monitoring for Vapi webhook secret status (#2).
 // Use this during the 24-hour fail-open window to confirm Vapi is sending the right secret

@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-
-function checkAdminAuth(req: NextRequest): boolean {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  const cookie = req.cookies.get('edg3_admin');
-  return !!(adminPassword && cookie && cookie.value === adminPassword);
-}
+import { checkAdminAuth } from '@/lib/adminAuth';
 
 function getNextCallTime(callTime: string, timezone: string): string {
   try {

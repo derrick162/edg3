@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
-
-async function checkAdmin() {
-  const cookieStore = await cookies();
-  const adminCookie = cookieStore.get('edg3_admin');
-  return adminCookie?.value === process.env.ADMIN_PASSWORD;
-}
+import { checkAdminAuth } from '@/lib/adminAuth';
 
 export async function DELETE(req: NextRequest) {
-  if (!await checkAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!checkAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { keyword, userId } = await req.json();
   if (!keyword) return NextResponse.json({ error: 'keyword required' }, { status: 400 });
@@ -25,7 +19,7 @@ export async function DELETE(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!await checkAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!checkAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { userId, type, content } = await req.json();
   if (!userId || !content) return NextResponse.json({ error: 'userId and content required' }, { status: 400 });
@@ -39,7 +33,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!await checkAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!checkAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const keyword = req.nextUrl.searchParams.get('keyword') || '';
   const userId = req.nextUrl.searchParams.get('userId');

@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBackup, listBackups, verifyBackup, litstreamEnabled } from '@/lib/backup';
 import { encryptionEnabled } from '@/lib/crypto';
-
-function checkAdminAuth(req: NextRequest): boolean {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  const cookie = req.cookies.get('edg3_admin');
-  return !!(adminPassword && cookie && cookie.value === adminPassword);
-}
+import { checkAdminAuth } from '@/lib/adminAuth';
 
 // GET — list snapshots + system durability status.
 // Returns:

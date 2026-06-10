@@ -8,6 +8,17 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#10 Harden admin auth**. Two fixes: (1) `edg3_admin`
+  cookie now stores `HMAC-SHA256(ADMIN_PASSWORD, "edg3-admin-session-v1")` — a
+  derived token — instead of the raw password; cookie leak no longer exposes the
+  secret. (2) All password/cookie comparisons use `crypto.timingSafeEqual` —
+  constant-time compare prevents timing side-channels. New `lib/adminAuth.ts`:
+  `checkAdminAuth(req)`, `verifyAdminPassword(submitted)`, `getAdminCookieToken()`.
+  All 11 admin routes migrated from inline `checkAdminAuth` / async `checkAdmin`
+  stubs to the shared utility (removes ~60 lines of duplicated code). Admin login
+  also wired into existing rate-limiter (#8 missed it). 15 new tests; preflight
+  green (134/134, tsc, next build). Note: existing admin sessions (old cookie format)
+  are invalidated — admin must re-login after deploy.
 - **2026-06-10** — Shipped **#8 Rate limiting** on auth + admin endpoints. New
   `lib/rateLimit.ts`: `checkRateLimit(type, ip)` (fixed-window counter via
   `rate_limits` SQLite table, atomic transaction, fails open on fault),
