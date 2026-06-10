@@ -105,28 +105,9 @@ priority from user feedback.
   - **Coordination:** same Shared file as the all-day ticket (`tool-call/route.ts`) — batch them; both touch event description/creation logic.
 
 ### Next (decided)
-- [ ] **★ TOP PRIORITY (2026-06-10): Email-reply tracking → proactive surfacing in the briefing** — _PM + user decision. Extends the outreach chain: research → draft → (user sends) → **Edge watches the reply → raises it in the briefing → tees up the next action**._
-  - **Locked decisions:** (1) watch **ONLY the threads Edge started** (the outreach it drafted) — never the whole inbox; (2) surface replies **proactively in the daily briefing** (not on-demand only).
-  - **Depends on 🔒 Security:** `gmail.readonly` scope + a guarded `readThread(userId, threadId)` primitive + `createDraft` extended to return `threadId` (see `ROADMAP-SECURITY.md`). Build the no-scope parts in parallel; gate the actual read on Security landing.
-  - **Core scope:**
-    1. **Register watched threads:** when `draftEmail` creates drafts, store each `threadId` + context (recipient, the research event it relates to, the ask) in a new `watched_threads` table, with a `last_seen` marker. (db.ts schema — Shared, coordinate.)
-    2. **Detect replies:** at briefing-generation time (and/or a scheduler tick), for each open watched thread call Security's `readThread` and find inbound messages newer than `last_seen`.
-    3. **Understand the reply (Claude):** classify (proposes a time / declines / asks a question / other), extract any proposed time(s), and produce a one-line summary + suggested next action.
-    4. **Surface in the daily briefing** (`lib/briefing.ts`): a "Replies to your outreach" section so Edge raises it on the call — "Wilmec replied, can come Thursday 2pm. Book it?"
-    5. **Act:** on confirmation, create the calendar event (reuse `createEvent`); mark the thread handled.
-  - **Trust/privacy:** only threads Edge started; never read other mail; summaries derived solely from those threads.
-  - **Acceptance:** after the user sends a drafted email and a reply arrives, the next briefing surfaces "X replied — [summary] — want me to [action]?" and Edge can act on a yes.
-  - **Coordination:** Shared `lib/db.ts` (watched_threads) + `lib/briefing.ts`; rides on Security's read scope. Effort ~3–4d after scope. User must re-approve Google (read permission) — same flow as the draft scope.
-- [ ] **Notifications v1: in-app notification center (web)** — _PM scope 2026-06-10, user pivot (SMS deferred — Twilio access pending). Makes reply-tracking timely with no SMS cost/dependency._
-  - **Decisions:** channel = **in-app notification center** in the dashboard (bell icon + unread badge + panel); **trigger = outreach replies only** to start; **act = one tap in the panel** (e.g. "Book Thursday 2pm" → `createEvent`, mark thread handled). No SMS/Twilio in v1.
-  - **Build (mostly Core):**
-    - New `notifications` table (id, user_id, type, title, body, action-payload, read, created_at) — Shared `lib/db.ts`.
-    - Reply-detection (`checkOutreachReplies`) creates a notification per new actionable reply (dedupe via watched_threads `last_seen` + a `notified` flag). Runs at briefing time (already) + on dashboard load + a light poll while the dashboard is open → near-real-time without SMS.
-    - Notification center UI: bell + unread count, panel listing items, per-item **action button** (one tap → book/confirm) + **mark read / dismiss**.
-  - **No SMS infra needed** — defers the Twilio dependency entirely; simpler (no quiet-hours/cost guardrails for in-app).
-  - **Future:** browser **web push** (alerts even when the app is closed) and **SMS** once Twilio access lands — both reuse the same notification records, so v1 is the foundation.
-  - **Dependency:** reply-tracking (✅ shipped). Effort ~2–3d.
-- [ ] **★ TOP PRIORITY: Email drafting — outreach with calendar availability (draft-only Gmail)** — _PM decision 2026-06-09, user request._ **✅ SHIPPED & working end-to-end 2026-06-09 (after fixing moveEvent trailing-space key + setting the draftEmail tool server URL). Left here for reference; superseded by the reply-tracking ticket above.**
+- [x] **Email-reply tracking → proactive surfacing in the briefing** — **✅ SHIPPED 2026-06-10 (by PM session directly to master)**. `lib/replies.ts` (`checkOutreachReplies` + `understandReply`); `lib/briefing.ts` calls it; `draftEmail` registers `threadId` → `watched_threads`; `lib/gmail.ts` `readThread` (Security); `notifications` table + `notificationQueries`. Degrades safely if `gmail.readonly` not yet granted.
+- [x] **Notifications v1: in-app notification center** — **✅ SHIPPED 2026-06-10 (by PM session directly to master)**. Bell icon + unread badge + panel in dashboard; `/api/notifications` GET/POST; `notificationQueries` CRUD. Replies trigger notifications at briefing time + on-demand via "↻ Check for replies" button.
+- [x] **★ TOP PRIORITY: Email drafting — outreach with calendar availability (draft-only Gmail)** — _PM decision 2026-06-09, user request._ **✅ SHIPPED & working end-to-end 2026-06-09 (after fixing moveEvent trailing-space key + setting the draftEmail tool server URL). Left here for reference; superseded by the reply-tracking ticket above.**
   - **Goal:** After research (e.g. plumbers), Edge drafts a personalized outreach email per contact asking their availability this week and **proposing the user's real open calendar slots**, saved as a **Gmail draft** for the user to review + send. Draft-only — Edge NEVER sends.
   - **Depends on 🔒 Security:** the Gmail OAuth scope + a safe draft-create helper (see `ROADMAP-SECURITY.md` "Gmail access"). Gate on that landing first.
   - **New tool:** `draftEmail` in `tool-call/route.ts` — params: `recipients` (name + email, from research results), `ask` (e.g. "when can you come this week"), `proposeAvailability` (bool), `dateRange` (defaults to this week).
@@ -150,9 +131,9 @@ priority from user feedback.
   - **Effort:** ~2–4d.
 
 ### Dashboard polish (from dogfooding 2026-06-10) — small, quick
-- [ ] **Re-link flow shouldn't route through onboarding.** After re-linking Google (calendar/Gmail), the OAuth callback (`app/api/calendar/callback`) redirects to `/onboarding?step=priorities`; an already-onboarded user sees the "top 3 priorities" screen flash then bounces to the dashboard — confusing (looks like being logged out). **Fix:** for an already-onboarded user, the callback should return to the **dashboard** with a simple "Google calendar/Gmail linked ✓" confirmation (toast/banner), not the onboarding flow. (This is the root of the earlier "signing in/out" report — `session=1` the whole time; it was just this redirect.)
-- [ ] **Profile page: "Your Profile" section is too long** — user has to scroll far past it. Make it **collapsible** (collapsed by default) or condense/summarize with an expand, so the rest of the page is reachable.
-- [ ] **"Next call" section: the Undo button is unclear** — its purpose isn't obvious and it's not very usable. Decide: remove it, or make it meaningful (e.g. fold into the planned "Recent activity" surface so undo is per-action and labeled "Undo: <what Edge did>"). Likely **remove the standalone button** and let undo live in Recent activity.
+- [x] **Re-link flow shouldn't route through onboarding.** **✅ Fixed 2026-06-10 (PM session).** Callback now redirects already-onboarded users to `/dashboard?linked=1` with a "Google account linked ✓" toast; first-time users still continue to onboarding.
+- [x] **Profile page: "Your Profile" section is too long.** **✅ Fixed 2026-06-10 (PM session).** Section is now collapsible — collapsed to ~3 lines by default with a "▼ Show more" toggle.
+- [x] **"Next call" section: the Undo button is unclear.** **✅ Addressed 2026-06-10.** Sidebar button now shows only when an undoable action exists, labeled "Edge's last calendar change — {what}". Full per-action undo lives in the new Activity tab (⏪).
 
 ### Later / candidates (not yet committed)
 - [ ] Onboarding: smoother first-run (connect calendar → first briefing) flow.
