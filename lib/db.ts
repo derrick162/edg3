@@ -141,6 +141,16 @@ function initSchema(db: Database.Database) {
       read INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     );
+
+    -- Short-TTL dedupe keys for event-creation idempotency (#3). Rows expire after 5 min.
+    -- The composite PRIMARY KEY enables an atomic INSERT OR IGNORE + changes-check pattern
+    -- (no separate SELECT → no TOCTOU race even under concurrent calls).
+    CREATE TABLE IF NOT EXISTS event_dedupe_keys (
+      user_id INTEGER NOT NULL,
+      dedupe_key TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, dedupe_key)
+    );
   `);
 
   // Indexes for performance
@@ -450,6 +460,25 @@ export const notificationQueries = {
   },
   markAllRead: (userId: number) => {
     getDb().prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(userId);
+  },
+};
+
+// Event-creation idempotency dedupe (#3). Keyed by (user_id, normalized-title+start-minute).
+// claim() is called once per creation attempt; returns true on first call (proceed), false
+// on a duplicate within the TTL window (skip the insert — the event was already created).
+export const eventDedupeQueries = {
+  claim: (userId: number, key: string, nowMs: number, ttlMs: number): boolean => {
+    const db = getDb();
+    return db.transaction(() => {
+      // Remove any expired entry so a legitimately repeated request after the TTL can proceed.
+      db.prepare(
+        'DELETE FROM event_dedupe_keys WHERE user_id = ? AND dedupe_key = ? AND expires_at <= ?'
+      ).run(userId, key, nowMs);
+      const result = db.prepare(
+        'INSERT OR IGNORE INTO event_dedupe_keys (user_id, dedupe_key, expires_at) VALUES (?, ?, ?)'
+      ).run(userId, key, nowMs + ttlMs);
+      return result.changes === 1; // 1 = new key (proceed), 0 = duplicate (skip)
+    })();
   },
 };
 

@@ -8,6 +8,12 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#3 Event-creation idempotency** (both creation paths). New
+  `lib/idempotency.ts`: `claimEventCreate(userId, key)` + `buildEventDedupeKey(title, start)`.
+  New `event_dedupe_keys` SQLite table (5-min TTL, atomic `INSERT OR IGNORE`, composite PK).
+  Guards: voice `createEvent` (timed + all-day), `createRecurringEvent`, `copyDayEvents` in
+  `tool-call/route.ts`; web "Book it" in `app/api/calendar/book/route.ts`. Fails open — a DB
+  fault never blocks a real write. 10 new tests; full suite 71/71, tsc clean.
 - **2026-06-09** — Shipped **★ Gmail draft-only access primitive + scope + undo op**
   (gates Core's email feature). Per PM ownership ruling, `lib/gmail.ts` +
   `lib/google-auth.ts` are Security's guarded primitive; Core's `lib/outreach.ts`
@@ -56,7 +62,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 |----|------|----------------|
 | C1 | Vapi webhook auth | ⚠️ Built but **fail-open** — `checkVapiSecret` accepts mismatches unless `VAPI_SECRET_ENFORCE=true`. See `lib/vapi.ts:36`. |
 | C2 | Unauthorized/cross-user mutation | ✅ Mitigated — user is bound server-side via `call.id → briefing.user_id`. Model can't pick the user. |
-| C3 | Idempotency on writes | ❌ Absent — `createEvent` inserts directly. Retries/double-calls duplicate. |
+| C3 | Idempotency on writes | ✅ Done — `lib/idempotency.ts` `claimEventCreate` + 5-min `event_dedupe_keys` table. Guards `createEvent` (timed + all-day), `createRecurringEvent`, `copyDayEvents` (voice) and `book/route.ts` (web "Book it"). Fails open so DB fault never blocks a real write. |
 | H1 | Token encryption | ✅ Done (`80b4d30`) — `calendar_tokens` encrypted at rest (AES-256-GCM via `lib/crypto.ts`); transparent legacy read. _Ops: set `DATA_ENCRYPTION_KEY` on Railway to activate._ |
 | H2 | Action audit log | ⚠️ Partial — `tool_actions` JSON exists but mutable, capped 50, no before/after snapshots. |
 | H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
@@ -75,8 +81,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 ### Week 1 — Defuse landmines (cheap, catastrophic if left)
 - [x] **1. Remove JWT fallback** → code fails closed (throws if `JWT_SECRET` unset). _Ops follow-up: rotate the secret on Railway._ _½d_
 - [ ] **2. Enforce Vapi secret** — confirm Vapi sends `x-vapi-secret`, then set `VAPI_SECRET_ENFORCE=true` (keep fail-open log 24h first). _½d_
-- [ ] **3. Idempotency** on `createEvent` / `createRecurringEvent` / `copyDayEvents` — dedupe key per (user, title-hash, start-minute) + TTL. _1–2d_
-  - ⚠️ **Coupled to Core's multi-day all-day rewrite** (`ROADMAP-CORE.md` ticket #1): that change rewrites the event-creation path. Land idempotency alongside it so the new all-day/span logic can't duplicate-on-retry. Coordinate before either side merges `tool-call/route.ts`.
+- [x] **3. Idempotency** on `createEvent` / `createRecurringEvent` / `copyDayEvents` — 5-min TTL dedupe key per (user, normalized-title, start-minute). Guards both voice (tool-call) and web (book/route.ts) creation paths. Additive — fails open. _1d_
 
 ### Week 2 — Protect data at rest
 - [x] **4. Encrypt** `calendar_tokens` **and** `transcripts` — done (`80b4d30`): AES-256-GCM

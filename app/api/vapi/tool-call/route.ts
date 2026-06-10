@@ -9,6 +9,7 @@ import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThre
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
+import { claimEventCreate, buildEventDedupeKey } from '@/lib/idempotency';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -308,6 +309,10 @@ Query: ${query}` }],
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startOnly)) return "I didn't catch the date for that all-day event — what day is it?";
       const endOnly = (endDate || '').slice(0, 10);
       const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endOnly) && endOnly >= startOnly ? endOnly : startOnly;
+      if (!claimEventCreate(userId, buildEventDedupeKey(title, startOnly))) {
+        const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
+        return `All-day "${title}" ${span} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
+      }
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
       } });
@@ -344,6 +349,9 @@ Query: ${query}` }],
         return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
       }
     }
+    if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
+      return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
+    }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
@@ -358,6 +366,9 @@ Query: ${query}` }],
     let fullRrule = `RRULE:${recurrence}`;
     if (endDate) {
       fullRrule = `RRULE:${recurrence};UNTIL=${rruleUntilUtc(endDate, timezone || 'America/Vancouver')}`;
+    }
+    if (!claimEventCreate(userId, buildEventDedupeKey(title, `${startDate}T${startTime}`))) {
+      return `Recurring "${title}" starting ${startDate} at ${startTime} was just created — looks like a retry.`;
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
     const insRec = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
@@ -500,6 +511,9 @@ Query: ${query}` }],
     const { sourceDate, targetDates } = args as { sourceDate: string; targetDates: string[] };
     if (!sourceDate || !Array.isArray(targetDates) || !targetDates.length) {
       return 'I need the day to copy from and the day(s) to copy to.';
+    }
+    if (!claimEventCreate(userId, `copyDay:${sourceDate}:${targetDates.slice().sort().join(',')}`)) {
+      return `Those events were just copied from ${sourceDate} — looks like a retry. They should already be on your calendar.`;
     }
     const userTz = effectiveTimezone(userQueries.findById(userId) ?? {});
     const { start: sMin, end: sMax } = dayRangeUtc(userTz, sourceDate);
