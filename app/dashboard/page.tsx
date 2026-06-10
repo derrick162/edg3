@@ -729,8 +729,6 @@ export default function Dashboard() {
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
-  const [undoLabel, setUndoLabel] = useState<string | null>(null);
-  const [undoBusy, setUndoBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
   const [notifs, setNotifs] = useState<{ id: number; title: string | null; body: string | null; read: number; created_at: number }[]>([]);
   const [notifUnread, setNotifUnread] = useState(0);
@@ -754,21 +752,10 @@ export default function Dashboard() {
     fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
     fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [] }).then(d => setMemories(d.memories || [])).catch(() => {});
     fetch('/api/tasks').then(r => r.ok ? r.json() : { tasks: [] }).then(d => setTasks(d.tasks || [])).catch(() => {});
-    fetch('/api/undo').then(r => r.ok ? r.json() : { available: false, label: null }).then(d => setUndoLabel(d.available ? d.label : null)).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
   }, [router]);
-
-  async function handleUndo() {
-    if (!undoLabel) return;
-    setUndoBusy(true);
-    const res = await fetch('/api/undo', { method: 'POST' });
-    const data = await res.json().catch(() => ({}));
-    setUndoBusy(false);
-    if (res.ok && data.success) { setUndoLabel(null); loadData(); }
-    else alert('Could not undo that — please check your calendar.');
-  }
 
   async function addDailyCallReminder() {
     setReminderBusy(true);
@@ -1092,21 +1079,6 @@ export default function Dashboard() {
                 ) : null}
               </div>
             </div>
-            {undoLabel && (
-              <div className="glass-card p-3 mt-3 flex items-center gap-2 flex-wrap">
-                <span className="text-xs" style={{ color: '#a8a8b8' }}>
-                  Edge&apos;s last calendar change — {undoLabel}
-                </span>
-                <button
-                  onClick={handleUndo}
-                  disabled={undoBusy}
-                  className="text-xs py-1 px-2 rounded ml-auto"
-                  style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}
-                >
-                  {undoBusy ? 'Undoing…' : '↩ Undo'}
-                </button>
-              </div>
-            )}
             {calendarConnected === false ? (
               <button
                 onClick={connectCalendar}
