@@ -710,6 +710,10 @@ export default function Dashboard() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
+  const [briefingsLoaded, setBriefingsLoaded] = useState(false);
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
@@ -748,7 +752,7 @@ export default function Dashboard() {
     setUser(await meRes.json());
 
     // Background loads — each section fills in as its data arrives; none blocks render.
-    fetch('/api/briefing/history').then(r => r.ok ? r.json() : { briefings: [] }).then(d => setBriefings(d.briefings || [])).catch(() => {});
+    fetch('/api/briefing/history').then(r => r.ok ? r.json() : { briefings: [] }).then(d => { setBriefings(d.briefings || []); setBriefingsLoaded(true); }).catch(() => { setBriefingsLoaded(true); });
     fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
     fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [] }).then(d => setMemories(d.memories || [])).catch(() => {});
     fetch('/api/tasks').then(r => r.ok ? r.json() : { tasks: [] }).then(d => setTasks(d.tasks || [])).catch(() => {});
@@ -772,6 +776,19 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Day-1 preview: once we know the user is onboarded and has no real briefings, fetch the preview.
+  // The API generates it once and caches it — subsequent calls return instantly.
+  useEffect(() => {
+    if (!user || !briefingsLoaded) return;
+    if (!user.onboarding_complete || briefings.length > 0) return;
+    setPreviewLoading(true);
+    fetch('/api/briefing/preview')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.content) setPreviewContent(d.content); })
+      .catch(() => {})
+      .finally(() => setPreviewLoading(false));
+  }, [user, briefingsLoaded, briefings.length]);
 
   const loadNotifs = useCallback(async () => {
     const r = await fetch('/api/notifications');
@@ -1174,13 +1191,33 @@ export default function Dashboard() {
             <div>
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
               {briefings.length === 0 ? (
-                <div className="glass-card p-8 text-center">
-                  <p className="text-4xl mb-3">📞</p>
-                  <p className="font-medium mb-1">No briefings yet</p>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Click "Call me now" to get your first briefing, or wait for your scheduled call at {user.call_time}.
-                  </p>
-                </div>
+                previewLoading ? (
+                  <div className="glass-card p-8 text-center" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
+                    <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
+                    <div className="flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                      <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                      <span className="text-sm">Edg3 is putting together your preview…</span>
+                    </div>
+                  </div>
+                ) : previewContent ? (
+                  <div className="glass-card p-6 mb-4" style={{ borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.04)' }}>
+                    <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
+                      {previewContent}
+                    </p>
+                    <p className="text-xs mt-4" style={{ color: 'var(--text-faint)' }}>
+                      Your briefing history will appear here after your first call.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="glass-card p-8 text-center">
+                    <p className="text-4xl mb-3">📞</p>
+                    <p className="font-medium mb-1">No briefings yet</p>
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      Click &quot;Call me now&quot; to get your first briefing, or wait for your scheduled call at {user.call_time}.
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="space-y-3">
                   {briefings.map(b => (

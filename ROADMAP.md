@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Call-latency hardening COMPLETE** (`54a4fca`): readCalendar capped at 25 events + cancelled dropped; prompt trim re-applied with confirmToken preserved. All priority-queue items done & merged. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | **Day-1 preview briefing** — activation "aha" on first dashboard load | `lib/db.ts` (**CLAIMED** — additive: `preview_briefings` table), `lib/briefing.ts`, `app/api/briefing/preview/route.ts` (new), `app/dashboard/page.tsx` (**CLAIMED** — behavior only) | 2026-06-10 |
 | 🔒 Security | `security` | ✅ **Gmail READ access DONE** — `readThread` + `hasGmailReadScope` + scope coverage verified. All 10 roadmap items + Gmail READ complete. 160/160 green. Pinging PM — queue empty. | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 

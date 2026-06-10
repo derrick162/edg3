@@ -182,6 +182,15 @@ function initSchema(db: Database.Database) {
       used INTEGER NOT NULL DEFAULT 0
     );
 
+    -- Day-1 preview briefing — generated once on first dashboard load after onboarding.
+    -- UNIQUE on user_id ensures a single preview per user; INSERT OR IGNORE handles races.
+    CREATE TABLE IF NOT EXISTS preview_briefings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE NOT NULL REFERENCES users(id),
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- Append-only action audit log (#7). Records every calendar mutation (both
     -- voice and web paths). No row-cap — unlike briefings.tool_actions (50-row
     -- mutable JSON blob). snapshot_before/after hold JSON calendar state; populated
@@ -751,6 +760,18 @@ export const taskQueries = {
     return getDb().prepare(
       "SELECT * FROM tasks WHERE user_id = ? AND completed = 0 AND date >= date('now', '-1 days') ORDER BY date ASC"
     ).all(userId) as Task[];
+  },
+};
+
+// Day-1 preview briefing — one record per user, generated once.
+export const previewBriefingQueries = {
+  get: (userId: number): { id: number; content: string; created_at: string } | undefined => {
+    return getDb().prepare('SELECT * FROM preview_briefings WHERE user_id = ?').get(userId) as any;
+  },
+  create: (userId: number, content: string): void => {
+    getDb().prepare(
+      'INSERT OR IGNORE INTO preview_briefings (user_id, content) VALUES (?, ?)'
+    ).run(userId, content);
   },
 };
 

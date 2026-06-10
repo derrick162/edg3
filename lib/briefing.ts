@@ -236,6 +236,74 @@ Write this as a spoken briefing — natural language, no markdown headers, flowi
   return sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
 }
 
+export async function generatePreviewBriefing(userId: number): Promise<string> {
+  const user = userQueries.findById(userId);
+  if (!user) throw new Error('User not found');
+  if (!user.onboarding_complete) throw new Error('Onboarding not complete');
+
+  const userTimezone = effectiveTimezone(user);
+  const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
+  const firstName = user.name.split(' ')[0];
+
+  const priorities = priorityQueries.getMostRecent(userId);
+  const prioritiesText = priorities.length
+    ? priorities.map((p, i) => `${i + 1}. ${p.text}`).join('\n')
+    : 'No priorities set yet.';
+
+  // Calendar is optional — degrade gracefully if not connected or fetch fails.
+  let calendarText = '';
+  try {
+    const events = await getWeekEvents(userId);
+    if (events.length) {
+      calendarText = events.slice(0, 8).map(e => {
+        let start: string;
+        if (e.start?.dateTime) {
+          start = new Date(e.start.dateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: userTimezone });
+        } else if (e.start?.date) {
+          start = new Date(e.start.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) + ' (all day)';
+        } else {
+          start = 'All day';
+        }
+        return `- ${start}: ${e.summary || 'Untitled'}`;
+      }).join('\n');
+    }
+  } catch {
+    // No calendar connected or fetch failed — priorities-only mode.
+  }
+
+  const systemPrompt = `You are Edge, an AI Chief of Staff. You are warm, confident, and direct.
+Write this as natural spoken text — no markdown headers, no bullet-point sections, flowing paragraphs.
+Keep it to 150–200 words. This is a "Day-1 preview" moment — the user just finished onboarding and is seeing Edge for the first time. Make it feel like Edge already knows them and is ready to help them win their week.`;
+
+  const userPrompt = `Generate a Day-1 preview briefing for ${firstName}.
+
+THEIR TOP PRIORITIES:
+${prioritiesText}
+
+THEIR UPCOMING CALENDAR THIS WEEK:
+${calendarText || 'Calendar not connected yet — no events available.'}
+
+Write a short, personal, energizing preview (150–200 words) that:
+1. Opens by addressing ${firstName} by name and acknowledging they've just set up Edge
+2. Directly references their stated priorities — show you already know what matters to them
+3. If calendar is available: briefly mention 1–2 upcoming events that relate to their priorities
+4. If no calendar: acknowledge it's not connected yet and offer a teaser of what Edge will do once it is
+5. Closes with warmth and a forward-looking line — e.g. "Your first briefing call is scheduled for [call_time]. I'll have everything ready." (use their call time: ${user.call_time} ${userTimezone})
+
+Do NOT use headers. Do NOT format as bullet points. Write like you're speaking — flowing, personal, confident.`;
+
+  const message = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }],
+  });
+
+  const content = message.content[0];
+  if (content.type !== 'text') throw new Error('Unexpected response type');
+  return content.text;
+}
+
 export async function analyzeUserResponse(userId: number, response: string): Promise<void> {
   const user = userQueries.findById(userId);
   const name = user?.name || 'the user';
