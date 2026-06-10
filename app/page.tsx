@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Logo, Badge } from '@/components/ui';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -23,24 +24,21 @@ export default function LandingPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface-page)' }}>
+        <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid var(--edg-indigo)', borderTopColor: 'transparent' }} className="animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: 'var(--background)' }}>
+    <div className="min-h-screen relative overflow-hidden" style={{ background: 'var(--surface-page)' }}>
       <div className="orb orb-1" />
       <div className="orb orb-2" />
 
       <div className="relative z-10">
         {/* Nav */}
         <nav className="flex items-center justify-between px-8 py-6 max-w-6xl mx-auto">
-          <div>
-            <span className="logo-text text-2xl">EDG3</span>
-            <p className="text-xs mt-0.5" style={{ color: '#6366f1', letterSpacing: '0.08em' }}>ELITE DAILY GUIDANCE ENGINE</p>
-          </div>
+          <Logo size={22} eyebrow />
           <div className="flex items-center gap-4">
             <Link href="/login" className="btn-secondary text-sm py-2 px-5">Log in</Link>
             <Link href="/signup" className="btn-primary text-sm py-2 px-5">Get started</Link>
@@ -50,18 +48,18 @@ export default function LandingPage() {
         {/* Hero */}
         <div className="max-w-4xl mx-auto px-8 pt-20 pb-16 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8 text-sm font-medium"
-               style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#818cf8' }}>
-            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+               style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--edg-indigo-bright)', display: 'inline-block' }} className="animate-pulse" />
             AI Chief of Staff · Proactive · Daily
           </div>
 
           <h1 className="text-6xl font-black tracking-tight mb-6 leading-tight">
-            <span style={{ color: 'var(--foreground)' }}>Most people have a calendar.</span>
+            <span style={{ color: 'var(--text-strong)' }}>Most people have a calendar.</span>
             <br />
             <span className="logo-text">You have Edge.</span>
           </h1>
 
-          <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: '#888899' }}>
+          <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: 'var(--text-muted)' }}>
             A 3-minute AI briefing that tells you exactly what deserves your attention today.
             Not a productivity app. A strategic advisor.
           </p>
@@ -113,24 +111,24 @@ export default function LandingPage() {
             ].map((f, i) => (
               <div key={i} className="glass-card glass-card-hover p-6">
                 <div className="text-3xl mb-4">{f.icon}</div>
-                <h3 className="font-bold text-base mb-2" style={{ color: 'var(--foreground)' }}>{f.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: '#888899' }}>{f.desc}</p>
+                <h3 className="font-bold text-base mb-2" style={{ color: 'var(--text-strong)' }}>{f.title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>{f.desc}</p>
               </div>
             ))}
           </div>
 
           {/* Tagline */}
           <div className="glass-card p-8 text-center mb-6">
-            <p className="text-lg font-semibold mb-1" style={{ color: 'var(--foreground)' }}>Elite Daily Guidance Engine</p>
-            <p className="text-sm" style={{ color: '#888899' }}>Built for founders, operators, and ambitious humans who refuse to drift.</p>
+            <p className="text-lg font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>Elite Daily Guidance Engine</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Built for founders, operators, and ambitious humans who refuse to drift.</p>
           </div>
 
           {/* Who it's for */}
           <div className="glass-card p-8 text-center">
-            <p className="text-sm font-semibold mb-4" style={{ color: '#6366f1' }}>BUILT FOR</p>
+            <p className="text-sm font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>BUILT FOR</p>
             <div className="flex flex-wrap justify-center gap-3">
               {['Founders', 'Solo Operators', 'Investors', 'Creators', 'Independent Professionals', 'People Rebuilding'].map(t => (
-                <span key={t} className="badge badge-info">{t}</span>
+                <Badge key={t} variant="info">{t}</Badge>
               ))}
             </div>
           </div>
@@ -138,11 +136,11 @@ export default function LandingPage() {
 
         {/* Footer */}
         <div className="max-w-5xl mx-auto px-8 py-8 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <p className="text-xs" style={{ color: '#4a4a5a' }}>
+          <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
             © 2026 Edg3 · Elite Daily Guidance Engine ·{' '}
-            <Link href="/terms" style={{ color: '#6366f1' }}>Terms of Service</Link>
+            <Link href="/terms" style={{ color: 'var(--edg-indigo)' }}>Terms of Service</Link>
             {' · '}
-            <Link href="/privacy" style={{ color: '#6366f1' }}>Privacy Policy</Link>
+            <Link href="/privacy" style={{ color: 'var(--edg-indigo)' }}>Privacy Policy</Link>
           </p>
         </div>
       </div>
