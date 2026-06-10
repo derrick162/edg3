@@ -103,7 +103,7 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(self-pacing — ✅ prompt-trim + caching + honest-failure guardrail + CoS calendar API merged. **UNBLOCKED by PM:** Security's #3 is now on master, so `tool-call/route.ts` is released → next is the `readCalendar` response cap (tool-result trim: cap 25 events + drop cancelled).)_ | `tool-call/route.ts` | 2026-06-10 |
 | 🔒 Security | `security` | _(✅ shipped & merged to master by PM integration: #2 webhook secret, #3 idempotency, #5 off-box backups, #8 rate limiting, #9 hard delete-confirm. #10 admin-auth hardening next.)_ | `app/api/admin/**` | 2026-06-10 |
-| 🎨 Design | `design` | Dead-code cleanup: `generatingBriefing` state removal from dashboard | `app/dashboard/page.tsx` | 2026-06-10 |
+| 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
