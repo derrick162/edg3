@@ -130,6 +130,16 @@ priority from user feedback.
   - **Acceptance:** "Find flights to Hong Kong June 25 returning July 2" → Edge returns real fare options sourced from the API, timestamped, saved to a HK trip event. Re-running replaces stale quotes rather than stacking them.
   - **Effort:** ~2–4d.
 
+### Chief of Staff calendar tools (2026-06-10)
+- [ ] **Admin calendar API — read + create events on Derrick's behalf** — _Chief of Staff session needs direct Google Calendar access so it can book events without going through Edge or manual entry._
+  - **Scope:** Two new admin endpoints, protected by `x-admin-secret` header (same pattern as `app/api/admin/latest-briefing/route.ts`):
+    1. `GET /api/admin/calendar/events?email=derrick@deltaedg3.com&days=7` — returns upcoming events for the next N days using the existing `lib/calendar.ts` helpers + stored OAuth token.
+    2. `POST /api/admin/calendar/events` — creates a calendar event. Body: `{ email, title, start (ISO), end (ISO), description? }`. Reuse existing `createCalendarEvent` logic from `lib/calendar.ts`.
+  - **Auth:** same `checkAdminAuth` pattern as other admin routes — `x-admin-secret` header checked against `ADMIN_SECRET` env var.
+  - **No new scopes needed** — calendar read/write is already granted.
+  - **Acceptance:** Chief of Staff session can fetch Derrick's upcoming calendar and create events (reminders, focus blocks) directly via these endpoints.
+  - **Effort:** ~1–2h. Self-contained, additive, no Shared files touched.
+
 ### Dashboard polish (from dogfooding 2026-06-10) — small, quick
 - [x] **Re-link flow shouldn't route through onboarding.** **✅ Fixed 2026-06-10 (PM session).** Callback now redirects already-onboarded users to `/dashboard?linked=1` with a "Google account linked ✓" toast; first-time users still continue to onboarding.
 - [x] **Profile page: "Your Profile" section is too long.** **✅ Fixed 2026-06-10 (PM session).** Section is now collapsible — collapsed to ~3 lines by default with a "▼ Show more" toggle.
@@ -208,6 +218,7 @@ priority from user feedback.
 ---
 
 ### Later / candidates (not yet committed)
+- [ ] **🤝 Chief-of-Staff ↔ Edg3 bridge (founder tooling / intensive dogfooding)** — _user idea 2026-06-10. Build RIGHT AFTER the core loop is verified (the end-to-end test)._ Expose Edg3's capabilities (start with `draft_email` w/ availability, then `find_free_time` / `read_calendar` / `research`) to the **Chief of Staff agent** so it can *act through* Edg3 to help Derrick day-to-day. **Form:** a small **MCP server** (preferred) or CLI the CoS calls. **Value:** (a) makes Derrick effective now; (b) the CoS using Edg3 daily is the best bug-finder we have → de-risks launch. **Tradeoff:** internal tooling, not the product (scope vs the Sept freeze) — justified by the dogfooding payoff. **⚠️ Auth (🔒 Security):** needs a token that acts as the user against Edg3's API (account-level access) — coordinate with Security; for a single-user pre-launch tool a static `AGENT_TOKEN`-gated endpoint acting as user 1 is acceptable but must be deliberate. **Sequencing:** gated on (1) the core verified working, (2) Security building the token endpoint. Start with ONE capability (email drafting), prove the loop, expand.
 - [ ] **🔮 V2 / POST-LAUNCH — Google Drive / Sheets awareness** (PM-deferred 2026-06-10, user idea). Edge pulls the doc/spreadsheet tied to a calendar event (e.g. the weekly P&L sheet for the "P&L review" block) and works it into the briefing. **Deferred because:** it's another *restricted* Google scope (compounds the verification we haven't started), it's new scope against the September freeze, and summarizing financial spreadsheets accurately is high-trust/high-risk. Lighter near-term paths if ever needed: (a) surface the doc *link* in the briefing (no new scope); (b) `drive.file` + file-picker so the user designates only specific docs (non-restricted scope).
 - [ ] Onboarding: smoother first-run (connect calendar → first briefing) flow.
 - [ ] Briefing: richer briefing content / personalization controls.
