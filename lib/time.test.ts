@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, isValidTimeZone } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, isValidTimeZone, bookEventTimes } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -123,5 +123,36 @@ describe('formatInTz', () => {
     const flight = new Date('2026-06-08T15:10:00Z');
     expect(formatInTz(flight, LA, { hour: 'numeric', minute: '2-digit' })).toBe('8:10 AM');
     expect(formatInTz(flight, TOR, { hour: 'numeric', minute: '2-digit' })).toBe('11:10 AM');
+  });
+});
+
+describe('bookEventTimes', () => {
+  it('produces correct start and end for a normal midday booking', () => {
+    const { start, end } = bookEventTimes('2026-06-15', '14:00', 60);
+    expect(start).toBe('2026-06-15T14:00:00');
+    expect(end).toBe('2026-06-15T15:00:00');
+  });
+
+  it('handles 30-minute default when durationMins is 0 or negative', () => {
+    expect(bookEventTimes('2026-06-15', '09:30', 0).end).toBe('2026-06-15T10:00:00');
+    expect(bookEventTimes('2026-06-15', '09:30', -5).end).toBe('2026-06-15T10:00:00');
+  });
+
+  it('clamps to 23:59 when the duration would overflow midnight', () => {
+    // 23:30 + 60 min = 24:30 → clamp to 23:59
+    const { end } = bookEventTimes('2026-06-15', '23:30', 60);
+    expect(end).toBe('2026-06-15T23:59:00');
+  });
+
+  it('clamps correctly at exactly midnight (00:00 + large duration)', () => {
+    // Booking at midnight for 24h shouldn't overflow the day
+    const { end } = bookEventTimes('2026-06-15', '00:00', 1500);
+    expect(end).toBe('2026-06-15T23:59:00');
+  });
+
+  it('pads single-digit hours and minutes', () => {
+    const { start, end } = bookEventTimes('2026-06-15', '09:05', 25);
+    expect(start).toBe('2026-06-15T09:05:00');
+    expect(end).toBe('2026-06-15T09:30:00');
   });
 });

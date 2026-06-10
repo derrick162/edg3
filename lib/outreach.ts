@@ -24,6 +24,38 @@ export interface OutreachRecipient {
   email?: string;
 }
 
+// Parse structured contact blocks from Edge's saved research notes, extracting
+// contacts that have a real email address. Each "block" is a blank-line-separated
+// section; a block qualifies if it has an "Email: <addr>" line. The research delimiter
+// lines are stripped first so they don't contaminate the parse.
+// Exported here so it can be unit-tested; the draftEmail handler in route.ts uses
+// its own identical inline copy (cannot import from here while the collision lock on
+// route.ts is live — sync once Security releases the file).
+export function recipientsFromNotes(notes: string): OutreachRecipient[] {
+  if (!notes) return [];
+  const cleaned = notes.replace(/-{2,}\s*(?:end\s+)?edge research\s*-{2,}/gi, '');
+  const out: OutreachRecipient[] = [];
+  const seen = new Set<string>();
+  for (const block of cleaned.split(/\n\s*\n/)) {
+    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+    const emailLine = lines.find(l => /^email\s*:/i.test(l));
+    if (!emailLine) continue;
+    const email = emailLine.replace(/^email\s*:/i, '').trim();
+    if (
+      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ||
+      /not found/i.test(email) ||
+      seen.has(email.toLowerCase())
+    ) continue;
+    // First line that isn't a labelled field (Phone/Email/Website/Address) is the name.
+    const name = lines.find(
+      l => !/^(?:phone|email|website|address)\s*:/i.test(l) && !/:\s*$/.test(l)
+    );
+    seen.add(email.toLowerCase());
+    out.push({ name, email });
+  }
+  return out;
+}
+
 export interface ComposedEmail {
   recipient: { name?: string; email: string };
   subject: string;
