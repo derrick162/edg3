@@ -620,6 +620,10 @@ export default function Dashboard() {
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const [undoBusy, setUndoBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
+  const [notifs, setNotifs] = useState<{ id: number; title: string | null; body: string | null; read: number; created_at: number }[]>([]);
+  const [notifUnread, setNotifUnread] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifChecking, setNotifChecking] = useState(false);
 
   const loadData = useCallback(async () => {
     const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes, reminderRes, undoRes] = await Promise.all([
@@ -677,6 +681,25 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const loadNotifs = useCallback(async () => {
+    const r = await fetch('/api/notifications');
+    if (!r.ok) return;
+    const d = await r.json();
+    setNotifs(d.notifications || []);
+    setNotifUnread(d.unread || 0);
+  }, []);
+  useEffect(() => { loadNotifs(); }, [loadNotifs]);
+
+  async function notifAction(action: 'check' | 'markRead' | 'markAllRead', id?: number) {
+    if (action === 'check') setNotifChecking(true);
+    const r = await fetch('/api/notifications', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, id }),
+    });
+    if (action === 'check') setNotifChecking(false);
+    if (r.ok) { const d = await r.json(); setNotifs(d.notifications || []); setNotifUnread(d.unread || 0); }
+  }
 
   // After re-linking Google, the callback returns to /dashboard?linked=1 — show a brief
   // "linked ✓" confirmation (and clean the URL) instead of any onboarding detour.
@@ -800,6 +823,43 @@ export default function Dashboard() {
           ✓ Google account linked
         </div>
       )}
+
+      {/* Notification center */}
+      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 60 }}>
+        <button
+          onClick={() => { const next = !notifOpen; setNotifOpen(next); if (next && notifUnread > 0) notifAction('markAllRead'); }}
+          title="Notifications"
+          style={{ position: 'relative', width: 40, height: 40, borderRadius: 9999, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 18, cursor: 'pointer' }}
+        >
+          🔔
+          {notifUnread > 0 && (
+            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9999, background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {notifUnread}
+            </span>
+          )}
+        </button>
+        {notifOpen && (
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto', padding: 12 }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold" style={{ color: '#e8e8f0' }}>Notifications</span>
+              <button onClick={() => notifAction('check')} disabled={notifChecking} className="text-xs" style={{ color: '#818cf8' }}>
+                {notifChecking ? 'Checking…' : '↻ Check for replies'}
+              </button>
+            </div>
+            {notifs.length === 0 ? (
+              <p className="text-xs py-6 text-center" style={{ color: '#4a4a5a' }}>No notifications yet. When someone replies to an email Edge drafted, it&apos;ll show up here.</p>
+            ) : (
+              notifs.map((n) => (
+                <div key={n.id} className="py-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', opacity: n.read ? 0.6 : 1 }}>
+                  <p className="text-xs font-semibold" style={{ color: '#e8e8f0' }}>{n.title}</p>
+                  {n.body && <p className="text-xs mt-0.5" style={{ color: '#a8a8b8' }}>{n.body}</p>}
+                  <p className="text-xs mt-1" style={{ color: '#4a4a5a' }}>{new Date(n.created_at).toLocaleString()}</p>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Sidebar + main layout */}
       <div className="relative z-10 flex min-h-screen">

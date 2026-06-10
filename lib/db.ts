@@ -130,6 +130,17 @@ function initSchema(db: Database.Database) {
       status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','handled','dismissed')),
       created_at INTEGER NOT NULL
     );
+
+    -- In-app notification center. title/body can contain reply content → PII (encrypted at rest).
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      type TEXT NOT NULL DEFAULT 'reply',
+      title TEXT,
+      body TEXT,
+      read INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   // Indexes for performance
@@ -141,6 +152,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
     CREATE INDEX IF NOT EXISTS idx_gmail_drafts_user ON gmail_drafts_log(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_watched_threads_user ON watched_threads(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
   `);
 
   // Migrations for existing databases
@@ -404,6 +416,40 @@ export const watchedThreadQueries = {
   },
   setStatus: (id: number, status: 'open' | 'handled' | 'dismissed') => {
     getDb().prepare('UPDATE watched_threads SET status = ? WHERE id = ?').run(status, id);
+  },
+};
+
+// In-app notification center. title/body are PII (reply content) → encrypted at rest.
+export interface Notification {
+  id: number;
+  user_id: number;
+  type: string;
+  title: string | null;
+  body: string | null;
+  read: number;
+  created_at: number;
+}
+export const notificationQueries = {
+  create: (userId: number, type: string, title: string, body: string) => {
+    getDb().prepare(
+      'INSERT INTO notifications (user_id, type, title, body, read, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+    ).run(userId, type, encryptNullable(title), encryptNullable(body), Date.now());
+  },
+  listRecent: (userId: number, limit = 30): Notification[] => {
+    const rows = getDb().prepare(
+      'SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?'
+    ).all(userId, limit) as Notification[];
+    return rows.map((r) => ({ ...r, title: decryptNullable(r.title), body: decryptNullable(r.body) }));
+  },
+  unreadCount: (userId: number): number => {
+    const row = getDb().prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0').get(userId) as { n: number };
+    return row.n;
+  },
+  markRead: (id: number, userId: number) => {
+    getDb().prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').run(id, userId);
+  },
+  markAllRead: (userId: number) => {
+    getDb().prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(userId);
   },
 };
 

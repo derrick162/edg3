@@ -5,7 +5,7 @@
 // It summarizes each new reply with Claude and proposes the next action; the briefing
 // (lib/briefing.ts) surfaces these so Edge can raise them on the call.
 
-import { watchedThreadQueries, type WatchedThread } from './db';
+import { watchedThreadQueries, notificationQueries, type WatchedThread } from './db';
 import { readThread } from './gmail';
 
 export interface ReplyUpdate {
@@ -41,13 +41,21 @@ export async function checkOutreachReplies(userId: number): Promise<ReplyUpdate[
       }
       const latest = fresh[fresh.length - 1];
       const u = await understandReply(latest.text, t.context || '');
+      const who = t.recipient || latest.from || 'a contact';
       updates.push({
-        recipient: t.recipient || latest.from || 'a contact',
+        recipient: who,
         eventTitle: t.event_title,
         eventDate: t.event_date,
         summary: u.summary,
         suggestedAction: u.suggestedAction,
       });
+      // Record an in-app notification (the last_seen marker below dedupes — created once per reply).
+      notificationQueries.create(
+        userId,
+        'reply',
+        `${who} replied${t.event_title ? ` · ${t.event_title}` : ''}`,
+        `${u.summary} — Suggested: ${u.suggestedAction}`,
+      );
       if (newestId) watchedThreadQueries.markSeen(t.id, newestId);
     } catch (err) {
       // Most commonly: gmail.readonly not yet granted (GmailScopeError) → skip quietly.
