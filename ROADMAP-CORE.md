@@ -9,6 +9,17 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **System-prompt trim + honest-failure guardrail** (`lib/vapi.ts`). Trimmed the
+  static system prompt by ~25% (~300 tokens / call): collapsed the 7-line named-days block into a
+  compact single-line format, merged 6 error-handling bullets into one `HONEST FAILURE` bullet,
+  removed the redundant tool-name list (model knows tools from toolIds), tightened conditionals,
+  scope, and personality text. Added a clearer honest-failure rule: "Never say 'done' unless the
+  tool returned success. Never fabricate a result. A clear 'I couldn't do that' is always better
+  than a false 'done.'" All critical behaviors preserved (all-day date range, confirm-delete,
+  undo, timezone passthrough, NEVER INVENT FACTS, disambiguation, draftEmail draft-only).
+  Caching finding: **Vapi does NOT expose Anthropic `cache_control`** — `systemPrompt` is a plain
+  string with no `cacheControl`/`anthropicConfig` passthrough, so per-turn prompt caching is
+  unavailable; trimming is the only lever. 80/80 tests, tsc clean, build clean.
 - **2026-06-10** — **Deduplicated `recipientsFromNotes`** — removed the inline copy from the `draftEmail` handler in `app/api/vapi/tool-call/route.ts`; now imports the canonical, tested version from `lib/outreach`. tsc clean, 80/80 tests.
 - **2026-06-10** — ★ **Recent Activity tab SHIPPED** — per-row undo feed in the dashboard.
   - New **Activity** tab (⏪) in the sidebar nav; shows the last 20 actions Edge took on the user's calendar, newest first.
