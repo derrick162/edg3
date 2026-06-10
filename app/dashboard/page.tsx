@@ -24,6 +24,7 @@ const TIMEZONES = [
 
 function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [profile, setProfile] = useState('');
+  const [profileExpanded, setProfileExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -201,9 +202,16 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         ) : (
           <div className="glass-card p-6">
             {profile ? (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#c8c8d8' }}>
+              <>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#c8c8d8', maxHeight: profileExpanded ? 'none' : '9rem', overflow: 'hidden', maskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)', WebkitMaskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)' }}>
                 {profile}
               </p>
+                {profile.length > 280 && (
+                  <button onClick={() => setProfileExpanded(v => !v)} className="text-xs mt-3" style={{ color: '#818cf8' }}>
+                    {profileExpanded ? '▲ Show less' : '▼ Show more'}
+                  </button>
+                )}
+              </>
             ) : (
               <p className="text-sm text-center py-4" style={{ color: '#4a4a5a' }}>
                 No profile set. Click Edit to add one.
@@ -611,6 +619,7 @@ export default function Dashboard() {
   const [reminderBusy, setReminderBusy] = useState(false);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const [undoBusy, setUndoBusy] = useState(false);
+  const [linkedNotice, setLinkedNotice] = useState(false);
 
   const loadData = useCallback(async () => {
     const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes, reminderRes, undoRes] = await Promise.all([
@@ -668,6 +677,17 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // After re-linking Google, the callback returns to /dashboard?linked=1 — show a brief
+  // "linked ✓" confirmation (and clean the URL) instead of any onboarding detour.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('linked')) {
+      setLinkedNotice(true);
+      window.history.replaceState({}, '', '/dashboard');
+      const t = setTimeout(() => setLinkedNotice(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
 
   async function callIntro() {
@@ -775,6 +795,12 @@ export default function Dashboard() {
       <div className="orb orb-1" />
       <div className="orb orb-2" />
 
+      {linkedNotice && (
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+          ✓ Google account linked
+        </div>
+      )}
+
       {/* Sidebar + main layout */}
       <div className="relative z-10 flex min-h-screen">
         {/* Sidebar */}
@@ -846,22 +872,22 @@ export default function Dashboard() {
                   </button>
                 ) : null}
               </div>
-              {undoLabel && (
-                <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="text-xs" style={{ color: '#a8a8b8' }}>
-                    Last change — Edge {undoLabel}
-                  </span>
-                  <button
-                    onClick={handleUndo}
-                    disabled={undoBusy}
-                    className="text-xs py-1 px-2 rounded ml-auto"
-                    style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}
-                  >
-                    {undoBusy ? 'Undoing…' : '↩ Undo'}
-                  </button>
-                </div>
-              )}
             </div>
+            {undoLabel && (
+              <div className="glass-card p-3 mt-3 flex items-center gap-2 flex-wrap">
+                <span className="text-xs" style={{ color: '#a8a8b8' }}>
+                  Edge&apos;s last calendar change — {undoLabel}
+                </span>
+                <button
+                  onClick={handleUndo}
+                  disabled={undoBusy}
+                  className="text-xs py-1 px-2 rounded ml-auto"
+                  style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}
+                >
+                  {undoBusy ? 'Undoing…' : '↩ Undo'}
+                </button>
+              </div>
+            )}
             {calendarConnected === false ? (
               <button
                 onClick={connectCalendar}
