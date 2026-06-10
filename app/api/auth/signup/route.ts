@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { userQueries } from '@/lib/db';
 import { hashPassword, createToken, setSessionCookie } from '@/lib/auth';
+import { checkRateLimit, getClientIP, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 signups per hour per IP (spam / scraper prevention).
+  const ip = getClientIP(req);
+  const rl = checkRateLimit('signup', ip);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const { email, name, password } = await req.json();
 

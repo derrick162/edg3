@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, Briefing } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
 import Anthropic from '@anthropic-ai/sdk';
@@ -46,7 +46,10 @@ async function retryCall(briefingId: number, userId: number) {
 export async function POST(req: NextRequest) {
   try {
     const sec = checkVapiSecret(req.headers.get('x-vapi-secret'));
-    if (sec.status !== 'accepted') console.warn(`[webhook] Vapi secret ${sec.status}`);
+    if (sec.status !== 'accepted') {
+      console.warn(`[webhook] Vapi secret ${sec.status}`);
+      vapiAuthLogQueries.record('webhook', sec.status); // persist mismatches for admin monitoring
+    }
     if (!sec.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const body = await req.json();

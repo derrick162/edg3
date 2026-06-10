@@ -8,6 +8,51 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#8 Rate limiting** on auth + admin endpoints. New
+  `lib/rateLimit.ts`: `checkRateLimit(type, ip)` (fixed-window counter via
+  `rate_limits` SQLite table, atomic transaction, fails open on fault),
+  `getClientIP()` (prefers `x-forwarded-for` for Railway proxy), `rateLimitResponse()`
+  (429 + `Retry-After` / `X-RateLimit-Reset` headers). Limits: `login` 10/15min,
+  `signup` 5/hr, `triggerCall` 3/5min. Wired into `auth/login`, `auth/signup`,
+  `admin/trigger-call`. `rate_limits` table + `rateLimitQueries.check()` in db.ts.
+  12 new tests; preflight green (117/117, tsc, next build).
+- **2026-06-10** — Shipped **#5 off-box durability (Litestream)**. `litestream.yml`:
+  S3-compatible replication (72h WAL retention, 6h full snapshots, 1s sync interval,
+  configurable endpoint for B2/R2/MinIO). `scripts/start.sh`: conditional wrapper —
+  active only when `LITESTREAM_S3_BUCKET` is set; auto-restores DB on fresh volume;
+  falls back to plain start on download failure (never blocks the app). `railway.toml`
+  start command updated. `lib/backup.ts`: `verifyBackup(file)` opens snapshot read-only
+  (separate connection, never touching live DB), runs `PRAGMA integrity_check`, returns
+  row counts for key tables — supports restore drill without downtime. `litstreamEnabled()`
+  for admin UI. Admin backup endpoint: GET exposes `litstreamEnabled`; POST supports
+  `{ action: 'verify' }` to run the drill in-process. 105/105 preflight green.
+  ⚠️ **Ops:** set S3 env vars + redeploy + run the restore drill (see #5 checklist).
+- **2026-06-10** — Shipped **#2 Vapi secret enforcement (code side)**. The two-stage
+  gate (`checkVapiSecret`) was already implemented; added observability to make the
+  24h fail-open window actionable. New `vapi_auth_log` table + `vapiAuthLogQueries`
+  persist every mismatch event (accepted calls not logged — low noise). New admin
+  endpoint `/api/admin/vapi-secret`: returns `enforceMode`, `secretSet`,
+  `mismatches24h` (24h window), `readyToEnforce` flag, and last 50 events. Wired into
+  both `webhook` and `tool-call` routes. New `lib/vapi.test.ts` (10 tests for all 4
+  `checkVapiSecret` states). preflight green (105/105, tsc, next build).
+  ⚠️ **Ops follow-up:** set `VAPI_SERVER_SECRET` on Railway → monitor
+  `/api/admin/vapi-secret` for 24h (confirm `readyToEnforce: true`) → set
+  `VAPI_SECRET_ENFORCE=true` → redeploy.
+- **2026-06-10** — Shipped **#9 Hard delete-confirmation** (server-issued one-time token).
+  Replaces the `confirmed=true` boolean (which the model could self-set) with a
+  `confirmToken` that the server generates and the model must present back verbatim.
+  `delete_confirm_tokens` table (2-min TTL, `consume()` is atomic transaction, single-use).
+  `issueDeleteToken`/`consumeDeleteToken` in `lib/idempotency.ts`. `deleteEvent` handler
+  updated; `consumeDeleteToken` fails CLOSED (false on any DB fault). System prompt
+  instruction in `lib/vapi.ts` updated. 7 new tests; preflight green (95/95, tsc, next build).
+  ⚠️ **Ops follow-up:** update the `deleteEvent` Vapi tool schema in the dashboard — add
+  `confirmToken: string` (optional), remove `confirmed: boolean`.
+- **2026-06-10** — Shipped **#3 Event-creation idempotency** (both creation paths). New
+  `lib/idempotency.ts`: `claimEventCreate(userId, key)` + `buildEventDedupeKey(title, start)`.
+  New `event_dedupe_keys` SQLite table (5-min TTL, atomic `INSERT OR IGNORE`, composite PK).
+  Guards: voice `createEvent` (timed + all-day), `createRecurringEvent`, `copyDayEvents` in
+  `tool-call/route.ts`; web "Book it" in `app/api/calendar/book/route.ts`. Fails open — a DB
+  fault never blocks a real write. 10 new tests; full suite 71/71, tsc clean.
 - **2026-06-09** — Shipped **★ Gmail draft-only access primitive + scope + undo op**
   (gates Core's email feature). Per PM ownership ruling, `lib/gmail.ts` +
   `lib/google-auth.ts` are Security's guarded primitive; Core's `lib/outreach.ts`
@@ -54,15 +99,15 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 ## Verified status of prior audit findings
 | ID | Item | Verified state |
 |----|------|----------------|
-| C1 | Vapi webhook auth | ⚠️ Built but **fail-open** — `checkVapiSecret` accepts mismatches unless `VAPI_SECRET_ENFORCE=true`. See `lib/vapi.ts:36`. |
+| C1 | Vapi webhook auth | ✅ Code done (#2) — `checkVapiSecret` two-stage rollout: fail-open with persisted mismatch log (Stage A), then `VAPI_SECRET_ENFORCE=true` to reject (Stage B). Admin endpoint `/api/admin/vapi-secret` shows 24h mismatch count + `readyToEnforce` flag. ⚠️ **Ops:** set `VAPI_SERVER_SECRET` on Railway, watch mismatches24h for 24h, then set `VAPI_SECRET_ENFORCE=true`. |
 | C2 | Unauthorized/cross-user mutation | ✅ Mitigated — user is bound server-side via `call.id → briefing.user_id`. Model can't pick the user. |
-| C3 | Idempotency on writes | ❌ Absent — `createEvent` inserts directly. Retries/double-calls duplicate. |
+| C3 | Idempotency on writes | ✅ Done — `lib/idempotency.ts` `claimEventCreate` + 5-min `event_dedupe_keys` table. Guards `createEvent` (timed + all-day), `createRecurringEvent`, `copyDayEvents` (voice) and `book/route.ts` (web "Book it"). Fails open so DB fault never blocks a real write. |
 | H1 | Token encryption | ✅ Done (`80b4d30`) — `calendar_tokens` encrypted at rest (AES-256-GCM via `lib/crypto.ts`); transparent legacy read. _Ops: set `DATA_ENCRYPTION_KEY` on Railway to activate._ |
 | H2 | Action audit log | ⚠️ Partial — `tool_actions` JSON exists but mutable, capped 50, no before/after snapshots. |
 | H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
-| H4 | Rate limiting | ❌ Absent on all endpoints. |
-| H5 | Backups / PITR | ⚠️ Code-side done (`80b4d30`) — rotating on-volume `.backup()` snapshots + `maybeDailyBackup()`. Off-box replication (Litestream) for volume-loss still pending (ops). |
-| H6 | Destructive confirmation | ✅ Done (`tool-call/route.ts:350`); soft spot: model could self-confirm. |
+| H4 | Rate limiting | ✅ Done (#8) — `lib/rateLimit.ts` + `rate_limits` table. Fixed-window counters: login 10/15min, signup 5/hr, trigger-call 3/5min. Fails open on DB fault. |
+| H5 | Backups / PITR | ✅ Fully code-complete — on-volume snapshots (`80b4d30`) + off-box Litestream (`litestream.yml`, `scripts/start.sh`). `verifyBackup()` for restore drills. ⚠️ Ops: set S3 env vars on Railway + run restore drill (see #5 in 30-Day plan). |
+| H6 | Destructive confirmation | ✅ Done + hardened (#9) — server-issued one-time `confirmToken` closes model self-confirmation hole. Model must present a server-issued token; `confirmed=true` shortcut removed. |
 | M4 | Timezone/recurring | ✅ Mostly handled — IANA passed + validated everywhere. |
 | — | **JWT fallback secret** | ✅ Fixed in code — `lib/auth.ts` fails closed (throws if `JWT_SECRET` unset, no public default). ⚠️ **Ops:** still rotate the secret on Railway. |
 | — | Transcript PII | ✅ Done (`80b4d30`) — `briefings.transcript` + `user_response` encrypted at rest (same `lib/crypto.ts` path). |
@@ -74,17 +119,29 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 
 ### Week 1 — Defuse landmines (cheap, catastrophic if left)
 - [x] **1. Remove JWT fallback** → code fails closed (throws if `JWT_SECRET` unset). _Ops follow-up: rotate the secret on Railway._ _½d_
-- [ ] **2. Enforce Vapi secret** — confirm Vapi sends `x-vapi-secret`, then set `VAPI_SECRET_ENFORCE=true` (keep fail-open log 24h first). _½d_
-- [ ] **3. Idempotency** on `createEvent` / `createRecurringEvent` / `copyDayEvents` — dedupe key per (user, title-hash, start-minute) + TTL. _1–2d_
-  - ⚠️ **Coupled to Core's multi-day all-day rewrite** (`ROADMAP-CORE.md` ticket #1): that change rewrites the event-creation path. Land idempotency alongside it so the new all-day/span logic can't duplicate-on-retry. Coordinate before either side merges `tool-call/route.ts`.
+- [x] **2. Enforce Vapi secret** — code-side two-stage gate already implemented + now observable. Added persisted `vapi_auth_log` table + `vapiAuthLogQueries` + admin endpoint `/api/admin/vapi-secret` (shows `secretSet`, `enforceMode`, `mismatches24h`, `readyToEnforce`). 10 unit tests for `checkVapiSecret`. ⚠️ **Ops (still needed):** (1) set `VAPI_SERVER_SECRET` on Railway to match the Vapi dashboard secret, (2) watch `/api/admin/vapi-secret` for 24h — confirm `mismatches24h=0`, (3) set `VAPI_SECRET_ENFORCE=true` on Railway + redeploy.
+- [x] **3. Idempotency** on `createEvent` / `createRecurringEvent` / `copyDayEvents` — 5-min TTL dedupe key per (user, normalized-title, start-minute). Guards both voice (tool-call) and web (book/route.ts) creation paths. Additive — fails open. _1d_
 
 ### Week 2 — Protect data at rest
 - [x] **4. Encrypt** `calendar_tokens` **and** `transcripts` — done (`80b4d30`): AES-256-GCM
   field encryption (`lib/crypto.ts`), transparent/backward-compatible, no-op until
   `DATA_ENCRYPTION_KEY` set. _Ops follow-up: set the key on Railway to activate._ _2–3d_
-- [~] **5. SQLite durability** — code-side done (`80b4d30`): rotating on-volume
-  `.backup()` snapshots + `maybeDailyBackup()` + admin endpoint. _Still pending:
-  Litestream off-box replication + one real restore drill._ _1d + drill_
+- [x] **5. SQLite durability** — fully code-complete. On-volume snapshots done (`80b4d30`).
+  Off-box now wired: `litestream.yml` (S3 config, 72h retention, 6h snapshots),
+  `scripts/start.sh` (conditional Litestream wrapper — active when `LITESTREAM_S3_BUCKET`
+  set, plain start otherwise), `railway.toml` updated to `sh scripts/start.sh`.
+  Auto-restore on fresh volume (missing DB → `litestream restore` before app boots).
+  `lib/backup.ts` + `verifyBackup()` (read-only snapshot integrity_check + row counts),
+  `litstreamEnabled()`. Admin endpoint enhanced: GET shows `litstreamEnabled`;
+  POST `{ action: 'verify', file }` runs the drill in-process.
+  ⚠️ **Ops follow-up (to complete the restore drill):**
+  (1) Set `LITESTREAM_S3_BUCKET`, `LITESTREAM_S3_ACCESS_KEY_ID`,
+      `LITESTREAM_S3_SECRET_ACCESS_KEY` on Railway.
+  (2) Redeploy → confirm Litestream logs `[start] Starting Litestream replication`.
+  (3) POST `/api/admin/backup` `{ action: 'backup' }` → then
+      POST `{ action: 'verify', file: '<snapshot>' }` → confirm `valid: true`.
+  (4) Simulate volume loss (or use Railway shell): rename DB → redeploy → verify app
+      restores from S3 and row counts match.
 
 ### Week 3 — Finish half-built trust features
 - [x] **6. Wire the undo_log** — done (`28f364d`): inverse ops recorded on every mutation; "undo last action" in dashboard + voice. _1.5–2d_
@@ -92,8 +149,8 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
   - 🤝 **Backbone for Core's "Recent activity" surface** (`ROADMAP-CORE.md`, Next): this append-only table is the data source Core's dashboard feed reads. Build the table + snapshots here; Core builds the UI on top.
 
 ### Week 4 — Abuse + correctness hardening
-- [ ] **8. Rate-limit** auth/signup, admin trigger-call, per-user mutations/min ceiling. _1–2d_
-- [ ] **9. Hard delete-confirm** — server issues one-time confirm token; model can't self-confirm. _1d_
+- [x] **8. Rate-limit** auth/signup + admin trigger-call. `lib/rateLimit.ts`: `checkRateLimit(type, ip)` + `rateLimitResponse()`. `rate_limits` SQLite table (fixed-window, self-expiring, atomic transaction). Wired: login (10/15min), signup (5/hr), trigger-call (3/5min). 12 tests. preflight green.
+- [x] **9. Hard delete-confirm** — server-issued one-time `confirmToken` replaces `confirmed=true`; model must present the server's token. `delete_confirm_tokens` table (2-min TTL, single-use, consume is a transaction). System prompt updated. ⚠️ Ops: add `confirmToken: string` to the `deleteEvent` Vapi tool schema in the dashboard and remove `confirmed`. _½d_
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 
 ### Incoming from PM (coordinate with Core)

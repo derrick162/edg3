@@ -1,6 +1,6 @@
 [build]
 
 [deploy]
-startCommand = "npm start"
+startCommand = "sh scripts/start.sh"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

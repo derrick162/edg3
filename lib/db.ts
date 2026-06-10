@@ -141,6 +141,46 @@ function initSchema(db: Database.Database) {
       read INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     );
+
+    -- IP-based rate limiting (#8). Fixed-window counters keyed by "{type}:{identifier}".
+    -- Rows are self-expiring (expires_at checked on each access) and pruned opportunistically.
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      window_start INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    -- Short-TTL dedupe keys for event-creation idempotency (#3). Rows expire after 5 min.
+    -- The composite PRIMARY KEY enables an atomic INSERT OR IGNORE + changes-check pattern
+    -- (no separate SELECT → no TOCTOU race even under concurrent calls).
+    CREATE TABLE IF NOT EXISTS event_dedupe_keys (
+      user_id INTEGER NOT NULL,
+      dedupe_key TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, dedupe_key)
+    );
+
+    -- Vapi webhook/tool-call auth events (#2 telemetry). Only mismatches are recorded —
+    -- accepted calls are not logged (high-volume). Used to verify Vapi sends the right
+    -- secret during the 24h fail-open window before VAPI_SECRET_ENFORCE is flipped on.
+    -- Capped at 1000 rows; pruned on each insert to stay lean.
+    CREATE TABLE IF NOT EXISTS vapi_auth_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      endpoint TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    -- One-time server-issued tokens for hard delete-confirmation (#9). The model must
+    -- present a token it received from the server — it cannot mint one itself — closing
+    -- the self-confirmation hole. Rows are purged opportunistically on each issue() call.
+    CREATE TABLE IF NOT EXISTS delete_confirm_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   // Indexes for performance
@@ -450,6 +490,112 @@ export const notificationQueries = {
   },
   markAllRead: (userId: number) => {
     getDb().prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(userId);
+  },
+};
+
+// Event-creation idempotency dedupe (#3). Keyed by (user_id, normalized-title+start-minute).
+// claim() is called once per creation attempt; returns true on first call (proceed), false
+// on a duplicate within the TTL window (skip the insert — the event was already created).
+export const eventDedupeQueries = {
+  claim: (userId: number, key: string, nowMs: number, ttlMs: number): boolean => {
+    const db = getDb();
+    return db.transaction(() => {
+      // Remove any expired entry so a legitimately repeated request after the TTL can proceed.
+      db.prepare(
+        'DELETE FROM event_dedupe_keys WHERE user_id = ? AND dedupe_key = ? AND expires_at <= ?'
+      ).run(userId, key, nowMs);
+      const result = db.prepare(
+        'INSERT OR IGNORE INTO event_dedupe_keys (user_id, dedupe_key, expires_at) VALUES (?, ?, ?)'
+      ).run(userId, key, nowMs + ttlMs);
+      return result.changes === 1; // 1 = new key (proceed), 0 = duplicate (skip)
+    })();
+  },
+};
+
+// IP-based rate limiting queries (#8). Atomic fixed-window counter via a transaction.
+export const rateLimitQueries = {
+  /**
+   * Increment the counter for `key` within a fixed window. Returns:
+   *   { allowed: true, count, remaining, resetAt }  — under the limit
+   *   { allowed: false, count, remaining: 0, resetAt } — over the limit (do NOT increment further)
+   */
+  check: (key: string, limit: number, windowMs: number, nowMs: number): { allowed: boolean; count: number; remaining: number; resetAt: number } => {
+    const db = getDb();
+    return db.transaction(() => {
+      const existing = db.prepare(
+        'SELECT count, window_start, expires_at FROM rate_limits WHERE key = ?'
+      ).get(key) as { count: number; window_start: number; expires_at: number } | undefined;
+
+      // Fresh window (no row, or previous window expired).
+      if (!existing || existing.expires_at <= nowMs) {
+        const resetAt = nowMs + windowMs;
+        db.prepare('INSERT OR REPLACE INTO rate_limits (key, count, window_start, expires_at) VALUES (?, 1, ?, ?)').run(key, nowMs, resetAt);
+        // Prune expired rows once per insert to keep the table lean (best-effort).
+        db.prepare('DELETE FROM rate_limits WHERE expires_at <= ? AND key != ?').run(nowMs, key);
+        return { allowed: true, count: 1, remaining: limit - 1, resetAt };
+      }
+
+      // Existing active window — check before incrementing.
+      if (existing.count >= limit) {
+        return { allowed: false, count: existing.count, remaining: 0, resetAt: existing.expires_at };
+      }
+      const newCount = existing.count + 1;
+      db.prepare('UPDATE rate_limits SET count = ? WHERE key = ?').run(newCount, key);
+      return { allowed: true, count: newCount, remaining: limit - newCount, resetAt: existing.expires_at };
+    })();
+  },
+};
+
+// Vapi auth event log (#2 telemetry). Only logs mismatches — not every accepted call.
+// record() is fire-and-forget; never throw so it never disrupts the auth path.
+export const vapiAuthLogQueries = {
+  record: (endpoint: string, status: string): void => {
+    try {
+      const db = getDb();
+      db.prepare('INSERT INTO vapi_auth_log (endpoint, status, created_at) VALUES (?, ?, ?)').run(endpoint, status, Date.now());
+      // Keep the table lean — prune oldest rows beyond 1000.
+      db.prepare('DELETE FROM vapi_auth_log WHERE id NOT IN (SELECT id FROM vapi_auth_log ORDER BY id DESC LIMIT 1000)').run();
+    } catch { /* never let telemetry fault disrupt the auth path */ }
+  },
+  // Recent events for the admin monitoring endpoint.
+  recent: (limit = 50): { id: number; endpoint: string; status: string; created_at: number }[] => {
+    return getDb().prepare(
+      'SELECT id, endpoint, status, created_at FROM vapi_auth_log ORDER BY id DESC LIMIT ?'
+    ).all(limit) as { id: number; endpoint: string; status: string; created_at: number }[];
+  },
+  // Count of mismatch-allowed events since sinceMs — drives the admin dashboard summary.
+  mismatchCount: (sinceMs: number): number => {
+    const row = getDb().prepare(
+      "SELECT COUNT(*) AS n FROM vapi_auth_log WHERE status = 'mismatch-allowed' AND created_at >= ?"
+    ).get(sinceMs) as { n: number };
+    return row.n;
+  },
+};
+
+// Hard delete-confirmation tokens (#9). Single-use, short TTL.
+// issue(): generate a fresh random token, purge old ones for this user, persist.
+// consume(): validate + mark used in one synchronous transaction (no TOCTOU).
+export const deleteConfirmQueries = {
+  issue: (userId: number, nowMs: number, ttlMs: number): string => {
+    // 4 random bytes → 8 uppercase hex chars (e.g. "AB12CD34"). Opaque and log-friendly.
+    const { randomBytes } = require('crypto') as typeof import('crypto');
+    const token = randomBytes(4).toString('hex').toUpperCase();
+    const db = getDb();
+    // Purge expired/used tokens for this user to keep the table lean.
+    db.prepare('DELETE FROM delete_confirm_tokens WHERE user_id = ? AND (used = 1 OR expires_at <= ?)').run(userId, nowMs);
+    db.prepare('INSERT INTO delete_confirm_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)').run(token, userId, nowMs + ttlMs);
+    return token;
+  },
+  consume: (token: string, userId: number, nowMs: number): boolean => {
+    const db = getDb();
+    return db.transaction(() => {
+      const row = db.prepare(
+        'SELECT user_id, expires_at, used FROM delete_confirm_tokens WHERE token = ?'
+      ).get(token) as { user_id: number; expires_at: number; used: number } | undefined;
+      if (!row || row.user_id !== userId || row.expires_at <= nowMs || row.used) return false;
+      db.prepare('UPDATE delete_confirm_tokens SET used = 1 WHERE token = ?').run(token);
+      return true;
+    })();
   },
 };
 

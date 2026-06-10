@@ -4,11 +4,12 @@ import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@
 import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
-import { effectiveTimezone } from '@/lib/db';
+import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
+import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -308,6 +309,10 @@ Query: ${query}` }],
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startOnly)) return "I didn't catch the date for that all-day event — what day is it?";
       const endOnly = (endDate || '').slice(0, 10);
       const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endOnly) && endOnly >= startOnly ? endOnly : startOnly;
+      if (!claimEventCreate(userId, buildEventDedupeKey(title, startOnly))) {
+        const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
+        return `All-day "${title}" ${span} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
+      }
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
       } });
@@ -344,6 +349,9 @@ Query: ${query}` }],
         return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
       }
     }
+    if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
+      return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
+    }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
@@ -359,13 +367,16 @@ Query: ${query}` }],
     if (endDate) {
       fullRrule = `RRULE:${recurrence};UNTIL=${rruleUntilUtc(endDate, timezone || 'America/Vancouver')}`;
     }
+    if (!claimEventCreate(userId, buildEventDedupeKey(title, `${startDate}T${startTime}`))) {
+      return `Recurring "${title}" starting ${startDate} at ${startTime} was just created — looks like a retry.`;
+    }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
     const insRec = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (insRec.data.id) recordUndo(userId, `created recurring "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insRec.data.id }]);
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
-    const { title, date, deleteAll, recurringScope, currentTime, confirmed } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmed?: boolean };
+    const { title, date, deleteAll, recurringScope, currentTime, confirmToken } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmToken?: string };
     const dayMatches = await eventsOnDay(cal, calIds, date, tz);
 
     // Which events to delete: all title matches (deleteAll), or one precisely-resolved event.
@@ -386,9 +397,17 @@ Query: ${query}` }],
       return `"${needsScope.event.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
     }
 
-    // CONFIRMATION GATE — deleting is destructive and hard to undo, so require an explicit yes.
-    if (!confirmed) {
-      return `⚠️ Just confirming before I delete ${describeDeleteTargets(toDelete, recurringScope, tz)} — should I go ahead? Ask the user, and ONLY if they say yes, call deleteEvent again with confirmed set to true (keep the same title, date, currentTime and recurringScope).`;
+    // HARD CONFIRMATION GATE (#9) — server-issued one-time token prevents model self-confirmation.
+    // First call: server issues a token embedded in the response; model cannot mint its own.
+    // Second call: model presents the token it received; server verifies + consumes (one-time use).
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      return `⚠️ Just confirming before I delete ${describeDeleteTargets(toDelete, recurringScope, tz)} — should I go ahead? Ask the user, and ONLY if they say yes, call deleteEvent again with confirmToken set to "${token}" (keep the same title, date, currentTime and recurringScope). Token expires in 2 minutes.`;
+    }
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      // Token invalid, expired, or already used — re-issue so the user can try again.
+      const token = issueDeleteToken(userId);
+      return `⚠️ That confirmation code was invalid or expired. To delete ${describeDeleteTargets(toDelete, recurringScope, tz)}, call deleteEvent again with the new confirmToken: "${token}". Token expires in 2 minutes.`;
     }
 
     const deleted: string[] = [];
@@ -500,6 +519,9 @@ Query: ${query}` }],
     const { sourceDate, targetDates } = args as { sourceDate: string; targetDates: string[] };
     if (!sourceDate || !Array.isArray(targetDates) || !targetDates.length) {
       return 'I need the day to copy from and the day(s) to copy to.';
+    }
+    if (!claimEventCreate(userId, `copyDay:${sourceDate}:${targetDates.slice().sort().join(',')}`)) {
+      return `Those events were just copied from ${sourceDate} — looks like a retry. They should already be on your calendar.`;
     }
     const userTz = effectiveTimezone(userQueries.findById(userId) ?? {});
     const { start: sMin, end: sMax } = dayRangeUtc(userTz, sourceDate);
@@ -669,7 +691,10 @@ function extractToolCalls(message: Record<string, unknown>): { calls: ParsedTool
 export async function POST(req: NextRequest) {
   try {
     const sec = checkVapiSecret(req.headers.get('x-vapi-secret'));
-    if (sec.status !== 'accepted') console.warn(`[tool-call] Vapi secret ${sec.status}`);
+    if (sec.status !== 'accepted') {
+      console.warn(`[tool-call] Vapi secret ${sec.status}`);
+      vapiAuthLogQueries.record('tool-call', sec.status); // persist mismatches for admin monitoring
+    }
     if (!sec.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const body = await req.json();
