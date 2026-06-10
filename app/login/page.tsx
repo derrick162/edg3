@@ -80,7 +80,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-sm mt-6" style={{ color: '#888899' }}>
+          <p className="text-center text-sm mt-6" style={{ color: 'var(--text-muted)' }}>
             Don't have an account?{' '}
             <Link href="/signup" style={{ color: 'var(--text-accent)' }}>Sign up</Link>
           </p>
