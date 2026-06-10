@@ -9,6 +9,7 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **Deduplicated `recipientsFromNotes`** — removed the inline copy from the `draftEmail` handler in `app/api/vapi/tool-call/route.ts`; now imports the canonical, tested version from `lib/outreach`. tsc clean, 80/80 tests.
 - **2026-06-10** — ★ **Recent Activity tab SHIPPED** — per-row undo feed in the dashboard.
   - New **Activity** tab (⏪) in the sidebar nav; shows the last 20 actions Edge took on the user's calendar, newest first.
   - Each row: action label (e.g. "created 'Team Meeting' on June 25"), relative timestamp, and an **↩ Undo** button that reverses that specific action in place.

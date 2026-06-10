@@ -7,7 +7,7 @@ import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
-import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
+import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
@@ -548,27 +548,6 @@ Query: ${query}` }],
       subject?: string;
     };
     if (!ask || !ask.trim()) return 'What should I ask them in the email?';
-
-    // Pull {name,email} contacts out of an event's saved research notes. Far more reliable than
-    // asking the voice model to hand-assemble a structured recipients array from free-text notes —
-    // the model just names the event (title + date) and the server extracts the contacts.
-    const recipientsFromNotes = (notes: string): { name?: string; email?: string }[] => {
-      if (!notes) return [];
-      const cleaned = notes.replace(/-{2,}\s*(?:end\s+)?edge research\s*-{2,}/gi, '');
-      const out: { name?: string; email?: string }[] = [];
-      const seen = new Set<string>();
-      for (const block of cleaned.split(/\n\s*\n/)) {
-        const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-        const emailLine = lines.find(l => /^email\s*:/i.test(l));
-        if (!emailLine) continue;
-        const email = emailLine.replace(/^email\s*:/i, '').trim();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || /not found/i.test(email) || seen.has(email.toLowerCase())) continue;
-        const name = lines.find(l => !/^(?:phone|email|website|address)\s*:/i.test(l) && !/:\s*$/.test(l));
-        seen.add(email.toLowerCase());
-        out.push({ name, email });
-      }
-      return out;
-    };
 
     // Recipients: prefer an explicit list; otherwise read them from the research notes on the
     // referenced event (title + date) — the model only has to name the event, not build the list.
