@@ -3,7 +3,7 @@ import { GOOGLE_SCOPES, CALENDAR_SCOPES } from './google-auth';
 
 // Mocks for the I/O boundaries the Gmail primitive depends on.
 const h = vi.hoisted(() => {
-  const draftsCreate = vi.fn(async () => ({ data: { id: 'draft_123', message: { id: 'msg_456' } } }));
+  const draftsCreate = vi.fn(async () => ({ data: { id: 'draft_123', message: { id: 'msg_456', threadId: 'thread_789' } } }));
   const draftsDelete = vi.fn(async () => ({}));
   const messagesSend = vi.fn(); // must NEVER be called — draft-only guarantee
   return {
@@ -74,7 +74,7 @@ describe('createDraft guardrails', () => {
     h.calGet.mockReturnValue(WITH_GMAIL);
     const res = await createDraft(1, validInput);
 
-    expect(res).toEqual({ draftId: 'draft_123', messageId: 'msg_456' });
+    expect(res).toEqual({ draftId: 'draft_123', messageId: 'msg_456', threadId: 'thread_789' });
     expect(h.draftsCreate).toHaveBeenCalledTimes(1);
     expect(h.messagesSend).not.toHaveBeenCalled(); // ← the whole point
     expect(h.logDraft).toHaveBeenCalledWith(1, 'friend@example.com', 'Lunch', 'draft_123');

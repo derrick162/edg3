@@ -114,6 +114,22 @@ function initSchema(db: Database.Database) {
       undone INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- Outreach threads Edge drafted, watched for replies (email-reply tracking).
+    -- Only threads Edge itself started are ever recorded here; recipient/context are PII
+    -- (encrypted at rest, same field cipher as tokens/transcripts/#4).
+    CREATE TABLE IF NOT EXISTS watched_threads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      thread_id TEXT NOT NULL,
+      recipient TEXT,
+      context TEXT,
+      event_title TEXT,
+      event_date TEXT,
+      last_seen_message_id TEXT,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','handled','dismissed')),
+      created_at INTEGER NOT NULL
+    );
   `);
 
   // Indexes for performance
@@ -124,6 +140,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_briefings_vapi_call_id ON briefings(vapi_call_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
     CREATE INDEX IF NOT EXISTS idx_gmail_drafts_user ON gmail_drafts_log(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_watched_threads_user ON watched_threads(user_id, status);
   `);
 
   // Migrations for existing databases
@@ -348,6 +365,45 @@ export const gmailQueries = {
       'SELECT id, user_id, recipient, subject, draft_id, created_at FROM gmail_drafts_log WHERE user_id = ? ORDER BY id DESC LIMIT ?'
     ).all(userId, limit) as GmailDraftLog[];
     return rows.map((r) => ({ ...r, recipient: decryptNullable(r.recipient), subject: decryptNullable(r.subject) }));
+  },
+};
+
+// Email-reply tracking: outreach threads Edge drafted, watched for replies.
+// recipient/context are PII → encrypted at rest (same field cipher as drafts/tokens).
+export interface WatchedThread {
+  id: number;
+  user_id: number;
+  thread_id: string;
+  recipient: string | null;
+  context: string | null;
+  event_title: string | null;
+  event_date: string | null;
+  last_seen_message_id: string | null;
+  status: 'open' | 'handled' | 'dismissed';
+  created_at: number;
+}
+export const watchedThreadQueries = {
+  // Start watching a thread Edge drafted. No-op if this user already watches the thread.
+  register: (userId: number, threadId: string, recipient: string, context: string, eventTitle?: string, eventDate?: string) => {
+    const exists = getDb().prepare('SELECT id FROM watched_threads WHERE user_id = ? AND thread_id = ?').get(userId, threadId);
+    if (exists) return;
+    getDb().prepare(
+      'INSERT INTO watched_threads (user_id, thread_id, recipient, context, event_title, event_date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(userId, threadId, encryptNullable(recipient), encryptNullable(context), eventTitle ?? null, eventDate ?? null, 'open', Date.now());
+  },
+  // Open threads to poll for replies (recipient/context decrypted for use).
+  listOpen: (userId: number): WatchedThread[] => {
+    const rows = getDb().prepare(
+      "SELECT * FROM watched_threads WHERE user_id = ? AND status = 'open' ORDER BY created_at DESC"
+    ).all(userId) as WatchedThread[];
+    return rows.map((r) => ({ ...r, recipient: decryptNullable(r.recipient), context: decryptNullable(r.context) }));
+  },
+  // Record the newest message id we've already processed for a thread.
+  markSeen: (id: number, messageId: string) => {
+    getDb().prepare('UPDATE watched_threads SET last_seen_message_id = ? WHERE id = ?').run(messageId, id);
+  },
+  setStatus: (id: number, status: 'open' | 'handled' | 'dismissed') => {
+    getDb().prepare('UPDATE watched_threads SET status = ? WHERE id = ?').run(status, id);
   },
 };
 

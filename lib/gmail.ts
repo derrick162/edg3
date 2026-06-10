@@ -50,6 +50,7 @@ export interface DraftInput {
 export interface DraftResult {
   draftId: string;
   messageId: string | null;
+  threadId: string | null;
 }
 
 // True once the user has granted Gmail access (for onboarding/settings re-consent UI).
@@ -133,12 +134,13 @@ export async function createDraft(userId: number, input: DraftInput): Promise<Dr
   const draftId = res.data.id;
   if (!draftId) throw new Error('Gmail draft create returned no id');
   const messageId = res.data.message?.id ?? null;
+  const threadId = res.data.message?.threadId ?? null;
 
   // Audit (recipient/subject encrypted at rest inside the query layer).
   gmailQueries.logDraft(userId, to, input.subject ?? '', draftId);
   console.log(`[gmail] Draft created for user ${userId}: draftId=${draftId}`);
 
-  return { draftId, messageId };
+  return { draftId, messageId, threadId };
 }
 
 // Delete a Gmail draft by id — the inverse op for undo (lib/undo.ts `deleteDraft`).

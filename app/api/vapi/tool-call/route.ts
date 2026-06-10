@@ -5,7 +5,7 @@ import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, to
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, undoQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
@@ -613,7 +613,10 @@ Query: ${query}` }],
       try {
         const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject });
         const to = recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email;
-        const { draftId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
+        const { draftId, threadId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
+        // Email-reply tracking (Phase 1): remember this outreach thread so Edge can watch it
+        // for replies later. Only threads Edge itself drafts are ever recorded.
+        if (threadId) watchedThreadQueries.register(userId, threadId, recipient.name || recipient.email, ask, title, date);
         return { ok: true, name: recipient.name || recipient.email, draftId };
       } catch (perErr) {
         if (perErr instanceof GmailScopeError || perErr instanceof GmailRateLimitError) return { ok: false, name: recipient.name || recipient.email, fatal: perErr };
