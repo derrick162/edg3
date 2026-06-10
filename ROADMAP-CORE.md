@@ -9,6 +9,15 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **Chief-of-Staff calendar API SHIPPED** (`app/api/admin/calendar/events/route.ts`,
+  `lib/calendar.ts`). Two new admin endpoints guarded by `x-admin-secret`:
+  - `GET /api/admin/calendar/events?email=...&days=7` — upcoming events for the next N days
+    (1–90, default 7), returned as trimmed objects (id, title, start, end, allDay, description,
+    location, status). Fetches all non-hidden calendars in parallel via new `getUpcomingEvents()`.
+  - `POST /api/admin/calendar/events` — creates an event on the user's primary calendar.
+    Body: `{ email, title, start, end, description?, timezone? }`. Validates ISO parse + end > start.
+    Returns `{ success, eventId, title, start, end, timezone }`.
+  No new Google scopes needed. 80/80 tests, tsc clean, build clean (52 routes).
 - **2026-06-10** — **System-prompt trim + honest-failure guardrail** (`lib/vapi.ts`). Trimmed the
   static system prompt by ~25% (~300 tokens / call): collapsed the 7-line named-days block into a
   compact single-line format, merged 6 error-handling bullets into one `HONEST FAILURE` bullet,
@@ -143,7 +152,7 @@ priority from user feedback.
   - **Effort:** ~2–4d.
 
 ### Chief of Staff calendar tools (2026-06-10)
-- [ ] **Admin calendar API — read + create events on Derrick's behalf** — _Chief of Staff session needs direct Google Calendar access so it can book events without going through Edge or manual entry._
+- [x] **Admin calendar API — read + create events on Derrick's behalf** ✅ Shipped 2026-06-10 (see changelog). — _Chief of Staff session needs direct Google Calendar access so it can book events without going through Edge or manual entry._
   - **Scope:** Two new admin endpoints, protected by `x-admin-secret` header (same pattern as `app/api/admin/latest-briefing/route.ts`):
     1. `GET /api/admin/calendar/events?email=derrick@deltaedg3.com&days=7` — returns upcoming events for the next N days using the existing `lib/calendar.ts` helpers + stored OAuth token.
     2. `POST /api/admin/calendar/events` — creates a calendar event. Body: `{ email, title, start (ISO), end (ISO), description? }`. Reuse existing `createCalendarEvent` logic from `lib/calendar.ts`.
