@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import Database from 'better-sqlite3';
 import { getDb, DB_PATH } from './db';
 
 // On-volume SQLite snapshots with rotation.
@@ -52,6 +53,62 @@ function listBackupFiles(): BackupInfo[] {
 
 export function listBackups(): BackupInfo[] {
   return listBackupFiles();
+}
+
+// Returns true when off-box Litestream replication is configured (LITESTREAM_S3_BUCKET set).
+// Used by the admin endpoint to show replication status without revealing the secret.
+export function litstreamEnabled(): boolean {
+  return !!process.env.LITESTREAM_S3_BUCKET;
+}
+
+export interface VerifyResult {
+  valid: boolean;
+  file: string;
+  sizeBytes: number;
+  rowCounts: Record<string, number>;
+  integrityOk: boolean;
+  error?: string;
+}
+
+// Open a backup snapshot as a SEPARATE read-only connection (never touching the live DB)
+// and verify it's a coherent, queryable database. Safe to call while the app is running.
+//
+// Used by the admin endpoint to confirm a backup is restorable before a drill or failover.
+// The row counts here should roughly match the live DB — a significant mismatch signals
+// the backup is stale or corrupt.
+export function verifyBackup(fileName: string): VerifyResult {
+  const filePath = path.join(BACKUP_DIR, path.basename(fileName)); // basename = no path traversal
+  const stat = fs.existsSync(filePath) ? fs.statSync(filePath) : null;
+  if (!stat) {
+    return { valid: false, file: fileName, sizeBytes: 0, rowCounts: {}, integrityOk: false, error: 'File not found' };
+  }
+
+  let bdb: Database.Database | null = null;
+  try {
+    bdb = new Database(filePath, { readonly: true });
+
+    // SQLite integrity check — catches corruption, truncation, page errors.
+    const integrityRow = bdb.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
+    const integrityOk = integrityRow.integrity_check === 'ok';
+
+    // Row counts on key tables — gives a sanity-check signal for restore viability.
+    const tables = ['users', 'briefings', 'calendar_tokens', 'priorities', 'memories', 'tasks'];
+    const rowCounts: Record<string, number> = {};
+    for (const t of tables) {
+      try {
+        const row = bdb.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number };
+        rowCounts[t] = row.n;
+      } catch {
+        rowCounts[t] = -1; // table missing in old schema backup
+      }
+    }
+
+    return { valid: integrityOk, file: fileName, sizeBytes: stat.size, rowCounts, integrityOk };
+  } catch (err) {
+    return { valid: false, file: fileName, sizeBytes: stat.size, rowCounts: {}, integrityOk: false, error: String(err) };
+  } finally {
+    bdb?.close();
+  }
 }
 
 // Fire-and-forget: snapshot at most once per ~20h. Safe to call on every daily

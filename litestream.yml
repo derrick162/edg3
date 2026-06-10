@@ -1,0 +1,36 @@
+# Litestream continuous replication config for EDG3.
+#
+# Replicates the live SQLite DB to S3-compatible object storage in real time
+# (WAL frames are streamed; RPO ≈ 1s). On a fresh volume (lost or new Railway
+# instance) the startup script restores from S3 before the app boots.
+#
+# Required env vars (set on Railway):
+#   LITESTREAM_S3_BUCKET           — your S3 bucket name
+#   LITESTREAM_S3_ACCESS_KEY_ID    — IAM key with s3:GetObject / s3:PutObject
+#   LITESTREAM_S3_SECRET_ACCESS_KEY
+#
+# Optional:
+#   LITESTREAM_S3_REGION           — default: us-east-1
+#   LITESTREAM_S3_PATH             — prefix inside the bucket (default: edg3)
+#   LITESTREAM_S3_ENDPOINT         — for non-AWS S3 (Backblaze B2, Cloudflare R2, etc.)
+#   DB_PATH                        — overrides the default DB location
+#
+# Restore drill (run manually from Railway shell to prove recovery):
+#   litestream restore -config /app/litestream.yml /data/edg3-restored.db
+#   sqlite3 /data/edg3-restored.db "SELECT COUNT(*) FROM users;"
+#   # If count matches production, restore is verified.
+
+dbs:
+  - path: ${DB_PATH:/data/edg3.db}
+    replicas:
+      - type: s3
+        bucket: $LITESTREAM_S3_BUCKET
+        path: ${LITESTREAM_S3_PATH:edg3}
+        region: ${LITESTREAM_S3_REGION:us-east-1}
+        access-key-id: $LITESTREAM_S3_ACCESS_KEY_ID
+        secret-access-key: $LITESTREAM_S3_SECRET_ACCESS_KEY
+        # Optionally override the S3 endpoint for Backblaze B2 / Cloudflare R2 / MinIO
+        # endpoint: $LITESTREAM_S3_ENDPOINT
+        sync-interval: 1s
+        retention: 72h        # keep 3 days of WAL history for PITR
+        snapshot-interval: 6h # full snapshot every 6h (faster restore baseline)

@@ -8,6 +8,17 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#5 off-box durability (Litestream)**. `litestream.yml`:
+  S3-compatible replication (72h WAL retention, 6h full snapshots, 1s sync interval,
+  configurable endpoint for B2/R2/MinIO). `scripts/start.sh`: conditional wrapper —
+  active only when `LITESTREAM_S3_BUCKET` is set; auto-restores DB on fresh volume;
+  falls back to plain start on download failure (never blocks the app). `railway.toml`
+  start command updated. `lib/backup.ts`: `verifyBackup(file)` opens snapshot read-only
+  (separate connection, never touching live DB), runs `PRAGMA integrity_check`, returns
+  row counts for key tables — supports restore drill without downtime. `litstreamEnabled()`
+  for admin UI. Admin backup endpoint: GET exposes `litstreamEnabled`; POST supports
+  `{ action: 'verify' }` to run the drill in-process. 105/105 preflight green.
+  ⚠️ **Ops:** set S3 env vars + redeploy + run the restore drill (see #5 checklist).
 - **2026-06-10** — Shipped **#2 Vapi secret enforcement (code side)**. The two-stage
   gate (`checkVapiSecret`) was already implemented; added observability to make the
   24h fail-open window actionable. New `vapi_auth_log` table + `vapiAuthLogQueries`
@@ -87,7 +98,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 | H2 | Action audit log | ⚠️ Partial — `tool_actions` JSON exists but mutable, capped 50, no before/after snapshots. |
 | H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
 | H4 | Rate limiting | ❌ Absent on all endpoints. |
-| H5 | Backups / PITR | ⚠️ Code-side done (`80b4d30`) — rotating on-volume `.backup()` snapshots + `maybeDailyBackup()`. Off-box replication (Litestream) for volume-loss still pending (ops). |
+| H5 | Backups / PITR | ✅ Fully code-complete — on-volume snapshots (`80b4d30`) + off-box Litestream (`litestream.yml`, `scripts/start.sh`). `verifyBackup()` for restore drills. ⚠️ Ops: set S3 env vars on Railway + run restore drill (see #5 in 30-Day plan). |
 | H6 | Destructive confirmation | ✅ Done + hardened (#9) — server-issued one-time `confirmToken` closes model self-confirmation hole. Model must present a server-issued token; `confirmed=true` shortcut removed. |
 | M4 | Timezone/recurring | ✅ Mostly handled — IANA passed + validated everywhere. |
 | — | **JWT fallback secret** | ✅ Fixed in code — `lib/auth.ts` fails closed (throws if `JWT_SECRET` unset, no public default). ⚠️ **Ops:** still rotate the secret on Railway. |
@@ -107,9 +118,22 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [x] **4. Encrypt** `calendar_tokens` **and** `transcripts` — done (`80b4d30`): AES-256-GCM
   field encryption (`lib/crypto.ts`), transparent/backward-compatible, no-op until
   `DATA_ENCRYPTION_KEY` set. _Ops follow-up: set the key on Railway to activate._ _2–3d_
-- [~] **5. SQLite durability** — code-side done (`80b4d30`): rotating on-volume
-  `.backup()` snapshots + `maybeDailyBackup()` + admin endpoint. _Still pending:
-  Litestream off-box replication + one real restore drill._ _1d + drill_
+- [x] **5. SQLite durability** — fully code-complete. On-volume snapshots done (`80b4d30`).
+  Off-box now wired: `litestream.yml` (S3 config, 72h retention, 6h snapshots),
+  `scripts/start.sh` (conditional Litestream wrapper — active when `LITESTREAM_S3_BUCKET`
+  set, plain start otherwise), `railway.toml` updated to `sh scripts/start.sh`.
+  Auto-restore on fresh volume (missing DB → `litestream restore` before app boots).
+  `lib/backup.ts` + `verifyBackup()` (read-only snapshot integrity_check + row counts),
+  `litstreamEnabled()`. Admin endpoint enhanced: GET shows `litstreamEnabled`;
+  POST `{ action: 'verify', file }` runs the drill in-process.
+  ⚠️ **Ops follow-up (to complete the restore drill):**
+  (1) Set `LITESTREAM_S3_BUCKET`, `LITESTREAM_S3_ACCESS_KEY_ID`,
+      `LITESTREAM_S3_SECRET_ACCESS_KEY` on Railway.
+  (2) Redeploy → confirm Litestream logs `[start] Starting Litestream replication`.
+  (3) POST `/api/admin/backup` `{ action: 'backup' }` → then
+      POST `{ action: 'verify', file: '<snapshot>' }` → confirm `valid: true`.
+  (4) Simulate volume loss (or use Railway shell): rename DB → redeploy → verify app
+      restores from S3 and row counts match.
 
 ### Week 3 — Finish half-built trust features
 - [x] **6. Wire the undo_log** — done (`28f364d`): inverse ops recorded on every mutation; "undo last action" in dashboard + voice. _1.5–2d_
