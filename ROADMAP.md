@@ -103,7 +103,7 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | ⏳ **BLOCKED — awaiting PM/Security coordination.** All prompt-trim/caching/CoS tasks done & merged. Next: `readCalendar` response cap (tool-result trim) in `tool-call/route.ts` — fix scoped and ready (cap at 25 events + drop cancelled). Needs PM green-light since Security's idempotency ticket (#3) touches same file. Security Status Board shows idle — is the file released? | `tool-call/route.ts` (pending) | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — Gmail primitive + encryption + backups all merged to master & green. Next: #2 Vapi secret.)_ | — | 2026-06-09 |
-| 🎨 Design | `design` | Migrating landing page to components/ui/ (visual-only, no logic changes) | `app/page.tsx` | 2026-06-10 |
+| 🎨 Design | `design` | Token pass on login + signup pages (hex → token vars, visual only) | `app/login/page.tsx`, `app/signup/page.tsx` | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
