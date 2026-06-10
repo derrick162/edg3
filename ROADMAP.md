@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(self-pacing — ✅ prompt-trim + caching + honest-failure guardrail + CoS calendar API merged. **UNBLOCKED by PM:** Security's #3 is now on master, so `tool-call/route.ts` is released → next is the `readCalendar` response cap (tool-result trim: cap 25 events + drop cancelled).)_ | `tool-call/route.ts` | 2026-06-10 |
+| 🛠️ Core | `core` | ⚡ **(1) Re-applying prompt trim to `lib/vapi.ts`** — Security's batch reverted it (their branch was behind); re-trimming with their new `confirmToken` language preserved. **(2) `readCalendar` response cap** in `tool-call/route.ts` (25 events + drop cancelled). Both claimed. | `lib/vapi.ts`, `tool-call/route.ts` ⚠️ | 2026-06-10 |
 | 🔒 Security | `security` | _(✅ shipped & merged to master by PM integration: #2 webhook secret, #3 idempotency, #5 off-box backups, #8 rate limiting, #9 hard delete-confirm. #10 admin-auth hardening next.)_ | `app/api/admin/**` | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
