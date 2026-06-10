@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -90,7 +90,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
     onSettingsSaved?.();
   }
 
-  if (loading) return <div className="text-sm" style={{ color: '#888899' }}>Loading…</div>;
+  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
 
   return (
     <div className="space-y-8">
@@ -100,7 +100,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         <form onSubmit={handleSaveSettings} className="glass-card p-6 space-y-4">
           <div className="flex gap-4 flex-wrap">
             <div className="flex-1 min-w-[160px]">
-              <label className="block text-xs mb-1" style={{ color: '#888899' }}>Call time</label>
+              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Call time</label>
               <input
                 type="time"
                 className="input"
@@ -109,15 +109,15 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
               />
             </div>
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs mb-1" style={{ color: '#888899' }}>Timezone</label>
+              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Timezone</label>
               <select
                 className="input"
-                style={{ background: '#1a1a2e', color: '#e8e8f0' }}
+                style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}
                 value={timezone}
                 onChange={e => setTimezone(e.target.value)}
               >
                 {TIMEZONES.map(tz => (
-                  <option key={tz.value} value={tz.value} style={{ background: '#1a1a2e', color: '#e8e8f0' }}>{tz.label}</option>
+                  <option key={tz.value} value={tz.value} style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}>{tz.label}</option>
                 ))}
               </select>
             </div>
@@ -126,7 +126,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             <button type="submit" className="btn-primary text-sm py-2 px-5" disabled={savingSettings}>
               {savingSettings ? 'Saving…' : 'Save settings'}
             </button>
-            {settingsSaved && <span className="text-sm" style={{ color: '#10b981' }}>✓ Saved</span>}
+            {settingsSaved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
           </div>
         </form>
       </div>
@@ -134,31 +134,31 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
       {/* Traveling this week */}
       <div>
         <h2 className="text-lg font-bold mb-1">Traveling this week?</h2>
-        <p className="text-sm mb-4" style={{ color: '#888899' }}>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
           Set the timezone you're currently in. Edge uses it for your briefings and bookings until you clear it.
         </p>
         <div className="glass-card p-6">
           {currentTimezone ? (
             <div className="flex items-center gap-3 flex-wrap mb-4">
               <span className="badge badge-info">📍 Currently in {TIMEZONES.find(t => t.value === currentTimezone)?.label || currentTimezone}</span>
-              <button onClick={() => saveCurrentTimezone('')} disabled={savingTz} className="text-xs" style={{ color: '#ef4444' }}>
+              <button onClick={() => saveCurrentTimezone('')} disabled={savingTz} className="text-xs" style={{ color: 'var(--edg-danger)' }}>
                 {savingTz ? 'Saving…' : "Clear — I'm home"}
               </button>
             </div>
           ) : (
-            <p className="text-sm mb-4" style={{ color: '#888899' }}>Using your home timezone.</p>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Using your home timezone.</p>
           )}
-          <label className="block text-xs mb-1" style={{ color: '#888899' }}>I'm currently in</label>
+          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>I'm currently in</label>
           <select
             className="input"
-            style={{ background: '#1a1a2e', color: '#e8e8f0', maxWidth: 360 }}
+            style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)', maxWidth: 360 }}
             value={currentTimezone}
             onChange={e => saveCurrentTimezone(e.target.value)}
             disabled={savingTz}
           >
-            <option value="" style={{ background: '#1a1a2e', color: '#e8e8f0' }}>Home ({TIMEZONES.find(t => t.value === timezone)?.label || timezone})</option>
+            <option value="" style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}>Home ({TIMEZONES.find(t => t.value === timezone)?.label || timezone})</option>
             {TIMEZONES.map(tz => (
-              <option key={tz.value} value={tz.value} style={{ background: '#1a1a2e', color: '#e8e8f0' }}>{tz.label}</option>
+              <option key={tz.value} value={tz.value} style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}>{tz.label}</option>
             ))}
           </select>
         </div>
@@ -169,7 +169,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">Your profile</h2>
           <div className="flex items-center gap-3">
-            {saved && <span className="text-sm" style={{ color: '#10b981' }}>✓ Saved</span>}
+            {saved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
             {!editing && (
               <button onClick={() => setEditing(true)} className="btn-secondary text-sm py-2 px-4">
                 ✎ Edit
@@ -178,7 +178,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
           </div>
         </div>
 
-        <p className="text-sm mb-4" style={{ color: '#888899' }}>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
           This is the full context EDG3 uses to understand who you are. Keep it current.
         </p>
 
@@ -203,17 +203,17 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
           <div className="glass-card p-6">
             {profile ? (
               <>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#c8c8d8', maxHeight: profileExpanded ? 'none' : '9rem', overflow: 'hidden', maskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)', WebkitMaskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)' }}>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)', maxHeight: profileExpanded ? 'none' : '9rem', overflow: 'hidden', maskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)', WebkitMaskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)' }}>
                 {profile}
               </p>
                 {profile.length > 280 && (
-                  <button onClick={() => setProfileExpanded(v => !v)} className="text-xs mt-3" style={{ color: '#818cf8' }}>
+                  <button onClick={() => setProfileExpanded(v => !v)} className="text-xs mt-3" style={{ color: 'var(--text-accent)' }}>
                     {profileExpanded ? '▲ Show less' : '▼ Show more'}
                   </button>
                 )}
               </>
             ) : (
-              <p className="text-sm text-center py-4" style={{ color: '#4a4a5a' }}>
+              <p className="text-sm text-center py-4" style={{ color: 'var(--text-faint)' }}>
                 No profile set. Click Edit to add one.
               </p>
             )}
@@ -271,7 +271,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
               onClick={handleCompleteAll}
               disabled={completingAll}
               className="text-xs font-medium transition-colors"
-              style={{ color: completingAll ? '#4a4a5a' : '#10b981' }}
+              style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
             >
               {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
             </button>
@@ -298,7 +298,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
       {/* EDG3 suggested tasks */}
       {todayTasks.filter(t => t.source === 'edg3').length > 0 && (
         <div className="mb-2">
-          <p className="text-xs font-semibold mb-2" style={{ color: '#6366f1' }}>✦ SUGGESTED BY EDG3</p>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>✦ SUGGESTED BY EDG3</p>
           <div className="space-y-2">
             {todayTasks.filter(t => t.source === 'edg3').map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
@@ -310,7 +310,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
       {/* Manual tasks */}
       {todayTasks.filter(t => t.source === 'manual').length > 0 && (
         <div className="mb-2 mt-4">
-          <p className="text-xs font-semibold mb-2" style={{ color: '#4a4a5a' }}>YOUR TASKS</p>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>YOUR TASKS</p>
           <div className="space-y-2">
             {todayTasks.filter(t => t.source === 'manual').map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
@@ -321,14 +321,14 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
 
       {todayTasks.length === 0 && (
         <div className="glass-card p-8 text-center mb-4">
-          <p className="text-sm" style={{ color: '#888899' }}>No tasks yet today. They'll appear here after your morning call.</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet today. They'll appear here after your morning call.</p>
         </div>
       )}
 
       {/* Overdue tasks */}
       {pastTasks.length > 0 && (
         <div className="mt-6">
-          <p className="text-xs font-semibold mb-2" style={{ color: '#f59e0b' }}>⚠ CARRIED OVER</p>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>⚠ CARRIED OVER</p>
           <div className="space-y-2">
             {pastTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
@@ -360,16 +360,16 @@ function TaskRow({ task, onToggle, onDelete }: {
         disabled={loading}
         className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
         style={{
-          background: task.completed ? '#6366f1' : 'transparent',
+          background: task.completed ? 'var(--edg-indigo)' : 'transparent',
           border: task.completed ? '2px solid #6366f1' : '2px solid rgba(255,255,255,0.15)',
         }}
       >
-        {task.completed && <span style={{ color: 'white', fontSize: 10 }}>✓</span>}
+        {task.completed && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
       </button>
       <span
         className="flex-1 text-sm"
         style={{
-          color: task.completed ? '#4a4a5a' : '#e8e8f0',
+          color: task.completed ? 'var(--text-faint)' : 'var(--text-strong)',
           textDecoration: task.completed ? 'line-through' : 'none',
         }}
       >
@@ -381,7 +381,7 @@ function TaskRow({ task, onToggle, onDelete }: {
       <button
         onClick={() => onDelete(task.id)}
         className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
-        style={{ color: '#4a4a5a' }}
+        style={{ color: 'var(--text-faint)' }}
       >
         ✕
       </button>
@@ -427,7 +427,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
           {values.map((v, i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
-                   style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}>
+                   style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
                 {i + 1}
               </div>
               <input
@@ -451,7 +451,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
         <>
           {priorities.length === 0 ? (
             <div className="glass-card p-8 text-center">
-              <p className="text-sm mb-3" style={{ color: '#888899' }}>No priorities set for this week.</p>
+              <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>No priorities set for this week.</p>
               <button onClick={startEdit} className="btn-primary text-sm py-2 px-5">Set priorities</button>
             </div>
           ) : (
@@ -459,7 +459,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
               {priorities.map((p, i) => (
                 <div key={p.id} className="glass-card p-5 flex items-start gap-4">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
-                       style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}>
+                       style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
                     {i + 1}
                   </div>
                   <p className="font-medium text-sm pt-1">{p.text}</p>
@@ -467,7 +467,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
               ))}
             </div>
           )}
-          <p className="text-xs mt-4" style={{ color: '#4a4a5a' }}>
+          <p className="text-xs mt-4" style={{ color: 'var(--text-faint)' }}>
             EDG3 checks these every morning against your calendar.
           </p>
         </>
@@ -499,8 +499,8 @@ function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) 
     <div className="glass-card mb-6 overflow-hidden" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
       <div className="px-5 pt-4 pb-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-        <p className="text-xs font-semibold" style={{ color: '#6366f1' }}>CHAT WITH EDGE</p>
-        <p className="text-xs ml-auto" style={{ color: '#4a4a5a' }}>Saved to memory · used in next briefing</p>
+        <p className="text-xs font-semibold" style={{ color: 'var(--edg-indigo)' }}>CHAT WITH EDGE</p>
+        <p className="text-xs ml-auto" style={{ color: 'var(--text-faint)' }}>Saved to memory · used in next briefing</p>
       </div>
       <div className="px-5 py-3 space-y-3 overflow-y-auto" style={{ maxHeight: '220px' }}>
         {messages.map((m, i) => (
@@ -508,7 +508,7 @@ function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) 
             <div className="text-sm px-3 py-2 rounded-xl max-w-xs leading-relaxed"
               style={{
                 background: m.role === 'user' ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.06)',
-                color: m.role === 'user' ? '#e8e8f0' : '#c8c8d8',
+                color: m.role === 'user' ? 'var(--text-strong)' : 'var(--text-body)',
                 borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
               }}>
               {m.text}
@@ -517,7 +517,7 @@ function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) 
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="text-sm px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.06)', color: '#888899', borderRadius: '18px 18px 18px 4px' }}>
+            <div className="text-sm px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', borderRadius: '18px 18px 18px 4px' }}>
               <span className="animate-pulse">...</span>
             </div>
           </div>
@@ -591,20 +591,20 @@ function ActivityTab() {
     return `${d}d ago`;
   }
 
-  if (loading) return <div className="text-sm" style={{ color: '#888899' }}>Loading…</div>;
+  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">Recent activity</h2>
-        <button onClick={load} className="text-xs" style={{ color: '#4a4a5a' }}>↻ Refresh</button>
+        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
       </div>
-      <p className="text-sm mb-4" style={{ color: '#888899' }}>
+      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
         Everything Edge has done on your calendar — undo any action individually.
       </p>
 
       {undoError && (
-        <div className="mb-4 text-sm px-4 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
+        <div className="mb-4 text-sm px-4 py-2 rounded-lg" style={{ background: 'var(--edg-danger-tint)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--edg-danger)' }}>
           {undoError}
         </div>
       )}
@@ -613,7 +613,7 @@ function ActivityTab() {
         <div className="glass-card p-8 text-center">
           <p className="text-2xl mb-3">⏪</p>
           <p className="font-medium mb-1">No activity yet</p>
-          <p className="text-sm" style={{ color: '#888899' }}>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             When Edge creates or edits calendar events, each action will appear here so you can review and undo.
           </p>
         </div>
@@ -626,11 +626,11 @@ function ActivityTab() {
               style={{ opacity: a.undone ? 0.45 : 1 }}
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm truncate" style={{ color: a.undone ? '#4a4a5a' : '#e8e8f0' }}>
-                  {a.undone ? <span style={{ marginRight: 6, color: '#4a4a5a' }}>↩</span> : <span style={{ marginRight: 6, color: '#818cf8' }}>✦</span>}
+                <p className="text-sm truncate" style={{ color: a.undone ? 'var(--text-faint)' : 'var(--text-strong)' }}>
+                  {a.undone ? <span style={{ marginRight: 6, color: 'var(--text-faint)' }}>↩</span> : <span style={{ marginRight: 6, color: 'var(--text-accent)' }}>✦</span>}
                   {a.label}
                 </p>
-                <p className="text-xs mt-0.5" style={{ color: '#4a4a5a' }}>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
                   {a.undone ? 'Undone · ' : ''}{relativeTime(a.created_at)}
                 </p>
               </div>
@@ -641,7 +641,7 @@ function ActivityTab() {
                   className="text-xs py-1 px-3 rounded flex-shrink-0"
                   style={{
                     background: 'rgba(245,158,11,0.12)',
-                    color: undoingId === a.id ? '#888899' : '#fbbf24',
+                    color: undoingId === a.id ? 'var(--text-muted)' : 'var(--edg-warning)',
                     border: '1px solid rgba(245,158,11,0.2)',
                     cursor: undoingId !== null ? 'not-allowed' : 'pointer',
                   }}
@@ -896,7 +896,7 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface-page)' }}>
         <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -912,12 +912,12 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen relative" style={{ background: 'var(--background)' }}>
+    <div className="min-h-screen relative" style={{ background: 'var(--surface-page)' }}>
       <div className="orb orb-1" />
       <div className="orb orb-2" />
 
       {linkedNotice && (
-        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
           ✓ Google account linked
         </div>
       )}
@@ -931,7 +931,7 @@ export default function Dashboard() {
         >
           🔔
           {notifUnread > 0 && (
-            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9999, background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9999, background: 'var(--edg-danger)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {notifUnread}
             </span>
           )}
@@ -939,21 +939,21 @@ export default function Dashboard() {
         {notifOpen && (
           <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto', padding: 12 }}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold" style={{ color: '#e8e8f0' }}>Notifications</span>
-              <button onClick={() => notifAction('check')} disabled={notifChecking} className="text-xs" style={{ color: '#818cf8' }}>
+              <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Notifications</span>
+              <button onClick={() => notifAction('check')} disabled={notifChecking} className="text-xs" style={{ color: 'var(--text-accent)' }}>
                 {notifChecking ? 'Checking…' : '↻ Check for replies'}
               </button>
             </div>
             {notifs.length === 0 ? (
-              <p className="text-xs py-6 text-center" style={{ color: '#4a4a5a' }}>No notifications yet. When someone replies to an email Edge drafted, it&apos;ll show up here.</p>
+              <p className="text-xs py-6 text-center" style={{ color: 'var(--text-faint)' }}>No notifications yet. When someone replies to an email Edge drafted, it&apos;ll show up here.</p>
             ) : (
               notifs.map((n) => (
                 <div key={n.id} className="py-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', opacity: n.read ? 0.6 : 1 }}>
-                  <p className="text-xs font-semibold" style={{ color: '#e8e8f0' }}>{n.title}</p>
-                  {n.body && <p className="text-xs mt-0.5" style={{ color: '#a8a8b8' }}>{n.body}</p>}
+                  <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>{n.title}</p>
+                  {n.body && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.body}</p>}
                   <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs" style={{ color: '#4a4a5a' }}>{new Date(n.created_at).toLocaleString()}</p>
-                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: '#818cf8' }}>📅 Book a time</button>
+                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{new Date(n.created_at).toLocaleString()}</p>
+                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: 'var(--text-accent)' }}>📅 Book a time</button>
                   </div>
                 </div>
               ))
@@ -966,26 +966,26 @@ export default function Dashboard() {
       {bookFor && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setBookFor(null)}>
           <div className="glass-card" style={{ width: 380, maxWidth: '100%', padding: 22 }} onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-bold mb-1" style={{ color: '#e8e8f0' }}>Book a time</p>
-            <p className="text-xs mb-4" style={{ color: '#888899' }}>Confirm the details and Edge will add it to your calendar.</p>
-            <label className="text-xs" style={{ color: '#888899' }}>Title</label>
+            <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Book a time</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Confirm the details and Edge will add it to your calendar.</p>
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Title</label>
             <input className="input mt-1 mb-3" value={bookForm.title} onChange={(e) => setBookForm(f => ({ ...f, title: e.target.value }))} />
             <div className="flex gap-2 mb-3">
               <div className="flex-1">
-                <label className="text-xs" style={{ color: '#888899' }}>Date</label>
+                <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Date</label>
                 <input type="date" className="input mt-1" value={bookForm.date} onChange={(e) => setBookForm(f => ({ ...f, date: e.target.value }))} />
               </div>
               <div className="flex-1">
-                <label className="text-xs" style={{ color: '#888899' }}>Time</label>
+                <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Time</label>
                 <input type="time" className="input mt-1" value={bookForm.time} onChange={(e) => setBookForm(f => ({ ...f, time: e.target.value }))} />
               </div>
             </div>
-            <label className="text-xs" style={{ color: '#888899' }}>Duration</label>
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Duration</label>
             <select className="input mt-1 mb-5" value={bookForm.duration} onChange={(e) => setBookForm(f => ({ ...f, duration: Number(e.target.value) }))}>
-              <option value={30} style={{ background: '#1a1a2e' }}>30 minutes</option>
-              <option value={60} style={{ background: '#1a1a2e' }}>1 hour</option>
-              <option value={90} style={{ background: '#1a1a2e' }}>1.5 hours</option>
-              <option value={120} style={{ background: '#1a1a2e' }}>2 hours</option>
+              <option value={30} style={{ background: 'var(--edg-bg-select)' }}>30 minutes</option>
+              <option value={60} style={{ background: 'var(--edg-bg-select)' }}>1 hour</option>
+              <option value={90} style={{ background: 'var(--edg-bg-select)' }}>1.5 hours</option>
+              <option value={120} style={{ background: 'var(--edg-bg-select)' }}>2 hours</option>
             </select>
             <div className="flex gap-2">
               <button className="btn-primary text-sm py-2 px-5" onClick={submitBook} disabled={booking}>{booking ? 'Booking…' : 'Book it'}</button>
@@ -1018,7 +1018,7 @@ export default function Dashboard() {
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                  color: activeTab === tab.id ? '#818cf8' : '#888899',
+                  color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
                   border: activeTab === tab.id ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
                 }}
               >
@@ -1037,22 +1037,22 @@ export default function Dashboard() {
               } : {}}
             >
               <div className="flex items-center gap-2 mb-1">
-                <p className="text-xs" style={{ color: '#4a4a5a' }}>Next call</p>
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Next call</p>
                 {showNextCallTip && (
                   <span className="text-xs px-1.5 py-0.5 rounded font-semibold animate-pulse"
-                    style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}>
+                    style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
                     ← this is you
                   </span>
                 )}
               </div>
-              <p className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
                 {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
               </p>
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 {reminderInCalendar === true ? (
                   <>
-                    <span className="text-xs" style={{ color: '#10b981' }}>✓ On your calendar</span>
-                    <button onClick={removeDailyCallReminder} disabled={reminderBusy} className="text-xs ml-auto" style={{ color: '#4a4a5a' }}>
+                    <span className="text-xs" style={{ color: 'var(--edg-success)' }}>✓ On your calendar</span>
+                    <button onClick={removeDailyCallReminder} disabled={reminderBusy} className="text-xs ml-auto" style={{ color: 'var(--text-faint)' }}>
                       {reminderBusy ? '…' : 'Remove'}
                     </button>
                   </>
@@ -1061,7 +1061,7 @@ export default function Dashboard() {
                     onClick={addDailyCallReminder}
                     disabled={reminderBusy}
                     className="text-xs py-1 px-2 rounded"
-                    style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.2)' }}
+                    style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.2)' }}
                   >
                     {reminderBusy ? 'Adding…' : '📅 Add daily call to calendar'}
                   </button>
@@ -1072,21 +1072,21 @@ export default function Dashboard() {
               <button
                 onClick={connectCalendar}
                 className="w-full text-xs py-2 text-left px-2 rounded"
-                style={{ color: '#4a4a5a' }}
+                style={{ color: 'var(--text-faint)' }}
               >
                 📅 Connect calendar
               </button>
             ) : calendarConnected ? (
               <div className="px-2 py-2">
                 <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: '#10b981', fontSize: 11 }}>●</span>
-                  <p className="text-xs" style={{ color: '#888899' }}>Calendar connected</p>
+                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Calendar connected</p>
                 </div>
                 <div className="flex items-center gap-3 pl-3.5">
                   <button
                     onClick={connectCalendar}
                     className="text-xs"
-                    style={{ color: '#4a4a5a' }}
+                    style={{ color: 'var(--text-faint)' }}
                   >
                     Reconnect
                   </button>
@@ -1094,7 +1094,7 @@ export default function Dashboard() {
                     onClick={disconnectCalendar}
                     disabled={disconnectingCalendar}
                     className="text-xs"
-                    style={{ color: '#ef4444' }}
+                    style={{ color: 'var(--edg-danger)' }}
                   >
                     {disconnectingCalendar ? 'Disconnecting…' : 'Disconnect'}
                   </button>
@@ -1105,7 +1105,7 @@ export default function Dashboard() {
               <button
                 onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
                 className="w-full text-xs py-2 text-left px-2 rounded"
-                style={{ color: '#4a4a5a' }}
+                style={{ color: 'var(--text-faint)' }}
               >
                 <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Get intro call
               </button>
@@ -1113,7 +1113,7 @@ export default function Dashboard() {
             <button
               onClick={logout}
               className="w-full text-xs py-2 text-left px-2 rounded"
-              style={{ color: '#4a4a5a' }}
+              style={{ color: 'var(--text-faint)' }}
             >
               Sign out
             </button>
@@ -1130,7 +1130,7 @@ export default function Dashboard() {
                 const g = h >= 18 ? 'Good evening' : h >= 12 ? 'Good afternoon' : 'Good morning';
                 return `${g}, ${user.name.split(' ')[0]}`;
               })()}</h1>
-              <p className="text-sm mt-1" style={{ color: '#888899' }}>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </p>
             </div>
@@ -1160,10 +1160,10 @@ export default function Dashboard() {
           {briefingText && (
             <div className="glass-card p-6 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-sm" style={{ color: '#818cf8' }}>TODAY'S BRIEFING PREVIEW</h3>
-                <button onClick={() => setBriefingText('')} style={{ color: '#4a4a5a', fontSize: 12 }}>✕ dismiss</button>
+                <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY'S BRIEFING PREVIEW</h3>
+                <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
               </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#c8c8d8' }}>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                 {briefingText}
               </p>
             </div>
@@ -1177,7 +1177,7 @@ export default function Dashboard() {
                 <div className="glass-card p-8 text-center">
                   <p className="text-4xl mb-3">📞</p>
                   <p className="font-medium mb-1">No briefings yet</p>
-                  <p className="text-sm" style={{ color: '#888899' }}>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     Click "Call me now" to get your first briefing, or wait for your scheduled call at {user.call_time}.
                   </p>
                 </div>
@@ -1195,7 +1195,7 @@ export default function Dashboard() {
                             {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
                           </p>
                           {b.user_response && (
-                            <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: '#888899' }}>
+                            <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: 'var(--text-muted)' }}>
                               You said: "{b.user_response}"
                             </p>
                           )}
@@ -1207,14 +1207,14 @@ export default function Dashboard() {
 
                       {selectedBriefing?.id === b.id && (
                         <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--card-border)' }}>
-                          <p className="text-xs font-semibold mb-2" style={{ color: '#6366f1' }}>BRIEFING CONTENT</p>
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#c8c8d8' }}>
+                          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>BRIEFING CONTENT</p>
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                             {b.content}
                           </p>
 
                           {b.transcript && (
                             <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                              <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>CALL TRANSCRIPT</p>
+                              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>CALL TRANSCRIPT</p>
                               <div className="space-y-2">
                                 {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
                                   const isUser = line.startsWith('User:') || line.startsWith('Customer:');
@@ -1225,7 +1225,7 @@ export default function Dashboard() {
                                       <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-xs"
                                         style={{
                                           background: isUser ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
-                                          color: isUser ? '#e8e8f0' : '#aaa',
+                                          color: isUser ? 'var(--text-strong)' : 'var(--text-muted)',
                                         }}>
                                         {text}
                                       </p>
@@ -1242,11 +1242,11 @@ export default function Dashboard() {
                               if (!promises.length) return null;
                               return (
                                 <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                  <p className="text-xs font-semibold mb-2" style={{ color: '#818cf8' }}>✅ EDGE ACTION ITEMS</p>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>✅ EDGE ACTION ITEMS</p>
                                   <div className="space-y-1">
                                     {promises.map((p: string, i: number) => (
-                                      <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}>
-                                        <span style={{ color: '#6366f1' }}>→</span> {p}
+                                      <p key={i} className="text-xs" style={{ color: 'var(--text-body)' }}>
+                                        <span style={{ color: 'var(--edg-indigo)' }}>→</span> {p}
                                       </p>
                                     ))}
                                   </div>
@@ -1264,9 +1264,9 @@ export default function Dashboard() {
                                   <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>📅 CALENDAR ACTIONS</p>
                                   <div className="space-y-1">
                                     {actions.map((a: any, i: number) => (
-                                      <p key={i} className="text-xs" style={{ color: '#c8c8d8' }}>
+                                      <p key={i} className="text-xs" style={{ color: 'var(--text-body)' }}>
                                         <span style={{ color: '#4ade80' }}>✓</span> {a.type === 'created' ? 'Added' : a.type} — {a.title}
-                                        {a.start && <span style={{ color: '#888899' }}> · {new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+                                        {a.start && <span style={{ color: 'var(--text-muted)' }}> · {new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
                                       </p>
                                     ))}
                                   </div>
@@ -1281,15 +1281,15 @@ export default function Dashboard() {
                               if (!actions.length) return null;
                               return (
                                 <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                                  <p className="text-xs font-semibold mb-2" style={{ color: '#818cf8' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
                                   <div className="space-y-1.5">
                                     {actions.map((a: { fn: string; args?: { title?: string; sourceDate?: string; date?: string }; result?: string; ok?: boolean }, i: number) => (
-                                      <div key={i} className="text-xs flex items-start gap-2" style={{ color: '#c8c8d8' }}>
-                                        <span style={{ color: a.ok ? '#4ade80' : '#f59e0b' }}>{a.ok ? '✓' : '⚠'}</span>
+                                      <div key={i} className="text-xs flex items-start gap-2" style={{ color: 'var(--text-body)' }}>
+                                        <span style={{ color: a.ok ? '#4ade80' : 'var(--edg-warning)' }}>{a.ok ? '✓' : '⚠'}</span>
                                         <span>
-                                          <span style={{ color: '#818cf8' }}>{a.fn}</span>
+                                          <span style={{ color: 'var(--text-accent)' }}>{a.fn}</span>
                                           {a.args?.title ? ` — ${a.args.title}` : a.args?.sourceDate ? ` — from ${a.args.sourceDate}` : ''}
-                                          {a.result && <span style={{ color: '#888899' }}> · {a.result}</span>}
+                                          {a.result && <span style={{ color: 'var(--text-muted)' }}> · {a.result}</span>}
                                         </span>
                                       </div>
                                     ))}
@@ -1351,12 +1351,12 @@ export default function Dashboard() {
           {activeTab === 'memory' && (
             <div>
               <h2 className="text-lg font-bold mb-4">Memory bank</h2>
-              <p className="text-sm mb-4" style={{ color: '#888899' }}>
+              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
                 Everything EDG3 remembers about you accumulates here over time.
               </p>
               {memories.length === 0 ? (
                 <div className="glass-card p-8 text-center">
-                  <p className="text-sm" style={{ color: '#888899' }}>No memories yet. They'll build after your first call.</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No memories yet. They'll build after your first call.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1370,11 +1370,11 @@ export default function Dashboard() {
                         }`}>
                           {m.type}
                         </span>
-                        <span className="text-xs" style={{ color: '#4a4a5a' }}>
+                        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
                           {format(new Date(m.created_at), 'MMM d, yyyy')}
                         </span>
                       </div>
-                      <p className="text-sm leading-relaxed" style={{ color: '#c8c8d8' }}>
+                      <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
                         {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
                       </p>
                     </div>
@@ -1399,15 +1399,15 @@ export default function Dashboard() {
               <span className="logo-text text-2xl">E</span>
             </div>
             <h2 className="text-2xl font-black mb-2">Edg3 wants to introduce himself.</h2>
-            <p className="text-sm mb-6" style={{ color: '#888899' }}>
-              Edg3 will call you now at <span style={{ color: '#e8e8f0', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+              Edg3 will call you now at <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
             </p>
             <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'rgba(99,102,241,0.05)' }}>
-              <p className="text-xs font-semibold mb-3" style={{ color: '#6366f1' }}>EDG3 WILL HELP YOU:</p>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>EDG3 WILL HELP YOU:</p>
               {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable — honestly, like a great advisor'].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className="text-indigo-400 font-bold text-sm">{i + 1}.</span>
-                  <p className="text-sm" style={{ color: '#c8c8d8' }}>{item}</p>
+                  <p className="text-sm" style={{ color: 'var(--text-body)' }}>{item}</p>
                 </div>
               ))}
             </div>
@@ -1422,9 +1422,9 @@ export default function Dashboard() {
               <div className="text-center space-y-4">
                 <div className="flex items-center justify-center gap-3 py-3">
                   <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="font-semibold" style={{ color: '#818cf8' }}>Edg3 is calling you now…</span>
+                  <span className="font-semibold" style={{ color: 'var(--text-accent)' }}>Edg3 is calling you now…</span>
                 </div>
-                <p className="text-sm" style={{ color: '#888899' }}>Pick up — it'll only take 30 seconds.</p>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Pick up — it'll only take 30 seconds.</p>
                 <button
                   onClick={() => { setShowWelcome(false); setShowNextCallTip(true); router.replace('/dashboard'); }}
                   className="btn-secondary w-full py-2 text-sm"
