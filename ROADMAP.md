@@ -8,6 +8,7 @@
 >
 > - 🛠️ **[`ROADMAP-CORE.md`](ROADMAP-CORE.md)** — the Core (features/product) lane.
 > - 🔒 **[`ROADMAP-SECURITY.md`](ROADMAP-SECURITY.md)** — the Security & Reliability lane.
+> - 🎨 **[`ROADMAP-DESIGN.md`](ROADMAP-DESIGN.md)** — the UX/UI Design lane. See also `DESIGN.md` (asset pack).
 >
 > Read this constitution, then read **only your own lane's roadmap**. Do not plan
 > from memory or from `docs/EDG3-Roadmap.xlsx` — **that spreadsheet is deprecated.**
@@ -23,12 +24,14 @@ worktree and branch, and integrates to `master` in small, frequent merges.
   roadmap, and keeps the lanes from colliding. Does not write feature code.
 - **Core Engineer** — builds user-facing product (see `ROADMAP-CORE.md`).
 - **Security & Reliability Engineer** — builds trust/secrets/infra (see `ROADMAP-SECURITY.md`).
+- **UX/UI Designer** — owns the design system + the visual/UX of the app (see `ROADMAP-DESIGN.md` + `DESIGN.md`). Works the presentation layer; coordinates with Core on shared page files.
 
 ## 1. Who am I? (pick your lane)
 | If your session is… | Lane | Roadmap | Branch | Worktree folder |
 |---|---|---|---|---|
 | **Edg3 Engineer (Core)** | 🛠️ Core | `ROADMAP-CORE.md` | `core` | `C:\Users\Derrick\edg3-core` |
 | **Edg3 Engineer (Security & Reliability)** | 🔒 Security | `ROADMAP-SECURITY.md` | `security` | `C:\Users\Derrick\edg3-security` |
+| **Edg3 UX/UI Designer** | 🎨 Design | `ROADMAP-DESIGN.md` | `design` | `C:\Users\Derrick\edg3-design` |
 | **Product Manager / coordinator** | — | this file | `master` | `C:\Users\Derrick\edg3` |
 
 If you don't know which you are, **stop and ask the user** before editing anything.
@@ -43,6 +46,7 @@ run from `C:\Users\Derrick\edg3`:
 ```powershell
 git worktree add ../edg3-core     -b core
 git worktree add ../edg3-security -b security
+git worktree add ../edg3-design   -b design
 ```
 
 Then point each desktop-app session at its own folder. After that, a lane only
@@ -65,10 +69,16 @@ Stay in your lane's files — this is what makes parallel work conflict-free.
 - `app/login/**`, `app/admin-login/**`, `app/signup/**`
 - Cross-cutting: rate limiting, encryption-at-rest, audit logging, idempotency, backups/durability
 
+**🎨 Design owns** — the design system + presentation:
+- `app/globals.css` — design tokens, component classes (`glass-card`, `btn-*`, `input`, `badge`, `orb`, etc.). The single source of visual truth; consolidate inline styles into here.
+- Visual/UX direction, layout, copy polish, and design specs across all pages.
+- `DESIGN.md` (the asset pack).
+
 **⚠️ Shared — coordinate before touching** (see §5):
 - `lib/db.ts` (schema — both lanes add tables/columns)
 - `app/api/vapi/tool-call/route.ts` and `lib/vapi.ts` — **Core owns the calendar tool *behavior*** (the `createEvent`/`moveEvent`/etc. handlers + the tool/system-prompt guidance); **Security owns the *auth/secret + webhook integrity*** of these same files.
-- `CLAUDE.md`, `AGENTS.md`, this `ROADMAP.md`, both lane roadmaps' structure
+- **Page UI files** (`app/dashboard/**`, `app/onboarding/**`, `app/login/**`, `app/signup/**`, `app/page.tsx`, etc.) — **Core owns behavior/data/logic; Design owns visual/layout/copy.** Claim in the Status Board before editing, prefer small diffs, merge frequently. (Tie-break: Core wins on logic, Design wins on look.)
+- `CLAUDE.md`, `AGENTS.md`, this `ROADMAP.md`, the lane roadmaps' structure
 - Anything not clearly in one lane above
 
 ## 4. Integration — small, frequent, direct merges
@@ -93,6 +103,7 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ `draftEmail` MERGED to master & green (61/61). Email feature is code-complete. Remaining = go-live config, not code: deploy + create the `draftEmail` Vapi tool + user re-consents Google.)_ | — | 2026-06-09 |
 | 🔒 Security | `security` | _(idle — Gmail primitive + encryption + backups all merged to master & green. Next: #2 Vapi secret.)_ | — | 2026-06-09 |
+| 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -104,6 +115,12 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Added a third lane: 🎨 Design** (UX/UI). New worktree `edg3-design`
+  / branch `design` / `ROADMAP-DESIGN.md` + asset pack `DESIGN.md`. Ownership: Design owns
+  `app/globals.css` (the design system); page UI files are **Shared** (Core owns behavior,
+  Design owns look — coordinate via Status Board). PM/CTO clarified as the product+technical
+  lead; a separate Chief of Staff agent owns founder focus. Shared filter = trusted/usable
+  launch by early September.
 - **2026-06-09** — **INCIDENT — all calls failing** with `anthropic-400-bad-request-
   validation-failed`. **TRUE root cause (found by replaying all 15 tools against the
   Anthropic API with the user's key):** the `moveEvent` Vapi tool had a parameter
