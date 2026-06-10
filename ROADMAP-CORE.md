@@ -9,6 +9,16 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **readCalendar response cap + prompt trim re-apply** (`tool-call/route.ts`,
+  `lib/vapi.ts`). Two latency-hardening changes in one commit:
+  - `readCalendar` now drops `status=cancelled` events (recurring-event expansions include them)
+    and hard-caps at **25 active events** with a `(Showing first 25 of N…)` trailer. Fixes the
+    late-call lag: each readCalendar call was growing the Vapi context by 50+ event lines; now
+    bounded. Security's idempotency guards (`claimEventCreate`, `confirmToken`) fully preserved.
+  - System prompt re-trimmed (~25% reduction) — Security's batch had reverted to the old verbose
+    version (their branch was behind Core's `942a497`). Re-applied the trim with Security's new
+    `confirmToken` delete-confirm language incorporated (model must pass back the server-issued
+    token, not `confirmed:true`). 117/117 tests, tsc clean, build clean.
 - **2026-06-10** — **Chief-of-Staff calendar API SHIPPED** (`app/api/admin/calendar/events/route.ts`,
   `lib/calendar.ts`). Two new admin endpoints guarded by `x-admin-secret`:
   - `GET /api/admin/calendar/events?email=...&days=7` — upcoming events for the next N days
