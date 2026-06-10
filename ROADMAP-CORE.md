@@ -130,6 +130,11 @@ priority from user feedback.
   - **Acceptance:** "Find flights to Hong Kong June 25 returning July 2" → Edge returns real fare options sourced from the API, timestamped, saved to a HK trip event. Re-running replaces stale quotes rather than stacking them.
   - **Effort:** ~2–4d.
 
+### Dashboard polish (from dogfooding 2026-06-10) — small, quick
+- [ ] **Re-link flow shouldn't route through onboarding.** After re-linking Google (calendar/Gmail), the OAuth callback (`app/api/calendar/callback`) redirects to `/onboarding?step=priorities`; an already-onboarded user sees the "top 3 priorities" screen flash then bounces to the dashboard — confusing (looks like being logged out). **Fix:** for an already-onboarded user, the callback should return to the **dashboard** with a simple "Google calendar/Gmail linked ✓" confirmation (toast/banner), not the onboarding flow. (This is the root of the earlier "signing in/out" report — `session=1` the whole time; it was just this redirect.)
+- [ ] **Profile page: "Your Profile" section is too long** — user has to scroll far past it. Make it **collapsible** (collapsed by default) or condense/summarize with an expand, so the rest of the page is reachable.
+- [ ] **"Next call" section: the Undo button is unclear** — its purpose isn't obvious and it's not very usable. Decide: remove it, or make it meaningful (e.g. fold into the planned "Recent activity" surface so undo is per-action and labeled "Undo: <what Edge did>"). Likely **remove the standalone button** and let undo live in Recent activity.
+
 ### Later / candidates (not yet committed)
 - [ ] Onboarding: smoother first-run (connect calendar → first briefing) flow.
 - [ ] Briefing: richer briefing content / personalization controls.
