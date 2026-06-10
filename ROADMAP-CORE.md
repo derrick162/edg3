@@ -107,14 +107,15 @@ priority from user feedback.
   - **Trust/privacy:** only threads Edge started; never read other mail; summaries derived solely from those threads.
   - **Acceptance:** after the user sends a drafted email and a reply arrives, the next briefing surfaces "X replied — [summary] — want me to [action]?" and Edge can act on a yes.
   - **Coordination:** Shared `lib/db.ts` (watched_threads) + `lib/briefing.ts`; rides on Security's read scope. Effort ~3–4d after scope. User must re-approve Google (read permission) — same flow as the draft scope.
-- [ ] **Notifications v1: actionable SMS for outreach replies** — _PM scope 2026-06-10 (defaults; user may revise). Makes reply-tracking timely instead of once-a-day._
-  - **PM-default decisions (user didn't lock; revisit):** channel = **SMS** (reuse existing Twilio reminder-text path); **act-on-it = tap a link to the dashboard** to confirm the suggested action (no inbound-SMS parsing in v1); **trigger = outreach replies only** to start.
-  - **Build:**
-    - 🔒 Security/infra: a scheduler poll (~hourly) that runs reply-detection per active user (reuse `checkOutreachReplies`); a **guarded, rate-limited SMS-send helper** (reuse Twilio); **quiet hours** + per-user daily cap (anti-spam, cost control).
-    - 🛠️ Core: notifications **on/off + quiet-hours setting** (dashboard); SMS message composition ("Edge: Wilmec replied — can come Thu 2pm. Tap to book: <link>"); the dashboard **confirm-action** surface (one tap → `createEvent`, mark thread handled).
-  - **Dedup:** notify once per reply (reuse the `last_seen` marker + a `notified` flag on watched_threads).
-  - **Costs/guardrails:** SMS costs per message → high-signal only, daily cap, quiet hours. Confirm Twilio creds/cost.
-  - **Dependency:** reply-tracking (✅ shipped). Effort ~3–4d.
+- [ ] **Notifications v1: in-app notification center (web)** — _PM scope 2026-06-10, user pivot (SMS deferred — Twilio access pending). Makes reply-tracking timely with no SMS cost/dependency._
+  - **Decisions:** channel = **in-app notification center** in the dashboard (bell icon + unread badge + panel); **trigger = outreach replies only** to start; **act = one tap in the panel** (e.g. "Book Thursday 2pm" → `createEvent`, mark thread handled). No SMS/Twilio in v1.
+  - **Build (mostly Core):**
+    - New `notifications` table (id, user_id, type, title, body, action-payload, read, created_at) — Shared `lib/db.ts`.
+    - Reply-detection (`checkOutreachReplies`) creates a notification per new actionable reply (dedupe via watched_threads `last_seen` + a `notified` flag). Runs at briefing time (already) + on dashboard load + a light poll while the dashboard is open → near-real-time without SMS.
+    - Notification center UI: bell + unread count, panel listing items, per-item **action button** (one tap → book/confirm) + **mark read / dismiss**.
+  - **No SMS infra needed** — defers the Twilio dependency entirely; simpler (no quiet-hours/cost guardrails for in-app).
+  - **Future:** browser **web push** (alerts even when the app is closed) and **SMS** once Twilio access lands — both reuse the same notification records, so v1 is the foundation.
+  - **Dependency:** reply-tracking (✅ shipped). Effort ~2–3d.
 - [ ] **★ TOP PRIORITY: Email drafting — outreach with calendar availability (draft-only Gmail)** — _PM decision 2026-06-09, user request._ **✅ SHIPPED & working end-to-end 2026-06-09 (after fixing moveEvent trailing-space key + setting the draftEmail tool server URL). Left here for reference; superseded by the reply-tracking ticket above.**
   - **Goal:** After research (e.g. plumbers), Edge drafts a personalized outreach email per contact asking their availability this week and **proposing the user's real open calendar slots**, saved as a **Gmail draft** for the user to review + send. Draft-only — Edge NEVER sends.
   - **Depends on 🔒 Security:** the Gmail OAuth scope + a safe draft-create helper (see `ROADMAP-SECURITY.md` "Gmail access"). Gate on that landing first.
