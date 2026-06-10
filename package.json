@@ -8,7 +8,8 @@
     "start": "next start -p ${PORT:-3000}",
     "lint": "eslint",
     "test": "vitest run",
-    "check:vapi": "node scripts/check-vapi-tools.mjs"
+    "check:vapi": "node scripts/check-vapi-tools.mjs",
+    "preflight": "tsc --noEmit && vitest run && next build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

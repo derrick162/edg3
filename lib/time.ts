@@ -115,3 +115,27 @@ export function rruleUntilUtc(endDate: string, timeZone: string): string {
   return wallTimeToUtc(`${endDate}T23:59:59`, timeZone)
     .toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
+
+/**
+ * Compute the ISO 8601 local start/end strings for a booked calendar event.
+ * `date` is YYYY-MM-DD, `time` is HH:MM (24h), `durationMins` is a positive
+ * integer (defaults to 30 if ≤ 0). The end time is clamped to 23:59 so it
+ * always stays within the same calendar day (near-midnight edge case).
+ * Returns bare local datetimes — append a timezone when passing to the
+ * Google Calendar API.
+ */
+export function bookEventTimes(
+  date: string,
+  time: string,
+  durationMins: number,
+): { start: string; end: string } {
+  const [h, m] = time.split(':').map(Number);
+  const dur = durationMins > 0 ? durationMins : 30;
+  const endMin = Math.min(h * 60 + m + dur, 1439);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    start: `${date}T${time}:00`,
+    end: `${date}T${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}:00`,
+  };
+}
+

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emailableRecipients, formatSlotsForEmail, buildOutreachBody } from './outreach';
+import { emailableRecipients, formatSlotsForEmail, buildOutreachBody, recipientsFromNotes } from './outreach';
 
 describe('emailableRecipients', () => {
   it('keeps valid emails and skips missing / "not found"', () => {
@@ -39,6 +39,62 @@ describe('formatSlotsForEmail', () => {
     expect(formatSlotsForEmail('No open blocks of at least 30 minutes between 2026-06-09 and 2026-06-13 (within 8am–8pm).')).toEqual([]);
     expect(formatSlotsForEmail('I need a valid start and end date to check availability.')).toEqual([]);
     expect(formatSlotsForEmail('')).toEqual([]);
+  });
+});
+
+describe('recipientsFromNotes', () => {
+  const RESEARCH_BLOCK = `
+Acme Plumbing
+Phone: 604-555-0100
+Email: fix@acmeplumbing.com
+Website: acmeplumbing.com
+
+Bob's Pipes
+Email: not found
+Phone: 604-555-0200
+
+City Drains Ltd
+Email: hello@citydrains.ca
+`.trim();
+
+  it('extracts contacts with valid emails, skipping "not found" entries', () => {
+    const result = recipientsFromNotes(RESEARCH_BLOCK);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ name: 'Acme Plumbing', email: 'fix@acmeplumbing.com' });
+    expect(result[1]).toEqual({ name: 'City Drains Ltd', email: 'hello@citydrains.ca' });
+  });
+
+  it('deduplicates emails (case-insensitive)', () => {
+    const notes = `
+Alpha
+Email: a@test.com
+
+Alpha duplicate
+Email: A@TEST.COM
+`.trim();
+    expect(recipientsFromNotes(notes)).toHaveLength(1);
+  });
+
+  it('strips the Edge research delimiter lines before parsing', () => {
+    const withDelimiters = `--- Edge research (latest) ---\n${RESEARCH_BLOCK}\n--- end Edge research ---`;
+    const result = recipientsFromNotes(withDelimiters);
+    expect(result).toHaveLength(2);
+  });
+
+  it('returns [] for empty / no-email notes', () => {
+    expect(recipientsFromNotes('')).toEqual([]);
+    expect(recipientsFromNotes('Some notes with no email lines here.')).toEqual([]);
+  });
+
+  it('uses the first non-label line in the block as the contact name', () => {
+    const notes = `
+Website: widgetco.com
+Widget Co Inc
+Email: info@widgetco.com
+`.trim();
+    // "Website: ..." is a label line, so "Widget Co Inc" should be picked as the name
+    const result = recipientsFromNotes(notes);
+    expect(result[0].name).toBe('Widget Co Inc');
   });
 });
 

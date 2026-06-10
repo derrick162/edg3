@@ -101,8 +101,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Recent Activity tab SHIPPED** & green (61/61): per-row undo feed in dashboard. `lib/db.ts` claim released. Ready for master merge.)_ | — | 2026-06-10 |
-| 🔒 Security | `security` | ✅ **#3 Idempotency DONE** — `lib/idempotency.ts` + `event_dedupe_keys` table guards all 3 voice creation tools + web "Book it". 71/71 green, tsc clean, ready to merge. Released claim on `tool-call/route.ts`. Next: #2 Vapi secret enforce. | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ Test hardening DONE & green (80/80, +19 new tests). `recipientsFromNotes` extracted to outreach.ts; `bookEventTimes` extracted to time.ts + book route updated. Replies, outreach, book-it all covered. Route.ts NOT touched (Security collision). Ready for master merge.)_ | — | 2026-06-10 |
+| 🔒 Security | `security` | 🔨 **#9 Hard delete-confirm** — server-issued one-time confirm token so model can't self-confirm destructive deletes. **CLAIMED: `app/api/vapi/tool-call/route.ts`** (still held from #3, same session). | `lib/db.ts`, `app/api/vapi/tool-call/route.ts` ⚠️ | 2026-06-10 |
 | 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**

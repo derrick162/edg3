@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { createCalendarEvent } from '@/lib/calendar';
 import { notificationQueries } from '@/lib/db';
+import { bookEventTimes } from '@/lib/time';
 import { claimEventCreate, buildEventDedupeKey } from '@/lib/idempotency';
 
 // Create a calendar event from the web (used by the notification "Book it" quick-form).
@@ -22,12 +23,8 @@ export async function POST(req: NextRequest) {
   if (!/^\d{2}:\d{2}$/.test(time)) return NextResponse.json({ error: 'A valid time is required.' }, { status: 400 });
 
   const tz = user.timezone || 'America/New_York';
-  const [h, m] = time.split(':').map(Number);
   const dur = Number(body.durationMins) > 0 ? Number(body.durationMins) : 30;
-  const endMin = Math.min(h * 60 + m + dur, 1439); // clamp to same day (near-midnight edge case)
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const start = `${date}T${time}:00`;
-  const end = `${date}T${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}:00`;
+  const { start, end } = bookEventTimes(date, time, dur);
 
   // Idempotency guard — absorbs double-taps on "Book it" within the 5-min TTL window.
   // Returns success immediately (the event from the first tap already exists on the calendar).
