@@ -1,0 +1,86 @@
+/**
+ * IP-based rate limiting for EDG3 auth + admin endpoints (#8).
+ *
+ * Uses a fixed-window counter backed by SQLite (consistent with the existing
+ * architecture, no Redis dependency). The window resets after `windowMs`; requests
+ * beyond the limit receive a 429 with a Retry-After header.
+ *
+ * Limits (chosen to accommodate real users while blocking abuse):
+ *   login       — 10 per 15 min per IP  (brute-force protection)
+ *   signup      — 5  per 60 min per IP  (spam/scraper prevention)
+ *   trigger-call — 3  per  5 min per IP  (admin endpoint; costly Vapi call)
+ *
+ * The NextRequest helper extracts the real client IP from Railway's proxy headers.
+ */
+
+import { type NextRequest, NextResponse } from 'next/server';
+import { rateLimitQueries } from './db';
+
+// ── Limits ────────────────────────────────────────────────────────────────────
+
+export const LIMITS = {
+  login:        { limit: 10, windowMs: 15 * 60 * 1000 },  // 10 / 15 min
+  signup:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5 / hour
+  triggerCall:  { limit: 3,  windowMs:  5 * 60 * 1000 },  // 3 / 5 min
+} as const;
+
+export type RateLimitKey = keyof typeof LIMITS;
+
+// ── IP extraction ─────────────────────────────────────────────────────────────
+
+/**
+ * Extract the real client IP from Railway's proxy headers. Falls back to
+ * 'unknown' when headers are absent (local dev without a proxy).
+ */
+export function getClientIP(req: NextRequest): string {
+  return (
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
+// ── Core check ────────────────────────────────────────────────────────────────
+
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number;  // epoch ms
+}
+
+/**
+ * Check + increment the rate-limit counter for a given type + IP.
+ * Fails open (returns allowed: true) on any DB fault so a transient error
+ * never locks out a legitimate user.
+ */
+export function checkRateLimit(type: RateLimitKey, ip: string): RateLimitResult {
+  try {
+    const { limit, windowMs } = LIMITS[type];
+    const key = `${type}:${ip}`;
+    const result = rateLimitQueries.check(key, limit, windowMs, Date.now());
+    return { allowed: result.allowed, remaining: result.remaining, resetAt: result.resetAt };
+  } catch {
+    // Fail open — never block a real user because of a rate-limit DB fault.
+    return { allowed: true, remaining: 1, resetAt: Date.now() + 60_000 };
+  }
+}
+
+// ── NextResponse helper ───────────────────────────────────────────────────────
+
+/**
+ * Build a 429 Too Many Requests response with standard rate-limit headers.
+ * The Retry-After header tells the client how many seconds to wait.
+ */
+export function rateLimitResponse(resetAt: number): NextResponse {
+  const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+  return NextResponse.json(
+    { error: 'Too many requests — please slow down and try again shortly.' },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': String(retryAfterSeconds),
+        'X-RateLimit-Reset': String(Math.ceil(resetAt / 1000)),
+      },
+    }
+  );
+}

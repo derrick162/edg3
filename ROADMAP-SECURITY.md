@@ -8,6 +8,14 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#8 Rate limiting** on auth + admin endpoints. New
+  `lib/rateLimit.ts`: `checkRateLimit(type, ip)` (fixed-window counter via
+  `rate_limits` SQLite table, atomic transaction, fails open on fault),
+  `getClientIP()` (prefers `x-forwarded-for` for Railway proxy), `rateLimitResponse()`
+  (429 + `Retry-After` / `X-RateLimit-Reset` headers). Limits: `login` 10/15min,
+  `signup` 5/hr, `triggerCall` 3/5min. Wired into `auth/login`, `auth/signup`,
+  `admin/trigger-call`. `rate_limits` table + `rateLimitQueries.check()` in db.ts.
+  12 new tests; preflight green (117/117, tsc, next build).
 - **2026-06-10** — Shipped **#5 off-box durability (Litestream)**. `litestream.yml`:
   S3-compatible replication (72h WAL retention, 6h full snapshots, 1s sync interval,
   configurable endpoint for B2/R2/MinIO). `scripts/start.sh`: conditional wrapper —
@@ -97,7 +105,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 | H1 | Token encryption | ✅ Done (`80b4d30`) — `calendar_tokens` encrypted at rest (AES-256-GCM via `lib/crypto.ts`); transparent legacy read. _Ops: set `DATA_ENCRYPTION_KEY` on Railway to activate._ |
 | H2 | Action audit log | ⚠️ Partial — `tool_actions` JSON exists but mutable, capped 50, no before/after snapshots. |
 | H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
-| H4 | Rate limiting | ❌ Absent on all endpoints. |
+| H4 | Rate limiting | ✅ Done (#8) — `lib/rateLimit.ts` + `rate_limits` table. Fixed-window counters: login 10/15min, signup 5/hr, trigger-call 3/5min. Fails open on DB fault. |
 | H5 | Backups / PITR | ✅ Fully code-complete — on-volume snapshots (`80b4d30`) + off-box Litestream (`litestream.yml`, `scripts/start.sh`). `verifyBackup()` for restore drills. ⚠️ Ops: set S3 env vars on Railway + run restore drill (see #5 in 30-Day plan). |
 | H6 | Destructive confirmation | ✅ Done + hardened (#9) — server-issued one-time `confirmToken` closes model self-confirmation hole. Model must present a server-issued token; `confirmed=true` shortcut removed. |
 | M4 | Timezone/recurring | ✅ Mostly handled — IANA passed + validated everywhere. |
@@ -141,7 +149,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
   - 🤝 **Backbone for Core's "Recent activity" surface** (`ROADMAP-CORE.md`, Next): this append-only table is the data source Core's dashboard feed reads. Build the table + snapshots here; Core builds the UI on top.
 
 ### Week 4 — Abuse + correctness hardening
-- [ ] **8. Rate-limit** auth/signup, admin trigger-call, per-user mutations/min ceiling. _1–2d_
+- [x] **8. Rate-limit** auth/signup + admin trigger-call. `lib/rateLimit.ts`: `checkRateLimit(type, ip)` + `rateLimitResponse()`. `rate_limits` SQLite table (fixed-window, self-expiring, atomic transaction). Wired: login (10/15min), signup (5/hr), trigger-call (3/5min). 12 tests. preflight green.
 - [x] **9. Hard delete-confirm** — server-issued one-time `confirmToken` replaces `confirmed=true`; model must present the server's token. `delete_confirm_tokens` table (2-min TTL, single-use, consume is a transaction). System prompt updated. ⚠️ Ops: add `confirmToken: string` to the `deleteEvent` Vapi tool schema in the dashboard and remove `confirmed`. _½d_
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 

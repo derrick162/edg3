@@ -142,6 +142,15 @@ function initSchema(db: Database.Database) {
       created_at INTEGER NOT NULL
     );
 
+    -- IP-based rate limiting (#8). Fixed-window counters keyed by "{type}:{identifier}".
+    -- Rows are self-expiring (expires_at checked on each access) and pruned opportunistically.
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      window_start INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
     -- Short-TTL dedupe keys for event-creation idempotency (#3). Rows expire after 5 min.
     -- The composite PRIMARY KEY enables an atomic INSERT OR IGNORE + changes-check pattern
     -- (no separate SELECT → no TOCTOU race even under concurrent calls).
@@ -499,6 +508,40 @@ export const eventDedupeQueries = {
         'INSERT OR IGNORE INTO event_dedupe_keys (user_id, dedupe_key, expires_at) VALUES (?, ?, ?)'
       ).run(userId, key, nowMs + ttlMs);
       return result.changes === 1; // 1 = new key (proceed), 0 = duplicate (skip)
+    })();
+  },
+};
+
+// IP-based rate limiting queries (#8). Atomic fixed-window counter via a transaction.
+export const rateLimitQueries = {
+  /**
+   * Increment the counter for `key` within a fixed window. Returns:
+   *   { allowed: true, count, remaining, resetAt }  — under the limit
+   *   { allowed: false, count, remaining: 0, resetAt } — over the limit (do NOT increment further)
+   */
+  check: (key: string, limit: number, windowMs: number, nowMs: number): { allowed: boolean; count: number; remaining: number; resetAt: number } => {
+    const db = getDb();
+    return db.transaction(() => {
+      const existing = db.prepare(
+        'SELECT count, window_start, expires_at FROM rate_limits WHERE key = ?'
+      ).get(key) as { count: number; window_start: number; expires_at: number } | undefined;
+
+      // Fresh window (no row, or previous window expired).
+      if (!existing || existing.expires_at <= nowMs) {
+        const resetAt = nowMs + windowMs;
+        db.prepare('INSERT OR REPLACE INTO rate_limits (key, count, window_start, expires_at) VALUES (?, 1, ?, ?)').run(key, nowMs, resetAt);
+        // Prune expired rows once per insert to keep the table lean (best-effort).
+        db.prepare('DELETE FROM rate_limits WHERE expires_at <= ? AND key != ?').run(nowMs, key);
+        return { allowed: true, count: 1, remaining: limit - 1, resetAt };
+      }
+
+      // Existing active window — check before incrementing.
+      if (existing.count >= limit) {
+        return { allowed: false, count: existing.count, remaining: 0, resetAt: existing.expires_at };
+      }
+      const newCount = existing.count + 1;
+      db.prepare('UPDATE rate_limits SET count = ? WHERE key = ?').run(newCount, key);
+      return { allowed: true, count: newCount, remaining: limit - newCount, resetAt: existing.expires_at };
     })();
   },
 };
