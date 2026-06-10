@@ -8,6 +8,16 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — **Gmail READ access code-complete** (was already implemented;
+  added missing test coverage). `readThread(userId, threadId)` in `lib/gmail.ts` with
+  `hasGmailReadScope` scope gate, `GMAIL_READONLY_SCOPE` in `lib/google-auth.ts`,
+  `GOOGLE_SCOPES` includes both compose + readonly. `watched_threads` table +
+  `watchedThreadQueries` in `lib/db.ts`. 10 new tests for `readThread` +
+  `hasGmailReadScope` + snippet-fallback behavior. 160/160 green.
+  ⚠️ **Prod landmine:** `gmail.readonly` is a Google *restricted* scope → needs
+  Google app verification + CASA before prod rollout. Same queue as `gmail.compose`.
+  🤝 **For Core:** `readThread(userId, threadId)` is the guarded primitive. Import from
+  `@/lib/gmail`. Pass only `threadId`s from `watched_threads` (threads Edge created).
 - **2026-06-10** — Shipped **#7 Harden audit log**. New append-only `audit_log` table
   in `lib/db.ts` (no row cap — unlike `briefings.tool_actions` which was capped at 50;
   90-day retention with ~1% prune on each insert). Columns: `user_id`, `briefing_id`
@@ -181,7 +191,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 - [x] **10. Harden admin auth** — new `lib/adminAuth.ts`: HMAC-derived cookie token (never stores raw password), `timingSafeEqual` throughout, all 11 admin routes migrated to shared utility, admin login rate-limited. 15 tests.
 
 ### Incoming from PM (coordinate with Core)
-- [ ] **★ TOP PRIORITY (2026-06-10): Gmail READ access for reply tracking (scope + guarded thread read)** — _gates Core's email-reply tracking feature (`ROADMAP-CORE.md`)._
+- [x] **★ TOP PRIORITY (2026-06-10): Gmail READ access for reply tracking (scope + guarded thread read)** — _gates Core's email-reply tracking feature (`ROADMAP-CORE.md`)._
   - **Scope:** add `gmail.readonly` to the OAuth scopes (alongside the existing `gmail.compose`) in `lib/google-auth.ts`. Re-consent flow: detect the missing read scope (extend `missingRequiredScopes`) and prompt re-auth. ⚠️ `gmail.readonly` is **broad** (reads all mail) — there is no "only my threads" Gmail scope, so the **privacy guardrail is in our code**: Core only ever passes `threadId`s that Edge itself created. State this clearly in the consent/settings copy.
   - **Guarded primitive Core calls:** `readThread(userId, threadId)` in `lib/gmail.ts` → returns that thread's messages (from, date, snippet/body), **read-only**. Same OAuth client/token; add audit logging + a per-user rate limit; never expose a broad inbox-list call to Core.
   - **Extend `createDraft`** to also return `threadId` (currently `{draftId, messageId}`) so Core can register the watched thread.

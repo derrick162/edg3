@@ -6,6 +6,7 @@ import {
   CALENDAR_SCOPES,
   parseScopes,
   hasGmailScope,
+  hasGmailReadScope,
   missingRequiredScopes,
 } from './google-auth';
 
@@ -37,5 +38,20 @@ describe('google-auth scope helpers', () => {
     expect(missingRequiredScopes(CAL_ONLY)).toEqual([GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE]);
     expect(missingRequiredScopes(CAL_PLUS_GMAIL)).toEqual([]);
     expect(missingRequiredScopes(null)).toEqual(GOOGLE_SCOPES);
+  });
+
+  it('includes gmail.readonly in the requested scope set', () => {
+    expect(GOOGLE_SCOPES).toContain(GMAIL_READONLY_SCOPE);
+  });
+
+  it('hasGmailReadScope is false without the readonly scope', () => {
+    expect(hasGmailReadScope(CAL_ONLY)).toBe(false);
+    expect(hasGmailReadScope(CALENDAR_SCOPES.join(' ') + ' ' + GMAIL_COMPOSE_SCOPE)).toBe(false);
+    expect(hasGmailReadScope(null)).toBe(false);
+  });
+
+  it('hasGmailReadScope is true once gmail.readonly is granted', () => {
+    expect(hasGmailReadScope(CAL_PLUS_GMAIL)).toBe(true);
+    expect(hasGmailReadScope(GMAIL_READONLY_SCOPE)).toBe(true);
   });
 });
