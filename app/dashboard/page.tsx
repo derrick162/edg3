@@ -709,7 +709,7 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [generatingBriefing, setGeneratingBriefing] = useState(false);
+
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
@@ -833,17 +833,6 @@ export default function Dashboard() {
     // Keep modal open in "calling" state — user dismisses after call ends
   }
 
-  async function generateBriefing() {
-    setGeneratingBriefing(true);
-    setBriefingText('');
-    const res = await fetch('/api/briefing/generate', { method: 'POST' });
-    const data = await res.json();
-    setGeneratingBriefing(false);
-    if (res.ok) {
-      setBriefingText(data.content);
-      loadData();
-    }
-  }
 
   async function initiateCall() {
     setInitiatingCall(true);
