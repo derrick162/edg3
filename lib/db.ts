@@ -152,6 +152,17 @@ function initSchema(db: Database.Database) {
       PRIMARY KEY (user_id, dedupe_key)
     );
 
+    -- Vapi webhook/tool-call auth events (#2 telemetry). Only mismatches are recorded —
+    -- accepted calls are not logged (high-volume). Used to verify Vapi sends the right
+    -- secret during the 24h fail-open window before VAPI_SECRET_ENFORCE is flipped on.
+    -- Capped at 1000 rows; pruned on each insert to stay lean.
+    CREATE TABLE IF NOT EXISTS vapi_auth_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      endpoint TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
     -- One-time server-issued tokens for hard delete-confirmation (#9). The model must
     -- present a token it received from the server — it cannot mint one itself — closing
     -- the self-confirmation hole. Rows are purged opportunistically on each issue() call.
@@ -489,6 +500,32 @@ export const eventDedupeQueries = {
       ).run(userId, key, nowMs + ttlMs);
       return result.changes === 1; // 1 = new key (proceed), 0 = duplicate (skip)
     })();
+  },
+};
+
+// Vapi auth event log (#2 telemetry). Only logs mismatches — not every accepted call.
+// record() is fire-and-forget; never throw so it never disrupts the auth path.
+export const vapiAuthLogQueries = {
+  record: (endpoint: string, status: string): void => {
+    try {
+      const db = getDb();
+      db.prepare('INSERT INTO vapi_auth_log (endpoint, status, created_at) VALUES (?, ?, ?)').run(endpoint, status, Date.now());
+      // Keep the table lean — prune oldest rows beyond 1000.
+      db.prepare('DELETE FROM vapi_auth_log WHERE id NOT IN (SELECT id FROM vapi_auth_log ORDER BY id DESC LIMIT 1000)').run();
+    } catch { /* never let telemetry fault disrupt the auth path */ }
+  },
+  // Recent events for the admin monitoring endpoint.
+  recent: (limit = 50): { id: number; endpoint: string; status: string; created_at: number }[] => {
+    return getDb().prepare(
+      'SELECT id, endpoint, status, created_at FROM vapi_auth_log ORDER BY id DESC LIMIT ?'
+    ).all(limit) as { id: number; endpoint: string; status: string; created_at: number }[];
+  },
+  // Count of mismatch-allowed events since sinceMs — drives the admin dashboard summary.
+  mismatchCount: (sinceMs: number): number => {
+    const row = getDb().prepare(
+      "SELECT COUNT(*) AS n FROM vapi_auth_log WHERE status = 'mismatch-allowed' AND created_at >= ?"
+    ).get(sinceMs) as { n: number };
+    return row.n;
   },
 };
 

@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ Test hardening DONE & green (80/80, +19 new tests). `recipientsFromNotes` extracted to outreach.ts; `bookEventTimes` extracted to time.ts + book route updated. Replies, outreach, book-it all covered. Route.ts NOT touched (Security collision). Ready for master merge.)_ | — | 2026-06-10 |
-| 🔒 Security | `security` | ✅ **#3 Idempotency + #9 Hard delete-confirm DONE** — both shipped, preflight green (95/95, tsc, next build). `tool-call/route.ts` claim **RELEASED** — Core free to merge. Next: #2 Vapi secret. | — | 2026-06-10 |
+| 🔒 Security | `security` | 🔨 **#5 off-box backup + restore drill** — Litestream replication config + restore verification. Starting now. | `lib/backup.ts`, `app/api/admin/backup/route.ts` | 2026-06-10 |
 | 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**

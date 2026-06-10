@@ -4,7 +4,7 @@ import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@
 import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
-import { effectiveTimezone } from '@/lib/db';
+import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
@@ -712,7 +712,10 @@ function extractToolCalls(message: Record<string, unknown>): { calls: ParsedTool
 export async function POST(req: NextRequest) {
   try {
     const sec = checkVapiSecret(req.headers.get('x-vapi-secret'));
-    if (sec.status !== 'accepted') console.warn(`[tool-call] Vapi secret ${sec.status}`);
+    if (sec.status !== 'accepted') {
+      console.warn(`[tool-call] Vapi secret ${sec.status}`);
+      vapiAuthLogQueries.record('tool-call', sec.status); // persist mismatches for admin monitoring
+    }
     if (!sec.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const body = await req.json();

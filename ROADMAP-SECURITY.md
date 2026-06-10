@@ -8,6 +8,17 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#2 Vapi secret enforcement (code side)**. The two-stage
+  gate (`checkVapiSecret`) was already implemented; added observability to make the
+  24h fail-open window actionable. New `vapi_auth_log` table + `vapiAuthLogQueries`
+  persist every mismatch event (accepted calls not logged — low noise). New admin
+  endpoint `/api/admin/vapi-secret`: returns `enforceMode`, `secretSet`,
+  `mismatches24h` (24h window), `readyToEnforce` flag, and last 50 events. Wired into
+  both `webhook` and `tool-call` routes. New `lib/vapi.test.ts` (10 tests for all 4
+  `checkVapiSecret` states). preflight green (105/105, tsc, next build).
+  ⚠️ **Ops follow-up:** set `VAPI_SERVER_SECRET` on Railway → monitor
+  `/api/admin/vapi-secret` for 24h (confirm `readyToEnforce: true`) → set
+  `VAPI_SECRET_ENFORCE=true` → redeploy.
 - **2026-06-10** — Shipped **#9 Hard delete-confirmation** (server-issued one-time token).
   Replaces the `confirmed=true` boolean (which the model could self-set) with a
   `confirmToken` that the server generates and the model must present back verbatim.
@@ -69,7 +80,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 ## Verified status of prior audit findings
 | ID | Item | Verified state |
 |----|------|----------------|
-| C1 | Vapi webhook auth | ⚠️ Built but **fail-open** — `checkVapiSecret` accepts mismatches unless `VAPI_SECRET_ENFORCE=true`. See `lib/vapi.ts:36`. |
+| C1 | Vapi webhook auth | ✅ Code done (#2) — `checkVapiSecret` two-stage rollout: fail-open with persisted mismatch log (Stage A), then `VAPI_SECRET_ENFORCE=true` to reject (Stage B). Admin endpoint `/api/admin/vapi-secret` shows 24h mismatch count + `readyToEnforce` flag. ⚠️ **Ops:** set `VAPI_SERVER_SECRET` on Railway, watch mismatches24h for 24h, then set `VAPI_SECRET_ENFORCE=true`. |
 | C2 | Unauthorized/cross-user mutation | ✅ Mitigated — user is bound server-side via `call.id → briefing.user_id`. Model can't pick the user. |
 | C3 | Idempotency on writes | ✅ Done — `lib/idempotency.ts` `claimEventCreate` + 5-min `event_dedupe_keys` table. Guards `createEvent` (timed + all-day), `createRecurringEvent`, `copyDayEvents` (voice) and `book/route.ts` (web "Book it"). Fails open so DB fault never blocks a real write. |
 | H1 | Token encryption | ✅ Done (`80b4d30`) — `calendar_tokens` encrypted at rest (AES-256-GCM via `lib/crypto.ts`); transparent legacy read. _Ops: set `DATA_ENCRYPTION_KEY` on Railway to activate._ |
@@ -89,7 +100,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 
 ### Week 1 — Defuse landmines (cheap, catastrophic if left)
 - [x] **1. Remove JWT fallback** → code fails closed (throws if `JWT_SECRET` unset). _Ops follow-up: rotate the secret on Railway._ _½d_
-- [ ] **2. Enforce Vapi secret** — confirm Vapi sends `x-vapi-secret`, then set `VAPI_SECRET_ENFORCE=true` (keep fail-open log 24h first). _½d_
+- [x] **2. Enforce Vapi secret** — code-side two-stage gate already implemented + now observable. Added persisted `vapi_auth_log` table + `vapiAuthLogQueries` + admin endpoint `/api/admin/vapi-secret` (shows `secretSet`, `enforceMode`, `mismatches24h`, `readyToEnforce`). 10 unit tests for `checkVapiSecret`. ⚠️ **Ops (still needed):** (1) set `VAPI_SERVER_SECRET` on Railway to match the Vapi dashboard secret, (2) watch `/api/admin/vapi-secret` for 24h — confirm `mismatches24h=0`, (3) set `VAPI_SECRET_ENFORCE=true` on Railway + redeploy.
 - [x] **3. Idempotency** on `createEvent` / `createRecurringEvent` / `copyDayEvents` — 5-min TTL dedupe key per (user, normalized-title, start-minute). Guards both voice (tool-call) and web (book/route.ts) creation paths. Additive — fails open. _1d_
 
 ### Week 2 — Protect data at rest
