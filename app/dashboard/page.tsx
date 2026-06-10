@@ -626,34 +626,23 @@ export default function Dashboard() {
   const [notifChecking, setNotifChecking] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [meRes, briefingsRes, prioritiesRes, memoriesRes, tasksRes, calendarRes, reminderRes, undoRes] = await Promise.all([
-      fetch('/api/auth/me'),
-      fetch('/api/briefing/history'),
-      fetch('/api/onboarding/priorities'),
-      fetch('/api/memory'),
-      fetch('/api/tasks'),
-      fetch('/api/calendar/status'),
-      fetch('/api/calendar/reminder'),
-      fetch('/api/undo'),
-    ]);
-
+    // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
+    // immediately — then load everything else in the background. Previously the spinner
+    // waited for ALL calls including the live Google Calendar checks (status/reminder),
+    // which made the whole dashboard feel slow.
+    const meRes = await fetch('/api/auth/me');
     if (!meRes.ok) { router.push('/login'); return; }
+    setUser(await meRes.json());
 
-    const [me, br, pr, mem, tk, cal, rem, undo] = await Promise.all([
-      meRes.json(), briefingsRes.json(), prioritiesRes.json(), memoriesRes.json(), tasksRes.json(),
-      calendarRes.ok ? calendarRes.json() : Promise.resolve({ connected: false }),
-      reminderRes.ok ? reminderRes.json() : Promise.resolve({ exists: false }),
-      undoRes.ok ? undoRes.json() : Promise.resolve({ available: false, label: null }),
-    ]);
-
-    setUser(me);
-    setBriefings(br.briefings || []);
-    setPriorities(pr.priorities || []);
-    setMemories(mem.memories || []);
-    setTasks(tk.tasks || []);
-    setCalendarConnected(!!cal.connected);
-    setReminderInCalendar(!!rem.exists);
-    setUndoLabel(undo.available ? undo.label : null);
+    // Background loads — each section fills in as its data arrives; none blocks render.
+    fetch('/api/briefing/history').then(r => r.ok ? r.json() : { briefings: [] }).then(d => setBriefings(d.briefings || [])).catch(() => {});
+    fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
+    fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [] }).then(d => setMemories(d.memories || [])).catch(() => {});
+    fetch('/api/tasks').then(r => r.ok ? r.json() : { tasks: [] }).then(d => setTasks(d.tasks || [])).catch(() => {});
+    fetch('/api/undo').then(r => r.ok ? r.json() : { available: false, label: null }).then(d => setUndoLabel(d.available ? d.label : null)).catch(() => {});
+    // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
+    fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
+    fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
   }, [router]);
 
   async function handleUndo() {
@@ -869,7 +858,7 @@ export default function Dashboard() {
             <span className="logo-text text-xl">EDG3</span>
           </div>
 
-          <nav className="flex-1 space-y-1">
+          <nav className="space-y-1">
             {[
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'tasks', label: 'Tasks', icon: '✓' },
@@ -893,7 +882,7 @@ export default function Dashboard() {
             ))}
           </nav>
 
-          <div className="mt-auto space-y-3">
+          <div className="mt-6 space-y-3">
             <div
               className="glass-card p-3 transition-all"
               style={showNextCallTip ? {
