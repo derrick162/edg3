@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ System-prompt trim SHIPPED (942a497): ~25% fewer tokens/call, honest-failure guardrail added. Caching finding documented: Vapi does not expose Anthropic cache_control. Ready for master merge.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ CoS calendar API SHIPPED (b4a7124): GET+POST /api/admin/calendar/events, 80/80, merged to master. Next: tool-result trim in tool-call/route.ts — gated on Security releasing it.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — Gmail primitive + encryption + backups all merged to master & green. Next: #2 Vapi secret.)_ | — | 2026-06-09 |
 | 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 
