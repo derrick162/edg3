@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         <div className="space-y-10">
           <div>
             <h1 className="text-4xl font-black mb-3">Privacy Policy</h1>
-            <p className="text-sm" style={{ color: '#4a4a5a' }}>Last updated: June 3, 2026</p>
+            <p className="text-sm" style={{ color: '#4a4a5a' }}>Last updated: June 10, 2026</p>
             <p className="text-sm mt-4 leading-relaxed" style={{ color: '#888899' }}>
               Edg3 ("we", "our", or "us") operates the Edg3 AI Chief of Staff service accessible at edg3.ai.
               This Privacy Policy explains how we collect, use, and protect your information.
@@ -42,7 +42,11 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: '#e8e8f0' }}>Google Calendar Data</p>
-                <p>If you connect Google Calendar, we request <strong style={{ color: '#e8e8f0' }}>read-only access</strong> to your calendar events. We use this data solely to surface scheduling information in your daily briefing. We never modify, delete, or share your calendar data. You can disconnect Google Calendar at any time from your dashboard.</p>
+                <p>If you connect Google Calendar, we request access to <strong style={{ color: '#e8e8f0' }}>read your calendar and to create, edit, move, and delete events</strong> on your behalf. We use this to surface your schedule in your briefings and to make the calendar changes you ask Edge to make (for example, booking, rescheduling, or cancelling events). Events Edge creates are marked, and Edge can undo its own changes. We do not share your calendar data. You can disconnect Google Calendar at any time from your dashboard.</p>
+              </div>
+              <div>
+                <p className="font-semibold mb-2" style={{ color: '#e8e8f0' }}>Google Gmail Data</p>
+                <p>If you grant Gmail access, we request permission to (a) <strong style={{ color: '#e8e8f0' }}>create email drafts</strong> on your behalf and (b) <strong style={{ color: '#e8e8f0' }}>read messages only within the specific email threads Edge started for you</strong>. Edge uses draft access to write outreach emails you asked for (e.g. contacting a service provider), and read access to recognize replies to those emails and surface them in your briefing. <strong style={{ color: '#e8e8f0' }}>Edge never sends email</strong> — it only creates drafts for you to review and send yourself. Edge only reads the threads it created for you; it does not read the rest of your mailbox. You can disconnect at any time from your dashboard.</p>
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: '#e8e8f0' }}>Call Transcripts &amp; Responses</p>
@@ -77,9 +81,9 @@ export default function PrivacyPage() {
           </section>
 
           <section className="glass-card p-8 space-y-4">
-            <h2 className="text-lg font-bold" style={{ color: '#818cf8' }}>3. Google Calendar — Limited Use Disclosure</h2>
+            <h2 className="text-lg font-bold" style={{ color: '#818cf8' }}>3. Google User Data — Limited Use Disclosure</h2>
             <p className="text-sm leading-relaxed" style={{ color: '#c8c8d8' }}>
-              Edg3's use of information received from Google APIs adheres to the{' '}
+              Edg3's use of information received from Google APIs (Google Calendar and Gmail) adheres to the{' '}
               <a href="https://developers.google.com/terms/api-services-user-data-policy"
                  target="_blank" rel="noopener noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>
                 Google API Services User Data Policy
@@ -88,11 +92,12 @@ export default function PrivacyPage() {
             </p>
             <ul className="space-y-2 text-sm" style={{ color: '#c8c8d8' }}>
               {[
-                'We only access Google Calendar data to provide the briefing service you requested',
-                'We do not use Google Calendar data for advertising',
-                'We do not allow humans to read your Google Calendar data except for security or legal compliance purposes',
-                'We do not transfer Google Calendar data to third parties except as necessary to provide the service',
-                'We do not use Google Calendar data for any purpose unrelated to your daily briefing',
+                'We only access your Google Calendar and Gmail data to provide the features you requested (your briefings, calendar changes you ask for, drafting outreach emails, and recognizing replies to those emails)',
+                'We do not use Google user data for advertising',
+                'We do not allow humans to read your Google Calendar or Gmail data except for security, to comply with the law, or with your explicit consent',
+                'We do not transfer Google user data to third parties except as necessary to provide the service or as required by law',
+                'We do not use Google user data for any purpose unrelated to the features you requested',
+                'For Gmail specifically: Edge creates drafts only (it never sends email) and reads only the email threads it created for you — never the rest of your mailbox',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: '#6366f1' }}>→</span>
@@ -155,8 +160,9 @@ export default function PrivacyPage() {
             <h2 className="text-lg font-bold" style={{ color: '#818cf8' }}>7. Security</h2>
             <p className="text-sm leading-relaxed" style={{ color: '#c8c8d8' }}>
               We use industry-standard security practices including encrypted connections (HTTPS), hashed passwords,
-              and access controls to protect your data. No method of transmission over the internet is 100% secure,
-              and we cannot guarantee absolute security.
+              encryption of sensitive data at rest (such as your connected-account access tokens and call transcripts,
+              using AES-256), and access controls to protect your data. No method of transmission over the internet is
+              100% secure, and we cannot guarantee absolute security.
             </p>
           </section>
 
