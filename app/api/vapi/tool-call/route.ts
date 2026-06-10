@@ -175,10 +175,16 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const { startDate, endDate } = args as { startDate: string; endDate: string };
     const rcMin = dayRangeUtc(tz, startDate).start.toISOString();
     const rcMax = dayRangeUtc(tz, endDate).end.toISOString();
-    const events: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
+    const allEvents: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
       cal.events.list({ calendarId: calId, timeMin: rcMin, timeMax: rcMax, singleEvents: true, orderBy: 'startTime', maxResults: 50 }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
     ))).flat();
-    events.sort((a, b) => (a.start?.dateTime ?? a.start?.date ?? '').localeCompare(b.start?.dateTime ?? b.start?.date ?? ''));
+    allEvents.sort((a, b) => (a.start?.dateTime ?? a.start?.date ?? '').localeCompare(b.start?.dateTime ?? b.start?.date ?? ''));
+    // Drop cancelled events — they appear in recurring-event expansions but add noise to context.
+    // Cap at 25 to keep tool-result size bounded across a long call (prevents Vapi context growth).
+    const CAP = 25;
+    const active = allEvents.filter(e => e.status !== 'cancelled');
+    const truncated = active.length > CAP;
+    const events = truncated ? active.slice(0, CAP) : active;
     if (!events.length) return 'No events found for that period.';
     // Group by day for cleaner output
     const byDay = new Map<string, string[]>();
@@ -191,7 +197,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
       if (!byDay.has(dayLabel)) byDay.set(dayLabel, []);
       byDay.get(dayLabel)!.push(`  ${time}: ${e.summary}${recurring}`);
     }
-    return `Found ${events.length} event(s):\n` + Array.from(byDay.entries()).map(([day, evs]) => `${day}:\n${evs.join('\n')}`).join('\n\n');
+    const trailer = truncated ? `\n(Showing first ${CAP} of ${active.length} events — ask about a specific date for more detail.)` : '';
+    return `Found ${events.length} event(s):\n` + Array.from(byDay.entries()).map(([day, evs]) => `${day}:\n${evs.join('\n')}`).join('\n\n') + trailer;
 
   } else if (fn === 'findTime') {
     const { startDate, endDate, minimumMinutes } = args as { startDate: string; endDate?: string; minimumMinutes?: number };
