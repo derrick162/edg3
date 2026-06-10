@@ -15,12 +15,18 @@ Google-controlled and routinely runs 6–12+ weeks. Never gate the launch date o
 ---
 
 ## 1. Pre-launch checklist (all true before public launch)
-- [ ] Core loop verified end-to-end (briefing call + calendar create/move/delete) on a real call.
+> **Security code status (2026-06-10, PM-verified after merge `ef1d8f1`):** webhook
+> enforcement, write-idempotency, hard delete-confirm, rate limiting, and Litestream
+> backup are all **code-complete, wired, and green on master (117/117 tests)**. What
+> remains for these is purely **ops** — flipping env vars on Railway — marked `[ops]` below.
+
+- [ ] Core loop verified end-to-end (briefing call + calendar create/move/delete) on a real call. _(← the owner test — top gate.)_
 - [ ] **Real phone number (Twilio) + Vapi on a PAID plan** sized for daily-call volume. *(The free Vapi number caps outbound calls/day — cannot serve real users.)*
-- [ ] `DATA_ENCRYPTION_KEY` set on Railway **and backed up forever** *(lose it after data is encrypted = unrecoverable)*.
-- [ ] `JWT_SECRET` is a real random secret on Railway (not unset).
-- [ ] `VAPI_SECRET_ENFORCE=true` + `VAPI_SERVER_SECRET` set (webhook auth enforced).
-- [ ] Off-box DB backup (Litestream/snapshot replication) running + **one restore drill done** *(SQLite single-volume = data-loss risk without it — open Security item #5)*.
+- [ ] `[ops]` `DATA_ENCRYPTION_KEY` set on Railway **and backed up forever** *(lose it after data is encrypted = unrecoverable)*. _(code: encryption no-ops until set.)_
+- [ ] `[ops]` `JWT_SECRET` is a real random secret on Railway (not unset). _(code: fails closed if unset.)_
+- [ ] `[ops]` `VAPI_SECRET_ENFORCE=true` + `VAPI_SERVER_SECRET` set. _(code ✅ shipped — `checkVapiSecret` enforced in both Vapi routes; runs fail-open-with-log until the flag is `true`. Watch the log 24h, then flip.)_
+- [ ] `[ops]` Off-box DB backup running + **one restore drill done.** _(code ✅ shipped — `litestream.yml` + restore tooling. Needs `LITESTREAM_S3_*` env vars on Railway + run the documented drill once.)_
+- [x] Write-idempotency + hard delete-confirm + rate limiting — **code ✅ shipped & active on master** (no env needed; verified wired 2026-06-10).
 - [ ] `npm run check:vapi` green + CI green on master.
 - [ ] Privacy Policy + Terms accurate & live. ✅
 - [ ] Gmail features either verified, or cleanly gated to test users with the "unverified app" path documented for them.
