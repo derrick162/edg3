@@ -17,18 +17,18 @@ function StepIndicator({ current }: { current: Step }) {
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
             style={{
-              background: i < idx ? '#6366f1' : i === idx ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
+              background: i < idx ? 'var(--edg-indigo)' : i === idx ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
               border: i === idx ? '2px solid #6366f1' : '2px solid transparent',
-              color: i <= idx ? '#e8e8f0' : '#4a4a5a',
+              color: i <= idx ? 'var(--text-strong)' : 'var(--text-faint)',
             }}
           >
             {i < idx ? '✓' : i + 1}
           </div>
-          <span className="text-xs hidden sm:block" style={{ color: i === idx ? '#e8e8f0' : '#4a4a5a' }}>
+          <span className="text-xs hidden sm:block" style={{ color: i === idx ? 'var(--text-strong)' : 'var(--text-faint)' }}>
             {labels[i]}
           </span>
           {i < STEPS.length - 1 && (
-            <div className="w-8 h-px mx-1" style={{ background: i < idx ? '#6366f1' : 'rgba(255,255,255,0.08)' }} />
+            <div className="w-8 h-px mx-1" style={{ background: i < idx ? 'var(--edg-indigo)' : 'rgba(255,255,255,0.08)' }} />
           )}
         </div>
       ))}
@@ -82,16 +82,16 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-2">Build your profile</h2>
-      <p className="text-sm mb-6" style={{ color: '#888899' }}>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
         EDG3 needs to understand your full context to give you truly useful briefings.
       </p>
 
       <div className="glass-card p-5 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.05)' }}>
-        <p className="text-sm font-semibold mb-2" style={{ color: '#818cf8' }}>Step 1 of 2 — Get your profile from ChatGPT</p>
-        <p className="text-sm mb-3" style={{ color: '#aaa' }}>
+        <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>Step 1 of 2 — Get your profile from ChatGPT</p>
+        <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
           Go to ChatGPT (or your most actively used AI tool) and send this prompt (it works best if you've had prior conversations with it):
         </p>
-        <div className="rounded-lg p-4 text-sm font-mono leading-relaxed" style={{ background: 'rgba(0,0,0,0.3)', color: '#c4c4d0', userSelect: 'all', cursor: 'text' }}>
+        <div className="rounded-lg p-4 text-sm font-mono leading-relaxed" style={{ background: 'rgba(0,0,0,0.3)', color: 'var(--text-body)', userSelect: 'all', cursor: 'text' }}>
           "Summarize everything you know about me including goals, projects, strengths, weaknesses, recurring challenges, opportunities, financial goals, health goals, relationship goals, and areas where I may be self-sabotaging. Format as a briefing for a Chief of Staff."
         </div>
       </div>
@@ -101,21 +101,21 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
           type="button"
           onClick={() => setShowExample(e => !e)}
           className="flex items-center gap-2 text-sm font-medium"
-          style={{ color: '#818cf8' }}
+          style={{ color: 'var(--text-accent)' }}
         >
           <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showExample ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
           See an example profile
         </button>
         {showExample && (
           <div className="mt-3 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap"
-            style={{ background: 'rgba(0,0,0,0.25)', color: '#aaa', border: '1px solid rgba(99,102,241,0.15)', maxHeight: '220px', overflowY: 'auto' }}>
+            style={{ background: 'rgba(0,0,0,0.25)', color: 'var(--text-muted)', border: '1px solid rgba(99,102,241,0.15)', maxHeight: '220px', overflowY: 'auto' }}>
             {EXAMPLE_PROFILE}
           </div>
         )}
       </div>
 
       <form onSubmit={handleSubmit}>
-        <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>
+        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>
           Paste your ChatGPT summary here
         </label>
         <textarea
@@ -127,7 +127,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
           required
         />
 
-        {error && <p className="text-sm mt-2" style={{ color: '#ef4444' }}>{error}</p>}
+        {error && <p className="text-sm mt-2" style={{ color: 'var(--edg-danger)' }}>{error}</p>}
 
         <button type="submit" className="btn-primary w-full mt-4" disabled={loading || !summary.trim()}>
           {loading ? 'Saving…' : 'Save profile & continue →'}
@@ -170,23 +170,23 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
   return (
     <div>
       <h2 className="text-2xl font-bold mb-2">Connect your calendar</h2>
-      <p className="text-sm mb-8" style={{ color: '#888899' }}>
+      <p className="text-sm mb-8" style={{ color: 'var(--text-muted)' }}>
         EDG3 reads your Google Calendar to surface scheduling conflicts and misalignment between your priorities and your time.
       </p>
 
       <div className="glass-card p-6 mb-4 text-center">
         <div className="text-4xl mb-3">📅</div>
         <h3 className="font-bold mb-2">Google Calendar</h3>
-        <p className="text-sm mb-5" style={{ color: '#888899' }}>
+        <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
           Read-only access. EDG3 sees your events to build smarter briefings. Nothing is modified.
         </p>
         <button className="btn-primary w-full" onClick={connectCalendar} disabled={loading}>
           {loading ? 'Connecting…' : 'Connect Google Calendar'}
         </button>
-        {error && <p className="text-sm mt-3" style={{ color: '#f59e0b' }}>{error}</p>}
+        {error && <p className="text-sm mt-3" style={{ color: 'var(--edg-warning)' }}>{error}</p>}
       </div>
 
-      <button onClick={onSkip} className="w-full text-sm py-3 text-center" style={{ color: '#4a4a5a' }}>
+      <button onClick={onSkip} className="w-full text-sm py-3 text-center" style={{ color: 'var(--text-faint)' }}>
         Skip for now — I'll connect later
       </button>
     </div>
@@ -229,7 +229,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-2">This week's top priorities</h2>
-      <p className="text-sm mb-6" style={{ color: '#888899' }}>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
         EDG3 will check every briefing to make sure your calendar and actions actually reflect these.
       </p>
 
@@ -240,7 +240,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
         </div>
       ) : priorities.some(p => p.trim()) && (
         <div className="flex items-center gap-2 mb-4 text-xs px-3 py-2 rounded-lg"
-          style={{ background: 'rgba(99,102,241,0.08)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.15)' }}>
+          style={{ background: 'rgba(99,102,241,0.08)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.15)' }}>
           ✦ Suggested from your profile — edit freely
         </div>
       )}
@@ -248,7 +248,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {priorities.map((p, i) => (
           <div key={i}>
-            <label className="block text-xs font-semibold mb-2" style={{ color: '#6366f1' }}>
+            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>
               PRIORITY #{i + 1}
             </label>
             <input
@@ -322,13 +322,13 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-2">Schedule your morning call</h2>
-      <p className="text-sm mb-8" style={{ color: '#888899' }}>
+      <p className="text-sm mb-8" style={{ color: 'var(--text-muted)' }}>
         EDG3 will call you at this time every morning. Pick a time when you're alert and can give it 3 minutes.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>Call time</label>
+          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Call time</label>
           <input
             className="input"
             type="time"
@@ -339,26 +339,26 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>Timezone</label>
+          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Timezone</label>
           <select
             className="input"
-            style={{ background: '#1a1a2e', color: '#e8e8f0' }}
+            style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}
             value={timezone}
             onChange={e => setTimezone(e.target.value)}
           >
             {timezones.map(tz => (
-              <option key={tz.value} value={tz.value} style={{ background: '#1a1a2e', color: '#e8e8f0' }}>{tz.label}</option>
+              <option key={tz.value} value={tz.value} style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}>{tz.label}</option>
             ))}
           </select>
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>
+          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>
             Phone number
           </label>
           <div className="flex gap-2">
             <div className="input flex items-center px-3 text-sm font-semibold flex-shrink-0"
-              style={{ width: '64px', color: '#e8e8f0', background: 'rgba(255,255,255,0.04)', cursor: 'default' }}>
+              style={{ width: '64px', color: 'var(--text-strong)', background: 'rgba(255,255,255,0.04)', cursor: 'default' }}>
               +1
             </div>
             <input
@@ -373,13 +373,13 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
               required
             />
           </div>
-          <p className="text-xs mt-2" style={{ color: '#4a4a5a' }}>
+          <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>
             US &amp; Canada only. Edg3 will call you here every morning.
           </p>
-          <p className="text-xs mt-3 leading-relaxed" style={{ color: '#4a4a5a' }}>
+          <p className="text-xs mt-3 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
             By entering your number, you consent to receive one automated AI voice call and reminder text per day from Edg3.
             Message and data rates may apply. You can opt out anytime from your dashboard.{' '}
-            <a href="/terms" target="_blank" style={{ color: '#6366f1', textDecoration: 'underline' }}>Terms</a> &amp; <a href="/privacy" target="_blank" style={{ color: '#6366f1', textDecoration: 'underline' }}>Privacy Policy</a>.
+            <a href="/terms" target="_blank" style={{ color: 'var(--edg-indigo)', textDecoration: 'underline' }}>Terms</a> &amp; <a href="/privacy" target="_blank" style={{ color: 'var(--edg-indigo)', textDecoration: 'underline' }}>Privacy Policy</a>.
           </p>
         </div>
 
@@ -431,7 +431,7 @@ function OnboardingContent() {
       <div className="relative z-10 w-full max-w-lg">
         <div className="text-center mb-8">
           <span className="logo-text text-2xl">EDG3</span>
-          <p className="text-sm mt-1" style={{ color: '#888899' }}>Setup · {STEPS.indexOf(step) + 1} of {STEPS.length}</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Setup · {STEPS.indexOf(step) + 1} of {STEPS.length}</p>
         </div>
 
         <div className="glass-card p-8">
