@@ -234,8 +234,8 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
       </p>
 
       {suggesting ? (
-        <div className="flex items-center gap-3 mb-6 text-sm" style={{ color: '#6366f1' }}>
-          <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, fontSize: 14, color: 'var(--edg-indigo)' }}>
+          <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--edg-indigo)', borderTopColor: 'transparent', display: 'inline-block' }} className="animate-spin" />
           Generating suggestions from your profile…
         </div>
       ) : priorities.some(p => p.trim()) && (
