@@ -144,7 +144,80 @@ priority from user feedback.
 - [ ] **Profile page: "Your Profile" section is too long** — user has to scroll far past it. Make it **collapsible** (collapsed by default) or condense/summarize with an expand, so the rest of the page is reachable.
 - [ ] **"Next call" section: the Undo button is unclear** — its purpose isn't obvious and it's not very usable. Decide: remove it, or make it meaningful (e.g. fold into the planned "Recent activity" surface so undo is per-action and labeled "Undo: <what Edge did>"). Likely **remove the standalone button** and let undo live in Recent activity.
 
+### UX/UI — Onboarding v2 (2026-06-10, from designer audit · PM sign-off pending)
+> Goal: get a new user to their first moment of value in under 90 seconds. Current profile step is the #1 drop-off risk. Batch these together — they ship as one onboarding rewrite.
+
+- [ ] **Flip onboarding step order + defer profile** — _UX audit 2026-06-10. ~0.5d_
+  - **Problem:** Step 1 sends users out of the app to ChatGPT before they've seen any value. Highest drop-off risk in the entire funnel.
+  - **Fix:** New order: **Calendar → Priorities → Call Time → Profile (optional, post-signup)**. Profile step becomes a dashboard prompt ("Help Edg3 know you better") shown after the first briefing, when the user is already bought in. Profile is still supported — just not gating.
+  - **Acceptance:** A new user can complete onboarding and reach the dashboard without ever touching the profile step.
+
+- [ ] **Rewrite calendar step value prop** — _UX audit 2026-06-10. ~1h_
+  - **Problem:** "Read-only access. EDG3 sees your events to build smarter briefings. Nothing is modified." doesn't motivate action.
+  - **Fix:** Replace with: *"Edg3 tells you when your week doesn't match your priorities. That only works if it can see your week."* Also: note is currently inaccurate (calendar access is read-write, not read-only — needed for creating/moving events). Fix copy to reflect reality while staying reassuring.
+  - **Acceptance:** Copy is accurate and motivating. No mention of "read-only."
+
+- [ ] **Day 1 preview briefing post-onboarding** — _UX audit 2026-06-10. ~1d_
+  - **Problem:** If the user misses or declines the intro call, there's a 12–24hr gap before any value arrives. No designed aha moment.
+  - **Fix:** Immediately after onboarding completes, auto-generate and display a briefing preview on the dashboard using the data already collected (priorities + calendar if connected). Label it clearly: *"Here's what Edg3 already knows about your week."* This is the aha moment — it should happen in seconds, not tomorrow morning.
+  - **Acceptance:** Every new user sees a personalized preview on first dashboard load, regardless of whether they took the intro call.
+
+- [ ] **International users: phone number fallback message** — _UX audit 2026-06-10. ~1h_
+  - **Problem:** Call Time step requires a US/Canada number with no recovery path for international users — dead end with zero explanation.
+  - **Fix:** Below the phone input, add: *"Outside the US or Canada? Skip for now — you'll receive web briefings instead, and can add a number later."* Add a skip link that completes setup without a phone number.
+  - **Acceptance:** Non-US users can complete onboarding without a phone number and reach the dashboard.
+
+---
+
+### UX/UI — Dashboard v2 (2026-06-10, from designer audit · PM sign-off pending)
+> Goal: answer "what matters today?" within 3 seconds of opening the dashboard. Current layout buries today's focus behind tabs and leads with an input box.
+
+- [ ] **Move UpdateBox (chat) below the briefing list** — _UX audit 2026-06-10. ~1h_
+  - **Problem:** The "Tell Edge something" chat box is the first element a user sees on every dashboard load. It's a secondary input flow masquerading as the primary one.
+  - **Fix:** Move `<UpdateBox />` below the briefing list/Today view. The hero of the dashboard should be today's briefing.
+  - **Acceptance:** Dashboard opens on the briefing/Today content; chat box is reachable by scrolling.
+
+- [ ] **Hide notification bell at zero-state** — _UX audit 2026-06-10. ~30min_
+  - **Problem:** The bell icon renders for all users at all times, adding chrome for a feature most new users won't trigger in their first 30 days.
+  - **Fix:** Render the bell only when `notifUnread > 0` or when the user has at least one watched thread. Zero-state = no bell.
+  - **Acceptance:** A brand-new user's dashboard has no notification bell. Bell appears once there's something to notify about.
+
+- [ ] **"Today" consolidated tab as default dashboard view** — _UX audit 2026-06-10. ~1–2d_
+  - **Problem:** The briefings tab shows a collapsed history list; tasks and priorities require separate tab clicks. Opening the dashboard doesn't answer "what matters today?"
+  - **Fix:** Add a **Today** tab (or rename Briefings → Today) that shows in a single view: (1) latest briefing content expanded by default, (2) today's tasks, (3) current priorities. This becomes the landing tab. Briefing history moves to a "Past briefings" collapsible section below.
+  - **Acceptance:** A user opening the dashboard at 9am sees their briefing, today's tasks, and priorities without clicking any tabs.
+
+- [ ] **Collapse to 3 tabs: Today / Memory / Settings** — _UX audit 2026-06-10. ~1d_
+  - **Problem:** Five tabs (Briefings / Tasks / Priorities / Memory / Profile) cause decision fatigue and split content that belongs together.
+  - **Fix:** Merge into three tabs: **Today** (briefing + tasks + priorities), **Memory** (unchanged), **Settings** (profile summary + call settings + calendar connect — currently split across Profile tab and sidebar). Remove the standalone Priorities and Tasks tabs.
+  - **Note:** Coordinate with the Today tab ticket above — ship together.
+  - **Acceptance:** Dashboard has exactly 3 tabs. All existing functionality is reachable within them.
+
+---
+
+### UX/UI — 30-Day Retention (2026-06-10, from designer audit · PM sign-off pending)
+> These address the habit-formation gap: nothing currently pulls a user back after missed calls or a streak break.
+
+- [ ] **Priority drift prompt at 7 days** — _UX audit 2026-06-10. ~0.5d_
+  - **Problem:** No mechanism prompts users to keep priorities current. Stale priorities = stale briefings = lower perceived value.
+  - **Fix:** If `priorities.updated_at` is older than 7 days, show a dashboard banner: *"Are these still your top priorities this week? [Update] [Yes, keep them]"*. Tapping "Yes, keep them" updates the timestamp; tapping Update opens the priorities editor inline.
+  - **Acceptance:** Users who haven't updated priorities in 7+ days see the prompt on dashboard load. Users who dismiss it don't see it again for another 7 days.
+
+- [ ] **Streak/consistency indicator in sidebar** — _UX audit 2026-06-10. ~0.5d_
+  - **Problem:** No visual feedback for consistent engagement. Users don't feel the cost of breaking a streak, so there's no loss-aversion hook.
+  - **Fix:** Add a simple call-streak counter below the "Next call" card in the sidebar: *"🔥 7-day streak"* (increments on completed briefing calls, resets on a missed day). No gamification overload — one number, one label.
+  - **Acceptance:** Sidebar shows current streak. Streak increments after a completed call. Resets to 0 after a missed day.
+
+- [ ] **Weekly summary email/digest** — _UX audit 2026-06-10. ~1d (needs email infra confirmation)_
+  - **Problem:** If a user misses several calls in a row, nothing brings them back. The product goes silent.
+  - **Fix:** A short weekly email (Sunday evening or Monday morning): what Edg3 observed this week, whether the user's calendar matched their priorities, any open threads or unresolved tasks. Plain text, personal tone. Opt-out in one click.
+  - **Dependency:** Needs an email sender (Resend / SendGrid / similar). Confirm with PM before building — if no sender is configured, this stays in Later.
+  - **Acceptance:** Users receive a weekly digest. Unsubscribe works in one click. Digest is generated from existing briefing + priority data with no new data collection.
+
+---
+
 ### Later / candidates (not yet committed)
+- [ ] **🔮 V2 / POST-LAUNCH — Google Drive / Sheets awareness** (PM-deferred 2026-06-10, user idea). Edge pulls the doc/spreadsheet tied to a calendar event (e.g. the weekly P&L sheet for the "P&L review" block) and works it into the briefing. **Deferred because:** it's another *restricted* Google scope (compounds the verification we haven't started), it's new scope against the September freeze, and summarizing financial spreadsheets accurately is high-trust/high-risk. Lighter near-term paths if ever needed: (a) surface the doc *link* in the briefing (no new scope); (b) `drive.file` + file-picker so the user designates only specific docs (non-restricted scope).
 - [ ] Onboarding: smoother first-run (connect calendar → first briefing) flow.
 - [ ] Briefing: richer briefing content / personalization controls.
 - [ ] Calendar: better event review & edit UX from the dashboard.
