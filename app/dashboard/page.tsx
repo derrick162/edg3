@@ -545,6 +545,118 @@ function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) 
   );
 }
 
+function ActivityTab() {
+  const [actions, setActions] = useState<{ id: number; label: string; undone: number; created_at: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [undoingId, setUndoingId] = useState<number | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
+
+  async function load() {
+    const r = await fetch('/api/undo?list=1');
+    if (!r.ok) return;
+    const d = await r.json();
+    setActions(d.actions || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleUndo(id: number) {
+    setUndoingId(id);
+    setUndoError(null);
+    const r = await fetch('/api/undo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setUndoingId(null);
+    if (r.ok && d.success) {
+      await load();
+    } else {
+      setUndoError(d.error || 'Could not undo — please check your calendar.');
+      setTimeout(() => setUndoError(null), 4000);
+    }
+  }
+
+  function relativeTime(created_at: string): string {
+    const ms = Date.now() - new Date(created_at).getTime();
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return 'just now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  }
+
+  if (loading) return <div className="text-sm" style={{ color: '#888899' }}>Loading…</div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold">Recent activity</h2>
+        <button onClick={load} className="text-xs" style={{ color: '#4a4a5a' }}>↻ Refresh</button>
+      </div>
+      <p className="text-sm mb-4" style={{ color: '#888899' }}>
+        Everything Edge has done on your calendar — undo any action individually.
+      </p>
+
+      {undoError && (
+        <div className="mb-4 text-sm px-4 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
+          {undoError}
+        </div>
+      )}
+
+      {actions.length === 0 ? (
+        <div className="glass-card p-8 text-center">
+          <p className="text-2xl mb-3">⏪</p>
+          <p className="font-medium mb-1">No activity yet</p>
+          <p className="text-sm" style={{ color: '#888899' }}>
+            When Edge creates or edits calendar events, each action will appear here so you can review and undo.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {actions.map(a => (
+            <div
+              key={a.id}
+              className="glass-card p-4 flex items-center gap-3"
+              style={{ opacity: a.undone ? 0.45 : 1 }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate" style={{ color: a.undone ? '#4a4a5a' : '#e8e8f0' }}>
+                  {a.undone ? <span style={{ marginRight: 6, color: '#4a4a5a' }}>↩</span> : <span style={{ marginRight: 6, color: '#818cf8' }}>✦</span>}
+                  {a.label}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#4a4a5a' }}>
+                  {a.undone ? 'Undone · ' : ''}{relativeTime(a.created_at)}
+                </p>
+              </div>
+              {!a.undone && (
+                <button
+                  onClick={() => handleUndo(a.id)}
+                  disabled={undoingId !== null}
+                  className="text-xs py-1 px-3 rounded flex-shrink-0"
+                  style={{
+                    background: 'rgba(245,158,11,0.12)',
+                    color: undoingId === a.id ? '#888899' : '#fbbf24',
+                    border: '1px solid rgba(245,158,11,0.2)',
+                    cursor: undoingId !== null ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {undoingId === a.id ? 'Undoing…' : '↩ Undo'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface User {
   id: number;
   name: string;
@@ -600,7 +712,7 @@ export default function Dashboard() {
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile'>('briefings');
+  const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -920,6 +1032,7 @@ export default function Dashboard() {
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'tasks', label: 'Tasks', icon: '✓' },
               { id: 'priorities', label: 'Priorities', icon: '🎯' },
+              { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
               { id: 'profile', label: 'Profile', icon: '👤' },
             ].map(tab => (
@@ -1271,6 +1384,8 @@ export default function Dashboard() {
               loadData();
             }} />
           )}
+
+          {activeTab === 'activity' && <ActivityTab />}
 
           {activeTab === 'memory' && (
             <div>

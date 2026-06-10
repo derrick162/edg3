@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ `draftEmail` MERGED to master & green (61/61). Email feature is code-complete. Remaining = go-live config, not code: deploy + create the `draftEmail` Vapi tool + user re-consents Google.)_ | — | 2026-06-09 |
+| 🛠️ Core | `core` | _(idle — ✅ **Recent Activity tab SHIPPED** & green (61/61): per-row undo feed in dashboard. `lib/db.ts` claim released. Ready for master merge.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — Gmail primitive + encryption + backups all merged to master & green. Next: #2 Vapi secret.)_ | — | 2026-06-09 |
 | 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 

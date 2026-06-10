@@ -518,6 +518,14 @@ export const undoQueries = {
   markUndone: (id: number) => {
     return getDb().prepare('UPDATE undo_log SET undone = 1 WHERE id = ?').run(id);
   },
+  // Fetch a specific log entry (owned by userId — guards against cross-user undo).
+  getById: (userId: number, id: number) => {
+    return getDb().prepare('SELECT * FROM undo_log WHERE id = ? AND user_id = ? AND undone = 0').get(id, userId) as { id: number; label: string; payload: string; undone: number; created_at: string } | undefined;
+  },
+  // Last N actions for the Activity feed (includes already-undone so users see the full trail).
+  listRecent: (userId: number, limit = 20) => {
+    return getDb().prepare('SELECT id, label, undone, created_at FROM undo_log WHERE user_id = ? ORDER BY id DESC LIMIT ?').all(userId, limit) as { id: number; label: string; undone: number; created_at: string }[];
+  },
 };
 
 // Types

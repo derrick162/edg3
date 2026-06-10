@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { calendarQueries, undoQueries } from '@/lib/db';
 import { getOAuthClient } from '@/lib/calendar';
@@ -17,23 +17,43 @@ async function getCal(userId: number): Promise<calendar_v3.Calendar | null> {
   return google.calendar({ version: 'v3', auth: o });
 }
 
-// Peek at the most recent reversible action (for the dashboard button label/state).
-export async function GET() {
+// GET /api/undo         → { available, label } — sidebar button state
+// GET /api/undo?list=1  → { actions: [...] }  — Activity feed
+export async function GET(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (req.nextUrl.searchParams.get('list') === '1') {
+    const actions = undoQueries.listRecent(user.id);
+    return NextResponse.json({ actions });
+  }
+
   const last = undoQueries.getLatest(user.id);
   return NextResponse.json({ available: !!last, label: last?.label ?? null });
 }
 
-// Reverse the most recent action.
-export async function POST() {
+// POST /api/undo           (no body) → undo the most recent action
+// POST /api/undo  { id: N }          → undo a specific action by id
+export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const last = undoQueries.getLatest(user.id);
-  if (!last) return NextResponse.json({ success: false, error: 'Nothing to undo' }, { status: 400 });
+
+  let id: number | undefined;
+  try {
+    const body = await req.json();
+    if (typeof body?.id === 'number') id = body.id;
+  } catch { /* no body — undo latest */ }
+
+  const entry = id !== undefined
+    ? undoQueries.getById(user.id, id)
+    : undoQueries.getLatest(user.id);
+
+  if (!entry) return NextResponse.json({ success: false, error: 'Nothing to undo' }, { status: 400 });
+
   const cal = await getCal(user.id);
   if (!cal) return NextResponse.json({ success: false, error: 'No calendar connected' }, { status: 400 });
-  const ok = await executeUndo(cal, parseUndoOps(last.payload));
-  undoQueries.markUndone(last.id);
-  return NextResponse.json({ success: ok, label: last.label });
+
+  const ok = await executeUndo(cal, parseUndoOps(entry.payload));
+  undoQueries.markUndone(entry.id);
+  return NextResponse.json({ success: ok, label: entry.label });
 }
