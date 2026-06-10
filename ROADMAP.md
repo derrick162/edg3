@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ CoS calendar API SHIPPED (b4a7124): GET+POST /api/admin/calendar/events, 80/80, merged to master. Next: tool-result trim in tool-call/route.ts — gated on Security releasing it.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | ⏳ **BLOCKED — awaiting PM/Security coordination.** All prompt-trim/caching/CoS tasks done & merged. Next: `readCalendar` response cap (tool-result trim) in `tool-call/route.ts` — fix scoped and ready (cap at 25 events + drop cancelled). Needs PM green-light since Security's idempotency ticket (#3) touches same file. Security Status Board shows idle — is the file released? | `tool-call/route.ts` (pending) | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — Gmail primitive + encryption + backups all merged to master & green. Next: #2 Vapi secret.)_ | — | 2026-06-09 |
 | 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 
