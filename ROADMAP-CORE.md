@@ -9,6 +9,11 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **Day-1 preview briefing SHIPPED** (`d724556`) — activation "aha" on first dashboard load.
+  - New `GET /api/briefing/preview`: checks for existing preview, generates if absent (one LLM call per user, never repeated), returns JSON `{ content }`.
+  - New `generatePreviewBriefing(userId)` in `lib/briefing.ts`: priorities-first, calendar optional (degrades gracefully if not connected), ~200-word welcoming tone — distinct from the daily briefing format.
+  - New `preview_briefings` table in `lib/db.ts` (additive — `UNIQUE on user_id`, `INSERT OR IGNORE` handles races). Claimed in Status Board before touching.
+  - Dashboard (`app/dashboard/page.tsx`): triggers preview fetch once `onboarding_complete && briefings.length === 0`; shows a spinner ("Edg3 is putting together your preview…") while generating, then a labeled card "✦ HERE'S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK". Preview disappears once the user has real briefings. 160/160 tests, tsc clean, build clean.
 - **2026-06-10** — **readCalendar response cap + prompt trim re-apply** (`tool-call/route.ts`,
   `lib/vapi.ts`). Two latency-hardening changes in one commit:
   - `readCalendar` now drops `status=cancelled` events (recurring-event expansions include them)
