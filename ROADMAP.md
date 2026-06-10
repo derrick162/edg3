@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ Test hardening DONE & green (80/80, +19 new tests). `recipientsFromNotes` extracted to outreach.ts; `bookEventTimes` extracted to time.ts + book route updated. Replies, outreach, book-it all covered. Route.ts NOT touched (Security collision). Ready for master merge.)_ | — | 2026-06-10 |
-| 🔒 Security | `security` | ✅ **#10 Harden admin auth DONE** — HMAC cookie token + timingSafeEqual, all 11 admin routes migrated, admin login rate-limited. 134/134 green, tsc clean. Next: **#7 Harden audit log** (before/after snapshots, append-only). | — | 2026-06-10 |
+| 🔒 Security | `security` | ✅ **#7 Audit log DONE** — append-only `audit_log` table, wired into voice + web paths, admin endpoint. 150/150 green. Released claim on `tool-call/route.ts` + `book/route.ts`. **Queue exhausted — pinging PM for next dispatch.** | — | 2026-06-10 |
 | 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**

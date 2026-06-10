@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { createCalendarEvent } from '@/lib/calendar';
-import { notificationQueries } from '@/lib/db';
+import { notificationQueries, auditLogQueries } from '@/lib/db';
 import { bookEventTimes } from '@/lib/time';
 import { claimEventCreate, buildEventDedupeKey } from '@/lib/idempotency';
 
@@ -33,11 +33,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
+  let ok = true;
   try {
     await createCalendarEvent(user.id, title, start, end, tz);
   } catch {
+    ok = false;
+    auditLogQueries.record({
+      userId: user.id,
+      briefingId: null,
+      action: 'createEvent',
+      argsJson: JSON.stringify({ title, date, time, durationMins: dur, source: 'web' }),
+      resultText: 'Failed — calendar not connected or request error',
+      ok: false,
+    });
     return NextResponse.json({ error: 'Could not create the event — check that your Google Calendar is connected.' }, { status: 500 });
   }
+
+  auditLogQueries.record({
+    userId: user.id,
+    briefingId: null,
+    action: 'createEvent',
+    argsJson: JSON.stringify({ title, date, time, durationMins: dur, source: 'web' }),
+    resultText: `Event "${title}" created via web on ${date} at ${time}`,
+    ok,
+  });
 
   if (typeof body.notificationId === 'number') notificationQueries.markRead(body.notificationId, user.id);
   return NextResponse.json({ success: true });

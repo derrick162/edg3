@@ -181,6 +181,24 @@ function initSchema(db: Database.Database) {
       expires_at INTEGER NOT NULL,
       used INTEGER NOT NULL DEFAULT 0
     );
+
+    -- Append-only action audit log (#7). Records every calendar mutation (both
+    -- voice and web paths). No row-cap — unlike briefings.tool_actions (50-row
+    -- mutable JSON blob). snapshot_before/after hold JSON calendar state; populated
+    -- where available, null otherwise (future: handlers capture pre/post state).
+    -- This table is the data source for Core's "Recent Activity" dashboard feed.
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL,
+      briefing_id     INTEGER,           -- null = web-initiated action
+      action          TEXT    NOT NULL,  -- fn name: createEvent, moveEvent, deleteEvent…
+      args_json       TEXT    NOT NULL,  -- JSON args passed to the tool/route
+      result_text     TEXT,              -- human-readable outcome returned to caller
+      ok              INTEGER NOT NULL DEFAULT 1, -- 1=success, 0=failure/rejection
+      snapshot_before TEXT,              -- JSON calendar state before change (nullable)
+      snapshot_after  TEXT,              -- JSON calendar state after change (nullable)
+      created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -193,6 +211,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_gmail_drafts_user ON gmail_drafts_log(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_watched_threads_user ON watched_threads(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
   `);
 
   // Migrations for existing databases
@@ -596,6 +615,88 @@ export const deleteConfirmQueries = {
       db.prepare('UPDATE delete_confirm_tokens SET used = 1 WHERE token = ?').run(token);
       return true;
     })();
+  },
+};
+
+// Append-only action audit log (#7).
+// record() is fire-and-forget — never throws so a DB fault never disrupts a tool call.
+// recent() is for Core's "Recent Activity" dashboard; recentAll() is for the admin panel.
+// RETENTION: rows older than AUDIT_RETENTION_DAYS are pruned on each record() call
+// (best-effort, ~1% chance per insert to avoid per-call overhead).
+const AUDIT_RETENTION_DAYS = 90;
+
+export interface AuditEntry {
+  userId: number;
+  briefingId?: number | null;
+  action: string;
+  argsJson: string;           // JSON string of the tool args
+  resultText?: string | null;
+  ok: boolean;
+  snapshotBefore?: string | null;  // JSON calendar state before mutation (optional)
+  snapshotAfter?: string | null;   // JSON calendar state after mutation (optional)
+}
+
+export interface AuditRow {
+  id: number;
+  user_id: number;
+  briefing_id: number | null;
+  action: string;
+  args_json: string;
+  result_text: string | null;
+  ok: number;           // 0 or 1 (SQLite stores booleans as integers)
+  snapshot_before: string | null;
+  snapshot_after: string | null;
+  created_at: string;
+}
+
+export const auditLogQueries = {
+  /** Append a new entry. Never throws — non-critical path. */
+  record: (entry: AuditEntry): void => {
+    try {
+      const db = getDb();
+      db.prepare(`
+        INSERT INTO audit_log
+          (user_id, briefing_id, action, args_json, result_text, ok, snapshot_before, snapshot_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        entry.userId,
+        entry.briefingId ?? null,
+        entry.action,
+        entry.argsJson,
+        entry.resultText ?? null,
+        entry.ok ? 1 : 0,
+        entry.snapshotBefore ?? null,
+        entry.snapshotAfter ?? null,
+      );
+      // Prune old rows ~1% of the time to avoid per-call overhead.
+      if (Math.random() < 0.01) {
+        db.prepare(
+          `DELETE FROM audit_log WHERE created_at < datetime('now', '-${AUDIT_RETENTION_DAYS} days')`
+        ).run();
+      }
+    } catch { /* never let audit faults disrupt tool calls */ }
+  },
+
+  /** Recent actions for a specific user (Core's "Recent Activity" feed). */
+  recent: (userId: number, limit = 20): AuditRow[] => {
+    return getDb().prepare(
+      'SELECT * FROM audit_log WHERE user_id = ? ORDER BY id DESC LIMIT ?'
+    ).all(userId, limit) as AuditRow[];
+  },
+
+  /** All recent actions across all users — admin panel view. */
+  recentAll: (limit = 100): AuditRow[] => {
+    return getDb().prepare(
+      'SELECT * FROM audit_log ORDER BY id DESC LIMIT ?'
+    ).all(limit) as AuditRow[];
+  },
+
+  /** Count of successful actions for a user in the last N days — for user stats. */
+  successCount: (userId: number, days = 30): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM audit_log WHERE user_id = ? AND ok = 1 AND created_at >= datetime('now', ?)`
+    ).get(userId, `-${days} days`) as { n: number };
+    return row.n;
   },
 };
 

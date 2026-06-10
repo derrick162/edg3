@@ -8,6 +8,22 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#7 Harden audit log**. New append-only `audit_log` table
+  in `lib/db.ts` (no row cap — unlike `briefings.tool_actions` which was capped at 50;
+  90-day retention with ~1% prune on each insert). Columns: `user_id`, `briefing_id`
+  (null = web), `action`, `args_json`, `result_text`, `ok`, `snapshot_before`,
+  `snapshot_after`, `created_at`. Index on `(user_id, created_at DESC)`. New
+  `auditLogQueries`: `record()` (never throws), `recent(userId, limit)` (Core's
+  dashboard feed), `recentAll(limit)` (admin panel), `successCount(userId, days)`.
+  Wired into `tool-call/route.ts` (every voice tool call — alongside the legacy
+  `tool_actions` JSON blob for backward compat) and `book/route.ts` (web "Book it"
+  path). Admin endpoint `/api/admin/audit` (GET with userId/limit/action/failures
+  filters). `AuditEntry` + `AuditRow` types exported for Core's dashboard queries.
+  16 new tests; preflight green (150/150, tsc, next build).
+  🤝 **For Core:** `auditLogQueries.recent(userId, limit)` is the data source for the
+  "Recent Activity" feed. Import from `@/lib/db`. The `snapshot_before`/`snapshot_after`
+  fields are null for now — a future pass will populate them as handlers capture
+  pre/post calendar state.
 - **2026-06-10** — Shipped **#10 Harden admin auth**. Two fixes: (1) `edg3_admin`
   cookie now stores `HMAC-SHA256(ADMIN_PASSWORD, "edg3-admin-session-v1")` — a
   derived token — instead of the raw password; cookie leak no longer exposes the

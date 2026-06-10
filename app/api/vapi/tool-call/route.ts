@@ -5,7 +5,7 @@ import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, to
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
@@ -777,14 +777,24 @@ export async function POST(req: NextRequest) {
       console.log(`[tool-call] Result (ok=${ok}): ${result}`);
       results.push({ toolCallId: tc.id, result });
 
-      // Activity log: record EVERY action (successes and failures) so it's visible on the
-      // dashboard without having to pull call transcripts. Keep the last 50 per briefing.
+      // Activity log — two writes:
+      // 1. Legacy briefings.tool_actions JSON blob (capped 50, mutable) — kept for
+      //    backward compatibility until Core migrates the dashboard to audit_log.
+      // 2. Append-only audit_log table (#7) — uncapped, source of truth going forward.
       try {
         const existing = db.prepare('SELECT tool_actions FROM briefings WHERE id = ?').get(briefing.id) as { tool_actions: string | null } | undefined;
         const actions = existing?.tool_actions ? JSON.parse(existing.tool_actions) : [];
         actions.push({ fn: tc.name, args: tc.args, result, ok, ts: new Date().toISOString() });
         db.prepare('UPDATE briefings SET tool_actions = ? WHERE id = ?').run(JSON.stringify(actions.slice(-50)), briefing.id);
       } catch (_e) { /* non-critical */ }
+      auditLogQueries.record({
+        userId: briefing.user_id,
+        briefingId: briefing.id,
+        action: tc.name,
+        argsJson: JSON.stringify(tc.args),
+        resultText: result,
+        ok,
+      });
     }
 
     return NextResponse.json(
