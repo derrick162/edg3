@@ -9,7 +9,7 @@ import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThre
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
-import { claimEventCreate, buildEventDedupeKey } from '@/lib/idempotency';
+import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -376,7 +376,7 @@ Query: ${query}` }],
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
-    const { title, date, deleteAll, recurringScope, currentTime, confirmed } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmed?: boolean };
+    const { title, date, deleteAll, recurringScope, currentTime, confirmToken } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmToken?: string };
     const dayMatches = await eventsOnDay(cal, calIds, date, tz);
 
     // Which events to delete: all title matches (deleteAll), or one precisely-resolved event.
@@ -397,9 +397,17 @@ Query: ${query}` }],
       return `"${needsScope.event.summary}" is a recurring event. Should I delete just this occurrence, this and all future ones, or all occurrences? Say "just this one", "this and future", or "all".`;
     }
 
-    // CONFIRMATION GATE — deleting is destructive and hard to undo, so require an explicit yes.
-    if (!confirmed) {
-      return `⚠️ Just confirming before I delete ${describeDeleteTargets(toDelete, recurringScope, tz)} — should I go ahead? Ask the user, and ONLY if they say yes, call deleteEvent again with confirmed set to true (keep the same title, date, currentTime and recurringScope).`;
+    // HARD CONFIRMATION GATE (#9) — server-issued one-time token prevents model self-confirmation.
+    // First call: server issues a token embedded in the response; model cannot mint its own.
+    // Second call: model presents the token it received; server verifies + consumes (one-time use).
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      return `⚠️ Just confirming before I delete ${describeDeleteTargets(toDelete, recurringScope, tz)} — should I go ahead? Ask the user, and ONLY if they say yes, call deleteEvent again with confirmToken set to "${token}" (keep the same title, date, currentTime and recurringScope). Token expires in 2 minutes.`;
+    }
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      // Token invalid, expired, or already used — re-issue so the user can try again.
+      const token = issueDeleteToken(userId);
+      return `⚠️ That confirmation code was invalid or expired. To delete ${describeDeleteTargets(toDelete, recurringScope, tz)}, call deleteEvent again with the new confirmToken: "${token}". Token expires in 2 minutes.`;
     }
 
     const deleted: string[] = [];

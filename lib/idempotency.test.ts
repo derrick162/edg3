@@ -3,13 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ── mock the DB layer ────────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
   claim: vi.fn(() => true),
+  issue: vi.fn(() => 'AB12CD34'),
+  consume: vi.fn(() => true),
 }));
 
 vi.mock('./db', () => ({
   eventDedupeQueries: { claim: h.claim },
+  deleteConfirmQueries: { issue: h.issue, consume: h.consume },
 }));
 
-import { buildEventDedupeKey, claimEventCreate } from './idempotency';
+import { buildEventDedupeKey, claimEventCreate, issueDeleteToken, consumeDeleteToken } from './idempotency';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -71,5 +74,44 @@ describe('claimEventCreate', () => {
   it('fails open — returns true if the DB layer throws', () => {
     h.claim.mockImplementation(() => { throw new Error('db fault'); });
     expect(claimEventCreate(1, 'any-key')).toBe(true); // never block a legitimate write
+  });
+});
+
+// ── issueDeleteToken ─────────────────────────────────────────────────────────
+describe('issueDeleteToken', () => {
+  it('returns the token string from the DB layer', () => {
+    h.issue.mockReturnValue('DEADBEEF');
+    expect(issueDeleteToken(1)).toBe('DEADBEEF');
+  });
+
+  it('passes userId, current timestamp, and 2-minute TTL to the DB layer', () => {
+    const before = Date.now();
+    issueDeleteToken(42);
+    const after = Date.now();
+    const [userId, nowMs, ttlMs] = (h.issue.mock.calls as any[])[0] as [number, number, number];
+    expect(userId).toBe(42);
+    expect(nowMs).toBeGreaterThanOrEqual(before);
+    expect(nowMs).toBeLessThanOrEqual(after);
+    expect(ttlMs).toBe(2 * 60 * 1000);
+  });
+});
+
+// ── consumeDeleteToken ───────────────────────────────────────────────────────
+describe('consumeDeleteToken', () => {
+  it('returns true when the DB layer succeeds (valid token)', () => {
+    h.consume.mockReturnValue(true);
+    expect(consumeDeleteToken(1, 'AB12CD34')).toBe(true);
+    expect(h.consume).toHaveBeenCalledWith('AB12CD34', 1, expect.any(Number));
+  });
+
+  it('returns false when the DB layer returns false (expired / wrong user / already used)', () => {
+    h.consume.mockReturnValue(false);
+    expect(consumeDeleteToken(1, 'STALETOKEN')).toBe(false);
+  });
+
+  it('returns false (fails closed) if the DB layer throws', () => {
+    h.consume.mockImplementation(() => { throw new Error('db fault'); });
+    // A fault during token validation should DENY the delete, not allow it (fail closed).
+    expect(consumeDeleteToken(1, 'any')).toBe(false);
   });
 });

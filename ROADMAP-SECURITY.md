@@ -8,6 +8,15 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — Shipped **#9 Hard delete-confirmation** (server-issued one-time token).
+  Replaces the `confirmed=true` boolean (which the model could self-set) with a
+  `confirmToken` that the server generates and the model must present back verbatim.
+  `delete_confirm_tokens` table (2-min TTL, `consume()` is atomic transaction, single-use).
+  `issueDeleteToken`/`consumeDeleteToken` in `lib/idempotency.ts`. `deleteEvent` handler
+  updated; `consumeDeleteToken` fails CLOSED (false on any DB fault). System prompt
+  instruction in `lib/vapi.ts` updated. 7 new tests; preflight green (95/95, tsc, next build).
+  ⚠️ **Ops follow-up:** update the `deleteEvent` Vapi tool schema in the dashboard — add
+  `confirmToken: string` (optional), remove `confirmed: boolean`.
 - **2026-06-10** — Shipped **#3 Event-creation idempotency** (both creation paths). New
   `lib/idempotency.ts`: `claimEventCreate(userId, key)` + `buildEventDedupeKey(title, start)`.
   New `event_dedupe_keys` SQLite table (5-min TTL, atomic `INSERT OR IGNORE`, composite PK).
@@ -68,7 +77,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 | H3 | Undo last action | ✅ Done (`28f364d`) — `undo_log` records inverse ops on every mutation; reversible via `undoLastAction` (voice) + dashboard banner. |
 | H4 | Rate limiting | ❌ Absent on all endpoints. |
 | H5 | Backups / PITR | ⚠️ Code-side done (`80b4d30`) — rotating on-volume `.backup()` snapshots + `maybeDailyBackup()`. Off-box replication (Litestream) for volume-loss still pending (ops). |
-| H6 | Destructive confirmation | ✅ Done (`tool-call/route.ts:350`); soft spot: model could self-confirm. |
+| H6 | Destructive confirmation | ✅ Done + hardened (#9) — server-issued one-time `confirmToken` closes model self-confirmation hole. Model must present a server-issued token; `confirmed=true` shortcut removed. |
 | M4 | Timezone/recurring | ✅ Mostly handled — IANA passed + validated everywhere. |
 | — | **JWT fallback secret** | ✅ Fixed in code — `lib/auth.ts` fails closed (throws if `JWT_SECRET` unset, no public default). ⚠️ **Ops:** still rotate the secret on Railway. |
 | — | Transcript PII | ✅ Done (`80b4d30`) — `briefings.transcript` + `user_response` encrypted at rest (same `lib/crypto.ts` path). |
@@ -98,7 +107,7 @@ user-trust failure, then (c) genuine gaps. Effort is rough dev-days.
 
 ### Week 4 — Abuse + correctness hardening
 - [ ] **8. Rate-limit** auth/signup, admin trigger-call, per-user mutations/min ceiling. _1–2d_
-- [ ] **9. Hard delete-confirm** — server issues one-time confirm token; model can't self-confirm. _1d_
+- [x] **9. Hard delete-confirm** — server-issued one-time `confirmToken` replaces `confirmed=true`; model must present the server's token. `delete_confirm_tokens` table (2-min TTL, single-use, consume is a transaction). System prompt updated. ⚠️ Ops: add `confirmToken: string` to the `deleteEvent` Vapi tool schema in the dashboard and remove `confirmed`. _½d_
 - [ ] **10. Harden admin auth** — `trigger-call/route.ts:7` compares cookie to plaintext password; hash + constant-time. _½d_
 
 ### Incoming from PM (coordinate with Core)

@@ -151,6 +151,16 @@ function initSchema(db: Database.Database) {
       expires_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, dedupe_key)
     );
+
+    -- One-time server-issued tokens for hard delete-confirmation (#9). The model must
+    -- present a token it received from the server — it cannot mint one itself — closing
+    -- the self-confirmation hole. Rows are purged opportunistically on each issue() call.
+    CREATE TABLE IF NOT EXISTS delete_confirm_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   // Indexes for performance
@@ -478,6 +488,33 @@ export const eventDedupeQueries = {
         'INSERT OR IGNORE INTO event_dedupe_keys (user_id, dedupe_key, expires_at) VALUES (?, ?, ?)'
       ).run(userId, key, nowMs + ttlMs);
       return result.changes === 1; // 1 = new key (proceed), 0 = duplicate (skip)
+    })();
+  },
+};
+
+// Hard delete-confirmation tokens (#9). Single-use, short TTL.
+// issue(): generate a fresh random token, purge old ones for this user, persist.
+// consume(): validate + mark used in one synchronous transaction (no TOCTOU).
+export const deleteConfirmQueries = {
+  issue: (userId: number, nowMs: number, ttlMs: number): string => {
+    // 4 random bytes → 8 uppercase hex chars (e.g. "AB12CD34"). Opaque and log-friendly.
+    const { randomBytes } = require('crypto') as typeof import('crypto');
+    const token = randomBytes(4).toString('hex').toUpperCase();
+    const db = getDb();
+    // Purge expired/used tokens for this user to keep the table lean.
+    db.prepare('DELETE FROM delete_confirm_tokens WHERE user_id = ? AND (used = 1 OR expires_at <= ?)').run(userId, nowMs);
+    db.prepare('INSERT INTO delete_confirm_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)').run(token, userId, nowMs + ttlMs);
+    return token;
+  },
+  consume: (token: string, userId: number, nowMs: number): boolean => {
+    const db = getDb();
+    return db.transaction(() => {
+      const row = db.prepare(
+        'SELECT user_id, expires_at, used FROM delete_confirm_tokens WHERE token = ?'
+      ).get(token) as { user_id: number; expires_at: number; used: number } | undefined;
+      if (!row || row.user_id !== userId || row.expires_at <= nowMs || row.used) return false;
+      db.prepare('UPDATE delete_confirm_tokens SET used = 1 WHERE token = ?').run(token);
+      return true;
     })();
   },
 };

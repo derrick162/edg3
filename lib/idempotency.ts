@@ -15,7 +15,7 @@
  *   - app/api/calendar/book/route.ts   ("Book it" quick-book button)
  */
 
-import { eventDedupeQueries } from './db';
+import { eventDedupeQueries, deleteConfirmQueries } from './db';
 
 /** 5 minutes — long enough to absorb Vapi retry storms and double-taps. */
 const TTL_MS = 5 * 60 * 1000;
@@ -36,6 +36,34 @@ export function buildEventDedupeKey(title: string, startISOish: string): string 
   const normalTitle = title.toLowerCase().replace(/^⚡\s*/, '').trim().slice(0, 60);
   const startKey = startISOish.slice(0, 16); // YYYY-MM-DDTHH:MM  or  YYYY-MM-DD for all-day
   return `event:${normalTitle}:${startKey}`;
+}
+
+// ── Hard delete-confirmation tokens (#9) ──────────────────────────────────────
+
+/** 2 minutes — ample time for the user to respond on a voice call. */
+const DELETE_TOKEN_TTL_MS = 2 * 60 * 1000;
+
+/**
+ * Issue a one-time server-generated confirmation token for a destructive delete.
+ * The caller should embed the token in the response message so the model can relay
+ * it back on the next call. The model cannot mint a valid token; it must present
+ * one it received from the server.
+ */
+export function issueDeleteToken(userId: number): string {
+  return deleteConfirmQueries.issue(userId, Date.now(), DELETE_TOKEN_TTL_MS);
+}
+
+/**
+ * Consume a confirmation token. Returns true if the token is valid (correct user,
+ * not expired, not previously used) and marks it used. Returns false otherwise.
+ * Callers should refuse the delete and re-issue a fresh token on false.
+ */
+export function consumeDeleteToken(userId: number, token: string): boolean {
+  try {
+    return deleteConfirmQueries.consume(token, userId, Date.now());
+  } catch {
+    return false;
+  }
 }
 
 /**
