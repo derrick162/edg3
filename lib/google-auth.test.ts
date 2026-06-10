@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   GOOGLE_SCOPES,
   GMAIL_COMPOSE_SCOPE,
+  GMAIL_READONLY_SCOPE,
   CALENDAR_SCOPES,
   parseScopes,
   hasGmailScope,
@@ -32,8 +33,8 @@ describe('google-auth scope helpers', () => {
     expect(hasGmailScope(CAL_PLUS_GMAIL)).toBe(true);
   });
 
-  it('missingRequiredScopes flags exactly gmail.compose for a calendar-only user', () => {
-    expect(missingRequiredScopes(CAL_ONLY)).toEqual([GMAIL_COMPOSE_SCOPE]);
+  it('missingRequiredScopes flags both Gmail scopes for a calendar-only user', () => {
+    expect(missingRequiredScopes(CAL_ONLY)).toEqual([GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE]);
     expect(missingRequiredScopes(CAL_PLUS_GMAIL)).toEqual([]);
     expect(missingRequiredScopes(null)).toEqual(GOOGLE_SCOPES);
   });

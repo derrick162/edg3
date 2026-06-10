@@ -23,9 +23,15 @@ export const CALENDAR_SCOPES = [
 // rolling email to all users. Flagged to PM.
 export const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose';
 
+// gmail.readonly lets us READ messages — needed for email-reply tracking (Edge reads
+// replies to the outreach threads it started). Like compose, this is a Google
+// *restricted* scope (verification + CASA before prod). The privacy guardrail is in
+// our code: readThread() is only ever called with threadIds Edge itself created.
+export const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+
 // The full set we now request at consent time. Calendar scopes first (unchanged),
-// Gmail appended — existing users granted only the calendar scopes must re-consent.
-export const GOOGLE_SCOPES: string[] = [...CALENDAR_SCOPES, GMAIL_COMPOSE_SCOPE];
+// Gmail scopes appended — existing users who granted fewer must re-consent.
+export const GOOGLE_SCOPES: string[] = [...CALENDAR_SCOPES, GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE];
 
 // --- Granted-scope reasoning -------------------------------------------------
 // Google returns the granted scopes as a space-delimited string on the token
@@ -43,6 +49,11 @@ export function hasScope(scope: string | null | undefined, wanted: string): bool
 // True once the user has granted Gmail compose/draft access.
 export function hasGmailScope(scope?: string | null): boolean {
   return hasScope(scope, GMAIL_COMPOSE_SCOPE);
+}
+
+// True once the user has granted Gmail read access (for reply tracking).
+export function hasGmailReadScope(scope?: string | null): boolean {
+  return hasScope(scope, GMAIL_READONLY_SCOPE);
 }
 
 // Which of the scopes we now require are NOT yet granted by this user. An existing

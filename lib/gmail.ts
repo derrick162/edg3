@@ -1,7 +1,7 @@
 import { google, gmail_v1 } from 'googleapis';
 import { getOAuthClient } from './calendar';
 import { calendarQueries, gmailQueries } from './db';
-import { hasGmailScope } from './google-auth';
+import { hasGmailScope, hasGmailReadScope } from './google-auth';
 
 // Gmail access primitive for EDG3 — the GUARDED, DRAFT-ONLY entry point.
 //
@@ -149,4 +149,60 @@ export async function deleteDraft(userId: number, draftId: string): Promise<void
   const gmail = gmailClientFor(userId);
   await gmail.users.drafts.delete({ userId: 'me', id: draftId });
   console.log(`[gmail] Draft deleted for user ${userId}: draftId=${draftId}`);
+}
+
+// --- READ side (email-reply tracking) ---------------------------------------
+// READ-ONLY, and only ever called with a threadId Edge itself created (Core passes
+// threadIds from watched_threads). No inbox-listing is exposed to callers.
+
+export interface ThreadMessage {
+  id: string;
+  from: string;
+  date: string;
+  fromMe: boolean; // true if this message was sent by the user (label SENT) — i.e. our own outreach
+  text: string;    // plain-text body (falls back to Gmail's snippet)
+}
+
+// Decode a base64url Gmail body part to UTF-8.
+function decodeB64Url(data?: string | null): string {
+  if (!data) return '';
+  try { return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'); }
+  catch { return ''; }
+}
+
+// Walk a message payload for the first text/plain part (depth-first); fall back to the
+// top-level body. Returns '' if none found (caller falls back to the snippet).
+function extractPlainText(payload?: gmail_v1.Schema$MessagePart): string {
+  if (!payload) return '';
+  if (payload.mimeType === 'text/plain' && payload.body?.data) return decodeB64Url(payload.body.data);
+  for (const part of payload.parts ?? []) {
+    const t = extractPlainText(part);
+    if (t) return t;
+  }
+  if (payload.body?.data && !payload.mimeType?.startsWith('multipart')) return decodeB64Url(payload.body.data);
+  return '';
+}
+
+// Read a single Gmail thread's messages (read-only). Requires gmail.readonly.
+export async function readThread(userId: number, threadId: string): Promise<ThreadMessage[]> {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) throw new GmailScopeError('No Google account is connected for this user.');
+  if (!hasGmailReadScope(tokenRow.scope)) {
+    throw new GmailScopeError('Gmail read access not granted (gmail.readonly). The user must re-authorize Google.');
+  }
+  const gmail = gmailClientFor(userId);
+  const res = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
+  const messages = res.data.messages ?? [];
+  return messages.map((m) => {
+    const headers = m.payload?.headers ?? [];
+    const header = (name: string) => headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? '';
+    const body = extractPlainText(m.payload).trim();
+    return {
+      id: m.id ?? '',
+      from: header('From'),
+      date: header('Date'),
+      fromMe: (m.labelIds ?? []).includes('SENT'),
+      text: body || (m.snippet ?? ''),
+    };
+  });
 }

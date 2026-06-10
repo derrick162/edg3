@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, effectiveTimezone, User } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
+import { checkOutreachReplies } from './replies';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -106,6 +107,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getWeekEvents(userId).catch(() => []),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
+  // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
+  // Degrades to [] if Gmail read access isn't granted yet or anything errors.
+  const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
   // Only kudos for tasks completed since the last briefing
   const lastBriefing = recentBriefings[0];
   const lastBriefingTime = lastBriefing ? new Date(lastBriefing.created_at) : null;
@@ -135,6 +139,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const prioritiesText = priorities.length
     ? priorities.map((p, i) => `${i + 1}. ${p.text}`).join('\n')
     : 'No priorities set for this week.';
+
+  const repliesText = outreachReplies.length
+    ? outreachReplies.map(r => `- ${r.recipient}${r.eventTitle ? ` (re: ${r.eventTitle})` : ''}: ${r.summary} → Suggested next step: ${r.suggestedAction}`).join('\n')
+    : 'No new replies to your outreach.';
 
   const memoriesText = recentMemories.length
     ? recentMemories.map(m => `[${m.type} - ${format(new Date(m.created_at), 'MMM d')}]: ${m.content}`).join('\n')
@@ -185,6 +193,9 @@ ${weekCalendarText}
 
 FREE TIME SLOTS (next 7 days, 8am–8pm):
 ${freeTimeText}
+
+REPLIES TO YOUR OUTREACH (Edge drafted these emails for the user and they were sent; these are the contacts' replies. If any are present, RAISE them in the briefing and OFFER to take the suggested next step — e.g. "Wilmec replied, they can come Thursday at two PM — want me to book it?". If "No new replies", do not mention this section at all.):
+${repliesText}
 
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
