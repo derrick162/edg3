@@ -9,6 +9,37 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **readCalendar response cap + prompt trim re-apply** (`tool-call/route.ts`,
+  `lib/vapi.ts`). Two latency-hardening changes in one commit:
+  - `readCalendar` now drops `status=cancelled` events (recurring-event expansions include them)
+    and hard-caps at **25 active events** with a `(Showing first 25 of N…)` trailer. Fixes the
+    late-call lag: each readCalendar call was growing the Vapi context by 50+ event lines; now
+    bounded. Security's idempotency guards (`claimEventCreate`, `confirmToken`) fully preserved.
+  - System prompt re-trimmed (~25% reduction) — Security's batch had reverted to the old verbose
+    version (their branch was behind Core's `942a497`). Re-applied the trim with Security's new
+    `confirmToken` delete-confirm language incorporated (model must pass back the server-issued
+    token, not `confirmed:true`). 117/117 tests, tsc clean, build clean.
+- **2026-06-10** — **Chief-of-Staff calendar API SHIPPED** (`app/api/admin/calendar/events/route.ts`,
+  `lib/calendar.ts`). Two new admin endpoints guarded by `x-admin-secret`:
+  - `GET /api/admin/calendar/events?email=...&days=7` — upcoming events for the next N days
+    (1–90, default 7), returned as trimmed objects (id, title, start, end, allDay, description,
+    location, status). Fetches all non-hidden calendars in parallel via new `getUpcomingEvents()`.
+  - `POST /api/admin/calendar/events` — creates an event on the user's primary calendar.
+    Body: `{ email, title, start, end, description?, timezone? }`. Validates ISO parse + end > start.
+    Returns `{ success, eventId, title, start, end, timezone }`.
+  No new Google scopes needed. 80/80 tests, tsc clean, build clean (52 routes).
+- **2026-06-10** — **System-prompt trim + honest-failure guardrail** (`lib/vapi.ts`). Trimmed the
+  static system prompt by ~25% (~300 tokens / call): collapsed the 7-line named-days block into a
+  compact single-line format, merged 6 error-handling bullets into one `HONEST FAILURE` bullet,
+  removed the redundant tool-name list (model knows tools from toolIds), tightened conditionals,
+  scope, and personality text. Added a clearer honest-failure rule: "Never say 'done' unless the
+  tool returned success. Never fabricate a result. A clear 'I couldn't do that' is always better
+  than a false 'done.'" All critical behaviors preserved (all-day date range, confirm-delete,
+  undo, timezone passthrough, NEVER INVENT FACTS, disambiguation, draftEmail draft-only).
+  Caching finding: **Vapi does NOT expose Anthropic `cache_control`** — `systemPrompt` is a plain
+  string with no `cacheControl`/`anthropicConfig` passthrough, so per-turn prompt caching is
+  unavailable; trimming is the only lever. 80/80 tests, tsc clean, build clean.
+- **2026-06-10** — **Deduplicated `recipientsFromNotes`** — removed the inline copy from the `draftEmail` handler in `app/api/vapi/tool-call/route.ts`; now imports the canonical, tested version from `lib/outreach`. tsc clean, 80/80 tests.
 - **2026-06-10** — ★ **Recent Activity tab SHIPPED** — per-row undo feed in the dashboard.
   - New **Activity** tab (⏪) in the sidebar nav; shows the last 20 actions Edge took on the user's calendar, newest first.
   - Each row: action label (e.g. "created 'Team Meeting' on June 25"), relative timestamp, and an **↩ Undo** button that reverses that specific action in place.
@@ -131,7 +162,7 @@ priority from user feedback.
   - **Effort:** ~2–4d.
 
 ### Chief of Staff calendar tools (2026-06-10)
-- [ ] **Admin calendar API — read + create events on Derrick's behalf** — _Chief of Staff session needs direct Google Calendar access so it can book events without going through Edge or manual entry._
+- [x] **Admin calendar API — read + create events on Derrick's behalf** ✅ Shipped 2026-06-10 (see changelog). — _Chief of Staff session needs direct Google Calendar access so it can book events without going through Edge or manual entry._
   - **Scope:** Two new admin endpoints, protected by `x-admin-secret` header (same pattern as `app/api/admin/latest-briefing/route.ts`):
     1. `GET /api/admin/calendar/events?email=derrick@deltaedg3.com&days=7` — returns upcoming events for the next N days using the existing `lib/calendar.ts` helpers + stored OAuth token.
     2. `POST /api/admin/calendar/events` — creates a calendar event. Body: `{ email, title, start (ISO), end (ISO), description? }`. Reuse existing `createCalendarEvent` logic from `lib/calendar.ts`.

@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Internal planning docs — keep out of the public repo
 docs/
+
+# Local agent session state
+.claude/

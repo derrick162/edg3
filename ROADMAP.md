@@ -101,9 +101,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ Test hardening DONE & green (80/80, +19 new tests). `recipientsFromNotes` extracted to outreach.ts; `bookEventTimes` extracted to time.ts + book route updated. Replies, outreach, book-it all covered. Route.ts NOT touched (Security collision). Ready for master merge.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Call-latency hardening COMPLETE** (`54a4fca`): readCalendar capped at 25 events + cancelled dropped; prompt trim re-applied with confirmToken preserved. All priority-queue items done & merged. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | ✅ **Gmail READ access DONE** — `readThread` + `hasGmailReadScope` + scope coverage verified. All 10 roadmap items + Gmail READ complete. 160/160 green. Pinging PM — queue empty. | — | 2026-06-10 |
-| 🎨 Design | `design` | _(onboarding — read `DESIGN.md` + this constitution. First asks: audit dashboard + onboarding, propose a design-token pass in `app/globals.css`.)_ | — | 2026-06-10 |
+| 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
