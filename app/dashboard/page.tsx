@@ -1093,11 +1093,13 @@ export default function Dashboard() {
               >
                 📅 Connect calendar
               </button>
-            ) : calendarConnected ? (
+            ) : (
+              // Default for connected AND unknown/loading state — never leave the user with no
+              // way to reconnect/disconnect (a null status used to render nothing here).
               <div className="px-2 py-2">
                 <div className="flex items-center gap-2 mb-1">
                   <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Calendar connected</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{calendarConnected ? 'Calendar connected' : 'Google connection'}</p>
                 </div>
                 <div className="flex items-center gap-3 pl-3.5">
                   <button
@@ -1117,7 +1119,7 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
-            ) : null}
+            )}
             {briefings.length === 0 && (
               <button
                 onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
