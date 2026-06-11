@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **T4+T5** (`f138fb1`): transcript deep-link + graceful hold + first-name fix. 282/282 green. Awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **Issues A+B+C** (`7424c53`): all-day ambiguity fix + location param + endDate guidance. 288/288 green. Awaiting PM.)_ | — | 2026-06-11 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,29 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-11** — **Issues A+B+C — all-day ambiguity + location + endDate guidance (Core).** (`7424c53`)
+  - **ISSUE A [BUG] All-day event deletion/move ambiguity**: `deleteEvent` and `moveEvent` now
+    accept an optional `targetEndDate` param that pre-filters same-title all-day events to the
+    one whose last inclusive day matches before disambiguation. `describeOptions` now shows
+    `"Conrad Las Vegas" (all-day Jun 25–Jun 28)` instead of `at all day` so the model can
+    identify which span to target. Ambiguous all-day responses direct the model to re-call with
+    `targetEndDate` rather than `currentTime` (which is meaningless for all-day events). New
+    `prevDay` helper in `lib/time.ts` (companion to `nextDay`; converts Google's exclusive
+    `end.date` to last inclusive day). 6 new tests (3 for `prevDay`, 3 for all-day `selectEvent`
+    ambiguity branch). ⚠️ **External step**: add `targetEndDate` (string, optional) to the
+    `deleteEvent` and `moveEvent` Vapi dashboard tools.
+  - **ISSUE B [prompt] Multi-day all-day endDate guidance**: ALL-DAY & MULTI-DAY system-prompt
+    guidance now includes an explicit worked example ("Conrad Las Vegas June 25–28" →
+    allDay:true, startDateTime:2026-06-25, endDate:2026-06-28) and explicitly forbids omitting
+    endDate for multi-day events. DISAMBIGUATION updated to describe the `targetEndDate` path
+    for all-day events vs `currentTime` for timed events.
+  - **ISSUE C [param+prompt] Location param for createEvent**: `createEvent` now accepts
+    optional `location` (string) and writes it to the Google Calendar event. System prompt adds
+    LOCATION guidance: set real street address for hotels/venues (e.g. "3000 S Las Vegas Blvd,
+    Las Vegas, NV 89109" for Conrad Las Vegas); omit rather than guess. HONEST FAILURE
+    reinforced: never claim a field was set unless the tool confirmed it. ⚠️ **External step**:
+    add `location` (string, optional) to the `createEvent` Vapi dashboard tool.
+  288/288 tests, tsc clean.
 - **2026-06-11** — **T4 + T5 + firstName bug (Core).** (`f668d69`, `f138fb1`)
   - **T4 [feature] View-transcript link in Call Summary**: New owner-only
     `GET /api/briefing/[id]` returns the decrypted transcript (enforced via
