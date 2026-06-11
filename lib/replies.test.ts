@@ -35,7 +35,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
   default: class { messages = { create: vi.fn(async () => { throw new Error('no sdk in tests'); }) }; },
 }));
 
-import { checkOutreachReplies } from './replies';
+import { checkOutreachReplies, formatRepliesForVoice, type ReplyUpdate } from './replies';
 
 // Minimal WatchedThread shape
 function thread(overrides: Record<string, unknown> = {}) {
@@ -187,5 +187,57 @@ describe('checkOutreachReplies', () => {
     expect(result).toHaveLength(2);
     expect(h.notifCreate).toHaveBeenCalledTimes(2);
     expect(h.markSeen).toHaveBeenCalledTimes(2);
+  });
+});
+
+const makeUpdate = (overrides: Partial<ReplyUpdate> = {}): ReplyUpdate => ({
+  recipient: 'Alice',
+  eventTitle: 'Plumber visit',
+  eventDate: '2026-06-15',
+  summary: 'They can come Tuesday at 2pm.',
+  suggestedAction: 'Book Tuesday 2pm',
+  ...overrides,
+});
+
+describe('formatRepliesForVoice', () => {
+  it('returns reconnect guidance when read scope is missing — never says "no replies"', () => {
+    const msg = formatRepliesForVoice([], false);
+    expect(msg).toMatch(/reconnect/i);
+    expect(msg).toMatch(/email-read permission/i);
+    expect(msg).not.toMatch(/no new replies/i);
+  });
+
+  it('returns no-replies/watching message when scope ok but nothing found', () => {
+    const msg = formatRepliesForVoice([], true);
+    expect(msg).toMatch(/no new replies/i);
+    expect(msg).toMatch(/briefing/i);
+  });
+
+  it('formats a single reply as spoken sentence with who/about/summary/action', () => {
+    const msg = formatRepliesForVoice([makeUpdate()], true);
+    expect(msg).toContain('Alice replied about Plumber visit');
+    expect(msg).toContain('They can come Tuesday at 2pm.');
+    expect(msg).toContain('Book Tuesday 2pm');
+  });
+
+  it('omits the "about" clause when eventTitle is null', () => {
+    const msg = formatRepliesForVoice([makeUpdate({ eventTitle: null })], true);
+    expect(msg).toContain('Alice replied:');
+    expect(msg).not.toContain(' about ');
+  });
+
+  it('caps output at 3 and appends a plural "more replies" tail', () => {
+    const updates = Array.from({ length: 5 }, (_, i) => makeUpdate({ recipient: `Person ${i + 1}` }));
+    const msg = formatRepliesForVoice(updates, true);
+    expect(msg).toContain('Person 1');
+    expect(msg).toContain('Person 3');
+    expect(msg).not.toContain('Person 4');
+    expect(msg).toMatch(/2 more replies/i);
+  });
+
+  it('uses singular "reply" for exactly 1 overflow', () => {
+    const updates = Array.from({ length: 4 }, (_, i) => makeUpdate({ recipient: `P${i + 1}` }));
+    const msg = formatRepliesForVoice(updates, true);
+    expect(msg).toMatch(/1 more reply/i);
   });
 });

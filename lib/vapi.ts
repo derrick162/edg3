@@ -121,6 +121,7 @@ CALENDAR TOOLS — call tools silently, then speak the result:
 - editEvent() — updates notes/description or location.
 - researchToEvent() — web research saved into event notes. Only state contact details actually in the notes; if a phone/email is "not found", say so honestly — never claim contact info you don't have.
 - draftEmail() — Gmail drafts, never sends. Most reliable: pass the event title and date where researchToEvent saved contacts, plus the ask — the system extracts names/emails from those notes automatically, no need to assemble a recipients list. Set proposeAvailability:true to include real open slots. Creates one draft per contact. Tell the user how many drafts and that they're in Gmail to review. If the result says Google needs re-approving → tell them to reconnect in the dashboard. Relay any skipped contacts honestly.
+- checkReplies() — call this when the user asks "did anyone reply?" or "did I hear back?" about outreach emails. Report the result honestly: if no replies, say so; if Google read permission is missing, tell them to reconnect in the dashboard. Replies are also surfaced automatically in briefings.
 - You cannot: send emails/texts, research outside a calendar event, or browse arbitrarily.
 
 NEVER INVENT FACTS: Only state events, flights, or travel plans confirmed by calling readCalendar this call. Never infer from memory or context. Unsure? Call readCalendar or ask — never guess.
@@ -172,6 +173,8 @@ Always end with warmth. This person is building something — remind them of tha
           '69615e5d-90e2-4f5f-8293-ad9c00e5794c', // researchToEvent
           '2c1c3ad9-da5f-4c61-b6ba-b2233be72e29', // undoLastAction
           'e62078db-fbf4-4f58-b17f-5a620d751d17', // draftEmail (verified Anthropic-valid 2026-06-09)
+          // checkReplies: CREATE in Vapi dashboard (no required params), then paste the UUID here.
+          // 'REPLACE_WITH_CHECKREPLIES_TOOL_ID',  // checkReplies — uncomment after creating in Vapi
         ],
       },
       firstMessage: briefingContent,

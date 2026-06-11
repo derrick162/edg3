@@ -73,6 +73,29 @@ export async function checkOutreachReplies(userId: number): Promise<ReplyUpdate[
   return updates;
 }
 
+/**
+ * Formats reply updates as a short spoken string for the voice model.
+ * `hasReadScope` = false → reconnect guidance (never says "no replies" when the real issue is
+ * missing permission). Caps at 3 updates for voice readability.
+ */
+export function formatRepliesForVoice(updates: ReplyUpdate[], hasReadScope: boolean): string {
+  if (!hasReadScope) {
+    return "I can't read your email replies yet — open the Edg3 dashboard, reconnect Google, and approve the email-read permission. Then I'll be able to check.";
+  }
+  if (!updates.length) {
+    return "No new replies to your outreach yet — I'll keep watching and flag them in your next briefing.";
+  }
+  const cap = 3;
+  const top = updates.slice(0, cap);
+  const parts = top.map(u => {
+    const about = u.eventTitle ? ` about ${u.eventTitle}` : '';
+    return `${u.recipient} replied${about}: ${u.summary}. Suggested: ${u.suggestedAction}.`;
+  });
+  const extra = updates.length - top.length;
+  if (extra > 0) parts.push(`...and ${extra} more ${extra === 1 ? 'reply' : 'replies'} — I'll cover them in your next briefing.`);
+  return parts.join(' ');
+}
+
 // Summarize one reply + propose the next action. Claude with a deterministic fallback so
 // a model hiccup never blocks the briefing.
 async function understandReply(replyText: string, context: string): Promise<{ summary: string; suggestedAction: string }> {

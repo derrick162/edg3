@@ -8,6 +8,8 @@ import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
+import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
+import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
 import { google, calendar_v3 } from 'googleapis';
@@ -701,6 +703,12 @@ Query: ${query}` }],
       failed.length ? `couldn't draft for ${failed.join(', ')}` : '',
     ].filter(Boolean);
     return `Drafted ${draftedFor.length} email(s) in your Gmail — review and send.${notes.length ? ` I ${notes.join('; and ')}.` : ''}`;
+
+  } else if (fn === 'checkReplies') {
+    const tokenRow = calendarQueries.get(userId);
+    const hasReadScope = hasGmailReadScope(tokenRow?.scope);
+    const updates = hasReadScope ? await checkOutreachReplies(userId) : [];
+    return formatRepliesForVoice(updates, hasReadScope);
 
   } else if (fn === 'undoLastAction') {
     const last = undoQueries.getLatest(userId);
