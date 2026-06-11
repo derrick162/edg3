@@ -5,6 +5,16 @@ import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { briefingQueries, userQueries, priorityQueries, effectiveTimezone, User } from './db';
 
+// How long after call_time we'll still fire if the exact-minute tick was missed
+// (e.g. server restart during that minute). Capped so a long outage doesn't
+// place a morning briefing call in the afternoon.
+const CALL_GRACE_MINUTES = 120;
+
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
 // The user's current top priorities as prompt text — this week's, falling back to the most
 // recent set so Edge always knows them on a call (especially open calls, which have no briefing).
 function currentPrioritiesText(userId: number): string {
@@ -21,15 +31,15 @@ export function startScheduler() {
 
   // Check every minute if any users need a call
   cron.schedule('* * * * *', async () => {
-    await checkAndInitiateCalls();
+    await checkAndInitiateCalls(new Date());
   });
 
   console.log('EDG3 scheduler started');
 }
 
-async function checkAndInitiateCalls() {
+// Exported for testing (injectable `now` makes time-based logic deterministic in tests).
+export async function checkAndInitiateCalls(now: Date = new Date()) {
   const db = getDb();
-  const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
 
   // Get all onboarded users with a phone number and call time
@@ -51,7 +61,12 @@ async function checkAndInitiateCalls() {
       const userCurrentTime = `${userHH}:${userMM}`;
       const userToday = userLocalTime.toLocaleDateString('en-CA'); // YYYY-MM-DD
 
-      if (userCurrentTime !== user.call_time) continue;
+      // Catch-up window: fire any time >= call_time and within CALL_GRACE_MINUTES.
+      // The exact-minute tick can be missed when the server restarts during that minute;
+      // the grace window fires a few minutes late instead of silently skipping the call.
+      const userMinutes = timeToMinutes(userCurrentTime);
+      const callMinutes = timeToMinutes(user.call_time);
+      if (userMinutes < callMinutes || userMinutes >= callMinutes + CALL_GRACE_MINUTES) continue;
 
       // Check if already called today (in user's local date)
       const alreadyCalled = db.prepare(`
