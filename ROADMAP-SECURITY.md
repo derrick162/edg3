@@ -8,6 +8,13 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — **[LOW-MED] rateLimit loud-fail + crypto strict-mode.** (a) `checkRateLimit`
+  catch now logs loudly via `console.error` — a silent fault was erasing brute-force
+  protection with no observable signal. (b) `encryptField` in `lib/crypto.ts` supports
+  `STRICT_ENCRYPTION=1`: throws instead of silently passing plaintext when
+  `DATA_ENCRYPTION_KEY` is unset — prevents misconfigured deploys from persisting
+  plaintext PII. Health signal: `/api/admin/backup` GET already exposes `encryptionEnabled`.
+  3 new tests; 172/172 green.
 - **2026-06-10** — **[MEDIUM] Fixed XFF rate-limit bypass in `getClientIP`.** The old
   `split(',')[0]` (leftmost hop) was fully client-controlled — an attacker could send a
   random `X-Forwarded-For` per request and get a fresh rate-limit bucket every time,

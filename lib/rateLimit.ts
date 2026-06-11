@@ -68,8 +68,10 @@ export function checkRateLimit(type: RateLimitKey, ip: string): RateLimitResult 
     const key = `${type}:${ip}`;
     const result = rateLimitQueries.check(key, limit, windowMs, Date.now());
     return { allowed: result.allowed, remaining: result.remaining, resetAt: result.resetAt };
-  } catch {
-    // Fail open — never block a real user because of a rate-limit DB fault.
+  } catch (err) {
+    // Fail open — never block a real user because of a transient DB fault.
+    // Log loudly: a persistent fault here silently erases brute-force protection.
+    console.error('[rateLimit] DB fault — failing open for', type, 'from', ip, err);
     return { allowed: true, remaining: 1, resetAt: Date.now() + 60_000 };
   }
 }
