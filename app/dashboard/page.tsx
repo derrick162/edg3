@@ -547,29 +547,46 @@ function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) 
   );
 }
 
+interface ActivityItem {
+  id: number;
+  action: string;
+  label: string;
+  detail: {
+    sections: { label: string; value: string }[];
+    changes?: { label: string; before: string; after: string }[];
+  } | null;
+  ok: boolean;
+  created_at: string;
+  undoId: number | null;
+  undoLabel: string | null;
+  undone: number | null;
+}
+
 function ActivityTab() {
-  const [actions, setActions] = useState<{ id: number; label: string; undone: number; created_at: string }[]>([]);
+  const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   async function load() {
-    const r = await fetch('/api/undo?list=1');
-    if (!r.ok) return;
+    setLoading(true);
+    const r = await fetch('/api/activity');
+    if (!r.ok) { setLoading(false); return; }
     const d = await r.json();
-    setActions(d.actions || []);
+    setItems(d.items || []);
     setLoading(false);
   }
 
   useEffect(() => { load(); }, []);
 
-  async function handleUndo(id: number) {
-    setUndoingId(id);
+  async function handleUndo(undoId: number) {
+    setUndoingId(undoId);
     setUndoError(null);
     const r = await fetch('/api/undo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: undoId }),
     });
     const d = await r.json().catch(() => ({}));
     setUndoingId(null);
@@ -602,7 +619,7 @@ function ActivityTab() {
         <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
       </div>
       <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-        Everything Edge has done on your calendar — undo any action individually.
+        Everything Edge has done on your calendar — click any row for details, undo individually.
       </p>
 
       {undoError && (
@@ -611,7 +628,7 @@ function ActivityTab() {
         </div>
       )}
 
-      {actions.length === 0 ? (
+      {items.length === 0 ? (
         <div className="glass-card p-8 text-center">
           <p className="text-2xl mb-3">⏪</p>
           <p className="font-medium mb-1">No activity yet</p>
@@ -621,38 +638,109 @@ function ActivityTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {actions.map(a => (
-            <div
-              key={a.id}
-              className="glass-card p-4 flex items-center gap-3"
-              style={{ opacity: a.undone ? 0.45 : 1 }}
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm truncate" style={{ color: a.undone ? 'var(--text-faint)' : 'var(--text-strong)' }}>
-                  {a.undone ? <span style={{ marginRight: 6, color: 'var(--text-faint)' }}>↩</span> : <span style={{ marginRight: 6, color: 'var(--text-accent)' }}>✦</span>}
-                  {a.label}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                  {a.undone ? 'Undone · ' : ''}{relativeTime(a.created_at)}
-                </p>
-              </div>
-              {!a.undone && (
-                <button
-                  onClick={() => handleUndo(a.id)}
-                  disabled={undoingId !== null}
-                  className="text-xs py-1 px-3 rounded flex-shrink-0"
-                  style={{
-                    background: 'rgba(245,158,11,0.12)',
-                    color: undoingId === a.id ? 'var(--text-muted)' : 'var(--edg-warning)',
-                    border: '1px solid rgba(245,158,11,0.2)',
-                    cursor: undoingId !== null ? 'not-allowed' : 'pointer',
-                  }}
+          {items.map(item => {
+            const isExpanded = expandedId === item.id;
+            const isUndone = item.undone === 1;
+            const canUndo = item.undoId !== null && !isUndone;
+            const hasDetail = !!item.detail;
+            return (
+              <div
+                key={item.id}
+                className="glass-card overflow-hidden"
+                style={{ opacity: isUndone ? 0.55 : 1 }}
+              >
+                {/* Row header — click to expand if detail is available */}
+                <div
+                  className="p-4 flex items-center gap-3"
+                  style={{ cursor: hasDetail ? 'pointer' : 'default' }}
+                  onClick={() => hasDetail && setExpandedId(isExpanded ? null : item.id)}
+                  role={hasDetail ? 'button' : undefined}
+                  aria-expanded={hasDetail ? isExpanded : undefined}
                 >
-                  {undoingId === a.id ? 'Undoing…' : '↩ Undo'}
-                </button>
-              )}
-            </div>
-          ))}
+                  <span style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-accent)', flexShrink: 0 }}>
+                    {isUndone ? '↩' : '✦'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate" style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-strong)' }}>
+                      {item.label}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                      {isUndone ? 'Undone · ' : ''}{relativeTime(item.created_at)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {canUndo && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleUndo(item.undoId!); }}
+                        disabled={undoingId !== null}
+                        className="text-xs py-1 px-3 rounded"
+                        style={{
+                          background: 'rgba(245,158,11,0.12)',
+                          color: undoingId === item.undoId ? 'var(--text-muted)' : 'var(--edg-warning)',
+                          border: '1px solid rgba(245,158,11,0.2)',
+                          cursor: undoingId !== null ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {undoingId === item.undoId ? 'Undoing…' : '↩ Undo'}
+                      </button>
+                    )}
+                    {hasDetail && (
+                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                        {isExpanded ? '▲' : '▼'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded detail panel */}
+                {isExpanded && item.detail && (
+                  <div
+                    className="px-4 pb-4"
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    {item.detail.sections.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {item.detail.sections.map((sec, i) => (
+                          <div key={i} className="flex gap-3">
+                            <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: 'var(--text-faint)' }}>
+                              {sec.label}
+                            </span>
+                            <span
+                              className="text-sm flex-1"
+                              style={{ color: 'var(--text-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                            >
+                              {sec.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {item.detail.changes && item.detail.changes.length > 0 && (
+                      <div className="mt-3 space-y-3">
+                        {item.detail.changes.map((c, i) => (
+                          <div key={i}>
+                            <p className="text-xs mb-1.5" style={{ color: 'var(--text-faint)' }}>
+                              {c.label} changed
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="text-xs p-2 rounded" style={{ background: 'rgba(239,68,68,0.08)' }}>
+                                <p className="font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Before</p>
+                                <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.before}</p>
+                              </div>
+                              <div className="text-xs p-2 rounded" style={{ background: 'rgba(34,197,94,0.08)' }}>
+                                <p className="font-semibold mb-1" style={{ color: 'var(--edg-success)' }}>After</p>
+                                <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.after}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
