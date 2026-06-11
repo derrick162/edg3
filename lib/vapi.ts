@@ -55,6 +55,7 @@ export async function initiateCall(
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
 
   // Calculate all date references in the user's actual timezone
+  const firstName = (userName || '').split(' ')[0] || userName;
   const userTzNow = new Date(new Date().toLocaleString('en-US', { timeZone: userTimezone }));
   const pad = (n: number) => String(n).padStart(2, '0');
   const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -83,9 +84,9 @@ export async function initiateCall(
   const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const thisWeekDays = Array.from({length: 7}, (_, i) => `${dayNames[(userDay + i) % 7]}: ${toDateStr(new Date(todayD.getTime() + i*86400000))}`).join(' · ');
 
-  const systemPrompt = `You are Edge — the Elite Daily Guidance Engine — AI Chief of Staff for ${userName}. If asked who you are, say "I'm Edge, your Elite Daily Guidance Engine." Always call the user ${userName} — never any other name.
-${isOpenCall ? `This is an open conversation ${userName} requested — no daily briefing. Find out what's on their mind and help with whatever comes up: calendar, priorities, or just talking it through. Keep replies short and natural.` : `You already delivered the briefing. Do not repeat it. Wait for ${userName} to respond.`}
-${prioritiesText ? `\n${userName}'S TOP PRIORITIES (you already know these — never ask them to repeat; "same as current priorities" means use exactly these):\n${prioritiesText}\n` : ''}
+  const systemPrompt = `You are Edge — the Elite Daily Guidance Engine — AI Chief of Staff for ${userName}. If asked who you are, say "I'm Edge, your Elite Daily Guidance Engine." Always call the user ${firstName} — never any other name, never their full name.
+${isOpenCall ? `This is an open conversation ${firstName} requested — no daily briefing. Find out what's on their mind and help with whatever comes up: calendar, priorities, or just talking it through. Keep replies short and natural.` : `You already delivered the briefing. Do not repeat it. Wait for ${firstName} to respond.`}
+${prioritiesText ? `\n${firstName}'S TOP PRIORITIES (you already know these — never ask them to repeat; "same as current priorities" means use exactly these):\n${prioritiesText}\n` : ''}
 DATE & TIME — user's timezone: ${userTimezone}, now: ${pad(userHour)}:${pad(userTzNow.getMinutes())}
 Use these exact YYYY-MM-DD dates in every tool call. Never calculate dates yourself. Map relative words ("tomorrow", "this weekend") to the matching date below — never shift based on surrounding context.
 
@@ -102,7 +103,7 @@ Days of this week: ${thisWeekDays}
 
 TIME: Current hour is ${userHour}. "This afternoon" after 17:00 → ask if they mean tomorrow.
 
-You genuinely care about ${userName}. Warm, direct, trusted advisor — here to help them win the day, not to judge. Keep replies one or two sentences: acknowledge, validate where genuine, redirect toward action. NEVER say "I'm listening." If they want to share something before the next call, let them know you'll pick it up on tomorrow's briefing — never tell them to text or message you directly.
+You genuinely care about ${firstName}. Warm, direct, trusted advisor — here to help them win the day, not to judge. Keep replies one or two sentences: acknowledge, validate where genuine, redirect toward action. NEVER say "I'm listening." If they want to share something before the next call, let them know you'll pick it up on tomorrow's briefing — never tell them to text or message you directly.
 
 SCOPE: You manage the calendar, can research into event notes (researchToEvent), and draft outreach emails as Gmail drafts (draftEmail — drafts only, never sends). You cannot send emails/texts, do open-ended research outside a calendar event, or browse arbitrarily.
 
@@ -191,7 +192,21 @@ Always end with warmth. This person is building something — remind them of tha
       // Smart endpointing: start replying as soon as it detects the user is actually done,
       // rather than always waiting a fixed gap — Edge feels noticeably snappier.
       startSpeakingPlan: { waitSeconds: 0.4, smartEndpointingPlan: { provider: 'livekit' } },
-      silenceTimeoutSeconds: 30,
+      // Idle hold behaviour: reassure on silence instead of going dead and hanging up.
+      // ~10s → first check-in · ~20s → second · ~30s → check-in asking if user wants to hold.
+      // Then 40s total silence ends the call gracefully.
+      // ⚠️ Verify idleMessages / idleTimeoutSeconds / idleMessageMaxSpokenCount field names
+      //    against the live Vapi API before relying on this — idle behaviour needs a real call to validate.
+      messagePlan: {
+        idleMessages: [
+          'Still here — take your time.',
+          "No rush, I'm still on the line.",
+          "Still want me to hold, or should I let you go? You can always call me back.",
+        ],
+        idleTimeoutSeconds: 10,
+        idleMessageMaxSpokenCount: 3,
+      },
+      silenceTimeoutSeconds: 40,
       maxDurationSeconds: 1800,
       endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
     },
@@ -199,6 +214,16 @@ Always end with warmth. This person is building something — remind them of tha
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
       model: { systemPrompt },
+      messagePlan: {
+        idleMessages: [
+          'Still here — take your time.',
+          "No rush, I'm still on the line.",
+          "Still want me to hold, or should I let you go? You can always call me back.",
+        ],
+        idleTimeoutSeconds: 10,
+        idleMessageMaxSpokenCount: 3,
+      },
+      silenceTimeoutSeconds: 40,
     } : undefined,
   };
 
