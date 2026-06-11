@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Alignment feature SHIPPED** (`b8f95bb`): `lib/alignment.ts` + briefing wiring. 215/215 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Core-loop #2–#4 SHIPPED** (`d5659e2`): blocking offer + hygiene flags + accountability. 223/223 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,18 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Core-loop features #2–#4 (Core).** #2: briefing section 3 now names a
+  specific free slot when offering to block time for an under-served priority ("Want me to
+  block Tuesday at two PM for fundraising?"); `lib/vapi.ts` gets a PRIORITY BLOCKING
+  instruction so Edge calls `createEvent` immediately when the user says yes — no re-asking.
+  #3: new `detectHygieneFlags()` in `lib/alignment.ts` (pure local, no LLM call) — detects
+  two patterns: a day with 3+ back-to-back meetings (< 15 min gap), or 3+ busy days with no
+  90-min focus block. Result injected into briefing as `CALENDAR HYGIENE FLAG`; section 4
+  surfaces it as one punchy item with an offer to fix. 8 new tests; degrades safely to null.
+  #4: briefing now opens ACTION ITEMS with one accountability line ("Yesterday you committed
+  to X — did that happen?") when `source='edg3'` incomplete tasks from yesterday exist.
+  No new DB table — reuses the existing `tasks` table + `extractTasksFromTranscript` pipeline.
+  223/223 green.
 - **2026-06-10** — **Priority↔calendar alignment (Core).** The briefing's "ALIGNMENT CHECK"
   section was a vague LLM aside; now it's data-backed. New `lib/alignment.ts`: one Haiku call
   classifies the week's events against stated priorities, sums hours per priority, and surfaces
