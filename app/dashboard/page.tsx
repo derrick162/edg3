@@ -236,16 +236,24 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
   const [newTask, setNewTask] = useState('');
   const [adding, setAdding] = useState(false);
   const [completingAll, setCompletingAll] = useState(false);
+  const [filterView, setFilterView] = useState<'open' | 'completed' | 'all'>('open');
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
-  // Newest first (id is autoincrement) so freshly added tasks appear at the top.
+
+  // Open view: today/tomorrow tasks + past incomplete (carried over)
   const todayTasks = tasks.filter(t => t.date === today || t.date === tomorrowStr).sort((a, b) => b.id - a.id);
   const pastTasks = tasks.filter(t => t.date < today && !t.completed);
-
-  // Every incomplete task currently shown in the list (today/tomorrow + carried over)
   const incompleteVisible = [...todayTasks, ...pastTasks].filter(t => !t.completed);
+
+  // Completed view: all completed tasks newest-completed first
+  const completedTasks = tasks
+    .filter(t => !!t.completed)
+    .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? '') || b.id - a.id);
+
+  // All view: everything by date DESC, then id DESC
+  const allTasks = [...tasks].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -263,12 +271,36 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
     setCompletingAll(false);
   }
 
+  const isTomorrow = todayTasks.some(t => t.date === tomorrowStr) && !todayTasks.some(t => t.date === today);
+  const headingByView = { open: isTomorrow ? "Tomorrow's tasks" : "Today's tasks", completed: 'Completed', all: 'All tasks' };
+
+  const filterControl = (
+    <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', width: 'fit-content' }}>
+      {(['open', 'completed', 'all'] as const).map(v => (
+        <button
+          key={v}
+          onClick={() => setFilterView(v)}
+          className="text-xs py-1 px-3 rounded-md transition-all capitalize"
+          style={{
+            background: filterView === v ? 'rgba(99,102,241,0.2)' : 'transparent',
+            color: filterView === v ? 'var(--text-accent)' : 'var(--text-muted)',
+            fontWeight: filterView === v ? 600 : 400,
+          }}
+        >
+          {v.charAt(0).toUpperCase() + v.slice(1)}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div>
+      {filterControl}
+
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">{todayTasks.some(t => t.date === tomorrowStr) && !todayTasks.some(t => t.date === today) ? "Tomorrow's tasks" : "Today's tasks"}</h2>
+        <h2 className="text-lg font-bold">{headingByView[filterView]}</h2>
         <div className="flex items-center gap-3">
-          {incompleteVisible.length > 0 && (
+          {filterView === 'open' && incompleteVisible.length > 0 && (
             <button
               onClick={handleCompleteAll}
               disabled={completingAll}
@@ -278,13 +310,15 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
               {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
             </button>
           )}
-          <span className="badge badge-info">
-            {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
-          </span>
+          {filterView === 'open' && (
+            <span className="badge badge-info">
+              {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Add task */}
+      {/* Add task — always visible */}
       <form onSubmit={handleAdd} className="flex gap-3 mb-6">
         <input
           className="input flex-1"
@@ -297,46 +331,79 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
         </button>
       </form>
 
-      {/* EDG3 suggested tasks */}
-      {todayTasks.filter(t => t.source === 'edg3').length > 0 && (
-        <div className="mb-2">
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>✦ SUGGESTED BY EDG3</p>
+      {/* Open view */}
+      {filterView === 'open' && (
+        <>
+          {todayTasks.filter(t => t.source === 'edg3').length > 0 && (
+            <div className="mb-2">
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>✦ SUGGESTED BY EDG3</p>
+              <div className="space-y-2">
+                {todayTasks.filter(t => t.source === 'edg3' && !t.completed).map(task => (
+                  <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
+                ))}
+              </div>
+            </div>
+          )}
+          {todayTasks.filter(t => t.source === 'manual' && !t.completed).length > 0 && (
+            <div className="mb-2 mt-4">
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>YOUR TASKS</p>
+              <div className="space-y-2">
+                {todayTasks.filter(t => t.source === 'manual' && !t.completed).map(task => (
+                  <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
+                ))}
+              </div>
+            </div>
+          )}
+          {incompleteVisible.length === 0 && (
+            <div className="glass-card p-8 text-center mb-4">
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {todayTasks.length === 0
+                  ? 'No tasks yet today. They\'ll appear here after your morning call.'
+                  : 'All done for today.'}
+              </p>
+            </div>
+          )}
+          {pastTasks.length > 0 && (
+            <div className="mt-6">
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>⚠ CARRIED OVER</p>
+              <div className="space-y-2">
+                {pastTasks.map(task => (
+                  <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Completed view */}
+      {filterView === 'completed' && (
+        completedTasks.length === 0 ? (
+          <div className="glass-card p-8 text-center">
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No completed tasks in the last 30 days.</p>
+          </div>
+        ) : (
           <div className="space-y-2">
-            {todayTasks.filter(t => t.source === 'edg3').map(task => (
+            {completedTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
             ))}
           </div>
-        </div>
+        )
       )}
 
-      {/* Manual tasks */}
-      {todayTasks.filter(t => t.source === 'manual').length > 0 && (
-        <div className="mb-2 mt-4">
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>YOUR TASKS</p>
+      {/* All view */}
+      {filterView === 'all' && (
+        allTasks.length === 0 ? (
+          <div className="glass-card p-8 text-center">
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet.</p>
+          </div>
+        ) : (
           <div className="space-y-2">
-            {todayTasks.filter(t => t.source === 'manual').map(task => (
+            {allTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
             ))}
           </div>
-        </div>
-      )}
-
-      {todayTasks.length === 0 && (
-        <div className="glass-card p-8 text-center mb-4">
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet today. They'll appear here after your morning call.</p>
-        </div>
-      )}
-
-      {/* Overdue tasks */}
-      {pastTasks.length > 0 && (
-        <div className="mt-6">
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>⚠ CARRIED OVER</p>
-          <div className="space-y-2">
-            {pastTasks.map(task => (
-              <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
-            ))}
-          </div>
-        </div>
+        )
       )}
     </div>
   );
@@ -478,74 +545,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
   );
 }
 
-function UpdateBox({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) {
-  const [text, setText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<{ role: 'user' | 'edge'; text: string }[]>([
-    { role: 'edge', text: "What's on your mind? I'll remember everything you tell me and bring it up on our next call." }
-  ]);
 
-  async function handle(e: React.FormEvent) {
-    e.preventDefault();
-    if (!text.trim() || loading) return;
-    const userMsg = text.trim();
-    setText('');
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
-    setLoading(true);
-    await onSubmit(userMsg);
-    setLoading(false);
-    setMessages(prev => [...prev, { role: 'edge', text: "Got it — I'll bring that up on our next call." }]);
-  }
-
-  return (
-    <div className="glass-card mb-6 overflow-hidden" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
-      <div className="px-5 pt-4 pb-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-        <p className="text-xs font-semibold" style={{ color: 'var(--edg-indigo)' }}>CHAT WITH EDGE</p>
-        <p className="text-xs ml-auto" style={{ color: 'var(--text-faint)' }}>Saved to memory · used in next briefing</p>
-      </div>
-      <div className="px-5 py-3 space-y-3 overflow-y-auto" style={{ maxHeight: '220px' }}>
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className="text-sm px-3 py-2 rounded-xl max-w-xs leading-relaxed"
-              style={{
-                background: m.role === 'user' ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.06)',
-                color: m.role === 'user' ? 'var(--text-strong)' : 'var(--text-body)',
-                borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              }}>
-              {m.text}
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="text-sm px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', borderRadius: '18px 18px 18px 4px' }}>
-              <span className="animate-pulse">...</span>
-            </div>
-          </div>
-        )}
-      </div>
-      <form onSubmit={handle} className="px-5 py-3 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <input
-          className="input flex-1 text-sm"
-          style={{ padding: '8px 12px' }}
-          placeholder="Tell Edge something..."
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handle(e as any); } }}
-        />
-        <button
-          type="submit"
-          className="btn-primary text-sm px-4 flex-shrink-0"
-          style={{ padding: '8px 16px' }}
-          disabled={loading || !text.trim()}
-        >
-          Send
-        </button>
-      </form>
-    </div>
-  );
-}
 
 interface ActivityItem {
   id: number;
@@ -1034,16 +1034,6 @@ export default function Dashboard() {
     window.location.href = '/';
   }
 
-  async function submitUpdate(text: string) {
-    if (!text.trim()) return;
-    await fetch('/api/memory/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: text }),
-    });
-    loadData();
-  }
-
   async function connectCalendar() {
     const res = await fetch('/api/calendar/connect');
     const data = await res.json();
@@ -1352,9 +1342,6 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-
-          {/* Tell EDG3 something */}
-          <UpdateBox onSubmit={submitUpdate} />
 
           {/* Generated briefing preview */}
           {briefingText && (

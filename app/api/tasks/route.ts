@@ -7,7 +7,7 @@ export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const tasks = taskQueries.getRecent(user.id, 7);
+  const tasks = taskQueries.getRecent(user.id, 30);
   return NextResponse.json({ tasks });
 }
 
