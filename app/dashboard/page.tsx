@@ -730,6 +730,8 @@ export default function Dashboard() {
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
+  const [memoryPage, setMemoryPage] = useState(1);
+  const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -811,6 +813,8 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+  // Reset memory pagination when switching tabs or when data reloads.
+  useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
 
   // Streak: consecutive days with a completed briefing call.
   const callStreak = useMemo(
@@ -1488,6 +1492,7 @@ export default function Dashboard() {
                   preference: 'Preferences',
                   fact: 'Facts',
                 };
+                const FACTS_CAT_LIMIT = 15;
                 const ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
                 const grouped = ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
                   const items = facts.filter(f => f.category === cat);
@@ -1496,61 +1501,105 @@ export default function Dashboard() {
                 }, {});
                 return (
                   <div className="space-y-6 mb-8">
-                    {Object.entries(grouped).map(([cat, items]) => (
-                      <div key={cat}>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
-                          {CATEGORY_LABELS[cat] ?? cat}
-                        </h3>
-                        <div className="space-y-2">
-                          {items.map(f => (
-                            <div key={f.id} className="glass-card p-3 flex items-start justify-between gap-4">
-                              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                {f.entity && (
-                                  <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
-                                )}
-                                {f.statement}
-                              </p>
-                              <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                                learned {format(new Date(f.learned_at), 'MMM d')}
-                              </span>
-                            </div>
-                          ))}
+                    {Object.entries(grouped).map(([cat, items]) => {
+                      const isExpanded = expandedFactCats.has(cat);
+                      const visible = items.length > FACTS_CAT_LIMIT && !isExpanded ? items.slice(0, FACTS_CAT_LIMIT) : items;
+                      return (
+                        <div key={cat}>
+                          <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
+                            {CATEGORY_LABELS[cat] ?? cat}
+                          </h3>
+                          <div className="space-y-2">
+                            {visible.map(f => (
+                              <div key={f.id} className="glass-card p-3 flex items-start justify-between gap-4">
+                                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                  {f.entity && (
+                                    <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                  )}
+                                  {f.statement}
+                                </p>
+                                <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                                  learned {format(new Date(f.learned_at), 'MMM d')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {items.length > FACTS_CAT_LIMIT && (
+                            <button
+                              onClick={() => setExpandedFactCats(prev => {
+                                const next = new Set(prev);
+                                isExpanded ? next.delete(cat) : next.add(cat);
+                                return next;
+                              })}
+                              className="mt-2 text-xs"
+                              style={{ color: 'var(--text-accent)' }}
+                            >
+                              {isExpanded ? 'Show less' : `Show all (${items.length})`}
+                            </button>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               })()}
 
-              {/* Raw memories */}
-              {memories.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
-                    Call notes
-                  </h3>
-                  <div className="space-y-3">
-                    {memories.map(m => (
-                      <div key={m.id} className="glass-card p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`badge ${
-                            m.type === 'insight' ? 'badge-success' :
-                            m.type === 'transcript' ? 'badge-info' :
-                            m.type === 'profile' ? 'badge-pending' : 'badge-info'
-                          }`}>
-                            {m.type}
-                          </span>
-                          <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                            {format(new Date(m.created_at), 'MMM d, yyyy')}
-                          </span>
+              {/* Raw memories — paginated */}
+              {memories.length > 0 && (() => {
+                const PAGE_SIZE = 20;
+                const totalPages = Math.ceil(memories.length / PAGE_SIZE);
+                const page = Math.min(memoryPage, totalPages);
+                const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+                return (
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
+                      Call notes
+                    </h3>
+                    <div className="space-y-3">
+                      {pageItems.map(m => (
+                        <div key={m.id} className="glass-card p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`badge ${
+                              m.type === 'insight' ? 'badge-success' :
+                              m.type === 'transcript' ? 'badge-info' :
+                              m.type === 'profile' ? 'badge-pending' : 'badge-info'
+                            }`}>
+                              {m.type}
+                            </span>
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                              {format(new Date(m.created_at), 'MMM d, yyyy')}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                            {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
+                          </p>
                         </div>
-                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                          {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
-                        </p>
+                      ))}
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-4">
+                        <button
+                          onClick={() => setMemoryPage(p => Math.max(1, p - 1))}
+                          disabled={page <= 1}
+                          className="btn-secondary text-sm py-1.5 px-4"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Page {page} of {totalPages}
+                        </span>
+                        <button
+                          onClick={() => setMemoryPage(p => Math.min(totalPages, p + 1))}
+                          disabled={page >= totalPages}
+                          className="btn-secondary text-sm py-1.5 px-4"
+                        >
+                          Next
+                        </button>
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
