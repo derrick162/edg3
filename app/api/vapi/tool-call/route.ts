@@ -12,6 +12,7 @@ import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
 import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
+import { isWritable } from '@/lib/calendarWritable';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -53,14 +54,19 @@ async function getCalClient(userId: number) {
 
 // The visible calendar list barely changes but costs ~500ms, and we fetch it on every tool
 // call. Cache it per user for a few minutes to cut that latency from every interaction.
-const calIdsCache = new Map<string, { ids: string[]; exp: number }>();
-async function getCalIds(cal: calendar_v3.Calendar, userKey: string): Promise<string[]> {
-  const cached = calIdsCache.get(userKey);
-  if (cached && cached.exp > Date.now()) return cached.ids;
+// We store the full entry (id + accessRole + summary) so mutation tools can check whether
+// a resolved event lives on a read-only calendar before attempting the Google API call.
+interface CalEntry { id: string; accessRole: string; summary: string; }
+const calMetaCache = new Map<string, { entries: CalEntry[]; exp: number }>();
+async function getCalMeta(cal: calendar_v3.Calendar, userKey: string): Promise<CalEntry[]> {
+  const cached = calMetaCache.get(userKey);
+  if (cached && cached.exp > Date.now()) return cached.entries;
   const list = await cal.calendarList.list({ minAccessRole: 'reader' });
-  const ids = (list.data.items ?? []).filter(c => !c.hidden).map(c => c.id!).filter(Boolean);
-  calIdsCache.set(userKey, { ids, exp: Date.now() + 5 * 60 * 1000 });
-  return ids;
+  const entries = (list.data.items ?? [])
+    .filter(c => !c.hidden && c.id)
+    .map(c => ({ id: c.id!, accessRole: c.accessRole ?? 'reader', summary: c.summary ?? c.id! }));
+  calMetaCache.set(userKey, { entries, exp: Date.now() + 5 * 60 * 1000 });
+  return entries;
 }
 
 // Start time of an event as minutes-since-midnight in the user's timezone (null for all-day).
@@ -165,13 +171,14 @@ function stripResearchBlock(desc: string | null | undefined): string {
 interface ToolContext {
   cal: calendar_v3.Calendar;
   calIds: string[];
+  calMeta: Map<string, { accessRole: string; summary: string }>;
   userId: number;
   tz: string;
 }
 
 // Execute a single tool call and return the human-readable result string.
 async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
-  const { cal, calIds, userId, tz } = ctx;
+  const { cal, calIds, calMeta, userId, tz } = ctx;
 
   if (fn === 'readCalendar') {
     const { startDate, endDate } = args as { startDate: string; endDate: string };
@@ -244,6 +251,11 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
     if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I edit? Re-call with currentTime set to its start time.`;
+    const editEntry = calMeta.get(r.calId);
+    if (editEntry && !isWritable(editEntry.accessRole)) {
+      const eventName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+      return `"${eventName}" is on a calendar you can only view ("${editEntry.summary}") — I can't edit it from here; you'd change it in that calendar directly.`;
+    }
     const e = r.event;
     const body: calendar_v3.Schema$Event = {};
     if (typeof location === 'string') body.location = location;
@@ -263,6 +275,11 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date} to attach research to.`;
     if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one? Re-call with currentTime set.`;
+    const researchEntry = calMeta.get(r.calId);
+    if (researchEntry && !isWritable(researchEntry.accessRole)) {
+      const eventName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+      return `"${eventName}" is on a calendar you can only view ("${researchEntry.summary}") — I can't add notes to it from here.`;
+    }
     let findings = '';
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -307,7 +324,7 @@ Query: ${query}` }],
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title, timezone, color, overrideConflicts, allDay, endDate } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string };
+    const { title, timezone, color, overrideConflicts, allDay, endDate, description } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string };
     if (!title) return "I didn't catch what to call that event — what's the title?";
 
     // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
@@ -324,6 +341,7 @@ Query: ${query}` }],
       }
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
+        ...(description ? { description } : {}),
       } });
       if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
@@ -361,7 +379,7 @@ Query: ${query}` }],
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9' };
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}) };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
@@ -401,6 +419,25 @@ Query: ${query}` }],
       toDelete = [{ event: r.event, calId: r.calId }];
     }
 
+    // Read-only check: refuse mutations on calendars where we only have view access.
+    // This prevents a misleading "reconnect" error — the real issue is the calendar is shared/subscribed.
+    const readOnlyItems = toDelete.filter(({ calId }) => {
+      const entry = calMeta.get(calId);
+      return entry && !isWritable(entry.accessRole);
+    });
+    if (readOnlyItems.length === toDelete.length) {
+      const entry = calMeta.get(readOnlyItems[0].calId);
+      const calName = entry?.summary ?? 'that calendar';
+      const eventName = (readOnlyItems[0].event.summary ?? '').replace(/^⚡\s*/, '');
+      return `"${eventName}" is on a calendar you can only view ("${calName}") — I can't delete it from here; you'd remove it in that calendar directly.`;
+    }
+    if (readOnlyItems.length > 0) {
+      toDelete = toDelete.filter(({ calId }) => {
+        const entry = calMeta.get(calId);
+        return !entry || isWritable(entry.accessRole);
+      });
+    }
+
     // Recurring scope must be known before we can confirm or delete.
     const needsScope = toDelete.find(({ event }) => event.recurringEventId && !recurringScope);
     if (needsScope) {
@@ -435,7 +472,8 @@ Query: ${query}` }],
           await cal.events.delete({ calendarId: calId, eventId: ev.id! });
         }
         ok = true;
-      } catch {
+      } catch (delErr) {
+        console.error(`[deleteEvent] failed calId=${calId} accessRole=${calMeta.get(calId)?.accessRole ?? 'unknown'}:`, delErr);
         ok = false;
       }
       if (ok) {
@@ -462,6 +500,11 @@ Query: ${query}` }],
     if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
     if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I move? Ask the user, then call moveEvent again with currentTime set to that event's start time (e.g. "7pm").`;
     const found = r;
+    const moveEntry = calMeta.get(found.calId);
+    if (moveEntry && !isWritable(moveEntry.accessRole)) {
+      const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
+      return `"${eventName}" is on a calendar you can only view ("${moveEntry.summary}") — I can't move it from here; you'd edit it in that calendar directly.`;
+    }
     if (found.event.recurringEventId && !recurringScope) {
       return `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
     }
@@ -503,8 +546,11 @@ Query: ${query}` }],
     if (found.event.colorId) rb.colorId = found.event.colorId;
     const origStart = found.event.start;
     const origEnd = found.event.end;
-    const patched = await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb });
-    if (!patched.data.id) return `Couldn't confirm the move of "${found.event.summary}" — please double-check your calendar.`;
+    const patched = await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb }).catch((moveErr: unknown) => {
+      console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'}:`, moveErr);
+      return null;
+    });
+    if (!patched || !patched.data.id) return `Couldn't confirm the move of "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — please double-check your calendar.`;
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
@@ -519,10 +565,18 @@ Query: ${query}` }],
     const lists = await Promise.all(calIds.map(calId =>
       cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 100 }).then(r => ({ calId, items: r.data.items ?? [] })).catch(() => ({ calId, items: [] as calendar_v3.Schema$Event[] }))
     ));
-    const toColor = lists.flatMap(l => l.items.filter(e => titleMatchScore(e.summary ?? '', title) > 0).map(e => ({ calId: l.calId, id: e.id!, prevColor: e.colorId ?? '9' })));
+    const allMatched = lists.flatMap(l => l.items.filter(e => titleMatchScore(e.summary ?? '', title) > 0).map(e => ({ calId: l.calId, id: e.id!, prevColor: e.colorId ?? '9' })));
+    const toColor = allMatched.filter(x => {
+      const entry = calMeta.get(x.calId);
+      return !entry || isWritable(entry.accessRole);
+    });
     await Promise.all(toColor.map(x => cal.events.patch({ calendarId: x.calId, eventId: x.id, requestBody: { colorId } }).catch(() => undefined)));
     if (toColor.length) recordUndo(userId, `recolored ${toColor.length} "${title}" event(s)`, toColor.map(x => ({ type: 'patch', calId: x.calId, eventId: x.id, requestBody: { colorId: x.prevColor } })));
-    return toColor.length ? `Changed ${toColor.length} "${title}" event(s) to ${color}.` : `No events matching "${title}" found.`;
+    const skippedColor = allMatched.length - toColor.length;
+    const skippedNote = skippedColor > 0 ? ` (${skippedColor} on read-only calendars skipped)` : '';
+    if (!allMatched.length) return `No events matching "${title}" found.`;
+    if (!toColor.length) return `All "${title}" events are on calendars you can only view — no color changes made.`;
+    return `Changed ${toColor.length} "${title}" event(s) to ${color}${skippedNote}.`;
 
   } else if (fn === 'planWeek') {
     const { weekStartDate, focusHoursPerDay, preferences } = args as { weekStartDate: string; focusHoursPerDay?: number; preferences?: string };
@@ -789,9 +843,11 @@ export async function POST(req: NextRequest) {
     let ctxError: string | null = null;
     try {
       const cal = await getCalClient(briefing.user_id);
-      const calIds = await getCalIds(cal, String(briefing.user_id));
+      const calEntries = await getCalMeta(cal, String(briefing.user_id));
+      const calIds = calEntries.map(e => e.id);
+      const calMeta = new Map(calEntries.map(e => [e.id, { accessRole: e.accessRole, summary: e.summary }]));
       const tz = effectiveTimezone(userQueries.findById(briefing.user_id) ?? {});
-      ctx = { cal, calIds, userId: briefing.user_id, tz };
+      ctx = { cal, calIds, calMeta, userId: briefing.user_id, tz };
     } catch (err) {
       ctxError = friendlyError(err);
     }
