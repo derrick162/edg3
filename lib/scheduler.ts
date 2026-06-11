@@ -5,6 +5,35 @@ import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { briefingQueries, userQueries, priorityQueries, effectiveTimezone, User } from './db';
 
+/**
+ * Structured call failure — carries a user-facing message and a reason code so
+ * the API route can tell the dashboard exactly WHY the call didn't go through
+ * (daily cap vs broken service vs briefing failure) instead of a generic 500.
+ */
+export class CallError extends Error {
+  constructor(
+    public readonly userMessage: string,
+    public readonly code: 'vapi_daily_limit' | 'vapi_error' | 'briefing_gen_failed',
+  ) {
+    super(userMessage);
+    this.name = 'CallError';
+  }
+}
+
+function classifyVapiError(err: unknown): CallError {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  if (msg.includes('daily-limit') || msg.includes('outbound-daily-limit') || msg.includes('daily limit')) {
+    return new CallError(
+      'Daily call limit reached on this number — the free-tier cap has been hit. Calls will resume tomorrow, or upgrade to a paid Vapi number.',
+      'vapi_daily_limit',
+    );
+  }
+  return new CallError(
+    'Could not reach the calling service. Please try again in a moment.',
+    'vapi_error',
+  );
+}
+
 // How long after call_time we'll still fire if the exact-minute tick was missed
 // (e.g. server restart during that minute). Capped so a long outage doesn't
 // place a morning briefing call in the afternoon.
@@ -93,10 +122,20 @@ export async function scheduleBriefingCall(userId: number) {
   const now = new Date();
   const scheduledFor = now.toISOString();
 
-  console.log(`[scheduler] Generating briefing for ${user.name}...`);
-  const briefingContent = await generateDailyBriefing(userId);
+  // Guard briefing generation — a gen failure must not surface as an unhandled 500.
+  let briefingContent: string;
+  try {
+    console.log(`[scheduler] Generating briefing for ${user.name}...`);
+    briefingContent = await generateDailyBriefing(userId);
+  } catch (err) {
+    console.error(`[scheduler] Briefing generation failed for user ${userId}:`, err);
+    throw new CallError(
+      'Briefing generation failed — please try again shortly.',
+      'briefing_gen_failed',
+    );
+  }
 
-  // Create briefing record
+  // Create briefing record (has no briefingId until here, so gen failures above can't be recorded).
   const result = briefingQueries.create(userId, briefingContent, scheduledFor) as { lastInsertRowid: number };
   const briefingId = result.lastInsertRowid;
 
@@ -108,12 +147,17 @@ export async function scheduleBriefingCall(userId: number) {
     const recentMemories = memoryQueries.getRecent(userId, 1);
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
-    console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-    const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId));
-    console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
-
-    const callId = call.id;
-    if (callId) briefingQueries.update(briefingId, { vapi_call_id: callId });
+    // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
+    try {
+      console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId));
+      console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
+      if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
+    } catch (err) {
+      console.error(`[scheduler] Vapi call failed for user ${userId}:`, err);
+      briefingQueries.update(briefingId, { status: 'failed' });
+      throw classifyVapiError(err);
+    }
   } else {
     console.log(`[scheduler] Skipping call for ${user.name} — no phone or Vapi key`);
   }
@@ -146,11 +190,16 @@ export async function scheduleOpenCall(userId: number) {
     const recentMemories = memoryQueries.getRecent(userId, 1);
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
-    console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
-    const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId));
-    console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
-
-    if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
+    try {
+      console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId));
+      console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
+      if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
+    } catch (err) {
+      console.error(`[scheduler] Vapi open call failed for user ${userId}:`, err);
+      briefingQueries.update(briefingId, { status: 'failed' });
+      throw classifyVapiError(err);
+    }
   } else {
     console.log(`[scheduler] Skipping open call for ${user.name} — no phone or Vapi key`);
   }

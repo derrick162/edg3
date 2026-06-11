@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ **Tasks filter + UpdateBox removal** (`1893a72`): Open/Completed/All segmented filter, 30-day window, voice prompt fixed. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
-| 🔒 Security | `security` | ✅ **Scheduler catch-up window SHIPPED** — 120-min grace window replaces exact-minute match; missed morning calls now fire late instead of never. 283/283 green. Pinging PM — deploy ASAP. | `lib/scheduler.ts` | 2026-06-11 |
+| 🔒 Security | `security` | ✅ **Call failure surfacing SHIPPED** — Vapi daily-limit + gen errors now surface as `CallError` with code; briefing set to `failed`; routes return 503 + `{ error, code }`. 290/290 green. Deploy ASAP — core loop. | `lib/scheduler.ts` | 2026-06-11 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 

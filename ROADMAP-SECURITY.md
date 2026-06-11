@@ -8,6 +8,17 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-11** — **[CRITICAL] Surface Vapi/briefing failures — "Call me now" no longer fails opaquely.**
+  `scheduleBriefingCall` and `scheduleOpenCall` previously awaited `initiateCall` and
+  `generateDailyBriefing` with no try/catch — any Vapi rejection (e.g. free-tier daily
+  cap) threw an unhandled 500 with no information for the dashboard. Fix: new `CallError`
+  class with `userMessage` + `code` (`vapi_daily_limit` / `vapi_error` /
+  `briefing_gen_failed`); `classifyVapiError()` detects the daily-limit string vs generic
+  failures. Both scheduler functions now catch Vapi errors → set briefing to `'failed'` →
+  throw `CallError`. Briefing gen failure is separately guarded. Routes
+  (`/api/briefing/call`, `/api/briefing/open-call`) return HTTP 503 with
+  `{ error, code }` so the dashboard can tell "daily cap" from "broken". 7 new tests for
+  CallError + 7 catch-up window tests retained. 290/290 green.
 - **2026-06-11** — **[CRITICAL] Scheduler catch-up window — missed morning calls fixed.**
   Root cause: `checkAndInitiateCalls` matched the call tick by exact minute
   (`userCurrentTime !== user.call_time`) — any server restart during that minute

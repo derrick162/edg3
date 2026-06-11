@@ -1,12 +1,12 @@
 /**
- * Tests for scheduler catch-up window (#scheduler-resilience).
- *
- * The fix replaces an exact-minute match with a 120-minute grace window so a
- * missed tick (server restart) fires a few minutes late instead of never.
+ * Tests for scheduler resilience:
+ * 1. 120-minute catch-up window so a missed exact-minute tick fires late, not never.
+ * 2. CallError classification — Vapi and briefing failures surface with a user-facing
+ *    reason code instead of an opaque 500.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ── mocks ─────────────────────────────────────────────────────────────────────
+// ── hoisted mocks (survive vi.resetAllMocks) ──────────────────────────────────
 
 const MOCK_USER = {
   id: 1, name: 'Derrick', phone_number: '+15550001234',
@@ -14,113 +14,166 @@ const MOCK_USER = {
 };
 
 const h = vi.hoisted(() => ({
-  prepareAll: vi.fn<() => unknown[]>(() => []),
-  prepareGet: vi.fn<() => unknown>(() => undefined),
-  findById: vi.fn<() => unknown>(() => ({
-    id: 1, name: 'Derrick', phone_number: '+15550001234',
-    call_time: '07:00', timezone: 'America/New_York', onboarding_complete: 1,
-  })),
+  prepareAll:           vi.fn<() => unknown[]>(() => []),
+  prepareGet:           vi.fn<() => unknown>(() => undefined),
+  findById:             vi.fn<() => unknown>(() => MOCK_USER),
+  initiateCall:         vi.fn(async () => ({ id: 'call_123' })),
+  generateDailyBriefing: vi.fn(async () => 'Test briefing content'),
+  briefingCreate:       vi.fn(() => ({ lastInsertRowid: 1 })),
+  briefingUpdate:       vi.fn(),
 }));
 
-// Suppress node-cron so startScheduler() doesn't start a real cron loop.
+// ── module mocks ──────────────────────────────────────────────────────────────
+
 vi.mock('node-cron', () => ({ default: { schedule: vi.fn() } }));
 
 vi.mock('./db', () => ({
   getDb: () => ({
     prepare: (sql: string) => {
       if (sql.includes('SELECT * FROM users')) return { all: h.prepareAll };
-      return { get: h.prepareGet }; // alreadyCalled check
+      return { get: h.prepareGet };
     },
   }),
-  briefingQueries: { create: vi.fn(() => ({ lastInsertRowid: 1 })), update: vi.fn() },
+  briefingQueries: { create: h.briefingCreate, update: h.briefingUpdate },
   userQueries: { findById: h.findById },
   priorityQueries: { getThisWeek: vi.fn(() => []), getMostRecent: vi.fn(() => []) },
   memoryQueries: { getRecent: vi.fn(() => []) },
   effectiveTimezone: (u: { timezone?: string }) => u.timezone ?? 'America/Vancouver',
 }));
 
-vi.mock('./vapi', () => ({ initiateCall: vi.fn(async () => ({ id: 'call_123' })) }));
+vi.mock('./vapi', () => ({ initiateCall: h.initiateCall }));
 vi.mock('./briefing', () => ({
-  generateDailyBriefing: vi.fn(async () => 'Test briefing content'),
+  generateDailyBriefing: h.generateDailyBriefing,
   getWeekOf: vi.fn(() => '2026-06-09'),
 }));
 
-import { checkAndInitiateCalls } from './scheduler';
+// ── imports (after mock setup) ────────────────────────────────────────────────
 
-// ── fixture helpers ───────────────────────────────────────────────────────────
+import { checkAndInitiateCalls, scheduleBriefingCall, scheduleOpenCall, CallError } from './scheduler';
 
-/** Build a UTC Date whose wall-clock time in America/New_York is hh:mm. */
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Build a UTC Date whose wall-clock time in America/New_York (EDT = UTC-4) is hh:mm. */
 function nyTime(dateStr: string, hh: number, mm: number): Date {
-  // America/New_York is UTC-4 in summer (EDT).
-  // We construct the UTC equivalent so toLocaleString in the scheduler sees hh:mm ET.
-  const utcHour = hh + 4; // EDT offset
+  const utcHour = hh + 4;
   return new Date(`${dateStr}T${String(utcHour).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00.000Z`);
 }
 
+// ── global beforeEach: reset all mocks then restore defaults ──────────────────
+
 beforeEach(() => {
   vi.resetAllMocks();
-  // Default: user list returns MOCK_USER; no prior call today.
+  // Restore defaults after reset clears implementations.
   h.prepareAll.mockReturnValue([MOCK_USER]);
-  h.prepareGet.mockReturnValue(undefined); // not called yet today
+  h.prepareGet.mockReturnValue(undefined);
+  h.findById.mockReturnValue(MOCK_USER);
+  h.initiateCall.mockResolvedValue({ id: 'call_123' });
+  h.generateDailyBriefing.mockResolvedValue('Test briefing content');
+  h.briefingCreate.mockReturnValue({ lastInsertRowid: 1 });
 });
 
-// ── tests ─────────────────────────────────────────────────────────────────────
+// ── 1. catch-up window ────────────────────────────────────────────────────────
 
 describe('scheduler catch-up window', () => {
   it('fires exactly at call_time', async () => {
-    const { briefingQueries } = await import('./db');
-    const now = nyTime('2026-06-11', 7, 0); // exactly 07:00 ET
-    await checkAndInitiateCalls(now);
-    expect(briefingQueries.create).toHaveBeenCalledTimes(1);
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 0));
+    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
   });
 
   it('fires a few minutes after call_time (missed-tick catch-up)', async () => {
-    const { briefingQueries } = await import('./db');
-    const now = nyTime('2026-06-11', 7, 5); // 07:05 ET — restart window
-    await checkAndInitiateCalls(now);
-    expect(briefingQueries.create).toHaveBeenCalledTimes(1);
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 5));
+    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
   });
 
   it('does NOT fire before call_time', async () => {
-    const { briefingQueries } = await import('./db');
-    const now = nyTime('2026-06-11', 6, 59); // 06:59 ET
-    await checkAndInitiateCalls(now);
-    expect(briefingQueries.create).not.toHaveBeenCalled();
+    await checkAndInitiateCalls(nyTime('2026-06-11', 6, 59));
+    expect(h.briefingCreate).not.toHaveBeenCalled();
   });
 
   it('does NOT fire past the 120-minute grace window', async () => {
-    const { briefingQueries } = await import('./db');
-    const now = nyTime('2026-06-11', 9, 0); // 09:00 ET — 120 min after 07:00
-    await checkAndInitiateCalls(now);
-    expect(briefingQueries.create).not.toHaveBeenCalled();
+    await checkAndInitiateCalls(nyTime('2026-06-11', 9, 0)); // 09:00 = call_time + 120 min
+    expect(h.briefingCreate).not.toHaveBeenCalled();
   });
 
   it('does NOT double-fire when already called today', async () => {
-    const { briefingQueries } = await import('./db');
     h.prepareGet.mockReturnValue({ 1: 1 }); // simulate alreadyCalled row
-    const now = nyTime('2026-06-11', 7, 3); // within window
-    await checkAndInitiateCalls(now);
-    expect(briefingQueries.create).not.toHaveBeenCalled();
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 3));
+    expect(h.briefingCreate).not.toHaveBeenCalled();
   });
 
   it('multiple ticks within the window still fire only once', async () => {
-    const { briefingQueries } = await import('./db');
-
-    // First tick at 07:01 — no prior call.
-    h.prepareGet.mockReturnValueOnce(undefined);
+    h.prepareGet.mockReturnValueOnce(undefined);        // tick 1: not yet called
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 1));
 
-    // Second tick at 07:02 — alreadyCalled returns a row now.
-    h.prepareGet.mockReturnValueOnce({ 1: 1 });
+    h.prepareGet.mockReturnValueOnce({ 1: 1 });         // tick 2: already called
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 2));
 
-    expect(briefingQueries.create).toHaveBeenCalledTimes(1);
+    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
   });
 
   it('fires at the last minute of the grace window (07:00 + 119 min = 08:59)', async () => {
-    const { briefingQueries } = await import('./db');
-    const now = nyTime('2026-06-11', 8, 59); // 08:59 ET — last minute in window
-    await checkAndInitiateCalls(now);
-    expect(briefingQueries.create).toHaveBeenCalledTimes(1);
+    await checkAndInitiateCalls(nyTime('2026-06-11', 8, 59));
+    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 2. CallError classification ───────────────────────────────────────────────
+
+describe('scheduleBriefingCall — Vapi error surfacing', () => {
+  beforeEach(() => {
+    // VAPI_API_KEY must be set so the initiateCall block runs.
+    process.env.VAPI_API_KEY = 'test-key';
+  });
+  afterEach(() => {
+    delete process.env.VAPI_API_KEY;
+  });
+
+  it('throws CallError(vapi_daily_limit) when Vapi rejects with the daily-limit error', async () => {
+    h.initiateCall.mockRejectedValueOnce(new Error('vapi-number-outbound-daily-limit exceeded'));
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'vapi_daily_limit' });
+  });
+
+  it('throws CallError(vapi_error) for an unrecognised Vapi failure', async () => {
+    h.initiateCall.mockRejectedValueOnce(new Error('connection timeout'));
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'vapi_error' });
+  });
+
+  it('sets briefing status to failed when Vapi rejects', async () => {
+    h.initiateCall.mockRejectedValueOnce(new Error('timeout'));
+    await expect(scheduleBriefingCall(1)).rejects.toBeInstanceOf(CallError);
+    expect(h.briefingUpdate).toHaveBeenCalledWith(expect.any(Number), { status: 'failed' });
+  });
+});
+
+describe('scheduleBriefingCall — briefing generation failure', () => {
+  it('throws CallError(briefing_gen_failed) when generateDailyBriefing throws', async () => {
+    h.generateDailyBriefing.mockRejectedValueOnce(new Error('Anthropic API timeout'));
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'briefing_gen_failed' });
+  });
+});
+
+describe('scheduleOpenCall — Vapi error surfacing', () => {
+  beforeEach(() => { process.env.VAPI_API_KEY = 'test-key'; });
+  afterEach(() => { delete process.env.VAPI_API_KEY; });
+
+  it('throws CallError(vapi_daily_limit) when Vapi rejects with the daily-limit error', async () => {
+    h.initiateCall.mockRejectedValueOnce(new Error('outbound-daily-limit reached'));
+    await expect(scheduleOpenCall(1)).rejects.toMatchObject({ code: 'vapi_daily_limit' });
+  });
+
+  it('sets briefing status to failed when Vapi rejects on open call', async () => {
+    h.initiateCall.mockRejectedValueOnce(new Error('network error'));
+    await expect(scheduleOpenCall(1)).rejects.toBeInstanceOf(CallError);
+    expect(h.briefingUpdate).toHaveBeenCalledWith(expect.any(Number), { status: 'failed' });
+  });
+});
+
+describe('CallError', () => {
+  it('is an instanceof Error (routes that catch Error still catch it)', () => {
+    const e = new CallError('Daily cap hit', 'vapi_daily_limit');
+    expect(e).toBeInstanceOf(Error);
+    expect(e).toBeInstanceOf(CallError);
+    expect(e.code).toBe('vapi_daily_limit');
+    expect(e.userMessage).toBe('Daily cap hit');
   });
 });
