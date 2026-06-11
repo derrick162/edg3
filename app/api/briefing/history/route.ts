@@ -7,7 +7,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const briefings = briefingQueries.getRecent(user.id, 10);
+    const briefings = briefingQueries.getRecent(user.id, 30);
     return NextResponse.json({ briefings });
   } catch (err) {
     console.error('Failed to fetch briefing history:', err);

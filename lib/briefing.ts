@@ -4,6 +4,7 @@ import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueri
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
+import { computeCallStreak } from './streak';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -102,7 +103,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Gather context
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
-  const recentBriefings = briefingQueries.getRecent(userId, 5);
+  const recentBriefings = briefingQueries.getRecent(userId, 30);
   const [calendarEvents, weekEvents] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
@@ -121,6 +122,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
+  // Call streak: count consecutive days with completed briefings.
+  const callStreak = computeCallStreak(recentBriefings, userTimezone);
+  // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
+  const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
+  const prioritiesWeekOf = latestPriorities[0]?.week_of ?? null;
+  const prioritiesStaleAge = prioritiesWeekOf
+    ? Math.floor((Date.now() - new Date(prioritiesWeekOf + 'T00:00:00Z').getTime()) / 86400000)
+    : 0;
   // Only kudos for tasks completed since the last briefing
   const lastBriefing = recentBriefings[0];
   const lastBriefingTime = lastBriefing ? new Date(lastBriefing.created_at) : null;
@@ -229,6 +238,10 @@ ${hygieneFlag}
 ` : ''}${edg3Commitment ? `
 YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said they'd do it):
 - ${edg3Commitment.text}
+` : ''}${callStreak >= 2 ? `
+CALL STREAK: ${callStreak} consecutive days of morning calls. Acknowledge this warmly in the GREETING — one specific, energizing line (e.g. "five mornings straight — you're building real momentum here").
+` : ''}${prioritiesStaleAge > 7 ? `
+PRIORITY DRIFT ALERT: Priorities were last set ${prioritiesStaleAge} days ago. Add ONE gentle nudge at the END of the closing section: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"
 ` : ''}
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
@@ -242,7 +255,7 @@ ${recentlyCompletedTasks.length ? recentlyCompletedTasks.map(t => `- [${t.date}]
 Generate a briefing with these sections:
 CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. This includes flights, drives, appointments, meetings — everything. If a flight, drive, or any travel event does NOT appear in the calendar data above, do NOT mention it. Memory, conversation history, and past call transcripts are NOT reliable sources for current calendar events — they may be outdated. Before mentioning ANY event (grocery run, gym, flight, meeting, meal prep, drive, etc.) you MUST confirm it appears in the calendar data above. If it does not appear there, do NOT mention it. Do not say things like "I see you have a grocery run Friday" or "you have your drive to Blue Mountain" unless those exact events appear in the calendar sections above. Treat memory references to calendar events as historical only — not current facts.
 
-1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
+1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention.${callStreak >= 2 ? ` Then weave in ONE warm streak line (from CALL STREAK above). Keep it natural and encouraging — one sentence max.` : ''} If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
 2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
 3. ALIGNMENT CHECK — ${alignmentText
   ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then offer to block time for the most under-served priority using a SPECIFIC slot from FREE TIME SLOTS above — name the exact day and time (e.g. "Want me to block Tuesday at two PM for fundraising?"). One sentence observation + one blocking offer. If all priorities are well-covered, say so briefly.'
@@ -253,7 +266,7 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 6. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
    - If they have a big upcoming event: "What do you need to feel ready for [event]?"
    - Default: "What's the most important thing I should know before tomorrow's briefing?"
-   Pick ONE and make it feel natural and specific.
+   Pick ONE and make it feel natural and specific.${prioritiesStaleAge > 7 ? ' Then add the PRIORITY DRIFT ALERT nudge from above (one sentence, at the very end).' : ''}
 
 Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
 

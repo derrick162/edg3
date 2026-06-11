@@ -1,9 +1,10 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
+import { computeCallStreak } from '@/lib/streak';
 
 const TIMEZONES = [
   { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
@@ -685,6 +686,7 @@ interface Priority {
   id: number;
   text: string;
   rank: number;
+  week_of?: string;
 }
 
 interface Memory {
@@ -777,6 +779,31 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Streak: consecutive days with a completed briefing call.
+  const callStreak = useMemo(
+    () => (user && briefings.length ? computeCallStreak(briefings, user.timezone) : 0),
+    [briefings, user],
+  );
+
+  // Priority staleness: priorities with week_of > 7 days ago need a refresh nudge.
+  const prioritiesStale = useMemo(() => {
+    const weekOf = priorities[0]?.week_of;
+    if (!weekOf) return false;
+    return (Date.now() - new Date(weekOf + 'T00:00:00Z').getTime()) / 86400000 > 7;
+  }, [priorities]);
+
+  const [keepingPriorities, setKeepingPriorities] = useState(false);
+  const [prioritiesDismissed, setPrioritiesDismissed] = useState(false);
+
+  async function handleKeepPriorities() {
+    setKeepingPriorities(true);
+    await fetch('/api/priorities/keep', { method: 'POST' });
+    setKeepingPriorities(false);
+    setPrioritiesDismissed(true);
+    // Reload priorities so week_of is fresh
+    fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
+  }
 
   // Day-1 preview: once we know the user is onboarded and has no real briefings, fetch the preview.
   // The API generates it once and caches it — subsequent calls return instantly.
@@ -1066,6 +1093,11 @@ export default function Dashboard() {
               <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
                 {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
               </p>
+              {callStreak >= 2 && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
+                  🔥 {callStreak}-day streak
+                </p>
+              )}
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 {reminderInCalendar === true ? (
                   <>
@@ -1086,6 +1118,30 @@ export default function Dashboard() {
                 ) : null}
               </div>
             </div>
+            {prioritiesStale && !prioritiesDismissed && (
+              <div className="glass-card p-3" style={{ border: '1px solid rgba(245,158,11,0.3)' }}>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                  Still your top priorities this week?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveTab('priorities')}
+                    className="text-xs py-1 px-2 rounded flex-1"
+                    style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.2)' }}
+                  >
+                    Update
+                  </button>
+                  <button
+                    onClick={handleKeepPriorities}
+                    disabled={keepingPriorities}
+                    className="text-xs py-1 px-2 rounded flex-1"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-faint)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    {keepingPriorities ? '…' : 'Keep'}
+                  </button>
+                </div>
+              </div>
+            )}
             {calendarConnected === false ? (
               <button
                 onClick={connectCalendar}
