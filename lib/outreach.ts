@@ -182,3 +182,73 @@ ${slotBlock}` }],
     return { recipient: opts.recipient, subject, body: fallback };
   }
 }
+
+// ─── Name-correction helpers (reduces STT transcription errors in recipient names) ──────────────
+
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (__, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+const NAME_STOP = new Set([
+  'email', 'call', 'meeting', 'schedule', 'with', 'for', 'to', 'about', 'and', 'or',
+  'the', 'follow', 'up', 'draft', 'contact', 'a', 'an', 'regarding', 're', 'send',
+]);
+
+/**
+ * If the event title contains a capitalized word that fuzzy-matches `recipientName`
+ * (same first letter + edit distance ≤ 40 % of the longer name's length), returns the
+ * title's spelling. Returns null when no match is found.
+ *
+ * Example: titleSpellingFor('Email Derrick', 'Derek') → 'Derrick'
+ */
+export function titleSpellingFor(title: string, recipientName: string): string | null {
+  if (!title || !recipientName) return null;
+  const nameLower = recipientName.toLowerCase();
+  const tokens = title.split(/\s+/).filter(t =>
+    t.length >= 2 && !NAME_STOP.has(t.toLowerCase()) && /^[A-Z]/.test(t)
+  );
+  for (const token of tokens) {
+    const tokenLower = token.toLowerCase();
+    if (tokenLower === nameLower) return token; // exact (case fix)
+    if (tokenLower[0] !== nameLower[0]) continue; // different initial → skip
+    const threshold = Math.ceil(Math.max(token.length, recipientName.length) * 0.4);
+    if (editDistance(tokenLower, nameLower) <= threshold) return token;
+  }
+  return null;
+}
+
+/**
+ * Correct recipient name spellings before composing an outreach email.
+ * Reduces STT transcription errors (e.g. "Derek" → "Derrick") by preferring
+ * user-typed sources over voice-transcribed notes. Does not eliminate all errors.
+ *
+ * Corrections applied (in priority order):
+ * 1. If the recipient's email matches the user's own email → use the profile name.
+ * 2. If the event title has a name token that fuzzy-matches → prefer title's spelling.
+ */
+export function correctRecipientNames(
+  recipients: OutreachRecipient[],
+  opts: { eventTitle?: string; userEmail?: string; userName?: string }
+): OutreachRecipient[] {
+  return recipients.map(r => {
+    if (opts.userEmail && r.email && r.email.toLowerCase() === opts.userEmail.toLowerCase()) {
+      return { ...r, name: opts.userName || r.name };
+    }
+    if (opts.eventTitle && r.name) {
+      const corrected = titleSpellingFor(opts.eventTitle, r.name);
+      if (corrected) return { ...r, name: corrected };
+    }
+    return r;
+  });
+}

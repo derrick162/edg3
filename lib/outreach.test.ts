@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emailableRecipients, formatSlotsForEmail, buildOutreachBody, recipientsFromNotes } from './outreach';
+import { emailableRecipients, formatSlotsForEmail, buildOutreachBody, recipientsFromNotes, correctRecipientNames, titleSpellingFor } from './outreach';
 
 describe('emailableRecipients', () => {
   it('keeps valid emails and skips missing / "not found"', () => {
@@ -192,5 +192,69 @@ Email: hello@citydrains.ca
 `.trim();
     const result = recipientsFromNotes(notes);
     expect(result[0].name).toBe('City Drains Ltd');
+  });
+});
+
+describe('titleSpellingFor', () => {
+  it('corrects STT name "Derek" to "Derrick" from event title "Email Derrick"', () => {
+    expect(titleSpellingFor('Email Derrick', 'Derek')).toBe('Derrick');
+  });
+
+  it('returns the title token for an exact case-insensitive match (capitalisation fix)', () => {
+    expect(titleSpellingFor('Call alice', 'alice')).toBe(null); // 'alice' not capitalized in title
+    expect(titleSpellingFor('Call Alice', 'alice')).toBe('Alice');
+  });
+
+  it('returns null when first letters differ (avoids false positives)', () => {
+    expect(titleSpellingFor('Email Bob', 'Robert')).toBeNull();
+  });
+
+  it('returns null when no capitalized name token is in the title', () => {
+    expect(titleSpellingFor('email derrick', 'derek')).toBeNull();
+  });
+
+  it('skips stop-words (Email, Call, Meeting, etc.) as name candidates', () => {
+    expect(titleSpellingFor('Email Bob', 'email')).toBeNull();
+  });
+});
+
+describe('correctRecipientNames', () => {
+  it('corrects "Derek" → "Derrick" when event title is "Email Derrick" (full STT flow)', () => {
+    const result = correctRecipientNames(
+      [{ name: 'Derek', email: 'derek@example.com' }],
+      { eventTitle: 'Email Derrick' }
+    );
+    expect(result[0].name).toBe('Derrick');
+  });
+
+  it('corrected name flows into the email greeting', () => {
+    const corrected = correctRecipientNames(
+      [{ name: 'Derek', email: 'd@x.com' }],
+      { eventTitle: 'Email Derrick' }
+    );
+    const body = buildOutreachBody({
+      recipientName: corrected[0].name,
+      senderName: 'Test',
+      ask: 'Free this week?',
+      slots: [],
+    });
+    expect(body).toMatch(/^Hi Derrick,/);
+  });
+
+  it("replaces recipient name with the user's profile name when emails match", () => {
+    const result = correctRecipientNames(
+      [{ name: 'Derrick Smith', email: 'me@example.com' }],
+      { userEmail: 'me@example.com', userName: 'Derrick Smith-Jones' }
+    );
+    expect(result[0].name).toBe('Derrick Smith-Jones');
+  });
+
+  it('leaves unmatched recipients unchanged', () => {
+    const recs = [{ name: 'Alice', email: 'alice@x.com' }];
+    expect(correctRecipientNames(recs, { eventTitle: 'Email Bob' })).toEqual(recs);
+  });
+
+  it('handles empty recipient list', () => {
+    expect(correctRecipientNames([], { eventTitle: 'Email Derrick' })).toEqual([]);
   });
 });

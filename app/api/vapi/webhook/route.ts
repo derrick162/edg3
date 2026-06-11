@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
+import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -248,8 +249,9 @@ async function saveCallSummaryToCalendar(briefing: { user_id: number; transcript
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   let toolSummary = 'None';
   try {
-    const ta = JSON.parse(briefing.tool_actions || '[]') as { fn: string; result: string }[];
-    if (ta.length) toolSummary = ta.map(a => `${a.fn}: ${a.result}`).join('\n');
+    const ta = JSON.parse(briefing.tool_actions || '[]');
+    const labels = summarizeUserFacingActions(ta);
+    if (labels.length) toolSummary = labels.map(l => `- ${l}`).join('\n');
   } catch { /* ignore */ }
   const firstName = (user.name || 'the user').split(' ')[0];
   const res = await anthropic.messages.create({
