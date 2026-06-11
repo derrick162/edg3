@@ -36,12 +36,19 @@ export function isEncrypted(value: string): boolean {
   return typeof value === 'string' && value.startsWith(PREFIX);
 }
 
-// Encrypt a value for storage. No-op (returns plaintext) when no key is configured.
+// Encrypt a value for storage. No-op (returns plaintext) when no key is configured,
+// UNLESS STRICT_ENCRYPTION=1 — in which case a missing key is a hard error so a
+// misconfigured prod deploy cannot silently persist plaintext.
 export function encryptField(plain: string): string {
   if (plain == null || plain === '') return plain;
   if (isEncrypted(plain)) return plain; // already encrypted — don't double-wrap
   const key = resolveKey();
-  if (!key) return plain;
+  if (!key) {
+    if (process.env.STRICT_ENCRYPTION === '1') {
+      throw new Error('STRICT_ENCRYPTION=1 but DATA_ENCRYPTION_KEY is not set — refusing to write plaintext.');
+    }
+    return plain;
+  }
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);

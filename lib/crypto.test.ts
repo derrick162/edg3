@@ -77,3 +77,34 @@ describe('crypto field encryption', () => {
     expect(decryptField(enc)).toBe('derived-key-test');
   });
 });
+
+describe('STRICT_ENCRYPTION mode', () => {
+  afterEach(() => {
+    delete process.env.DATA_ENCRYPTION_KEY;
+    delete process.env.STRICT_ENCRYPTION;
+  });
+
+  it('passes plaintext through when STRICT_ENCRYPTION is unset and no key configured', async () => {
+    vi.resetModules();
+    delete process.env.DATA_ENCRYPTION_KEY;
+    delete process.env.STRICT_ENCRYPTION;
+    const { encryptField } = await import('./crypto');
+    expect(encryptField('sensitive')).toBe('sensitive');
+  });
+
+  it('throws when STRICT_ENCRYPTION=1 and DATA_ENCRYPTION_KEY is not set', async () => {
+    vi.resetModules();
+    delete process.env.DATA_ENCRYPTION_KEY;
+    process.env.STRICT_ENCRYPTION = '1';
+    const { encryptField } = await import('./crypto');
+    expect(() => encryptField('sensitive')).toThrow(/STRICT_ENCRYPTION/);
+  });
+
+  it('encrypts normally when STRICT_ENCRYPTION=1 and key IS set', async () => {
+    vi.resetModules();
+    process.env.DATA_ENCRYPTION_KEY = 'a'.repeat(64);
+    process.env.STRICT_ENCRYPTION = '1';
+    const { encryptField, isEncrypted } = await import('./crypto');
+    expect(isEncrypted(encryptField('sensitive'))).toBe(true);
+  });
+});

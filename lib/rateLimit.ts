@@ -22,6 +22,7 @@ export const LIMITS = {
   login:        { limit: 10, windowMs: 15 * 60 * 1000 },  // 10 / 15 min
   signup:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5 / hour
   triggerCall:  { limit: 3,  windowMs:  5 * 60 * 1000 },  // 3 / 5 min
+  adminApi:     { limit: 60, windowMs: 60 * 1000 },        // 60 / min (CoS agent)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
@@ -29,15 +30,23 @@ export type RateLimitKey = keyof typeof LIMITS;
 // ── IP extraction ─────────────────────────────────────────────────────────────
 
 /**
- * Extract the real client IP from Railway's proxy headers. Falls back to
- * 'unknown' when headers are absent (local dev without a proxy).
+ * Extract the real client IP from Railway's proxy headers.
+ *
+ * X-Forwarded-For is client-controlled for all but the rightmost entry.
+ * Railway's load balancer appends the IP it observed, so the rightmost hop
+ * is the one the proxy saw — clients cannot spoof it by sending a fake XFF.
+ * Taking the leftmost (old behaviour) let attackers get a fresh rate-limit
+ * bucket per request by rotating the XFF header.
+ *
+ * Falls back to x-real-ip then 'unknown' (local dev without a proxy).
  */
 export function getClientIP(req: NextRequest): string {
-  return (
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip') ||
-    'unknown'
-  );
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) {
+    const hops = xff.split(',').map(s => s.trim()).filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1]; // rightmost = Railway-observed
+  }
+  return req.headers.get('x-real-ip') || 'unknown';
 }
 
 // ── Core check ────────────────────────────────────────────────────────────────
@@ -59,8 +68,10 @@ export function checkRateLimit(type: RateLimitKey, ip: string): RateLimitResult 
     const key = `${type}:${ip}`;
     const result = rateLimitQueries.check(key, limit, windowMs, Date.now());
     return { allowed: result.allowed, remaining: result.remaining, resetAt: result.resetAt };
-  } catch {
-    // Fail open — never block a real user because of a rate-limit DB fault.
+  } catch (err) {
+    // Fail open — never block a real user because of a transient DB fault.
+    // Log loudly: a persistent fault here silently erases brute-force protection.
+    console.error('[rateLimit] DB fault — failing open for', type, 'from', ip, err);
     return { allowed: true, remaining: 1, resetAt: Date.now() + 60_000 };
   }
 }

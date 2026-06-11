@@ -73,3 +73,23 @@ export function verifyAdminPassword(submitted: string): boolean {
 export function getAdminCookieToken(): string {
   return deriveCookieToken(process.env.ADMIN_PASSWORD ?? '');
 }
+
+/**
+ * Verify a request carries a valid x-admin-secret header.
+ * Used by CoS-agent routes that call the admin API directly (no browser session).
+ * Uses timingSafeEqual to prevent the same timing side-channel as checkAdminAuth.
+ */
+export function checkAdminSecretAuth(req: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return false;
+  const header = req.headers.get('x-admin-secret');
+  if (!header) return false;
+  try {
+    const a = Buffer.from(secret, 'utf8');
+    const b = Buffer.from(header, 'utf8');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}

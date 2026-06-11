@@ -101,8 +101,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **QA bug batch COMPLETE** (5 bugs, 3 commits `0390c63`→`dfc0bf2`). 172/172 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
-| 🔒 Security | `security` | ✅ **Gmail READ access DONE** — `readThread` + `hasGmailReadScope` + scope coverage verified. All 10 roadmap items + Gmail READ complete. 160/160 green. Pinging PM — queue empty. | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Day-1 preview shipped** + **QA bug batch COMPLETE** (moveEvent timed→all-day, outreach tz label, name validation, bookEventTimes rollover, Day-1 polish). Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
+| 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
