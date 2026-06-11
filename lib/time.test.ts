@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, isValidTimeZone, bookEventTimes } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, isValidTimeZone, bookEventTimes, timedEventDateMove } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -138,21 +138,67 @@ describe('bookEventTimes', () => {
     expect(bookEventTimes('2026-06-15', '09:30', -5).end).toBe('2026-06-15T10:00:00');
   });
 
-  it('clamps to 23:59 when the duration would overflow midnight', () => {
-    // 23:30 + 60 min = 24:30 → clamp to 23:59
-    const { end } = bookEventTimes('2026-06-15', '23:30', 60);
-    expect(end).toBe('2026-06-15T23:59:00');
+  it('rolls end into the next day when duration overflows midnight', () => {
+    // 23:30 + 60 min = 00:30 next day — not silently truncated to 23:59
+    const { start, end } = bookEventTimes('2026-06-15', '23:30', 60);
+    expect(start).toBe('2026-06-15T23:30:00');
+    expect(end).toBe('2026-06-16T00:30:00');
   });
 
-  it('clamps correctly at exactly midnight (00:00 + large duration)', () => {
-    // Booking at midnight for 24h shouldn't overflow the day
+  it('rolls correctly for a very long duration starting at midnight', () => {
+    // 00:00 + 25h (1500 min) → 01:00 the next day
     const { end } = bookEventTimes('2026-06-15', '00:00', 1500);
-    expect(end).toBe('2026-06-15T23:59:00');
+    expect(end).toBe('2026-06-16T01:00:00');
   });
 
   it('pads single-digit hours and minutes', () => {
     const { start, end } = bookEventTimes('2026-06-15', '09:05', 25);
     expect(start).toBe('2026-06-15T09:05:00');
     expect(end).toBe('2026-06-15T09:30:00');
+  });
+});
+
+describe('timedEventDateMove — timed event + date-only input preserves wall-clock time', () => {
+  it('preserves 3pm ET start time when moved to a new date', () => {
+    // "move my 3pm meeting to the 26th" — must stay timed at 3pm, NOT collapse to all-day
+    const r = timedEventDateMove(
+      '2026-06-15T15:00:00-04:00', // 3:00pm EDT
+      '2026-06-15T16:00:00-04:00', // 4:00pm EDT (1h)
+      '2026-06-26',
+      'America/New_York',
+    );
+    expect(r.start.dateTime).toBe('2026-06-26T15:00:00');
+    expect(r.end.dateTime).toBe('2026-06-26T16:00:00');
+    expect(r.start.timeZone).toBe('America/New_York');
+    // No date-only field — event remains timed
+    expect(r.start).not.toHaveProperty('date');
+  });
+
+  it('preserves duration (90-minute meeting)', () => {
+    const r = timedEventDateMove(
+      '2026-06-15T13:00:00-07:00', // 1:00pm PDT
+      '2026-06-15T14:30:00-07:00', // 2:30pm PDT (90 min)
+      '2026-06-26',
+      'America/Vancouver',
+    );
+    expect(r.start.dateTime).toBe('2026-06-26T13:00:00');
+    expect(r.end.dateTime).toBe('2026-06-26T14:30:00');
+  });
+
+  it('rolls end into next day when meeting crosses midnight', () => {
+    const r = timedEventDateMove(
+      '2026-06-15T23:00:00-04:00', // 11pm EDT
+      '2026-06-16T01:00:00-04:00', // 1am next day (2h)
+      '2026-06-26',
+      'America/New_York',
+    );
+    expect(r.start.dateTime).toBe('2026-06-26T23:00:00');
+    expect(r.end.dateTime).toBe('2026-06-27T01:00:00');
+  });
+
+  it('defaults to 1-hour duration when origEndDateTime is missing', () => {
+    const r = timedEventDateMove('2026-06-15T10:00:00Z', '', '2026-06-26', 'UTC');
+    expect(r.start.dateTime).toBe('2026-06-26T10:00:00');
+    expect(r.end.dateTime).toBe('2026-06-26T11:00:00');
   });
 });

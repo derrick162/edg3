@@ -119,8 +119,8 @@ export function rruleUntilUtc(endDate: string, timeZone: string): string {
 /**
  * Compute the ISO 8601 local start/end strings for a booked calendar event.
  * `date` is YYYY-MM-DD, `time` is HH:MM (24h), `durationMins` is a positive
- * integer (defaults to 30 if ≤ 0). The end time is clamped to 23:59 so it
- * always stays within the same calendar day (near-midnight edge case).
+ * integer (defaults to 30 if ≤ 0). If the duration crosses midnight, `end`
+ * rolls into the next calendar day rather than being silently truncated.
  * Returns bare local datetimes — append a timezone when passing to the
  * Google Calendar API.
  */
@@ -131,11 +131,59 @@ export function bookEventTimes(
 ): { start: string; end: string } {
   const [h, m] = time.split(':').map(Number);
   const dur = durationMins > 0 ? durationMins : 30;
-  const endMin = Math.min(h * 60 + m + dur, 1439);
+  const endMinTotal = h * 60 + m + dur;
   const pad = (n: number) => String(n).padStart(2, '0');
+  const endDate = endMinTotal >= 1440 ? nextDay(date) : date;
+  const endMinInDay = endMinTotal % 1440;
   return {
     start: `${date}T${time}:00`,
-    end: `${date}T${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}:00`,
+    end: `${endDate}T${pad(Math.floor(endMinInDay / 60))}:${pad(endMinInDay % 60)}:00`,
+  };
+}
+
+/**
+ * Build a timed-event patch that moves an event to a new date while preserving
+ * its original wall-clock start time and duration. Used by the moveEvent handler
+ * when the model supplies only `newStartDate` (date-only) for a timed event — the
+ * old code fell into the all-day patch branch and silently destroyed the event's
+ * time.
+ *
+ * `origStartDateTime` / `origEndDateTime` are RFC 3339 strings (with timezone offset
+ * or "Z"). `newDate` is YYYY-MM-DD. `eventTimezone` is the IANA zone the wall clock
+ * times should be interpreted in (use the event's own `start.timeZone` if set).
+ */
+export function timedEventDateMove(
+  origStartDateTime: string,
+  origEndDateTime: string,
+  newDate: string,
+  eventTimezone: string,
+): { start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } } {
+  // Extract the wall-clock time in the event's timezone.
+  const origStartUtc = new Date(origStartDateTime);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: eventTimezone, hourCycle: 'h23',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(origStartUtc);
+  const wp: Record<string, number> = {};
+  for (const p of parts) if (p.type !== 'literal') wp[p.type] = Number(p.value);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const wh = wp.hour ?? 0, wm = wp.minute ?? 0, ws = wp.second ?? 0;
+
+  // Preserve duration; default to 1 h if end is missing.
+  const origEndUtc = origEndDateTime ? new Date(origEndDateTime) : null;
+  const durMins = origEndUtc
+    ? Math.max(1, Math.round((origEndUtc.getTime() - origStartUtc.getTime()) / 60000))
+    : 60;
+
+  // Build end: same arithmetic as bookEventTimes — roll into next day if needed.
+  const endMinTotal = wh * 60 + wm + durMins;
+  const endDate = endMinTotal >= 1440 ? nextDay(newDate) : newDate;
+  const endH = Math.floor(endMinTotal / 60) % 24;
+  const endM = endMinTotal % 60;
+
+  return {
+    start: { dateTime: `${newDate}T${pad(wh)}:${pad(wm)}:${pad(ws)}`, timeZone: eventTimezone },
+    end:   { dateTime: `${endDate}T${pad(endH)}:${pad(endM)}:${pad(ws)}`, timeZone: eventTimezone },
   };
 }
 

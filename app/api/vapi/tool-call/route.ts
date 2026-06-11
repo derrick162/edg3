@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz } from '@/lib/time';
+import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
@@ -465,14 +465,16 @@ Query: ${query}` }],
     }
     const eventId = (recurringScope === 'all' && found.event.recurringEventId) ? found.event.recurringEventId : found.event.id!;
 
-    // All-day events are re-dated by DATE, not datetime (Google end.date is exclusive). Detect an
-    // all-day target — or an explicit date-only request — and build a date patch so "make it just
-    // the 26th" / "extend it to the 30th" works. `newEndDate` is the inclusive last day.
+    // Three distinct move paths:
+    // 1. All-day → all-day re-date: use date-only patch.
+    // 2. Timed + date-only input (newStartDate, no newStartDateTime): preserve wall-clock time on the new date.
+    //    (Previously fell into path 1, silently converting the event to all-day and destroying its time.)
+    // 3. Timed + full datetime: model supplied explicit newStartDateTime/newEndDateTime.
     const isAllDay = !!(found.event.start?.date && !found.event.start?.dateTime);
-    const dateMove = isAllDay || !!newStartDate || !!newEndDate;
     let rb: calendar_v3.Schema$Event;
     let confirmWhen: string;
-    if (dateMove) {
+    if (isAllDay) {
+      // Path 1: all-day re-date.
       const existingStart = (found.event.start?.date ?? '').slice(0, 10);
       const startD = (newStartDate || newStartDateTime || existingStart || '').slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startD)) return "I need a date to move that all-day event to — what day should it start?";
@@ -480,7 +482,19 @@ Query: ${query}` }],
       const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endIn) && endIn >= startD ? endIn : startD;
       rb = { start: { date: startD }, end: { date: nextDay(lastDay) } };
       confirmWhen = lastDay === startD ? startD : `${startD} to ${lastDay}`;
+    } else if (newStartDate && !newStartDateTime) {
+      // Path 2: timed event + date-only input — preserve wall-clock time.
+      const eventTz = found.event.start?.timeZone ?? timezone;
+      const timedPatch = timedEventDateMove(
+        found.event.start?.dateTime ?? '',
+        found.event.end?.dateTime ?? '',
+        newStartDate,
+        eventTz,
+      );
+      rb = timedPatch;
+      confirmWhen = `${newStartDate} (same time, ${eventTz})`;
     } else {
+      // Path 3: full datetime move.
       rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
       confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
     }
