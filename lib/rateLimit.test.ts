@@ -33,12 +33,24 @@ describe('LIMITS', () => {
 
 // ── getClientIP ────────────────────────────────────────────────────────────────
 describe('getClientIP', () => {
-  it('prefers x-forwarded-for (Railway proxy header)', () => {
+  it('returns the rightmost XFF hop (Railway-observed, cannot be spoofed)', () => {
+    // Railway appends the IP it saw on the right; leftmost entries are client-controlled.
     const req = mockReq({ 'x-forwarded-for': '1.2.3.4, 10.0.0.1' });
+    expect(getClientIP(req as any)).toBe('10.0.0.1');
+  });
+
+  it('rejects a spoofed leftmost XFF — attacker cannot get a fresh rate-limit bucket', () => {
+    // Attacker sends X-Forwarded-For: <random>, Railway appends real source 9.9.9.9.
+    const req = mockReq({ 'x-forwarded-for': '255.255.255.255, 9.9.9.9' });
+    expect(getClientIP(req as any)).toBe('9.9.9.9'); // Railway's observed IP wins
+  });
+
+  it('handles a single-hop XFF (no proxy chain)', () => {
+    const req = mockReq({ 'x-forwarded-for': '1.2.3.4' });
     expect(getClientIP(req as any)).toBe('1.2.3.4');
   });
 
-  it('falls back to x-real-ip', () => {
+  it('falls back to x-real-ip when XFF is absent', () => {
     const req = mockReq({ 'x-real-ip': '5.6.7.8' });
     expect(getClientIP(req as any)).toBe('5.6.7.8');
   });

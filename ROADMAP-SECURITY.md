@@ -8,6 +8,12 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — **[MEDIUM] Fixed XFF rate-limit bypass in `getClientIP`.** The old
+  `split(',')[0]` (leftmost hop) was fully client-controlled — an attacker could send a
+  random `X-Forwarded-For` per request and get a fresh rate-limit bucket every time,
+  defeating brute-force protection on login/signup. Fix: take the rightmost hop instead
+  (Railway's load balancer appends the IP it observed, so the rightmost entry is
+  proxy-verified). 2 new tests (rightmost-wins + spoofed-leftmost rejected). 169/169 green.
 - **2026-06-10** — **[HIGH] Fixed admin auth bypass on CoS-agent routes.** Two routes
   (`app/api/admin/calendar/events`, `app/api/admin/latest-briefing`) used a local
   `checkAuth()` with `===` — the exact timing side-channel `timingSafeEqual` was added
