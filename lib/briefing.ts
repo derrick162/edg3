@@ -3,6 +3,7 @@ import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, effectiveTimezone, User } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 import { checkOutreachReplies } from './replies';
+import { computeAlignment } from './alignment';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -110,6 +111,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
   // Degrades to [] if Gmail read access isn't granted yet or anything errors.
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
+  // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
+  // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
+  const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
   // Only kudos for tasks completed since the last briefing
   const lastBriefing = recentBriefings[0];
   const lastBriefingTime = lastBriefing ? new Date(lastBriefing.created_at) : null;
@@ -143,6 +147,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const repliesText = outreachReplies.length
     ? outreachReplies.map(r => `- ${r.recipient}${r.eventTitle ? ` (re: ${r.eventTitle})` : ''}: ${r.summary} → Suggested next step: ${r.suggestedAction}`).join('\n')
     : 'No new replies to your outreach.';
+
+  const alignmentText = alignment
+    ? [
+        ...alignment.perPriority.map((p, i) =>
+          `P${i + 1} '${p.priority}' = ${p.hours.toFixed(1)}h this week${!p.blocked ? ' (⚠ none scheduled)' : ''}`
+        ),
+        `Unaligned calendar time = ${alignment.unalignedHours.toFixed(1)}h${
+          alignment.topUnaligned.length
+            ? ` (biggest: ${alignment.topUnaligned.map(e => `'${e.title}' ${e.hours.toFixed(1)}h`).join(', ')})`
+            : ''
+        }`,
+      ].join('\n')
+    : null;
 
   const memoriesText = recentMemories.length
     ? recentMemories.map(m => `[${m.type} - ${format(new Date(m.created_at), 'MMM d')}]: ${m.content}`).join('\n')
@@ -196,6 +213,10 @@ ${freeTimeText}
 
 REPLIES TO YOUR OUTREACH (Edge drafted these emails for the user and they were sent; these are the contacts' replies. If any are present, RAISE them in the briefing and OFFER to take the suggested next step — e.g. "Wilmec replied, they can come Thursday at two PM — want me to book it?". If "No new replies", do not mention this section at all.):
 ${repliesText}
+${alignmentText ? `
+ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
+${alignmentText}
+` : ''}
 
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
@@ -211,7 +232,10 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 
 1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
 2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
-3. ALIGNMENT CHECK — Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.
+3. ALIGNMENT CHECK — ${alignmentText
+  ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then add ONE specific action item: offer to block time for the most under-served priority. Keep it to one sentence + one offer. If all priorities are well-covered, say so briefly.'
+  : 'Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.'
+}
 4. ACTION ITEMS — The 3 highest-leverage things they should do today. Call them "action items". Be specific. Address every weekly priority. Reference incomplete tasks by name.
 5. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.
 6. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
