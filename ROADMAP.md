@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Trust tickets COMPLETE** (Ticket 1: plain-English actions `lib/actionSummary.ts`; Ticket 2: STT name correction `correctRecipientNames`). 190/190 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **checkReplies voice tool SHIPPED** (`fea8d6f`). 207/207 green. ⚠️ User external step: create `checkReplies` tool in Vapi dashboard (no params) + paste UUID into `lib/vapi.ts`. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,15 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **`checkReplies` voice tool (Core).** Derrick could ask "did anyone reply?"
+  mid-call but Edge had no tool for it — reply tracking only ran at briefing time. New handler in
+  `tool-call/route.ts` calls `checkOutreachReplies(userId)` live and returns a spoken-friendly
+  string (up to 3 replies summarized). Crucially distinguishes missing Gmail read scope from "no
+  replies" — if scope not granted, tells the user to reconnect in the dashboard instead of silently
+  reporting empty. `formatRepliesForVoice` extracted to `lib/replies.ts` so it's unit-testable.
+  System prompt updated so Edge knows when to call the tool. 6 new tests. 207/207 green.
+  ⚠️ **External step:** user must create a `checkReplies` tool in the Vapi dashboard (no required
+  params), then paste the UUID into `lib/vapi.ts` toolIds (placeholder comment is there) and deploy.
 - **2026-06-10** — **Two live-dogfooding trust fixes (Core).** Ticket 1: brief's "Edge's actions"
   block now shows plain-English labels ("Added 'X' to your calendar") instead of raw
   `readCalendar · Found 10 event(s)` lines. Read-only/internal calls filtered out; only ok=true
