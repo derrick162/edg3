@@ -139,6 +139,10 @@ export async function POST(req: NextRequest) {
         if (transcript) {
           extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
+          // Compounding memory: extract durable structured facts and deduplicate against
+          // existing ones. Fire-and-forget — never blocks the webhook response.
+          import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript))
+            .catch(err => console.error('[webhook] Fact extraction failed:', err));
         }
 
         // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and

@@ -208,6 +208,17 @@ function initSchema(db: Database.Database) {
       snapshot_after  TEXT,              -- JSON calendar state after change (nullable)
       created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Structured, durable facts extracted from call transcripts (compounding memory).
+    -- Deduplicated by (category, entity) so facts evolve instead of accumulating noise.
+    CREATE TABLE IF NOT EXISTS facts (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      category    TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact')),
+      statement   TEXT NOT NULL,
+      entity      TEXT,
+      learned_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -221,6 +232,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_watched_threads_user ON watched_threads(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
   `);
 
   // Migrations for existing databases
@@ -879,3 +891,51 @@ export interface GmailDraftLog {
   draft_id: string;
   created_at: number;
 }
+
+export interface Fact {
+  id: number;
+  user_id: number;
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  statement: string;
+  entity: string | null;
+  learned_at: string;
+}
+
+export const factQueries = {
+  getAll: (userId: number): Fact[] => {
+    return getDb().prepare(
+      'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at DESC'
+    ).all(userId) as Fact[];
+  },
+
+  // Upsert: dedupe by (category, entity) when entity present; by (category, first-80-chars-statement) otherwise.
+  // Updates statement + learned_at when a fact evolved; skips exact duplicates; inserts new facts.
+  upsertFact: (userId: number, category: string, statement: string, entity?: string | null): void => {
+    const db = getDb();
+    let existing: Fact | undefined;
+    if (entity) {
+      existing = db.prepare(
+        'SELECT * FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
+      ).get(userId, category, entity) as Fact | undefined;
+    } else {
+      existing = db.prepare(
+        "SELECT * FROM facts WHERE user_id=? AND category=? AND entity IS NULL AND LOWER(SUBSTR(statement,1,80))=LOWER(SUBSTR(?,1,80))"
+      ).get(userId, category, statement) as Fact | undefined;
+    }
+    if (existing) {
+      if (existing.statement.toLowerCase() !== statement.toLowerCase()) {
+        db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=?").run(statement, existing.id);
+      }
+    } else {
+      db.prepare(
+        'INSERT INTO facts (user_id, category, statement, entity) VALUES (?,?,?,?)'
+      ).run(userId, category, statement, entity ?? null);
+    }
+  },
+
+  getByCategory: (userId: number, category: string): Fact[] => {
+    return getDb().prepare(
+      'SELECT * FROM facts WHERE user_id=? AND category=? ORDER BY learned_at DESC'
+    ).all(userId, category) as Fact[];
+  },
+};
