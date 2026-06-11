@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Memory UX + reliability** (`14fb440`): call notes paginated (20/page, Prev/Next, resets on tab/reload), fact category expander for >15 items; fetch-hardening (retry-on-transient) applied to priorities/memory/tasks. 245/245 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Activity tab migration** (`ba68b64`): audit_log source, rich labels, expandable rows with detail/before→after, time-matched undo buttons. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,17 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-11** — **Activity tab migration — audit_log + rich labels + expandable rows (Core).**
+  New `lib/activityLabels.ts` (pure, 0 imports): `buildLabel` derives rich one-line labels per
+  action type ("Created 'Las Vegas' · all-day Jun 12–15", "Moved 'X' · Jun 8 → Jun 9 at 2 PM",
+  etc.); `buildDetail` builds expandable section/diff objects from args+snapshots (research text
+  from `snapshot_after.description`, before→after field diffs for edits, full context for all
+  others); `buildActivityItems` assembles items from raw audit+undo rows — filters read-only
+  actions, time-matches undo rows within ±2 s for per-row undo buttons, respects limit.
+  New `GET /api/activity` (user-scoped, no schema changes — time-based undo join in app layer).
+  `ActivityTab` refactored: expandable rows with inline detail panel + ▼/▲ chevron; undo button
+  uses `e.stopPropagation()` so clicking it does not trigger expand. 31 new tests. 276/276 green.
+  (`ba68b64`)
 - **2026-06-10** — **Memory UX + fetch reliability (Core).** Call notes list in Memory tab
   now paginates at 20 items/page (Prev/Next + "Page X of Y"; page resets on tab switch or
   data reload). Structured fact categories with >15 items show a "Show all (N)" / "Show less"
