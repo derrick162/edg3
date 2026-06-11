@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Core-loop #5–#6 SHIPPED** (`61307d3`): call streak + priority-drift. 231/231 green. Queue exhausted — awaiting real-call validation before next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Compounding Memory Parts A–C SHIPPED** (`ee2e309`): structured fact extraction, event-linked briefing memory, visible memory tab. 245/245 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,12 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Compounding Memory Part C — Visible memory tab (Core).** Memory tab renamed
+  "What Edge knows". API route now returns `facts` alongside raw memories. Dashboard renders
+  structured facts first, grouped by category (Goals / Projects / People / Preferences / Facts),
+  with the entity bolded and a "learned MMM d" provenance stamp per fact. Raw call notes remain
+  below under "Call notes". Empty state unchanged. tsc clean. 245/245 green. (`ee2e309`)
+  Parts A+B shipped earlier this session (see below).
 - **2026-06-10** — **Core-loop features #5–#6 (Core).** #5: call streak — new `lib/streak.ts`
   (pure, client-safe) computes consecutive days with a completed briefing. Dashboard sidebar
   shows 🔥 N-day streak under the Next-call card (≥ 2 days); briefing section 1 weaves in
