@@ -765,7 +765,19 @@ export default function Dashboard() {
     setUser(await meRes.json());
 
     // Background loads — each section fills in as its data arrives; none blocks render.
-    fetch('/api/briefing/history').then(r => r.ok ? r.json() : { briefings: [] }).then(d => { setBriefings(d.briefings || []); setBriefingsLoaded(true); }).catch(() => { setBriefingsLoaded(true); });
+    // Briefing history: a transient non-200 (cold start, session-timing race on first load)
+    // must NOT masquerade as "you have no briefings" — that made history vanish until a manual
+    // reload, and wrongly tripped the Day-1 preview. Retry a few times; only commit on a real 200.
+    const loadHistory = (attempt = 0) => {
+      fetch('/api/briefing/history')
+        .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(d => { setBriefings(d.briefings || []); setBriefingsLoaded(true); })
+        .catch(() => {
+          if (attempt < 3) setTimeout(() => loadHistory(attempt + 1), 400 * (attempt + 1));
+          else setBriefingsLoaded(true); // genuine persistent failure — stop spinning
+        });
+    };
+    loadHistory();
     fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
     fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [], facts: [] }).then(d => { setMemories(d.memories || []); setFacts(d.facts || []); }).catch(() => {});
     fetch('/api/tasks').then(r => r.ok ? r.json() : { tasks: [] }).then(d => setTasks(d.tasks || [])).catch(() => {});
