@@ -33,6 +33,14 @@ export async function checkOutreachReplies(userId: number): Promise<ReplyUpdate[
       if (!msgs.length) continue;
       // New replies = inbound messages (not our own SENT) after the last one we processed.
       const lastIdx = t.last_seen_message_id ? msgs.findIndex((m) => m.id === t.last_seen_message_id) : -1;
+      // Marker set but no longer in the thread (message deleted/trimmed, or id changed): do NOT replay
+      // from the start (lastIdx + 1 === 0 would re-notify every old reply). Re-anchor to the newest
+      // message and skip this round — duplicates are worse than a one-cycle delay.
+      if (t.last_seen_message_id && lastIdx === -1) {
+        const newestId = msgs[msgs.length - 1]?.id;
+        if (newestId) watchedThreadQueries.markSeen(t.id, newestId);
+        continue;
+      }
       const fresh = msgs.slice(lastIdx + 1).filter((m) => !m.fromMe && m.text.trim());
       const newestId = msgs[msgs.length - 1]?.id;
       if (!fresh.length) {

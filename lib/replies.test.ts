@@ -158,6 +158,21 @@ describe('checkOutreachReplies', () => {
     expect(h.markSeen).toHaveBeenCalledWith(1, 'msg_3');
   });
 
+  it('does NOT replay the whole thread when last_seen_message_id is no longer present — re-anchors to newest, no duplicate notification', async () => {
+    // Regression: a lost marker (message deleted/trimmed, or id changed) used to make findIndex
+    // return -1, so slice(-1 + 1) replayed from the start and re-notified every old reply.
+    const old1 = msg({ id: 'msg_a', text: 'Old reply 1.' });
+    const old2 = msg({ id: 'msg_b', text: 'Old reply 2.' });
+    h.listOpen.mockReturnValue([thread({ last_seen_message_id: 'no_longer_here' })]);
+    h.readThread.mockResolvedValue([old1, old2]);
+
+    const result = await checkOutreachReplies(7);
+
+    expect(result).toEqual([]);
+    expect(h.notifCreate).not.toHaveBeenCalled();          // <-- the bug: would have fired for old replies
+    expect(h.markSeen).toHaveBeenCalledWith(1, 'msg_b');   // re-anchored to newest
+  });
+
   it('processes multiple open threads independently', async () => {
     h.listOpen.mockReturnValue([
       thread({ id: 1, thread_id: 'thread_a', recipient: 'Alice' }),

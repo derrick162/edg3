@@ -316,7 +316,7 @@ Query: ${query}` }],
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startOnly)) return "I didn't catch the date for that all-day event — what day is it?";
       const endOnly = (endDate || '').slice(0, 10);
       const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endOnly) && endOnly >= startOnly ? endOnly : startOnly;
-      if (!claimEventCreate(userId, buildEventDedupeKey(title, startOnly))) {
+      if (!claimEventCreate(userId, buildEventDedupeKey(title, lastDay === startOnly ? startOnly : `${startOnly}..${lastDay}`))) {
         const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
         return `All-day "${title}" ${span} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
       }
@@ -379,7 +379,8 @@ Query: ${query}` }],
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
     const insRec = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
-    if (insRec.data.id) recordUndo(userId, `created recurring "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insRec.data.id }]);
+    if (!insRec.data.id) return `Couldn't confirm recurring "${title}" saved — please double-check your calendar.`;
+    recordUndo(userId, `created recurring "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insRec.data.id }]);
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
@@ -417,21 +418,41 @@ Query: ${query}` }],
       return `⚠️ That confirmation code was invalid or expired. To delete ${describeDeleteTargets(toDelete, recurringScope, tz)}, call deleteEvent again with the new confirmToken: "${token}". Token expires in 2 minutes.`;
     }
 
+    // Honest failure: only report an event as deleted if the Google call actually succeeded.
     const deleted: string[] = [];
+    const failedDel: string[] = [];
+    const recreates: UndoOp[] = [];
     for (const { event: ev, calId } of toDelete) {
-      if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
-        await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g, '')}`] } }).catch(() => undefined);
-      } else if (ev.recurringEventId && recurringScope === 'all') {
-        await cal.events.delete({ calendarId: calId, eventId: ev.recurringEventId }).catch(() => undefined);
-      } else {
-        await cal.events.delete({ calendarId: calId, eventId: ev.id! }).catch(() => undefined);
+      let ok = false;
+      try {
+        if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
+          await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g, '')}`] } });
+        } else if (ev.recurringEventId && recurringScope === 'all') {
+          await cal.events.delete({ calendarId: calId, eventId: ev.recurringEventId });
+        } else {
+          await cal.events.delete({ calendarId: calId, eventId: ev.id! });
+        }
+        ok = true;
+      } catch {
+        ok = false;
       }
-      deleted.push(ev.summary ?? ev.id!);
+      if (ok) {
+        deleted.push(ev.summary ?? ev.id!);
+        // Record undo (recreate) only for the non-recurring single events we ACTUALLY removed.
+        if (!ev.recurringEventId) recreates.push({ type: 'recreate', calId, event: cleanForRecreate(ev) });
+      } else {
+        failedDel.push(ev.summary ?? ev.id!);
+      }
     }
-    // Record undo (recreate) for the non-recurring single events we removed.
-    const recreates: UndoOp[] = toDelete.filter(({ event }) => !event.recurringEventId).map(({ event, calId }) => ({ type: 'recreate', calId, event: cleanForRecreate(event) }));
     if (recreates.length) recordUndo(userId, `deleted ${describeDeleteTargets(toDelete, recurringScope, tz)}`, recreates);
-    return deleted.length ? `Deleted: ${deleted.join(', ')}` : `No event matching "${title}" on ${date}.`;
+    if (!deleted.length) {
+      return failedDel.length
+        ? `I tried but couldn't delete ${failedDel.join(', ')} — you may need to remove ${failedDel.length > 1 ? 'them' : 'it'} manually in your calendar.`
+        : `No event matching "${title}" on ${date}.`;
+    }
+    return failedDel.length
+      ? `Deleted: ${deleted.join(', ')}. But I couldn't delete ${failedDel.join(', ')} — please check your calendar.`
+      : `Deleted: ${deleted.join(', ')}`;
 
   } else if (fn === 'moveEvent') {
     const { title, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string };
