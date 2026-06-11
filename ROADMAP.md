@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **3 dogfooding fixes** (`d08e7f5`): read-only-calendar honest error + briefing opener filter + consolidation description. 282/282 green. Awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **T4+T5** (`f138fb1`): transcript deep-link + graceful hold + first-name fix. 282/282 green. Awaiting PM.)_ | — | 2026-06-11 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,22 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-11** — **T4 + T5 + firstName bug (Core).** (`f668d69`, `f138fb1`)
+  - **T4 [feature] View-transcript link in Call Summary**: New owner-only
+    `GET /api/briefing/[id]` returns the decrypted transcript (enforced via
+    `AND user_id = ?`; 404 for any other user). Calendar Call Summary appended
+    with `▶ Full transcript: <APP_URL>/dashboard?briefing=<id>`. Dashboard
+    handles `?briefing=<id>` deep-link: auto-expands the matching briefing and
+    switches to the Briefings tab on load.
+  - **T5 [config] Graceful hold instead of silent hangup**: `messagePlan` added
+    to both inline-assistant and assistantOverrides with 3 idle messages at 10s
+    intervals ("Still here — take your time." / "No rush…" / check-in).
+    `silenceTimeoutSeconds` extended 30 → 40. Applied to both briefing and
+    open-call modes. ⚠️ Needs live-call validation (idle behaviour can't be
+    unit-tested; Vapi field names confirmed against docs but verify on first call).
+  - **BUG firstName**: `initiateCall` now derives `firstName` from `userName` and
+    uses it in all addressing spots. Edge says "Derrick" not "Derrick Fung".
+  282/282 tests, tsc clean.
 - **2026-06-11** — **Dogfooding fixes — 3 tickets (Core).** (`d08e7f5`)
   - **T1 [HIGH BUG] Read-only-calendar mutations**: delete/move/edit/research/color
     now check calMeta.accessRole before calling the Google API. Events on
