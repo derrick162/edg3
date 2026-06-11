@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | **QA bug batch** — 5 bugs from autonomous audit | `lib/time.ts`, `lib/time.test.ts`, `lib/outreach.ts`, `lib/outreach.test.ts`, `lib/briefing.ts`, `app/api/briefing/preview/route.ts`, `app/api/vapi/tool-call/route.ts` (**CLAIMED**) | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **QA bug batch COMPLETE** (5 bugs, 3 commits `0390c63`→`dfc0bf2`). 172/172 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | ✅ **Gmail READ access DONE** — `readThread` + `hasGmailReadScope` + scope coverage verified. All 10 roadmap items + Gmail READ complete. 160/160 green. Pinging PM — queue empty. | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 

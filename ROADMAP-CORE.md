@@ -9,6 +9,13 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-10** — **QA bug batch — 5 bugs fixed** (3 commits `0390c63`→`dfc0bf2`). All from autonomous audit:
+  - **Bug 1 [MEDIUM, data-destructive]** `moveEvent` silently converted timed events to all-day when model supplied only `newStartDate`. Root: `dateMove = isAllDay || !!newStartDate` fell into the date-only patch path for timed events. Fix: 3 explicit branches — (a) all-day → date patch, (b) timed + date-only input → new `timedEventDateMove()` that extracts wall-clock time via Intl and preserves duration, (c) full datetime → unchanged. `timedEventDateMove` added to `lib/time.ts` with 4 tests.
+  - **Bug 2 [HIGH]** Outreach emails showed availability slots with no timezone label — recipients couldn't tell which timezone "2:00 PM" referred to. Fix: `buildOutreachBody()` now accepts `userTimezone` and derives a short abbreviation (e.g. "PDT") via Intl, inserting it into the slot header. Threaded through `composeOutreachEmail()` and the `draftEmail` handler in `route.ts`. 2 new tests.
+  - **Bug 3 [LOW-MED]** `bookEventTimes` silently clamped late-evening + long-duration bookings to `23:59`, shortening meetings. Fix: roll end into the next calendar day via `nextDay()` instead of clamping. Updated 2 existing tests that had asserted the wrong behavior.
+  - **Bug 4 [LOW]** `recipientsFromNotes()` could pick a non-name first line (e.g. "Best plumber in Austin") as the recipient name. Fix: prefer an explicit `Name:` line; validate fallback by rejecting URLs, email addresses, and lines longer than 80 chars. 5 new tests.
+  - **Bug 5 [LOW]** (a) `generatePreviewBriefing` interpolated `user.call_time` (can be null) into the LLM prompt. Guarded with `?? '07:00'`. (b) Preview endpoint could return inconsistent text on concurrent first-loads. Fix: re-read from DB after `INSERT OR IGNORE` so the response always matches storage.
+  172/172 tests, tsc clean, build clean.
 - **2026-06-10** — **Day-1 preview briefing SHIPPED** (`d724556`) — activation "aha" on first dashboard load.
   - New `GET /api/briefing/preview`: checks for existing preview, generates if absent (one LLM call per user, never repeated), returns JSON `{ content }`.
   - New `generatePreviewBriefing(userId)` in `lib/briefing.ts`: priorities-first, calendar optional (degrades gracefully if not connected), ~200-word welcoming tone — distinct from the daily briefing format.
