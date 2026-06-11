@@ -394,6 +394,13 @@ export const briefingQueries = {
     ).get(userId) as Briefing | undefined;
     return row ? decryptBriefingRow(row) : undefined;
   },
+  // Strictly owner-gated: the AND user_id = ? ensures a user can never read another's transcript.
+  getByIdForUser: (id: number, userId: number) => {
+    const row = getDb().prepare(
+      'SELECT * FROM briefings WHERE id = ? AND user_id = ?'
+    ).get(id, userId) as Briefing | undefined;
+    return row ? decryptBriefingRow(row) : undefined;
+  },
 };
 
 // PII columns on `briefings` that are encrypted at rest.

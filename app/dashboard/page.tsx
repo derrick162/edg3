@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
@@ -804,6 +804,7 @@ interface Task {
 
 export default function Dashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
@@ -903,6 +904,18 @@ export default function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
   // Reset memory pagination when switching tabs or when data reloads.
   useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
+  // Deep-link: ?briefing=<id> auto-expands that briefing entry once history loads.
+  useEffect(() => {
+    const idParam = searchParams?.get('briefing');
+    if (!idParam || !briefingsLoaded || !briefings.length) return;
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) return;
+    const target = briefings.find(b => b.id === id);
+    if (target) {
+      setActiveTab('briefings');
+      setSelectedBriefing(target);
+    }
+  }, [searchParams, briefingsLoaded, briefings]);
 
   // Streak: consecutive days with a completed briefing call.
   const callStreak = useMemo(
