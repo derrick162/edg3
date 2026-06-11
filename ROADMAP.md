@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **checkReplies voice tool SHIPPED** (`fea8d6f`). 207/207 green. ⚠️ User external step: create `checkReplies` tool in Vapi dashboard (no params) + paste UUID into `lib/vapi.ts`. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Alignment feature SHIPPED** (`b8f95bb`): `lib/alignment.ts` + briefing wiring. 215/215 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,14 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Priority↔calendar alignment (Core).** The briefing's "ALIGNMENT CHECK"
+  section was a vague LLM aside; now it's data-backed. New `lib/alignment.ts`: one Haiku call
+  classifies the week's events against stated priorities, sums hours per priority, and surfaces
+  the biggest unaligned time-sinks. Result injected into the briefing prompt as structured facts
+  ("P1 'fundraising' = 0.0h (⚠ none scheduled); unaligned = 6.0h — biggest: 'Team sync' 2.0h").
+  The model's section 3 instruction updated to use these facts for a single concrete, empathetic
+  observation + one blocking action item. Degrades to null on any failure; briefing falls back
+  to the one-line behavior when alignment is unavailable. 8 new tests. 215/215 green.
 - **2026-06-10** — **`checkReplies` voice tool (Core).** Derrick could ask "did anyone reply?"
   mid-call but Edge had no tool for it — reply tracking only ran at briefing time. New handler in
   `tool-call/route.ts` calls `checkOutreachReplies(userId)` live and returns a spoken-friendly
