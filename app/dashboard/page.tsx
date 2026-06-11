@@ -778,9 +778,19 @@ export default function Dashboard() {
         });
     };
     loadHistory();
-    fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
-    fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [], facts: [] }).then(d => { setMemories(d.memories || []); setFacts(d.facts || []); }).catch(() => {});
-    fetch('/api/tasks').then(r => r.ok ? r.json() : { tasks: [] }).then(d => setTasks(d.tasks || [])).catch(() => {});
+
+    // Same retry-on-transient pattern for other user-facing data fetches — a cold-start or
+    // session-timing race must not silently blank out priorities/memory/tasks until a reload.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const retryFetch = (url: string, onSuccess: (d: any) => void, attempt = 0) => {
+      fetch(url)
+        .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(onSuccess)
+        .catch(() => { if (attempt < 3) setTimeout(() => retryFetch(url, onSuccess, attempt + 1), 400 * (attempt + 1)); });
+    };
+    retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
+    retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
+    retryFetch('/api/tasks', d => setTasks(d.tasks || []));
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
