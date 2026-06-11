@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Core-loop #2–#4 SHIPPED** (`d5659e2`): blocking offer + hygiene flags + accountability. 223/223 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Core-loop #5–#6 SHIPPED** (`61307d3`): call streak + priority-drift. 231/231 green. Queue exhausted — awaiting real-call validation before next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,16 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Core-loop features #5–#6 (Core).** #5: call streak — new `lib/streak.ts`
+  (pure, client-safe) computes consecutive days with a completed briefing. Dashboard sidebar
+  shows 🔥 N-day streak under the Next-call card (≥ 2 days); briefing section 1 weaves in
+  one warm acknowledgment ("five mornings straight — momentum"). History API bumped to 30
+  for accuracy. 8 new tests. #6: priority-drift refresh — priorities GET now returns
+  `getMostRecent` (any week) so the dashboard always shows the latest priorities + `week_of`
+  for staleness. New `POST /api/priorities/keep` refreshes `week_of` to the current week
+  without text changes. Dashboard sidebar: compact "Still your top priorities?" banner when
+  stale (>7 days), [Update] → priorities tab, [Keep] → keep endpoint. Briefing appends one
+  gentle nudge at the end of the closing question when stale. 231/231 green.
 - **2026-06-10** — **Core-loop features #2–#4 (Core).** #2: briefing section 3 now names a
   specific free slot when offering to block time for an under-served priority ("Want me to
   block Tuesday at two PM for fundraising?"); `lib/vapi.ts` gets a PRIORITY BLOCKING
