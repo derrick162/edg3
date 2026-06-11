@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Day-1 preview shipped** + **QA bug batch COMPLETE** (moveEvent timed→all-day, outreach tz label, name validation, bookEventTimes rollover, Day-1 polish). Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Trust tickets COMPLETE** (Ticket 1: plain-English actions `lib/actionSummary.ts`; Ticket 2: STT name correction `correctRecipientNames`). 190/190 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,16 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Two live-dogfooding trust fixes (Core).** Ticket 1: brief's "Edge's actions"
+  block now shows plain-English labels ("Added 'X' to your calendar") instead of raw
+  `readCalendar · Found 10 event(s)` lines. Read-only/internal calls filtered out; only ok=true
+  mutations shown. Helper centralized in `lib/actionSummary.ts` (client-safe) — used by both
+  the dashboard and `saveCallSummaryToCalendar` in the webhook route so both surfaces agree.
+  Ticket 2: outreach email name correction — `correctRecipientNames()` in `lib/outreach.ts`
+  now cross-checks the event title's capitalized tokens against STT-transcribed names and prefers
+  the user-typed spelling (e.g. "Email Derrick" + notes "Derek" → drafts greet "Derrick"). Also
+  handles the case where the recipient is the user themselves (profile name used). Reduces, does
+  not eliminate, STT name errors. 18 new tests. 190/190 green.
 - **2026-06-10** — **Added a third lane: 🎨 Design** (UX/UI). New worktree `edg3-design`
   / branch `design` / `ROADMAP-DESIGN.md` + asset pack `DESIGN.md`. Ownership: Design owns
   `app/globals.css` (the design system); page UI files are **Shared** (Core owns behavior,
