@@ -288,7 +288,7 @@ Write a short, personal, energizing preview (150–200 words) that:
 2. Directly references their stated priorities — show you already know what matters to them
 3. If calendar is available: briefly mention 1–2 upcoming events that relate to their priorities
 4. If no calendar: acknowledge it's not connected yet and offer a teaser of what Edge will do once it is
-5. Closes with warmth and a forward-looking line — e.g. "Your first briefing call is scheduled for [call_time]. I'll have everything ready." (use their call time: ${user.call_time} ${userTimezone})
+5. Closes with warmth and a forward-looking line — e.g. "Your first briefing call is scheduled for [call_time]. I'll have everything ready." (use their call time: ${user.call_time ?? '07:00'} ${userTimezone})
 
 Do NOT use headers. Do NOT format as bullet points. Write like you're speaking — flowing, personal, confident.`;
 

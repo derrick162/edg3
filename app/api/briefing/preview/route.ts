@@ -20,7 +20,10 @@ export async function GET() {
   try {
     const content = await generatePreviewBriefing(user.id);
     previewBriefingQueries.create(user.id, content);
-    return NextResponse.json({ content, cached: false });
+    // Re-read from DB so the response matches storage, and so two concurrent
+    // first-loads (race before either has persisted) both return the same text.
+    const stored = previewBriefingQueries.get(user.id);
+    return NextResponse.json({ content: stored?.content ?? content, cached: false });
   } catch (err) {
     console.error('[preview] Generation failed:', err);
     return NextResponse.json({ error: 'Failed to generate preview' }, { status: 500 });
