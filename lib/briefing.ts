@@ -86,6 +86,21 @@ Rules:
   return sanitized;
 }
 
+/**
+ * Minimal spoken briefing returned when the main Anthropic generation call fails or times out.
+ * Pure function — no DB or API calls — so it always succeeds and the scheduler call still goes out.
+ */
+export function buildFallbackBriefing(greeting: string, userName: string, calendarText: string, prioritiesText: string): string {
+  const firstName = (userName || '').split(' ')[0] || userName;
+  const calSection = calendarText.trim()
+    ? `Here's what I have on your calendar: ${calendarText.trim().replace(/\n/g, ', ')}.`
+    : "I don't see any events on your calendar for today.";
+  const prioSection = prioritiesText.trim() && prioritiesText !== 'No priorities set for this week.'
+    ? `Your priorities this week are: ${prioritiesText.replace(/^\d+\.\s*/gm, '').trim().replace(/\n/g, ', ')}.`
+    : '';
+  return `${greeting}, ${firstName}. I had a little trouble loading your full briefing today — let me give you the essentials. ${calSection}${prioSection ? ' ' + prioSection : ''} I'll have everything ready on tomorrow's call. What's the most important thing I should know before then?`;
+}
+
 export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -123,10 +138,6 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
-  // Structured facts: all durable facts extracted from past call transcripts.
-  const structuredFacts = factQueries.getAll(userId);
-  // Event-linked memory: match today's + this-week's events to facts by entity name.
-  const linkedMemory = linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts);
   // Call streak: count consecutive days with completed briefings.
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
@@ -196,6 +207,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const lastCallResponse = recentBriefings.find(b => b.user_response);
 
   const isFirstCall = recentMemories.length === 0;
+
+  // Structured facts — degrade to [] if DB throws.
+  const structuredFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+  // Event-linked memory — degrade to [] if thrown on malformed input.
+  const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts); } catch { return []; } })();
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
@@ -281,19 +297,30 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 
 Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 450,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
-  });
+  // Main briefing generation: 30-second timeout guard so a slow/hanging Anthropic call
+  // can never block the scheduler from placing the call.
+  let briefingText: string;
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 450,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }, { signal: AbortSignal.timeout(30_000) });
+    const content = message.content[0];
+    briefingText = content.type === 'text' ? content.text : buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
+  } catch (err) {
+    console.error('[briefing] generateDailyBriefing main call failed — falling back to basics:', err);
+    briefingText = buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
+  }
 
-  const content = message.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected response type');
-
-  // Post-process: verify calendar references against actual calendar data
-  const briefingText = content.text;
-  return sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
+  // Post-process: verify calendar references. Degrade gracefully if this step fails.
+  try {
+    return await sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
+  } catch (err) {
+    console.error('[briefing] sanitizeCalendarReferences failed — returning raw briefing:', err);
+    return briefingText;
+  }
 }
 
 export async function generatePreviewBriefing(userId: number): Promise<string> {
