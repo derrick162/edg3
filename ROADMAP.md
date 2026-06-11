@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Tasks filter + UpdateBox removal** (`1893a72`): Open/Completed/All segmented filter, 30-day window, voice prompt fixed. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **3 dogfooding fixes** (`d08e7f5`): read-only-calendar honest error + briefing opener filter + consolidation description. 282/282 green. Awaiting PM.)_ | — | 2026-06-11 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,26 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-11** — **Dogfooding fixes — 3 tickets (Core).** (`d08e7f5`)
+  - **T1 [HIGH BUG] Read-only-calendar mutations**: delete/move/edit/research/color
+    now check calMeta.accessRole before calling the Google API. Events on
+    subscribed/shared read-only calendars return an honest "you can only view that
+    calendar — edit it there directly" instead of the misleading "reconnect" 403
+    message. calMetaCache replaces calIdsCache (stores id+accessRole+summary).
+    `isWritable()` extracted to `lib/calendarWritable.ts` (tested). Added
+    console.error with calId+accessRole on deleteEvent/moveEvent failures for
+    prod diagnosis. ⚠️ If logs show 403s on WRITABLE calendars, escalate to
+    Security (potential scope regression).
+  - **T2 [prompt] Briefing opener skips routine events**: GREETING instruction
+    now explicitly excludes breakfast/lunch/dinner/gym/meal-prep/daily-habit blocks.
+    Opener must land on a meaningful, time-sensitive event; falls back to the top
+    priority if nothing qualifies.
+  - **T3 [prompt+param] Consolidation description**: `createEvent` handler accepts
+    optional `description` param (passed to Google Calendar). System prompt
+    CONSOLIDATE guidance: when merging events, pass a description recording what
+    was combined. ⚠️ External step: add `description` (string, optional) to the
+    createEvent Vapi dashboard tool so the model can pass it.
+  282/282 tests, tsc clean.
 - **2026-06-11** — **Tasks Open/Completed/All filter + UpdateBox removal (Core).**
   Tasks tab: segmented Open | Completed | All filter (default Open). Open = today/tomorrow
   incomplete + carried-over; "Complete all" and progress badge scoped to Open. Completed =
