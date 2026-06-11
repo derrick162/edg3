@@ -8,7 +8,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-import { computeAlignment, type AlignmentResult } from './alignment';
+import { computeAlignment, detectHygieneFlags, type AlignmentResult } from './alignment';
 import type { Priority } from './db';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -144,5 +144,100 @@ describe('computeAlignment', () => {
     const promptArg = h.create.mock.calls[0][0].messages[0].content as string;
     const listed = (promptArg.match(/"Event \d+"/g) ?? []).length;
     expect(listed).toBeLessThanOrEqual(40);
+  });
+});
+
+// ── detectHygieneFlags tests ──────────────────────────────────────────────────
+
+function meeting(title: string, startIso: string, durationMin: number) {
+  const start = new Date(startIso);
+  const end = new Date(start.getTime() + durationMin * 60_000);
+  return { summary: title, start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() } };
+}
+
+const TZ = 'America/Vancouver'; // UTC-7
+
+describe('detectHygieneFlags', () => {
+  it('returns null when there are no events', () => {
+    expect(detectHygieneFlags([], TZ)).toBeNull();
+  });
+
+  it('returns null when events are all-day (no dateTime)', () => {
+    const allDay = [{ summary: 'Conference', start: { date: '2026-06-10' }, end: { date: '2026-06-11' } }];
+    expect(detectHygieneFlags(allDay, TZ)).toBeNull();
+  });
+
+  it('detects back-to-back overload when 3 meetings have < 15 min gaps', () => {
+    const events = [
+      meeting('Standup',    '2026-06-10T09:00:00-07:00', 30),
+      meeting('1-on-1',     '2026-06-10T09:35:00-07:00', 30), // 5 min gap → back-to-back
+      meeting('Team review', '2026-06-10T10:10:00-07:00', 30), // 5 min gap → 3rd in streak
+    ];
+    const result = detectHygieneFlags(events, TZ);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/back-to-back/);
+    expect(result).toMatch(/Wednesday/);
+  });
+
+  it('does NOT flag when gaps are >= 15 min between consecutive meetings', () => {
+    const events = [
+      meeting('Standup',  '2026-06-10T09:00:00-07:00', 30),
+      meeting('1-on-1',   '2026-06-10T09:45:00-07:00', 30), // 15 min gap — just ok
+      meeting('Strategy', '2026-06-10T10:30:00-07:00', 30), // 15 min gap — just ok
+    ];
+    expect(detectHygieneFlags(events, TZ)).toBeNull();
+  });
+
+  it('does NOT flag back-to-back when streak resets after a long gap', () => {
+    const events = [
+      meeting('A', '2026-06-10T09:00:00-07:00', 30),
+      meeting('B', '2026-06-10T09:35:00-07:00', 30), // 5 min gap → streak 2
+      meeting('C', '2026-06-10T11:00:00-07:00', 30), // 55 min gap → streak resets to 1
+      meeting('D', '2026-06-10T11:35:00-07:00', 30), // 5 min gap → streak 2 (not 3)
+    ];
+    expect(detectHygieneFlags(events, TZ)).toBeNull();
+  });
+
+  it('detects no-focus-week when all busy days are wall-to-wall', () => {
+    // 3 days each with 2 meetings and < 90 min gap
+    const events = [
+      meeting('A', '2026-06-09T09:00:00-07:00', 60),
+      meeting('B', '2026-06-09T10:30:00-07:00', 60), // 30 min gap — < 90
+      meeting('C', '2026-06-10T09:00:00-07:00', 60),
+      meeting('D', '2026-06-10T10:30:00-07:00', 60), // 30 min gap — < 90
+      meeting('E', '2026-06-11T09:00:00-07:00', 60),
+      meeting('F', '2026-06-11T10:30:00-07:00', 60), // 30 min gap — < 90
+    ];
+    const result = detectHygieneFlags(events, TZ);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/packed/);
+  });
+
+  it('does NOT flag no-focus-week when at least one day has a 90+ min gap', () => {
+    const events = [
+      meeting('A', '2026-06-09T09:00:00-07:00', 60),
+      meeting('B', '2026-06-09T10:30:00-07:00', 60), // 30 min gap — packed
+      meeting('C', '2026-06-10T09:00:00-07:00', 60),
+      meeting('D', '2026-06-10T10:30:00-07:00', 60), // 30 min gap — packed
+      meeting('E', '2026-06-11T09:00:00-07:00', 60),
+      meeting('F', '2026-06-11T11:30:00-07:00', 60), // 90 min gap → focus exists
+    ];
+    expect(detectHygieneFlags(events, TZ)).toBeNull();
+  });
+
+  it('prioritises back-to-back over no-focus-week (returns first finding)', () => {
+    // Wednesday has back-to-back; no day has 90 min gap
+    const events = [
+      meeting('A', '2026-06-10T09:00:00-07:00', 30),
+      meeting('B', '2026-06-10T09:35:00-07:00', 30), // 5 min → streak 2
+      meeting('C', '2026-06-10T10:10:00-07:00', 30), // 5 min → streak 3 ← flagged
+      meeting('D', '2026-06-09T09:00:00-07:00', 60),
+      meeting('E', '2026-06-09T10:30:00-07:00', 60), // 30 min gap
+      meeting('F', '2026-06-11T09:00:00-07:00', 60),
+      meeting('G', '2026-06-11T10:30:00-07:00', 60), // 30 min gap
+    ];
+    const result = detectHygieneFlags(events, TZ);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/back-to-back/); // back-to-back wins
   });
 });

@@ -3,7 +3,7 @@ import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, effectiveTimezone, User } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 import { checkOutreachReplies } from './replies';
-import { computeAlignment } from './alignment';
+import { computeAlignment, detectHygieneFlags } from './alignment';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -108,12 +108,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getWeekEvents(userId).catch(() => []),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
+  // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
+  // source='edg3' tasks come from extractTasksFromTranscript at call end.
+  const edg3Commitment = incompleteTasks
+    .filter(t => t.source === 'edg3' && t.date < today)
+    .at(-1) ?? null;
   // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
   // Degrades to [] if Gmail read access isn't granted yet or anything errors.
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
   // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
   // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
   const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
+  // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
+  const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
   // Only kudos for tasks completed since the last briefing
   const lastBriefing = recentBriefings[0];
   const lastBriefingTime = lastBriefing ? new Date(lastBriefing.created_at) : null;
@@ -216,8 +223,13 @@ ${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
+` : ''}${hygieneFlag ? `
+CALENDAR HYGIENE FLAG (one concrete overload pattern — surface this in section 4):
+${hygieneFlag}
+` : ''}${edg3Commitment ? `
+YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said they'd do it):
+- ${edg3Commitment.text}
 ` : ''}
-
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
 
@@ -233,10 +245,10 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention. If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
 2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
 3. ALIGNMENT CHECK — ${alignmentText
-  ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then add ONE specific action item: offer to block time for the most under-served priority. Keep it to one sentence + one offer. If all priorities are well-covered, say so briefly.'
+  ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then offer to block time for the most under-served priority using a SPECIFIC slot from FREE TIME SLOTS above — name the exact day and time (e.g. "Want me to block Tuesday at two PM for fundraising?"). One sentence observation + one blocking offer. If all priorities are well-covered, say so briefly.'
   : 'Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.'
 }
-4. ACTION ITEMS — The 3 highest-leverage things they should do today. Call them "action items". Be specific. Address every weekly priority. Reference incomplete tasks by name.
+4. ACTION ITEMS — ${edg3Commitment ? `Open with ONE accountability line: "Yesterday you committed to '${edg3Commitment.text}' — did that happen?" Then list ` : 'List '}the 3 highest-leverage things they should do today. Call them "action items". Be specific. Address every weekly priority. Reference incomplete tasks by name.${hygieneFlag ? ` Add ONE punchy hygiene item: surface the CALENDAR HYGIENE FLAG and offer to fix it (e.g. add buffers, protect a focus block).` : ''}
 5. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.
 6. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
    - If they have a big upcoming event: "What do you need to feel ready for [event]?"
