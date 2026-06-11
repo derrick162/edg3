@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Activity tab migration** (`ba68b64`): audit_log source, rich labels, expandable rows with detail/before→after, time-matched undo buttons. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **Tasks filter + UpdateBox removal** (`1893a72`): Open/Completed/All segmented filter, 30-day window, voice prompt fixed. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,15 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-11** — **Tasks Open/Completed/All filter + UpdateBox removal (Core).**
+  Tasks tab: segmented Open | Completed | All filter (default Open). Open = today/tomorrow
+  incomplete + carried-over; "Complete all" and progress badge scoped to Open. Completed =
+  last 30 days sorted by `completed_at DESC`. All = full 30-day set. /api/tasks widened 7→30d.
+  Removed "Chat with Edge" async note box (CEO decision, pre-launch scope reduction — fully
+  reversible from git). UpdateBox component + submitUpdate handler removed from dashboard;
+  `app/api/memory/update/route.ts` deleted; `lib/vapi.ts` voice prompt updated so Edge no
+  longer references the removed box (says "I'll pick it up on tomorrow's briefing" instead).
+  tsc clean. 276/276 green. (`1893a72`)
 - **2026-06-11** — **Activity tab migration — audit_log + rich labels + expandable rows (Core).**
   New `lib/activityLabels.ts` (pure, 0 imports): `buildLabel` derives rich one-line labels per
   action type ("Created 'Las Vegas' · all-day Jun 12–15", "Moved 'X' · Jun 8 → Jun 9 at 2 PM",
