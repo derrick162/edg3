@@ -101,8 +101,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Issues A+B+C** (`7424c53`): all-day ambiguity fix + location param + endDate guidance. 288/288 green. Awaiting PM.)_ | — | 2026-06-11 |
-| 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch SHIPPED**: all-day delete ambiguity, location param, anti-loop guardrail, call-resilience (generateDailyBriefing never throws), graceful hold, first-name, timezone (current-only), consolidation playbook, transcript link, book-error surfacing. Awaiting PM.)_ | — | 2026-06-11 |
+| 🔒 Security | `security` | _(idle — ✅ **scheduler catch-up window** (missed-call fix) + **call-failure surfacing** (CallError code, briefing→failed, 503). Core-loop reliability done. Awaiting PM.)_ | `lib/scheduler.ts` | 2026-06-11 |
+| 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 

@@ -8,6 +8,28 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-11** — **[CRITICAL] Surface Vapi/briefing failures — "Call me now" no longer fails opaquely.**
+  `scheduleBriefingCall` and `scheduleOpenCall` previously awaited `initiateCall` and
+  `generateDailyBriefing` with no try/catch — any Vapi rejection (e.g. free-tier daily
+  cap) threw an unhandled 500 with no information for the dashboard. Fix: new `CallError`
+  class with `userMessage` + `code` (`vapi_daily_limit` / `vapi_error` /
+  `briefing_gen_failed`); `classifyVapiError()` detects the daily-limit string vs generic
+  failures. Both scheduler functions now catch Vapi errors → set briefing to `'failed'` →
+  throw `CallError`. Briefing gen failure is separately guarded. Routes
+  (`/api/briefing/call`, `/api/briefing/open-call`) return HTTP 503 with
+  `{ error, code }` so the dashboard can tell "daily cap" from "broken". 7 new tests for
+  CallError + 7 catch-up window tests retained. 290/290 green.
+- **2026-06-11** — **[CRITICAL] Scheduler catch-up window — missed morning calls fixed.**
+  Root cause: `checkAndInitiateCalls` matched the call tick by exact minute
+  (`userCurrentTime !== user.call_time`) — any server restart during that minute
+  caused a silent miss with no retry. Fix: replaced exact-match with a 120-minute
+  catch-up window (`userMinutes >= callMinutes && userMinutes < callMinutes + 120`).
+  The existing once-daily dedupe (check for `calling`/`completed` briefing today)
+  prevents double-firing within the window. `checkAndInitiateCalls` exported with
+  injectable `now: Date` for deterministic testing. 7 new tests covering: fires at
+  call_time, fires after missed tick, doesn't fire before call_time, doesn't fire
+  past grace window, doesn't double-fire, multiple ticks = one call, fires at last
+  minute of window. 283/283 green.
 - **2026-06-10** — **[LOW-MED] rateLimit loud-fail + crypto strict-mode.** (a) `checkRateLimit`
   catch now logs loudly via `console.error` — a silent fault was erasing brute-force
   protection with no observable signal. (b) `encryptField` in `lib/crypto.ts` supports
