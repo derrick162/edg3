@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { userQueries } from '@/lib/db';
 import { getUpcomingEvents, createCalendarEvent } from '@/lib/calendar';
-
-function checkAuth(req: NextRequest): boolean {
-  const secret = process.env.ADMIN_SECRET;
-  if (!secret) return false;
-  return req.headers.get('x-admin-secret') === secret;
-}
+import { checkAdminSecretAuth } from '@/lib/adminAuth';
+import { checkRateLimit, getClientIP, rateLimitResponse } from '@/lib/rateLimit';
 
 // Shape returned to the Chief-of-Staff agent — only the fields it needs,
 // not the full Google Calendar API blob.
@@ -36,7 +32,9 @@ function formatEvent(ev: {
 // GET /api/admin/calendar/events?email=...&days=7
 // Returns upcoming events for the next N days on the user's primary + shared calendars.
 export async function GET(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const rl = checkRateLimit('adminApi', getClientIP(req));
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+  if (!checkAdminSecretAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const email = searchParams.get('email');
@@ -65,7 +63,9 @@ export async function GET(req: NextRequest) {
 // Body: { email, title, start (ISO datetime), end (ISO datetime), description?, timezone? }
 // Creates a calendar event on the user's primary calendar and returns the new event id.
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const rl = checkRateLimit('adminApi', getClientIP(req));
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+  if (!checkAdminSecretAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: {
     email?: string;

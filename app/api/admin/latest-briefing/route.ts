@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries } from '@/lib/db';
-
-function checkAuth(req: NextRequest): boolean {
-  const secret = process.env.ADMIN_SECRET;
-  if (!secret) return false;
-  return req.headers.get('x-admin-secret') === secret;
-}
+import { checkAdminSecretAuth } from '@/lib/adminAuth';
+import { checkRateLimit, getClientIP, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function GET(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const rl = checkRateLimit('adminApi', getClientIP(req));
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+  if (!checkAdminSecretAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const email = searchParams.get('email');

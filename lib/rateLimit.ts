@@ -22,6 +22,7 @@ export const LIMITS = {
   login:        { limit: 10, windowMs: 15 * 60 * 1000 },  // 10 / 15 min
   signup:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5 / hour
   triggerCall:  { limit: 3,  windowMs:  5 * 60 * 1000 },  // 3 / 5 min
+  adminApi:     { limit: 60, windowMs: 60 * 1000 },        // 60 / min (CoS agent)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

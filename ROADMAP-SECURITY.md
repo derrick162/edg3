@@ -8,6 +8,13 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-10** — **[HIGH] Fixed admin auth bypass on CoS-agent routes.** Two routes
+  (`app/api/admin/calendar/events`, `app/api/admin/latest-briefing`) used a local
+  `checkAuth()` with `===` — the exact timing side-channel `timingSafeEqual` was added
+  to kill. Both had no rate limiting. Fix: new `checkAdminSecretAuth(req)` in
+  `lib/adminAuth.ts` (timingSafeEqual on `ADMIN_SECRET`/`x-admin-secret` header);
+  new `adminApi` bucket in `lib/rateLimit.ts` (60/min); both routes now use the shared
+  helpers. 6 new tests. 167/167 green.
 - **2026-06-10** — **Gmail READ access code-complete** (was already implemented;
   added missing test coverage). `readThread(userId, threadId)` in `lib/gmail.ts` with
   `hasGmailReadScope` scope gate, `GMAIL_READONLY_SCOPE` in `lib/google-auth.ts`,
