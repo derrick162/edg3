@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, effectiveTimezone, User } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, effectiveTimezone, User } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
+import { linkEventsToFacts } from './facts';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -122,6 +123,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
+  // Structured facts: all durable facts extracted from past call transcripts.
+  const structuredFacts = factQueries.getAll(userId);
+  // Event-linked memory: match today's + this-week's events to facts by entity name.
+  const linkedMemory = linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts);
   // Call streak: count consecutive days with completed briefings.
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
@@ -242,6 +247,12 @@ YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said 
 CALL STREAK: ${callStreak} consecutive days of morning calls. Acknowledge this warmly in the GREETING — one specific, energizing line (e.g. "five mornings straight — you're building real momentum here").
 ` : ''}${prioritiesStaleAge > 7 ? `
 PRIORITY DRIFT ALERT: Priorities were last set ${prioritiesStaleAge} days ago. Add ONE gentle nudge at the END of the closing section: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"
+` : ''}${linkedMemory.length > 0 ? `
+EVENT-LINKED MEMORY (real events from the calendar annotated with relevant structured facts — use to make ONE sharp dot-connecting moment; NEVER invent events; NEVER use this to claim an event is on the calendar unless it also appears in TODAY'S CALENDAR or UPCOMING THIS WEEK above):
+${linkedMemory.map(lm => {
+  const learnedDate = lm.fact.learned_at ? new Date(lm.fact.learned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  return `- "${lm.eventTitle}" → ${lm.fact.statement} (${lm.fact.category}${learnedDate ? `, learned ${learnedDate}` : ''})`;
+}).join('\n')}
 ` : ''}
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
@@ -255,7 +266,7 @@ ${recentlyCompletedTasks.length ? recentlyCompletedTasks.map(t => `- [${t.date}]
 Generate a briefing with these sections:
 CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. This includes flights, drives, appointments, meetings — everything. If a flight, drive, or any travel event does NOT appear in the calendar data above, do NOT mention it. Memory, conversation history, and past call transcripts are NOT reliable sources for current calendar events — they may be outdated. Before mentioning ANY event (grocery run, gym, flight, meeting, meal prep, drive, etc.) you MUST confirm it appears in the calendar data above. If it does not appear there, do NOT mention it. Do not say things like "I see you have a grocery run Friday" or "you have your drive to Blue Mountain" unless those exact events appear in the calendar sections above. Treat memory references to calendar events as historical only — not current facts.
 
-1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention.${callStreak >= 2 ? ` Then weave in ONE warm streak line (from CALL STREAK above). Keep it natural and encouraging — one sentence max.` : ''} If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
+1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention.${callStreak >= 2 ? ` Then weave in ONE warm streak line (from CALL STREAK above). Keep it natural and encouraging — one sentence max.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY contains a genuinely relevant connection to today's calendar, weave in ONE dot-connecting moment (e.g. "Your two PM with Acme — you told me closing them is the top priority"). Only if it adds real value — skip if forced.` : ''} If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
 2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
 3. ALIGNMENT CHECK — ${alignmentText
   ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then offer to block time for the most under-served priority using a SPECIFIC slot from FREE TIME SLOTS above — name the exact day and time (e.g. "Want me to block Tuesday at two PM for fundraising?"). One sentence observation + one blocking offer. If all priorities are well-covered, say so briefly.'
