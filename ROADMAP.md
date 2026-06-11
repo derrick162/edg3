@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ **Day-1 preview briefing COMPLETE** (`d724556`): `GET /api/briefing/preview`, `generatePreviewBriefing()`, `preview_briefings` table, dashboard spinner + preview card. 160/160 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
-| 🔒 Security | `security` | ✅ **Gmail READ access DONE** — `readThread` + `hasGmailReadScope` + scope coverage verified. All 10 roadmap items + Gmail READ complete. 160/160 green. Pinging PM — queue empty. | — | 2026-06-10 |
+| 🔒 Security | `security` | ✅ **QA audit batch DONE** (`169ccbc`): [HIGH] admin auth bypass fixed (CoS routes now use `checkAdminSecretAuth` + `timingSafeEqual` + rate limiting); [MED] XFF rate-limit bypass fixed (rightmost hop); [LOW-MED] rateLimit loud-fail + `STRICT_ENCRYPTION` mode. 172/172 green. Queue empty — pinging PM. | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
