@@ -7,7 +7,7 @@ import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
-import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes } from '@/lib/outreach';
+import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
 import { google, calendar_v3 } from 'googleapis';
@@ -625,12 +625,23 @@ Query: ${query}` }],
     }
     if (!sourceRecipients.length) return "Tell me who to email — point me to the event that has the research, or give me names and emails.";
 
+    // Prefer user-typed name spellings over STT-transcribed ones.
+    // (1) If a recipient's email matches the user's own, use their profile name.
+    // (2) If the event title has a name token that fuzzy-matches a notes name, prefer title.
+    // This reduces errors like "Derek" (transcribed) → "Derrick" (user-typed in title).
+    const userRow = userQueries.findById(userId);
+    sourceRecipients = correctRecipientNames(sourceRecipients, {
+      eventTitle: title,
+      userEmail: userRow?.email,
+      userName: userRow?.name,
+    });
+
     const { ok, skipped } = emailableRecipients(sourceRecipients);
     if (!ok.length) {
       return `I couldn't draft anything — none of those contacts had a usable email${skipped.length ? ` (missing for ${skipped.join(', ')})` : ''}. Research them first to find emails, then try again.`;
     }
 
-    const senderName = (userQueries.findById(userId)?.name ?? '').trim() || 'Me';
+    const senderName = userRow?.name?.trim() || 'Me';
 
     // Availability: default to a one-week window starting today (in the user's tz).
     let slots: string[] = [];

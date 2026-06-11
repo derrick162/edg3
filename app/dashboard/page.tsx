@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import { summarizeUserFacingActions } from '@/lib/actionSummary';
 
 const TIMEZONES = [
   { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
@@ -1316,20 +1317,16 @@ export default function Dashboard() {
 
                           {b.tool_actions && (() => {
                             try {
-                              const actions = JSON.parse(b.tool_actions);
-                              if (!actions.length) return null;
+                              const labels = summarizeUserFacingActions(JSON.parse(b.tool_actions));
+                              if (!labels.length) return null;
                               return (
                                 <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
                                   <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
                                   <div className="space-y-1.5">
-                                    {actions.map((a: { fn: string; args?: { title?: string; sourceDate?: string; date?: string }; result?: string; ok?: boolean }, i: number) => (
+                                    {labels.map((label: string, i: number) => (
                                       <div key={i} className="text-xs flex items-start gap-2" style={{ color: 'var(--text-body)' }}>
-                                        <span style={{ color: a.ok ? '#4ade80' : 'var(--edg-warning)' }}>{a.ok ? '✓' : '⚠'}</span>
-                                        <span>
-                                          <span style={{ color: 'var(--text-accent)' }}>{a.fn}</span>
-                                          {a.args?.title ? ` — ${a.args.title}` : a.args?.sourceDate ? ` — from ${a.args.sourceDate}` : ''}
-                                          {a.result && <span style={{ color: 'var(--text-muted)' }}> · {a.result}</span>}
-                                        </span>
+                                        <span style={{ color: '#4ade80' }}>✓</span>
+                                        <span>{label}</span>
                                       </div>
                                     ))}
                                   </div>
