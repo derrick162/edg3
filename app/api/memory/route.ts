@@ -6,7 +6,9 @@ export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const memories = memoryQueries.getRecent(user.id, 30);
+  // Show real depth — each call produces several memory rows, so a small cap made the
+  // Memory tab floor out after a couple of days (reported: "only goes back to June 8").
+  const memories = memoryQueries.getRecent(user.id, 200);
   const facts = factQueries.getAll(user.id);
   return NextResponse.json({ memories, facts });
 }
