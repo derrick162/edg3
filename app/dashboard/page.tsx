@@ -696,6 +696,15 @@ interface Memory {
   created_at: string;
 }
 
+interface Fact {
+  id: number;
+  user_id: number;
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  statement: string;
+  entity: string | null;
+  learned_at: string;
+}
+
 interface Task {
   id: number;
   text: string;
@@ -711,6 +720,7 @@ export default function Dashboard() {
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [facts, setFacts] = useState<Fact[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
@@ -757,7 +767,7 @@ export default function Dashboard() {
     // Background loads — each section fills in as its data arrives; none blocks render.
     fetch('/api/briefing/history').then(r => r.ok ? r.json() : { briefings: [] }).then(d => { setBriefings(d.briefings || []); setBriefingsLoaded(true); }).catch(() => { setBriefingsLoaded(true); });
     fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
-    fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [] }).then(d => setMemories(d.memories || [])).catch(() => {});
+    fetch('/api/memory').then(r => r.ok ? r.json() : { memories: [], facts: [] }).then(d => { setMemories(d.memories || []); setFacts(d.facts || []); }).catch(() => {});
     fetch('/api/tasks').then(r => r.ok ? r.json() : { tasks: [] }).then(d => setTasks(d.tasks || [])).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
@@ -1442,35 +1452,87 @@ export default function Dashboard() {
 
           {activeTab === 'memory' && (
             <div>
-              <h2 className="text-lg font-bold mb-4">Memory bank</h2>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-                Everything EDG3 remembers about you accumulates here over time.
+              <h2 className="text-lg font-bold mb-4">What Edge knows</h2>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+                Structured facts Edge has learned about you, your work, and your world — built up over every call.
               </p>
-              {memories.length === 0 ? (
+
+              {/* Structured facts grouped by category */}
+              {facts.length > 0 && (() => {
+                const CATEGORY_LABELS: Record<string, string> = {
+                  goal: 'Goals',
+                  project: 'Projects',
+                  person: 'People',
+                  preference: 'Preferences',
+                  fact: 'Facts',
+                };
+                const ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
+                const grouped = ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
+                  const items = facts.filter(f => f.category === cat);
+                  if (items.length) acc[cat] = items;
+                  return acc;
+                }, {});
+                return (
+                  <div className="space-y-6 mb-8">
+                    {Object.entries(grouped).map(([cat, items]) => (
+                      <div key={cat}>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
+                          {CATEGORY_LABELS[cat] ?? cat}
+                        </h3>
+                        <div className="space-y-2">
+                          {items.map(f => (
+                            <div key={f.id} className="glass-card p-3 flex items-start justify-between gap-4">
+                              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                {f.entity && (
+                                  <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                )}
+                                {f.statement}
+                              </p>
+                              <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                                learned {format(new Date(f.learned_at), 'MMM d')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Raw memories */}
+              {memories.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
+                    Call notes
+                  </h3>
+                  <div className="space-y-3">
+                    {memories.map(m => (
+                      <div key={m.id} className="glass-card p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`badge ${
+                            m.type === 'insight' ? 'badge-success' :
+                            m.type === 'transcript' ? 'badge-info' :
+                            m.type === 'profile' ? 'badge-pending' : 'badge-info'
+                          }`}>
+                            {m.type}
+                          </span>
+                          <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                            {format(new Date(m.created_at), 'MMM d, yyyy')}
+                          </span>
+                        </div>
+                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                          {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No memories yet. They'll build after your first call.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {memories.map(m => (
-                    <div key={m.id} className="glass-card p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`badge ${
-                          m.type === 'insight' ? 'badge-success' :
-                          m.type === 'transcript' ? 'badge-info' :
-                          m.type === 'profile' ? 'badge-pending' : 'badge-info'
-                        }`}>
-                          {m.type}
-                        </span>
-                        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                          {format(new Date(m.created_at), 'MMM d, yyyy')}
-                        </span>
-                      </div>
-                      <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                        {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
-                      </p>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
