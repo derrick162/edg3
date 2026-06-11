@@ -113,10 +113,84 @@ describe('buildOutreachBody', () => {
     expect(body.trimEnd().endsWith('Derrick')).toBe(true);
   });
 
+  it('includes timezone abbreviation in the slot header when userTimezone is provided', () => {
+    const body = buildOutreachBody({
+      recipientName: 'Bob',
+      senderName: 'Derrick',
+      ask: 'Can you come by?',
+      slots: ['Mon, Jun 9: 2:00 PM–4:00 PM'],
+      userTimezone: 'America/Vancouver',
+    });
+    // The slot header must name the timezone so the recipient knows the reference frame.
+    expect(body).toMatch(/times that work on my end\s*\((P[SD]T|PT)\):/i);
+    expect(body).toContain('  - Mon, Jun 9: 2:00 PM–4:00 PM');
+  });
+
+  it('omits timezone label when userTimezone is not provided (backward compat)', () => {
+    const body = buildOutreachBody({
+      senderName: 'Derrick',
+      ask: 'Can we meet?',
+      slots: ['Mon, Jun 9: 9:00 AM–10:00 AM'],
+    });
+    // No "(PT)" / "(ET)" label when timezone is absent
+    expect(body).not.toMatch(/\([A-Z]{2,4}T\)/);
+    expect(body).toContain('  - Mon, Jun 9:');
+  });
+
   it('falls back to a generic availability line and "Hello," when no name/slots', () => {
     const body = buildOutreachBody({ senderName: 'Derrick', ask: 'Are you available this week?', slots: [] });
     expect(body).toMatch(/^Hello,/);
     expect(body).toContain("Let me know what times work for you");
     expect(body).not.toContain('  - ');
+  });
+});
+
+describe('recipientsFromNotes — name fallback validation (bug 4)', () => {
+  it('prefers a "Name:" line over the first non-label line', () => {
+    const notes = `
+Best plumber in Austin — highly recommended
+Name: Acme Plumbing
+Email: fix@acme.com
+Phone: 512-555-0100
+`.trim();
+    const result = recipientsFromNotes(notes);
+    expect(result[0].name).toBe('Acme Plumbing');
+  });
+
+  it('rejects a URL as a fallback name', () => {
+    const notes = `
+https://bestplumber.com/austin
+Email: info@bestplumber.com
+`.trim();
+    const result = recipientsFromNotes(notes);
+    // URL must not be used as name; name should be undefined/null (no valid fallback)
+    expect(result[0].name).toBeFalsy();
+  });
+
+  it('rejects an email address as a fallback name', () => {
+    const notes = `
+contact@plumber.com
+Email: booking@plumber.com
+`.trim();
+    const result = recipientsFromNotes(notes);
+    expect(result[0].name).toBeFalsy();
+  });
+
+  it('rejects a long description as a fallback name', () => {
+    const notes = `
+This is the best plumbing company in town and they have great reviews from many customers over the years
+Email: info@plumber.com
+`.trim();
+    const result = recipientsFromNotes(notes);
+    expect(result[0].name).toBeFalsy();
+  });
+
+  it('still picks a short non-label line as the name when no Name: line', () => {
+    const notes = `
+City Drains Ltd
+Email: hello@citydrains.ca
+`.trim();
+    const result = recipientsFromNotes(notes);
+    expect(result[0].name).toBe('City Drains Ltd');
   });
 });

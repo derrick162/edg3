@@ -654,7 +654,7 @@ Query: ${query}` }],
     // per-recipient Claude+Gmail loop was slow enough to trip the call's 30s silence timeout.
     const results = await Promise.all(ok.map(async (recipient): Promise<{ ok: true; name: string; draftId: string } | { ok: false; name: string; fatal: unknown }> => {
       try {
-        const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject });
+        const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject, userTimezone: tz });
         const to = recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email;
         const { draftId, threadId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
         // Email-reply tracking (Phase 1): remember this outreach thread so Edge can watch it

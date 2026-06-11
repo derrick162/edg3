@@ -46,10 +46,18 @@ export function recipientsFromNotes(notes: string): OutreachRecipient[] {
       /not found/i.test(email) ||
       seen.has(email.toLowerCase())
     ) continue;
-    // First line that isn't a labelled field (Phone/Email/Website/Address) is the name.
-    const name = lines.find(
-      l => !/^(?:phone|email|website|address)\s*:/i.test(l) && !/:\s*$/.test(l)
-    );
+    // Prefer an explicit "Name: ..." line; fall back to the first non-label line,
+    // but reject obvious non-names (URLs, email addresses, long description sentences).
+    const nameLine = lines.find(l => /^name\s*:/i.test(l));
+    const name = nameLine
+      ? nameLine.replace(/^name\s*:/i, '').trim()
+      : lines.find(l =>
+          !/^(?:phone|email|website|address|name)\s*:/i.test(l) &&
+          !/:\s*$/.test(l) &&
+          !/^https?:\/\//i.test(l) &&   // not a URL
+          !l.includes('@') &&            // not an email address
+          l.length <= 80                 // not a long description paragraph
+        );
     seen.add(email.toLowerCase());
     out.push({ name, email });
   }
@@ -94,18 +102,30 @@ export function formatSlotsForEmail(freeSlotsText: string): string[] {
     .filter(Boolean);
 }
 
+/** Get the short timezone abbreviation (e.g. "PDT", "ET") for an IANA zone. */
+function tzAbbrev(tz: string): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+    .formatToParts(new Date())
+    .find(p => p.type === 'timeZoneName')?.value ?? tz;
+}
+
 // A short, polite plain-text outreach email body. Deterministic (used directly, and as the
 // fallback if the Claude polish in composeOutreachEmail fails).
+// `userTimezone` is the sender's IANA zone — when provided and slots are present, the email
+// includes a "times below are in <TZ>" line so the recipient always knows which timezone the
+// availability refers to. Omitting it is safe: the slot block is included without a tz label.
 export function buildOutreachBody(opts: {
   recipientName?: string;
   senderName: string;
   ask: string;
   slots: string[];
+  userTimezone?: string;
 }): string {
   const lines: string[] = [opts.recipientName ? `Hi ${opts.recipientName},` : 'Hello,', ''];
   lines.push(opts.ask.trim());
   if (opts.slots.length) {
-    lines.push('', 'In case it helps, here are some times that work on my end:');
+    const tzLabel = opts.userTimezone ? ` (${tzAbbrev(opts.userTimezone)})` : '';
+    lines.push('', `In case it helps, here are some times that work on my end${tzLabel}:`);
     for (const s of opts.slots) lines.push(`  - ${s}`);
     lines.push('', "If any of those suit you, let me know — happy to work around your schedule too.");
   } else {
@@ -123,20 +143,24 @@ function defaultSubject(ask: string): string {
 // Compose a polished outreach email for one recipient (subject + body). Tries Claude for a warmer
 // one-paragraph note; falls back to the deterministic template on any failure so a draft is always
 // produced. Returns the recipient alongside the message so the caller can create the draft.
+// `userTimezone` is passed through to buildOutreachBody so slots in the fallback template carry
+// a "times below are in <TZ>" label; the Claude prompt also includes the abbreviation.
 export async function composeOutreachEmail(opts: {
   recipient: { name?: string; email: string };
   senderName: string;
   ask: string;
   slots: string[];
   subject?: string;
+  userTimezone?: string;
 }): Promise<ComposedEmail> {
   const subject = (opts.subject?.trim()) || defaultSubject(opts.ask);
-  const fallback = buildOutreachBody({ recipientName: opts.recipient.name, senderName: opts.senderName, ask: opts.ask, slots: opts.slots });
+  const fallback = buildOutreachBody({ recipientName: opts.recipient.name, senderName: opts.senderName, ask: opts.ask, slots: opts.slots, userTimezone: opts.userTimezone });
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const tzNote = opts.userTimezone && opts.slots.length ? ` All times are in ${tzAbbrev(opts.userTimezone)}.` : '';
     const slotBlock = opts.slots.length
-      ? `Times that work on the sender's end:\n${opts.slots.map(s => `- ${s}`).join('\n')}`
+      ? `Times that work on the sender's end:${tzNote}\n${opts.slots.map(s => `- ${s}`).join('\n')}`
       : 'The sender has open availability (no specific slots provided).';
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
