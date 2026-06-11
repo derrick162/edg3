@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Compounding Memory Parts A–C SHIPPED** (`ee2e309`): structured fact extraction, event-linked briefing memory, visible memory tab. 245/245 green. Queue exhausted — awaiting PM next batch.)_ | — | 2026-06-10 |
+| 🛠️ Core | `core` | _(idle — ✅ **Memory UX + reliability** (`14fb440`): call notes paginated (20/page, Prev/Next, resets on tab/reload), fact category expander for >15 items; fetch-hardening (retry-on-transient) applied to priorities/memory/tasks. 245/245 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-10 |
 | 🔒 Security | `security` | _(idle — ✅ **QA audit batch DONE** (`169ccbc`): admin-auth bypass fixed (timingSafeEqual + rate limit), XFF bypass fixed, rateLimit loud-fail + `STRICT_ENCRYPTION`. All 10 items + Gmail READ done. Queue empty — awaiting PM.)_ | — | 2026-06-10 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
@@ -116,6 +116,12 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-10** — **Memory UX + fetch reliability (Core).** Call notes list in Memory tab
+  now paginates at 20 items/page (Prev/Next + "Page X of Y"; page resets on tab switch or
+  data reload). Structured fact categories with >15 items show a "Show all (N)" / "Show less"
+  expander. Separately: applied retry-on-transient (3x backoff) to `/api/onboarding/priorities`,
+  `/api/memory`, and `/api/tasks` fetches in `loadData` — same class of silent-blank-on-cold-start
+  bug as the briefing history fix (9ce624c). tsc clean. 245/245 green. (`14fb440`)
 - **2026-06-10** — **Compounding Memory Part C — Visible memory tab (Core).** Memory tab renamed
   "What Edge knows". API route now returns `facts` alongside raw memories. Dashboard renders
   structured facts first, grouped by category (Goals / Projects / People / Preferences / Facts),
