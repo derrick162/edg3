@@ -48,7 +48,8 @@ export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const weekOf = getWeekOf();
-  const priorities = priorityQueries.getThisWeek(user.id, weekOf);
+  // getMostRecent returns priorities from the latest week_of regardless of the current
+  // week — so the dashboard always shows something and can check week_of for staleness.
+  const priorities = priorityQueries.getMostRecent(user.id);
   return NextResponse.json({ priorities });
 }
