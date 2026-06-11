@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, isValidTimeZone, bookEventTimes, timedEventDateMove } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -115,6 +115,23 @@ describe('nextDay', () => {
     expect(nextDay('2026-06-15')).toBe('2026-06-16');
     expect(nextDay('2026-06-30')).toBe('2026-07-01');
     expect(nextDay('2026-12-31')).toBe('2027-01-01');
+  });
+});
+
+describe('prevDay', () => {
+  it('subtracts one day, incl. month and year rollovers', () => {
+    expect(prevDay('2026-06-16')).toBe('2026-06-15');
+    expect(prevDay('2026-07-01')).toBe('2026-06-30');
+    expect(prevDay('2027-01-01')).toBe('2026-12-31');
+  });
+  it('prevDay and nextDay are exact inverses', () => {
+    const d = '2026-06-25';
+    expect(prevDay(nextDay(d))).toBe(d);
+    expect(nextDay(prevDay(d))).toBe(d);
+  });
+  it('converts Google exclusive all-day end to the last inclusive day', () => {
+    // Google stores June 25–28 as end.date = "2026-06-29" (exclusive).
+    expect(prevDay('2026-06-29')).toBe('2026-06-28');
   });
 });
 

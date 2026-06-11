@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove } from '@/lib/time';
 import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
@@ -96,10 +96,20 @@ async function eventsOnDay(cal: calendar_v3.Calendar, calIds: string[], date: st
 
 function describeOptions(matches: { event: calendar_v3.Schema$Event }[], tz: string): string {
   return matches.map(m => {
+    const summary = (m.event.summary ?? '').replace(/^⚡\s*/, '');
+    // All-day events: describe by date span so same-title events on different spans are distinguishable.
+    if (m.event.start?.date && !m.event.start?.dateTime) {
+      const startD = m.event.start.date;
+      const endIncl = m.event.end?.date ? prevDay(m.event.end.date) : startD;
+      const fmtD = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return startD === endIncl
+        ? `"${summary}" (all-day ${fmtD(startD)})`
+        : `"${summary}" (all-day ${fmtD(startD)}–${fmtD(endIncl)})`;
+    }
     const t = m.event.start?.dateTime
       ? new Date(m.event.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
       : 'all day';
-    return `"${(m.event.summary ?? '').replace(/^⚡\s*/, '')}" at ${t}`;
+    return `"${summary}" at ${t}`;
   }).join(', ');
 }
 
@@ -324,7 +334,7 @@ Query: ${query}` }],
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title, timezone, color, overrideConflicts, allDay, endDate, description } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string };
+    const { title, timezone, color, overrideConflicts, allDay, endDate, description, location } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string };
     if (!title) return "I didn't catch what to call that event — what's the title?";
 
     // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
@@ -342,6 +352,7 @@ Query: ${query}` }],
       const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
         summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
         ...(description ? { description } : {}),
+        ...(location ? { location } : {}),
       } });
       if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
@@ -379,7 +390,7 @@ Query: ${query}` }],
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}) };
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}) };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
@@ -404,8 +415,17 @@ Query: ${query}` }],
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
-    const { title, date, deleteAll, recurringScope, currentTime, confirmToken } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmToken?: string };
-    const dayMatches = await eventsOnDay(cal, calIds, date, tz);
+    const { title, date, deleteAll, recurringScope, currentTime, confirmToken, targetEndDate } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmToken?: string; targetEndDate?: string };
+    let dayMatches = await eventsOnDay(cal, calIds, date, tz);
+
+    // All-day disambiguation: if the caller supplied targetEndDate, narrow all-day events to
+    // the one whose last inclusive day matches — leaves timed events unaffected.
+    if (targetEndDate) {
+      const exclusive = nextDay(targetEndDate);
+      dayMatches = dayMatches.filter(({ event }) =>
+        !event.start?.date || event.end?.date === exclusive
+      );
+    }
 
     // Which events to delete: all title matches (deleteAll), or one precisely-resolved event.
     let toDelete: { event: calendar_v3.Schema$Event; calId: string }[];
@@ -415,7 +435,14 @@ Query: ${query}` }],
     } else {
       const r = resolveEvent(dayMatches, title, tz, currentTime);
       if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
-      if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I delete? Ask the user, then call deleteEvent again with currentTime set to that event's start time (e.g. "7pm").`;
+      if (r.kind === 'ambiguous') {
+        // All-day events can't be disambiguated by time — direct the model to use targetEndDate.
+        const hasAllDay = dayMatches.some(m => m.event.start?.date && !m.event.start?.dateTime && titleMatchScore(m.event.summary ?? '', title) > 0);
+        if (hasAllDay) {
+          return `There are multiple "${title}" all-day events starting ${date}: ${r.message}. Ask the user which date span, then call deleteEvent again with targetEndDate set to the last inclusive day (e.g. "${date}" for a single-day event, or "2026-06-28" for a June 25–28 event).`;
+        }
+        return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I delete? Ask the user, then call deleteEvent again with currentTime set to that event's start time (e.g. "7pm").`;
+      }
       toDelete = [{ event: r.event, calId: r.calId }];
     }
 
@@ -495,10 +522,23 @@ Query: ${query}` }],
       : `Deleted: ${deleted.join(', ')}`;
 
   } else if (fn === 'moveEvent') {
-    const { title, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string };
-    const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
+    const { title, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime, targetEndDate } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string; targetEndDate?: string };
+    let moveMatches = await eventsOnDay(cal, calIds, date, tz);
+    if (targetEndDate) {
+      const exclusive = nextDay(targetEndDate);
+      moveMatches = moveMatches.filter(({ event }) =>
+        !event.start?.date || event.end?.date === exclusive
+      );
+    }
+    const r = resolveEvent(moveMatches, title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
-    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I move? Ask the user, then call moveEvent again with currentTime set to that event's start time (e.g. "7pm").`;
+    if (r.kind === 'ambiguous') {
+      const hasAllDay = moveMatches.some(m => m.event.start?.date && !m.event.start?.dateTime && titleMatchScore(m.event.summary ?? '', title) > 0);
+      if (hasAllDay) {
+        return `There are multiple "${title}" all-day events starting ${date}: ${r.message}. Ask the user which date span, then call moveEvent again with targetEndDate set to the last inclusive day (e.g. "${date}" for a single-day event, or "2026-06-28" for a June 25–28 event).`;
+      }
+      return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I move? Ask the user, then call moveEvent again with currentTime set to that event's start time (e.g. "7pm").`;
+    }
     const found = r;
     const moveEntry = calMeta.get(found.calId);
     if (moveEntry && !isWritable(moveEntry.accessRole)) {

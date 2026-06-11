@@ -47,4 +47,25 @@ describe('selectEvent', () => {
     const r = selectEvent([cand('Team Dinner', 720), cand('Dinner', 1140)], 'dinner');
     expect(r).toEqual({ kind: 'one', index: 1 }); // exact "Dinner" wins over partial "Team Dinner"
   });
+
+  // All-day events have null startMinutes — time-based disambiguation never applies.
+  // The route pre-filters by targetEndDate before calling selectEvent; if two same-title
+  // all-day events still reach selectEvent (no targetEndDate supplied yet), it returns
+  // ambiguous so the route can ask the user to specify the date span.
+  it('returns ambiguous for two same-title all-day events (null startMinutes, no time hint)', () => {
+    const r = selectEvent([cand('Conrad Las Vegas', null), cand('Conrad Las Vegas', null)], 'Conrad Las Vegas');
+    expect(r).toEqual({ kind: 'ambiguous', indexes: [0, 1] });
+  });
+
+  it('time hint does not resolve all-day ambiguity — both events stay infinity-distance', () => {
+    // null startMinutes → dist = Infinity for every candidate → ranked.length === 0 → ambiguous
+    const r = selectEvent([cand('Conrad Las Vegas', null), cand('Conrad Las Vegas', null)], 'Conrad Las Vegas', 12 * 60);
+    expect(r.kind).toBe('ambiguous');
+  });
+
+  it('resolves to one all-day event when the other has been filtered out by targetEndDate', () => {
+    // Simulates route.ts pre-filtering: only the multi-day event remains after filtering
+    const r = selectEvent([cand('Conrad Las Vegas', null)], 'Conrad Las Vegas');
+    expect(r).toEqual({ kind: 'one', index: 0 });
+  });
 });
