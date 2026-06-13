@@ -23,9 +23,11 @@ function eventDurationHours(e: calendar_v3.Schema$Event): number {
     return Math.round((ms / 3600000) * 10) / 10;
   }
   if (e.start?.date && e.end?.date) {
-    // All-day: approximate as 8 working hours per calendar day
+    // All-day: cap at 8h regardless of span — multi-day blocks (trips/OOO/vacations) are
+    // context, not countable work hours. Without this cap a 45-day trip → 360h and Edge
+    // would fabricate absurd "hours to allocate" figures from that inflated total.
     const days = (new Date(e.end.date).getTime() - new Date(e.start.date).getTime()) / 86400000;
-    return Math.max(1, days) * 8;
+    return days > 0 ? Math.min(days * 8, 8) : 0;
   }
   return 0;
 }
