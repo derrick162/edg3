@@ -59,7 +59,7 @@ const EXPIRED_TOKEN = { ...VALID_TOKEN, expires_at: Date.now() - 60_000 };
 beforeAll(() => {
   process.env.WHOOP_CLIENT_ID     = 'test_client_id';
   process.env.WHOOP_CLIENT_SECRET = 'test_client_secret';
-  process.env.NEXT_PUBLIC_APP_URL = 'https://edg3.ai';
+  process.env.NEXT_PUBLIC_APP_URL = 'https://www.edg3.ai';
 });
 
 afterAll(() => {
@@ -97,7 +97,7 @@ describe('getAuthUrl', () => {
 
   it('uses the correct redirect_uri', () => {
     const url = getAuthUrl(1);
-    expect(decodeURIComponent(url)).toContain('https://edg3.ai/api/whoop/callback');
+    expect(decodeURIComponent(url)).toContain('https://www.edg3.ai/api/whoop/callback');
   });
 });
 
