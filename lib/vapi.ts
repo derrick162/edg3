@@ -197,12 +197,9 @@ Always end with warmth. This person is building something — remind them of tha
           '69615e5d-90e2-4f5f-8293-ad9c00e5794c', // researchToEvent
           '2c1c3ad9-da5f-4c61-b6ba-b2233be72e29', // undoLastAction
           'e62078db-fbf4-4f58-b17f-5a620d751d17', // draftEmail (verified Anthropic-valid 2026-06-09)
-          // checkReplies: CREATE in Vapi dashboard (no required params), then paste the UUID here.
-          // 'REPLACE_WITH_CHECKREPLIES_TOOL_ID',  // checkReplies — uncomment after creating in Vapi
-          // cleanupEvents: CREATE in Vapi dashboard (params: events array + confirmToken string), then paste UUID here.
-          // 'REPLACE_WITH_CLEANUPEVENTS_TOOL_ID', // cleanupEvents — uncomment after creating in Vapi
-          // rememberPreference: CREATE in Vapi dashboard (params: statement string), then paste UUID here.
-          // 'REPLACE_WITH_REMEMBERPREFERENCE_TOOL_ID', // rememberPreference — uncomment after creating in Vapi
+          '988d5b88-03fe-4893-94f7-af45a3c84116', // checkReplies (created via API 2026-06-13)
+          '9c8adb6d-af86-4628-8313-d28b23c4a255', // cleanupEvents (created via API 2026-06-13)
+          '54e47823-ad97-4624-9fef-6f95e96b2ff1', // rememberPreference (created via API 2026-06-13)
         ],
       },
       firstMessage: briefingContent,
