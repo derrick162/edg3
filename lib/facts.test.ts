@@ -38,7 +38,7 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt } from './facts';
 import { factQueries, type Fact } from './db';
 
 function textResponse(text: string) {
@@ -176,5 +176,37 @@ describe('linkEventsToFacts', () => {
     const result = linkEventsToFacts([event('Acme sync')], facts);
     // both match; goal should come first
     expect(result[0].fact.category).toBe('goal');
+  });
+});
+
+// ── buildPreferencesPrompt ────────────────────────────────────────────────────
+
+describe('buildPreferencesPrompt', () => {
+  it('returns empty string for no preferences', () => {
+    expect(buildPreferencesPrompt([])).toBe('');
+  });
+
+  it('formats a single preference as a bullet', () => {
+    expect(buildPreferencesPrompt(['Prefers boutique gyms over big chains']))
+      .toBe('- Prefers boutique gyms over big chains');
+  });
+
+  it('formats multiple preferences as a bullet list', () => {
+    const result = buildPreferencesPrompt(['Boutique gyms only', 'No meetings before 9am']);
+    expect(result).toBe('- Boutique gyms only\n- No meetings before 9am');
+  });
+
+  it('caps at 10 entries even when more are passed', () => {
+    const many = Array.from({ length: 15 }, (_, i) => `Preference ${i}`);
+    const lines = buildPreferencesPrompt(many).split('\n');
+    expect(lines).toHaveLength(10);
+  });
+
+  it('preserves the first 10 entries in order', () => {
+    const many = Array.from({ length: 12 }, (_, i) => `Pref ${i}`);
+    const result = buildPreferencesPrompt(many);
+    expect(result).toContain('- Pref 0');
+    expect(result).toContain('- Pref 9');
+    expect(result).not.toContain('- Pref 10');
   });
 });

@@ -71,7 +71,88 @@ If a design idea doesn't materially improve trust or usability for the September
 
 ---
 
-## 6. First asks (suggested)
+## 6. Whoop / health recovery visual spec
+
+> For Core to apply when the Whoop V1 integration lands. All classes are live in `app/globals.css`.
+
+### Recovery states
+Three states map directly to Whoop's scoring:
+
+| State | Score range | Token | Tint | Border |
+|---|---|---|---|---|
+| High | 67–100% | `--whoop-high` (#22c55e) | `--whoop-high-tint` | `--whoop-high-border` |
+| Medium | 34–66% | `--whoop-medium` (#f59e0b) | `--whoop-medium-tint` | `--whoop-medium-border` |
+| Low | 0–33% | `--whoop-low` (#ef4444) | `--whoop-low-tint` | `--whoop-low-border` |
+
+### (a) Briefing card — recovery section
+Shows at the top of each briefing card when Whoop is connected. Degrades gracefully (omits entirely if not connected or fetch failed — never show a zero or "--").
+
+```jsx
+{/* Recovery pill in briefing header */}
+<span className="badge badge-recovery-high">   {/* or -medium / -low */}
+  <span className="energy-dot energy-dot-high" />
+  Recovery 78%
+</span>
+
+{/* Recovery card below the briefing summary */}
+<div className="recovery-card recovery-card-high">
+  <p className="text-xs font-semibold" style={{ color: 'var(--whoop-high)' }}>
+    RECOVERY · 78%
+  </p>
+  <p className="text-sm mt-1" style={{ color: 'var(--text-body)' }}>
+    High recovery day — full capacity for deep work.
+  </p>
+  <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+    Sleep 7h42m · Strain avg: moderate
+  </p>
+</div>
+```
+
+**Copy tone:** state the number + one honest implication. Never invent a number. If strain/sleep is available, show it as supporting detail in muted text.
+
+### (b) Dashboard — recovery widget & Connect button
+A compact widget in the Profile tab (or sidebar) showing today's state. Hides when not connected.
+
+```jsx
+{/* Recovery widget — shown when connected */}
+<div className="recovery-card recovery-card-medium">
+  <div className="flex items-center gap-2 mb-1">
+    <span className="energy-dot energy-dot-medium" />
+    <span className="text-xs font-semibold" style={{ color: 'var(--whoop-medium)' }}>
+      Recovery 41%
+    </span>
+  </div>
+  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+    Sleep 5h48m · Keep today lighter.
+  </p>
+</div>
+
+{/* Connect button — mirrors Google connect control */}
+<button className="btn-connect-whoop">
+  {/* Whoop logo SVG or "W" glyph, 16px */}
+  Connect Whoop
+</button>
+
+{/* Connected state */}
+<button className="btn-connect-whoop connected">
+  ✓ Whoop connected
+</button>
+```
+
+**Visual placement:** mirror the existing Google Calendar connect control — same row treatment, same visual weight. Don't make it more prominent than Google; it's additive.
+
+### Energy indicator dot
+Use inline in text or cards to show state at a glance without a full badge:
+- `.energy-dot-high` — glowing green dot
+- `.energy-dot-medium` — glowing amber dot
+- `.energy-dot-low` — glowing red dot
+
+### V2 north star (energy windows — design placeholder)
+When V2 ships (energy-matched time-blocking), the dashboard will show a simple daily energy curve: peak windows (indigo/green) vs. trough (muted). Visual TBD — propose at that time. The current token system (`--whoop-*`) is intentionally designed to extend to this.
+
+---
+
+## 7. First asks (suggested)
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).

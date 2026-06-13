@@ -101,10 +101,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch SHIPPED**: all-day delete ambiguity, location param, anti-loop guardrail, call-resilience (generateDailyBriefing never throws), graceful hold, first-name, timezone (current-only), consolidation playbook, transcript link, book-error surfacing. Awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **Whoop V1** (`7412561`): buildWhoopSection + briefing injection (RECOVERY/SLEEP/STRAIN, pacing guidance, silent degrade) + Connect Whoop dashboard UI. 363/363 green. Awaiting PM deploy + user credentials.)_ | `lib/briefing.ts`, `app/dashboard/page.tsx` | 2026-06-13 |
 | 🔒 Security | `security` | ✅ **Restore drill + health check SHIPPED** — `scripts/restore-drill.sh`, `GET /api/admin/health`, LAUNCH.md §9–10 docs. 338/338 green. Queue exhausted — awaiting PM. | `scripts/restore-drill.sh`, `lib/healthCheck.ts`, `app/api/admin/health/**`, `LAUNCH.md` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
-| 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
+| 🎨 Design | `design` | _(idle — ✅ Whoop visual tokens + component classes + spec shipped. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -116,6 +116,71 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Whoop V1 — recovery-aware briefings + Connect UI (Core).** (`7412561`)
+  - Consumes Security's `lib/whoop.ts` (`getLatestRecovery`/`getLastSleep`/`getRecentStrain`).
+  - `buildWhoopSection()` pure helper in `lib/briefing.ts`: formats recovery/sleep/strain into
+    a compact line ("RECOVERY: 34% · SLEEP: 5h12m · STRAIN: 14.2"); returns null when all
+    inputs null — health section omitted silently. 7 new tests.
+  - Whoop fetches run in parallel with the calendar fetch (`.catch(() => null)` guards) so
+    ANY failure degrades silently — briefing never blocked.
+  - HEALTH DATA block + recovery-tier pacing guidance injected into the briefing prompt when
+    connected (green ≥67% → push hard; yellow 34–66% → normal; red ≤33% → keep lighter,
+    defer deep work). Model weaves one pacing note into section 1 + factors recovery into
+    section 3 priority/defer call.
+  - Dashboard: `whoopConnected` state, `/api/whoop/status` polled on load, `connectWhoop()`/
+    `disconnectWhoop()` handlers, "⚡ Connect Whoop" / connected + Disconnect UI mirroring
+    the Google calendar controls.
+  - 363/363 green, tsc clean, next build clean.
+  - ⚠️ **External step (user):** Create Whoop developer app at developer.whoop.com →
+    set `WHOOP_CLIENT_ID` + `WHOOP_CLIENT_SECRET` on Railway, redirect URI =
+    `https://<app>/api/whoop/callback`. Then connect from the dashboard sidebar.
+- **2026-06-13** — **Research quality guidance (Core).** (`7e59ee2`)
+  - **ROOT CAUSE FIX for wrong-side results (SpotHero on "rent OUT parking spot").** Edge
+    grabbed a plausible brand without registering the user's actual role (supplier vs consumer).
+  - RESEARCH QUALITY block added to `researchToEvent` in `lib/vapi.ts`:
+    1. Nail exact role/direction first: "rent OUT"/"list"/"host" = supplier → listing platforms;
+       "find"/"book" = consumer. Build the query around the user's actual goal.
+    2. Apply known context (location, preferences, facts) before the first search.
+    3. Relevance-check results before saving: verify each result fits the intent; drop
+       mismatches; refine and re-search if off. Never save results that contradict the user's goal.
+  - Folds into the existing "grounded + capable" cluster. Prompt-only; 335/335 green.
+- **2026-06-13** — **moveEvent organizer check (Core).** (`704f4d0`)
+  - **ROOT CAUSE FIX for "couldn't move it" on other people's meetings.** `moveEvent`
+    checked the CALENDAR's accessRole but not the EVENT's organizer — Google 403s
+    time changes from non-organizers.
+  - `canUserReschedule(event)` added to `lib/calendarWritable.ts`: returns `true` if
+    `organizer.self === true` OR `guestsCanModify === true`; benefit-of-the-doubt `true`
+    when organizer field is absent. 7 new tests.
+  - Pre-patch check inserted after the calendar-level `isWritable` check: if user
+    isn't the organizer, returns honest message naming them
+    ("'Faiza CIBC meeting' was set up by Faiza — Google only lets the organizer
+    reschedule it…") + offer to draft a reschedule request via draftEmail.
+  - Generic patch-failure fallback improved: now explains organizer/restricted-calendar
+    possibility and offers the draft path.
+  - `draftEmail` prompt note added: when moveEvent bounces on organizer, call draftEmail
+    with `recipients:[{name, email}]` from the organizer info in the failure message.
+  - 335/335 green, tsc clean, next build clean.
+- **2026-06-11** — **cleanupEvents batch delete + resolveEventExact + Edg3 self-name (Core).** (`b66b20f`)
+  - **ROOT CAUSE FIX for consolidation failures.** Two compounding causes found from live call:
+    (1) 3 originals with different titles required 3 separate `deleteEvent`+confirm-token handshakes
+    — one "yes" can't fulfill all three. (2) Fuzzy-title collision: newly-created "Tax and expenses"
+    matched query "tax", causing disambiguation bail instead of clean delete.
+  - **`resolveEventExact`** (`lib/eventMatch.ts`): resolves by EXACT startDateTime (60s tolerance),
+    not fuzzy title. When `startDateTime` is provided, applies tolerance even for a single candidate
+    — the merged event at a different time is never returned. Falls back to title-only for single
+    unambiguous matches when no startDateTime given; `startDate` for all-day events.
+  - **`cleanupEvents` tool** (`app/api/vapi/tool-call/route.ts`): takes a list of
+    `{title, startDateTime?, startDate?, targetEndDate?}` specs; resolves each by exact datetime;
+    read-only check; SINGLE confirm-token gate for the whole batch; batch delete loop; undo per
+    deleted event.
+  - **Consolidation playbook updated** (`lib/vapi.ts`): step 1 now requires noting exact
+    startDateTimes before creating the merged event; step 3 calls `cleanupEvents` with those
+    exact times so the merged event is never confused with originals.
+  - **Self-name fixed**: "You are Edg3 (pronounced 'Edge')" for brand consistency.
+  - 8 new `resolveEventExact` tests. 317/317 green, tsc clean, next build clean.
+  - ⚠️ **External step**: create `cleanupEvents` tool in Vapi dashboard.
+    Params: `events` (array of `{title, startDateTime?, startDate?, targetEndDate?}`),
+    `confirmToken` (string, optional). Paste UUID into `lib/vapi.ts` toolIds comment and uncomment.
 - **2026-06-13** — **Whoop OAuth integration (Security).** Foundation layer for Whoop health
   data in briefings. New `whoop_tokens` table (encrypted at rest — health PII); `whoopQueries`
   in `lib/db.ts`. `lib/whoop.ts`: OAuth flow (`getAuthUrl`, `exchangeCode`), auto-refresh,

@@ -48,12 +48,28 @@ Create a Whoop developer app at **developer.whoop.com** → get `CLIENT_ID` + `C
   in the morning briefing and adjusts the day's intensity + which priority to attack vs. defer:
   "Recovery's at 34% — keep today lighter; push the fundraising deep-work to tomorrow when
   you're fresh." Lowest lift, highest value; folds straight into the existing briefing + alignment.
-- **V2 — Proactive calendar adjustments:** (a) sleep-aware morning ("you got 5h12m — want me to
-  move your 8am and protect a slow start?"); (b) overtraining/rest-day guard (hard strain + a
-  low-recovery streak → "want me to block a real rest day?").
-- **V3 / later — Recovery↔calendar correlations:** learn patterns linking calendar behavior to
-  the body ("your recovery drops the day after late-meeting days"). The deep "it knows me" magic,
-  but needs weeks of data + the most build.
+- **V2 — Energy-matched time-blocking (THE NORTH STAR — "what a human EA couldn't do").**
+  Schedule HIGH-energy work into the user's peak windows and LOW-energy work into the troughs.
+  Three pieces, all built on things we already have:
+  1. **Energy profile per user** — peak/trough hours + which activity TYPES are high vs low energy
+     for *them* (e.g. vibe-coding / external calls / planning = HIGH; admin / email = LOW).
+     Captured via the **preference/memory system** (user states it; refined over time).
+  2. **Daily Whoop recovery as the modulator** — high-recovery day = more capacity for deep work;
+     low day = protect the peak, lean toward admin.
+  3. **Use the existing alignment/free-slot BLOCKING** to actually place it: deep work → peak
+     windows on good-recovery days; batch low-energy tasks into the afternoon dip.
+  Briefing example: "Recovery's high and it's your 9–11 peak — let's block vibe-coding now and
+  push email to your 2pm dip." Builds directly on V1 + preference-awareness + the calendar
+  blocking we already ship.
+- **V2.5 — Proactive recovery adjustments:** sleep-aware morning ("5h12m — move your 8am?") +
+  overtraining/rest-day guard (hard strain + low-recovery streak → "block a real rest day?").
+- **V3 — Auto-learn + sharpen the energy profile:** infer peak/trough from Whoop sleep/wake
+  (circadian) + observed recovery patterns + user feedback, so the profile gets sharper without
+  the user re-stating it — the "knows me better than I know myself" magic.
+- **Data honesty (critical):** Whoop reports a clean DAILY recovery score, NOT a literal
+  intraday energy curve. Time-of-day energy is built from chronotype (sleep/wake times + the
+  user's stated peak hours + circadian science), with recovery as a daily modulator — we
+  approximate intelligently; Edge must NEVER pretend Whoop "measured your energy at 3pm."
 - **All tiers grounded/honest:** only ever state real Whoop numbers; if not connected or the
   fetch fails, omit the health section silently — never invent a recovery/sleep figure, never
   block the briefing.
