@@ -37,5 +37,6 @@ more trusted/usable for September?"
 - [ ] Mobile pass (users are often on the go / mid-call).
 
 ## Changelog
+- **2026-06-13** — **Whoop visual system + dashboard polish.** Added `--whoop-*` recovery tokens (high/medium/low colors, tints, borders) + `--whoop-connect-*` tokens + component classes (`.badge-recovery-*`, `.recovery-card-*`, `.energy-dot-*`, `.btn-connect-whoop`) to `app/globals.css`. Added `DESIGN.md §6` visual spec (briefing card + dashboard widget examples, copy tone, V2 north star placeholder). Added `--edg-calendar-green` token family and tokenized all remaining inline hex in `app/dashboard/page.tsx`. 363/363 green.
 - **2026-06-10** — **Token pass complete across all 5 pages.** Introduced `components/ui/` library (Button, Card, Input, Badge, Logo) and applied design tokens to `app/globals.css` (full `--edg-*` raw + semantic alias system). All 5 shared pages — landing, login, signup, dashboard, onboarding — converted from inline hex values to token vars (visual only, no logic changes). 117/117 tests green. Remaining: `generatingBriefing` dead-code cleanup; select/textarea/checkbox components; onboarding step UX proposal for PM.
 - **2026-06-10** — Design lane created (worktree `edg3-design`, branch `design`). Asset pack `DESIGN.md` written.
