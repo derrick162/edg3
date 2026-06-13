@@ -10,6 +10,7 @@
 //   Token:  https://api.prod.whoop.com/oauth/oauth2/token
 //   API:    https://api.prod.whoop.com/developer/v2/{recovery,activity/sleep,cycle}
 
+import { randomBytes } from 'crypto';
 import { whoopQueries } from './db';
 
 const AUTH_URL  = 'https://api.prod.whoop.com/oauth/oauth2/auth';
@@ -44,7 +45,8 @@ export function getAuthUrl(userId: number): string {
     redirect_uri:  getRedirectUri(),
     response_type: 'code',
     scope:         WHOOP_SCOPES.join(' '),
-    state:         String(userId),
+    // WHOOP rejects state < 8 chars (invalid_state). Pad with random; userId stays parseInt-recoverable in the callback.
+    state:         `${userId}-${randomBytes(8).toString('hex')}`,
   });
   return `${AUTH_URL}?${params}`;
 }
