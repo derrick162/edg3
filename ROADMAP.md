@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **moveEvent organizer check** (`704f4d0`): canUserReschedule helper, honest 403 message naming organizer, offer to draft reschedule, improved generic patch fallback. 335/335 green. Awaiting PM.)_ | — | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ **research quality** (`7e59ee2`): role/direction intent, apply context, verify relevance before saving. 335/335 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **scheduler catch-up window** (missed-call fix) + **call-failure surfacing** (CallError code, briefing→failed, 503). Core-loop reliability done. Awaiting PM.)_ | `lib/scheduler.ts` | 2026-06-11 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
@@ -117,6 +117,16 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Research quality guidance (Core).** (`7e59ee2`)
+  - **ROOT CAUSE FIX for wrong-side results (SpotHero on "rent OUT parking spot").** Edge
+    grabbed a plausible brand without registering the user's actual role (supplier vs consumer).
+  - RESEARCH QUALITY block added to `researchToEvent` in `lib/vapi.ts`:
+    1. Nail exact role/direction first: "rent OUT"/"list"/"host" = supplier → listing platforms;
+       "find"/"book" = consumer. Build the query around the user's actual goal.
+    2. Apply known context (location, preferences, facts) before the first search.
+    3. Relevance-check results before saving: verify each result fits the intent; drop
+       mismatches; refine and re-search if off. Never save results that contradict the user's goal.
+  - Folds into the existing "grounded + capable" cluster. Prompt-only; 335/335 green.
 - **2026-06-13** — **moveEvent organizer check (Core).** (`704f4d0`)
   - **ROOT CAUSE FIX for "couldn't move it" on other people's meetings.** `moveEvent`
     checked the CALENDAR's accessRole but not the EVENT's organizer — Google 403s
