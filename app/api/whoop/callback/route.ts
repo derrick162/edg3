@@ -5,7 +5,7 @@ import { exchangeCode } from '@/lib/whoop';
 import { whoopQueries } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://edg3.ai';
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
   const code       = req.nextUrl.searchParams.get('code');
   const stateParam = req.nextUrl.searchParams.get('state');
 

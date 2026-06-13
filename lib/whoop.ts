@@ -32,7 +32,7 @@ function clientConfigured(): boolean {
 }
 
 function getRedirectUri(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://edg3.ai';
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
   return `${base}/api/whoop/callback`;
 }
 
