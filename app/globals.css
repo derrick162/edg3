@@ -50,6 +50,27 @@
   --edg-warning-tint: rgba(245, 158, 11,  0.15);
   --edg-danger-tint:  rgba(239, 68,  68,  0.15);
 
+  /* ── Whoop / health recovery tokens ── */
+  /* Recovery state colors (Whoop's green/amber/red scale) */
+  --whoop-high:        #22c55e;  /* green-500  — 67–100% recovery */
+  --whoop-medium:      #f59e0b;  /* amber-500  — 34–66% recovery  */
+  --whoop-low:         #ef4444;  /* red-500    — 0–33% recovery   */
+
+  /* Alpha tints for card backgrounds */
+  --whoop-high-tint:   rgba(34,  197, 94,  0.12);
+  --whoop-medium-tint: rgba(245, 158, 11,  0.12);
+  --whoop-low-tint:    rgba(239, 68,  68,  0.12);
+
+  /* Borders */
+  --whoop-high-border:   rgba(34,  197, 94,  0.25);
+  --whoop-medium-border: rgba(245, 158, 11,  0.25);
+  --whoop-low-border:    rgba(239, 68,  68,  0.25);
+
+  /* Connect-Whoop button — mirrors Google connect tone (neutral, not primary) */
+  --whoop-connect-bg:     rgba(255, 255, 255, 0.04);
+  --whoop-connect-border: rgba(255, 255, 255, 0.10);
+  --whoop-connect-hover:  rgba(255, 255, 255, 0.08);
+
   /* Gradients */
   --edg-gradient-accent: linear-gradient(135deg, #6366f1, #8b5cf6);
   --edg-gradient-logo:   linear-gradient(135deg, #e8e8f0 0%, #8b5cf6 50%, #6366f1 100%);
@@ -287,6 +308,84 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
 .badge-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 .badge-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 .badge-info { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+
+/* ── Whoop recovery component classes ── */
+
+/* Recovery score badge — drop-in replacement for badge-* */
+.badge-recovery-high    { background: var(--whoop-high-tint);   color: var(--whoop-high);   }
+.badge-recovery-medium  { background: var(--whoop-medium-tint); color: var(--whoop-medium); }
+.badge-recovery-low     { background: var(--whoop-low-tint);    color: var(--whoop-low);    }
+
+/* Recovery card — glass-card variant with colored left accent */
+.recovery-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  position: relative;
+  overflow: hidden;
+}
+
+.recovery-card::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+}
+
+.recovery-card-high   { border-color: var(--whoop-high-border); }
+.recovery-card-high::before   { background: var(--whoop-high); }
+
+.recovery-card-medium { border-color: var(--whoop-medium-border); }
+.recovery-card-medium::before { background: var(--whoop-medium); }
+
+.recovery-card-low    { border-color: var(--whoop-low-border); }
+.recovery-card-low::before    { background: var(--whoop-low); }
+
+/* Energy indicator dot — inline status icon */
+.energy-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.energy-dot-high   { background: var(--whoop-high);   box-shadow: 0 0 6px var(--whoop-high); }
+.energy-dot-medium { background: var(--whoop-medium); box-shadow: 0 0 6px var(--whoop-medium); }
+.energy-dot-low    { background: var(--whoop-low);    box-shadow: 0 0 6px var(--whoop-low); }
+
+/* Connect Whoop button — mirrors Google connect control visual weight */
+.btn-connect-whoop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--whoop-connect-bg);
+  border: 1px solid var(--whoop-connect-border);
+  border-radius: var(--radius-md);
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: background var(--dur-base), border-color var(--dur-base);
+}
+
+.btn-connect-whoop:hover {
+  background: var(--whoop-connect-hover);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn-connect-whoop:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Connected state — subtle green accent */
+.btn-connect-whoop.connected {
+  border-color: var(--whoop-high-border);
+  color: var(--whoop-high);
+}
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
