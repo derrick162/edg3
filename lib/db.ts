@@ -219,6 +219,18 @@ function initSchema(db: Database.Database) {
       entity      TEXT,
       learned_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Whoop OAuth tokens (health data PII — encrypted at rest).
+    -- expires_at is epoch ms for easy Date.now() comparison.
+    CREATE TABLE IF NOT EXISTS whoop_tokens (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER UNIQUE NOT NULL REFERENCES users(id),
+      access_token  TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at    INTEGER NOT NULL,
+      scope         TEXT,
+      updated_at    TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -233,6 +245,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
+    CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
   `);
 
   // Migrations for existing databases
@@ -900,6 +913,42 @@ export interface Fact {
   entity: string | null;
   learned_at: string;
 }
+
+// Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
+export interface WhoopToken {
+  id: number;
+  user_id: number;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  scope: string | null;
+  updated_at: string;
+}
+
+export const whoopQueries = {
+  upsert: (userId: number, accessToken: string, refreshToken: string, expiresAt: number, scope?: string | null) => {
+    return getDb().prepare(`
+      INSERT INTO whoop_tokens (user_id, access_token, refresh_token, expires_at, scope, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        access_token  = excluded.access_token,
+        refresh_token = excluded.refresh_token,
+        expires_at    = excluded.expires_at,
+        scope         = COALESCE(excluded.scope, whoop_tokens.scope),
+        updated_at    = excluded.updated_at
+    `).run(userId, encryptField(accessToken), encryptField(refreshToken), expiresAt, scope ?? null);
+  },
+  get: (userId: number): WhoopToken | undefined => {
+    const row = getDb().prepare('SELECT * FROM whoop_tokens WHERE user_id = ?').get(userId) as WhoopToken | undefined;
+    if (!row) return undefined;
+    row.access_token  = decryptField(row.access_token);
+    row.refresh_token = decryptField(row.refresh_token);
+    return row;
+  },
+  delete: (userId: number) => {
+    return getDb().prepare('DELETE FROM whoop_tokens WHERE user_id = ?').run(userId);
+  },
+};
 
 export const factQueries = {
   getAll: (userId: number): Fact[] => {

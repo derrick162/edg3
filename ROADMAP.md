@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ **Tasks filter + UpdateBox removal** (`1893a72`): Open/Completed/All segmented filter, 30-day window, voice prompt fixed. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
-| 🔒 Security | `security` | ✅ **Call failure surfacing SHIPPED** — Vapi daily-limit + gen errors now surface as `CallError` with code; briefing set to `failed`; routes return 503 + `{ error, code }`. 290/290 green. Deploy ASAP — core loop. | `lib/scheduler.ts` | 2026-06-11 |
+| 🔒 Security | `security` | ✅ **Whoop OAuth SHIPPED** — OAuth flow + encrypted token storage + fetch primitive (`getLatestRecovery`, `getLastSleep`, `getRecentStrain`). 311/311 green. Ready for Core to consume + PM to set `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET` on Railway. Queue exhausted — awaiting PM. | `lib/db.ts`, `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
@@ -116,6 +116,14 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Whoop OAuth integration (Security).** Foundation layer for Whoop health
+  data in briefings. New `whoop_tokens` table (encrypted at rest — health PII); `whoopQueries`
+  in `lib/db.ts`. `lib/whoop.ts`: OAuth flow (`getAuthUrl`, `exchangeCode`), auto-refresh,
+  cached fetch primitive (`getLatestRecovery` / `getLastSleep` / `getRecentStrain`). Four new
+  routes: `/api/whoop/connect`, `/api/whoop/callback`, `/api/whoop/disconnect`,
+  `/api/whoop/status`. Degrades to null when env vars unset. 21 new tests. 311/311 green.
+  **Remaining:** PM sets `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET` on Railway. Core integrates
+  `lib/whoop.ts` into `lib/briefing.ts` + adds "Connect Whoop" UI to dashboard.
 - **2026-06-11** — **Tasks Open/Completed/All filter + UpdateBox removal (Core).**
   Tasks tab: segmented Open | Completed | All filter (default Open). Open = today/tomorrow
   incomplete + carried-over; "Complete all" and progress badge scoped to Open. Completed =
