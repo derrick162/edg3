@@ -43,6 +43,21 @@ This is differentiated: a CoS that knows how you're *actually doing*, not just y
 ## External prerequisite (user — can start NOW, in parallel)
 Create a Whoop developer app at **developer.whoop.com** → get `CLIENT_ID` + `CLIENT_SECRET`, set the redirect URI to our callback (e.g. `https://<app>/api/whoop/callback`), and we set `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` on Railway. (Same kind of setup as Google OAuth / the Vapi tools.)
 
+## Use-case roadmap (prioritized — PM call 2026-06-11)
+- **V1 (ships with the integration) — Recovery-aware briefing & pacing.** Edge states recovery
+  in the morning briefing and adjusts the day's intensity + which priority to attack vs. defer:
+  "Recovery's at 34% — keep today lighter; push the fundraising deep-work to tomorrow when
+  you're fresh." Lowest lift, highest value; folds straight into the existing briefing + alignment.
+- **V2 — Proactive calendar adjustments:** (a) sleep-aware morning ("you got 5h12m — want me to
+  move your 8am and protect a slow start?"); (b) overtraining/rest-day guard (hard strain + a
+  low-recovery streak → "want me to block a real rest day?").
+- **V3 / later — Recovery↔calendar correlations:** learn patterns linking calendar behavior to
+  the body ("your recovery drops the day after late-meeting days"). The deep "it knows me" magic,
+  but needs weeks of data + the most build.
+- **All tiers grounded/honest:** only ever state real Whoop numbers; if not connected or the
+  fetch fails, omit the health section silently — never invent a recovery/sleep figure, never
+  block the briefing.
+
 ## Sequencing & effort
 - **Gate:** after the current fix batch lands + the core loop is validated. Net-new scope — do NOT let it displace the launch gates (verification, Twilio) or the open consolidation/grounded fixes.
 - **Effort:** ~2–3 dev-days once the Whoop dev-app credentials exist. The dev-app creation (user) is the only external lead-time item — hours, not weeks.
