@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch + grounded cluster SHIPPED**: consolidation `cleanupEvents` batch-delete, moveEvent organizer check, no-invented-numbers, research quality (intent/role/relevance), BE-DECISIVE, ground-importance, preference-awareness, Edg3 self-name, + earlier all-day/location/anti-loop/call-resilience/hold/first-name/timezone/transcript-link. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop OAuth SHIPPED** (`/api/whoop/**`, encrypted `whoop_tokens`, `lib/whoop.ts` fetch primitive) + earlier scheduler catch-up + call-failure surfacing. Awaiting Core to consume + PM Railway creds.)_ | `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
-| 🎨 Design | `design` | Whoop visual tokens + recovery component classes in globals.css; visual spec in DESIGN.md | `app/globals.css`, `DESIGN.md` | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ Whoop visual tokens + component classes + spec shipped. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
