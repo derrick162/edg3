@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **cleanupEvents batch delete** (`b66b20f`): resolveEventExact + single-confirmation batch delete + Edg3 self-name fix. 317/317 green. Awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **moveEvent organizer check** (`704f4d0`): canUserReschedule helper, honest 403 message naming organizer, offer to draft reschedule, improved generic patch fallback. 335/335 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **scheduler catch-up window** (missed-call fix) + **call-failure surfacing** (CallError code, briefing→failed, 503). Core-loop reliability done. Awaiting PM.)_ | `lib/scheduler.ts` | 2026-06-11 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
@@ -117,6 +117,22 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **moveEvent organizer check (Core).** (`704f4d0`)
+  - **ROOT CAUSE FIX for "couldn't move it" on other people's meetings.** `moveEvent`
+    checked the CALENDAR's accessRole but not the EVENT's organizer — Google 403s
+    time changes from non-organizers.
+  - `canUserReschedule(event)` added to `lib/calendarWritable.ts`: returns `true` if
+    `organizer.self === true` OR `guestsCanModify === true`; benefit-of-the-doubt `true`
+    when organizer field is absent. 7 new tests.
+  - Pre-patch check inserted after the calendar-level `isWritable` check: if user
+    isn't the organizer, returns honest message naming them
+    ("'Faiza CIBC meeting' was set up by Faiza — Google only lets the organizer
+    reschedule it…") + offer to draft a reschedule request via draftEmail.
+  - Generic patch-failure fallback improved: now explains organizer/restricted-calendar
+    possibility and offers the draft path.
+  - `draftEmail` prompt note added: when moveEvent bounces on organizer, call draftEmail
+    with `recipients:[{name, email}]` from the organizer info in the failure message.
+  - 335/335 green, tsc clean, next build clean.
 - **2026-06-11** — **cleanupEvents batch delete + resolveEventExact + Edg3 self-name (Core).** (`b66b20f`)
   - **ROOT CAUSE FIX for consolidation failures.** Two compounding causes found from live call:
     (1) 3 originals with different titles required 3 separate `deleteEvent`+confirm-token handshakes
