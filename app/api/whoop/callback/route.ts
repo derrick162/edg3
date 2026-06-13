@@ -8,8 +8,15 @@ export async function GET(req: NextRequest) {
   const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
   const code       = req.nextUrl.searchParams.get('code');
   const stateParam = req.nextUrl.searchParams.get('state');
+  const oauthError = req.nextUrl.searchParams.get('error');
+  const oauthErrorDesc = req.nextUrl.searchParams.get('error_description');
 
-  if (!code) return NextResponse.redirect(new URL('/dashboard?error=whoop_denied', base));
+  if (!code) {
+    // Surface Whoop's actual reason (access_denied vs invalid_scope vs etc.) instead of a blanket denied.
+    console.error('[whoop callback] no code returned — error=', oauthError, 'desc=', oauthErrorDesc);
+    const reason = encodeURIComponent(oauthError || 'no_code');
+    return NextResponse.redirect(new URL(`/dashboard?error=whoop_denied&whoop_reason=${reason}`, base));
+  }
 
   // Resolve user: session → backup cookie → state param (same priority as calendar callback).
   const sessionUser  = await getSession();
