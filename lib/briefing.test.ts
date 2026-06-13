@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection } from './briefing';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock } from './briefing';
+import type { Fact } from './db';
+
+function makePref(statement: string, id = 1): Fact {
+  return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00' };
+}
 
 describe('buildFallbackBriefing', () => {
   it('uses first name only, not full name', () => {
@@ -82,5 +87,65 @@ describe('buildWhoopSection', () => {
     expect(result).toContain('RECOVERY: 55%');
     expect(result).toContain('STRAIN: 12.1');
     expect(result).not.toContain('SLEEP');
+  });
+});
+
+describe('buildEnergyMatchingBlock', () => {
+  it('returns null when no preferences', () => {
+    expect(buildEnergyMatchingBlock([], null)).toBeNull();
+  });
+
+  it('returns null when preferences exist but none are energy-related', () => {
+    const prefs = [makePref('User prefers email over Slack for async communication')];
+    expect(buildEnergyMatchingBlock(prefs, null)).toBeNull();
+  });
+
+  it('returns a block when a preference mentions "peak"', () => {
+    const prefs = [makePref('User\'s peak hours are 9–11am for deep creative work')];
+    const result = buildEnergyMatchingBlock(prefs, null);
+    expect(result).not.toBeNull();
+    expect(result).toContain('ENERGY PROFILE');
+    expect(result).toContain('peak hours');
+  });
+
+  it('includes all matching energy preferences', () => {
+    const prefs = [
+      makePref('User\'s peak hours are 9–11am', 1),
+      makePref('User considers vibe-coding high energy work', 2),
+      makePref('User prefers to handle email in the afternoon trough', 3),
+      makePref('User prefers Slack for quick questions', 4),
+    ];
+    const result = buildEnergyMatchingBlock(prefs, null)!;
+    expect(result).toContain('peak hours');
+    expect(result).toContain('high energy work');
+    expect(result).toContain('afternoon trough');
+    expect(result).not.toContain('Slack for quick questions');
+  });
+
+  it('adds green recovery tier line when recovery is high', () => {
+    const prefs = [makePref('User\'s energy peaks 9–11am')];
+    const result = buildEnergyMatchingBlock(prefs, { recoveryScore: 80, hrv: 70, restingHeartRate: 50 })!;
+    expect(result).toContain('80%');
+    expect(result).toContain('full capacity');
+  });
+
+  it('adds red recovery tier line when recovery is low', () => {
+    const prefs = [makePref('User has a deep work focus block each morning')];
+    const result = buildEnergyMatchingBlock(prefs, { recoveryScore: 25, hrv: 40, restingHeartRate: 68 })!;
+    expect(result).toContain('25%');
+    expect(result).toContain('protect');
+  });
+
+  it('omits recovery line when recovery is null', () => {
+    const prefs = [makePref('User prefers deep work in the morning peak window')];
+    const result = buildEnergyMatchingBlock(prefs, null)!;
+    expect(result).not.toContain('Whoop recovery');
+  });
+
+  it('matches "admin" keyword', () => {
+    const prefs = [makePref('User batches admin tasks into the 2–3pm afternoon window')];
+    const result = buildEnergyMatchingBlock(prefs, null);
+    expect(result).not.toBeNull();
+    expect(result).toContain('admin tasks');
   });
 });

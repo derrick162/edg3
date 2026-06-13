@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, effectiveTimezone, User } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, effectiveTimezone, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
@@ -125,6 +125,50 @@ export function buildWhoopSection(
   return parts.length ? parts.join(' · ') : null;
 }
 
+// Keywords that identify energy-profile preference facts (peak/trough hours,
+// high/low-energy activity types). Module-level so the function stays pure.
+const ENERGY_PREF_KEYWORDS = [
+  'peak', 'trough', 'energy', 'deep work', 'deep-work', 'focus block',
+  'productive', 'morning person', 'best work', 'creative work', 'flow state',
+  'high-energy', 'low-energy', 'high energy', 'low energy',
+  'afternoon dip', 'afternoon lull', 'afternoon slump', 'winding down',
+  'admin', 'chronotype', 'difficult tasks', 'challenging work',
+  'sprint window', 'power hour', 'maker schedule',
+];
+
+/**
+ * Build an ENERGY MATCHING context block for the briefing prompt.
+ * Scans preference facts for energy-profile keywords and combines with today's
+ * Whoop recovery as the daily modulator. Returns null when no energy preferences
+ * exist — callers degrade silently (never blocks the briefing).
+ * Pure function; exported for unit tests.
+ */
+export function buildEnergyMatchingBlock(
+  preferences: Fact[],
+  recovery: WhoopRecovery | null,
+): string | null {
+  const energyPrefs = preferences.filter(p => {
+    const s = p.statement.toLowerCase();
+    return ENERGY_PREF_KEYWORDS.some(k => s.includes(k));
+  });
+
+  if (!energyPrefs.length) return null;
+
+  const lines = ['ENERGY PROFILE (user-stated — use for time-block recommendations in sections 3 and 5):'];
+  for (const p of energyPrefs) lines.push(`- ${p.statement}`);
+
+  if (recovery !== null) {
+    const tierLabel = recovery.recoveryScore >= 67
+      ? 'high — full capacity for deep/creative work'
+      : recovery.recoveryScore >= 34
+      ? 'moderate — proceed normally, don\'t over-extend'
+      : 'low — protect the peak window; lean toward lighter tasks and admin today';
+    lines.push(`Whoop recovery today: ${recovery.recoveryScore}% (${tierLabel}). Recovery is a DAILY modulator — never claim Whoop measured energy at a specific hour.`);
+  }
+
+  return '\n' + lines.join('\n') + '\n';
+}
+
 export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -182,6 +226,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     }
     return '\n' + lines.join('\n') + '\n';
   })();
+  const whoopConnected = whoopSection !== null;
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
   const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
   const prioritiesWeekOf = latestPriorities[0]?.week_of ?? null;
@@ -254,6 +299,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const structuredFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
   // Event-linked memory — degrade to [] if thrown on malformed input.
   const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts); } catch { return []; } })();
+  // Energy matching (V2): energy-profile preferences + recovery modulator.
+  // Degrades silently to null when no energy preferences are stored yet.
+  const preferencesFacts = structuredFacts.filter(f => f.category === 'preference');
+  const energyMatchingBlock = buildEnergyMatchingBlock(preferencesFacts, whoopRecovery);
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
@@ -295,7 +344,9 @@ ${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
-` : ''}${whoopContextBlock}${hygieneFlag ? `
+` : ''}${whoopContextBlock}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `
+ENERGY PROFILE: Not set yet. Since Whoop is connected, add ONE brief invite at the very end of the closing section (after any other nudges): "One more thing — if you tell me your high-energy windows, I can start matching your schedule to your energy. Morning peak? Afternoon dip?" Only add this if it feels natural; skip if there are already two or more other end-of-briefing nudges.
+` : '')}${hygieneFlag ? `
 CALENDAR HYGIENE FLAG (one concrete overload pattern — surface this in section 4):
 ${hygieneFlag}
 ` : ''}${edg3Commitment ? `
@@ -331,7 +382,7 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
   : 'Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.'
 }
 4. ACTION ITEMS — ${edg3Commitment ? `Open with ONE accountability line: "Yesterday you committed to '${edg3Commitment.text}' — did that happen?" Then list ` : 'List '}the 3 highest-leverage things they should do today. Call them "action items". Be specific. Address every weekly priority. Reference incomplete tasks by name.${hygieneFlag ? ` Add ONE punchy hygiene item: surface the CALENDAR HYGIENE FLAG and offer to fix it (e.g. add buffers, protect a focus block).` : ''}
-5. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.
+5. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place the highest-priority deep/creative work in the stated peak window; batch admin or low-energy tasks in the stated trough. Scale to today\'s recovery tier. Make it a direct offer: "Recovery\'s high and it\'s your nine to eleven peak — want me to block vibe-coding there? I\'ll push email to your two PM dip."' : ''}
 6. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
    - If they have a big upcoming event: "What do you need to feel ready for [event]?"
    - Default: "What's the most important thing I should know before tomorrow's briefing?"

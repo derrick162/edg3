@@ -49,6 +49,10 @@ export default function PrivacyPage() {
                 <p>If you grant Gmail access, we request permission to (a) <strong style={{ color: '#e8e8f0' }}>create email drafts</strong> on your behalf and (b) <strong style={{ color: '#e8e8f0' }}>read messages only within the specific email threads Edge started for you</strong>. Edge uses draft access to write outreach emails you asked for (e.g. contacting a service provider), and read access to recognize replies to those emails and surface them in your briefing. <strong style={{ color: '#e8e8f0' }}>Edge never sends email</strong> — it only creates drafts for you to review and send yourself. Edge only reads the threads it created for you; it does not read the rest of your mailbox. You can disconnect at any time from your dashboard.</p>
               </div>
               <div>
+                <p className="font-semibold mb-2" style={{ color: '#e8e8f0' }}>Whoop Health Data</p>
+                <p>If you connect your Whoop device, we request read-only access to your <strong style={{ color: '#e8e8f0' }}>recovery score, sleep data, and strain</strong> from the Whoop API. We use this data solely to personalize your daily briefing — for example, noting your recovery level and adjusting the day&apos;s recommendations accordingly. We do not share your health data with any third party, do not store raw health metrics beyond the current briefing session, and do not use it for any purpose other than personalizing your briefing. You can disconnect Whoop at any time from your dashboard. Health data is treated as sensitive personal information and handled with the same encrypted-at-rest protections as the rest of your data.</p>
+              </div>
+              <div>
                 <p className="font-semibold mb-2" style={{ color: '#e8e8f0' }}>Call Transcripts &amp; Responses</p>
                 <p>We store transcripts of your daily briefing calls and your spoken responses. This data is used exclusively to improve the quality and continuity of your personal briefings.</p>
               </div>

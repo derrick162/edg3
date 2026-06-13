@@ -101,10 +101,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Whoop V1** (`7412561`): buildWhoopSection + briefing injection (RECOVERY/SLEEP/STRAIN, pacing guidance, silent degrade) + Connect Whoop dashboard UI. 363/363 green. Awaiting PM deploy + user credentials.)_ | `lib/briefing.ts`, `app/dashboard/page.tsx` | 2026-06-13 |
-| 🔒 Security | `security` | ✅ **Restore drill + health check SHIPPED** — `scripts/restore-drill.sh`, `GET /api/admin/health`, LAUNCH.md §9–10 docs. 338/338 green. Queue exhausted — awaiting PM. | `scripts/restore-drill.sh`, `lib/healthCheck.ts`, `app/api/admin/health/**`, `LAUNCH.md` | 2026-06-13 |
-| 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
-| 🎨 Design | `design` | _(idle — ✅ Whoop tokens + dashboard polish complete. 363/363 green. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ **Whoop V1 + V2** (energy-matched time-blocking, `buildEnergyMatchingBlock` + ENERGY PROFILE) + **prompt-consolidation/trim pass** + privacy Whoop section. Awaiting PM.)_ | — | 2026-06-13 |
+| 🔒 Security | `security` | _(idle — ✅ **Restore drill + health check SHIPPED** (`scripts/restore-drill.sh`, `GET /api/admin/health`, LAUNCH.md §9–10) + earlier Whoop OAuth + scheduler catch-up. Awaiting PM.)_ | `scripts/restore-drill.sh`, `lib/healthCheck.ts` | 2026-06-13 |
+| 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ calendar-green token pass re-applied (Edit tool, UTF-8 safe, next build green). 371/371 tests. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -116,6 +116,36 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Whoop V2 — energy-matched time-blocking (Core).** (`40155fd`)
+  - `buildEnergyMatchingBlock(preferences, recovery)` pure function in `lib/briefing.ts`.
+    Scans preference-category facts for energy-profile keywords (peak, trough, deep work,
+    admin, afternoon dip, flow state, focus block, etc.). Returns null when no energy
+    profile is stored — degrade silently, briefing never blocked.
+  - Combines user's stated energy preferences with today's Whoop recovery as the daily
+    modulator (green ≥67% → full capacity; yellow 34–66% → proceed; red ≤33% → protect
+    peak, lean toward admin). Includes honesty guard: never claims Whoop measured intraday.
+  - Briefing injection: ENERGY PROFILE block injected after whoopContextBlock when facts
+    exist. Section 5 (CALENDAR BLOCKS) updated to match deep/creative work to stated peak
+    window and batch low-energy tasks to stated trough. Scale to today's recovery tier.
+    Example: "Recovery's high and it's your nine to eleven peak — want me to block
+    vibe-coding there? I'll push email to your two PM dip."
+  - Soft invite: if Whoop connected but no energy profile yet, adds one line at the end
+    of the closing section inviting the user to share their peak/trough hours.
+  - Live-call support: ENERGY MATCHING note added to CALENDAR TOOLS in `lib/vapi.ts` —
+    when recommending or creating blocks mid-call, match to energy profile + recovery.
+  - 8 new tests. 371/371 green, tsc clean, next build clean.
+  - **How it activates:** user tells Edge their energy profile mid-call ("my peak is nine
+    to eleven, vibe-coding is high-energy, email is admin") → `rememberPreference()` stores
+    as preference facts → next morning's briefing automatically does energy-matched blocking.
+- **2026-06-13** — **Prompt consolidation + privacy Whoop section (Core).** (`bc843f6`)
+  - `lib/vapi.ts` trimmed ~30% with no behaviour dropped. Anchor: GROUNDED & DECISIVE (only
+    state what the data gives you, only ask what you don't know, act, refine, never fabricate).
+  - PREFERENCES: ~90→55 words. BE DECISIVE: absorbed ANTI-LOOP (~160→75 combined).
+  - HONEST FAILURE: ~100→50 words. researchToEvent guidance: ~180→90 words (rules intact).
+  - NEVER INVENT FACTS + GROUNDED OBSERVATIONS + NO INVENTED NUMBERS → single GROUNDED &
+    DECISIVE anchor block. 363/363 green, tsc clean, next build clean.
+  - `app/privacy/page.tsx`: added "Whoop Health Data" section (recovery/sleep/strain,
+    read-only, encrypted at rest, disconnect any time). Required before Whoop rolls to users.
 - **2026-06-13** — **Whoop V1 — recovery-aware briefings + Connect UI (Core).** (`7412561`)
   - Consumes Security's `lib/whoop.ts` (`getLatestRecovery`/`getLastSleep`/`getRecentStrain`).
   - `buildWhoopSection()` pure helper in `lib/briefing.ts`: formats recovery/sleep/strain into
