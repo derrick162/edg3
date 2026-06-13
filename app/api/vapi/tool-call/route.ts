@@ -12,7 +12,7 @@ import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
 import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
-import { isWritable } from '@/lib/calendarWritable';
+import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -545,6 +545,12 @@ Query: ${query}` }],
       const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
       return `"${eventName}" is on a calendar you can only view ("${moveEntry.summary}") — I can't move it from here; you'd edit it in that calendar directly.`;
     }
+    if (!canUserReschedule(found.event)) {
+      const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
+      const org = found.event.organizer;
+      const orgId = org?.displayName || org?.email || 'the organizer';
+      return `"${eventName}" was set up by ${orgId} — Google only lets the organizer reschedule it, so I can't move it from your side. Want me to draft a quick message to ${orgId} requesting a different time?`;
+    }
     if (found.event.recurringEventId && !recurringScope) {
       return `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
     }
@@ -590,7 +596,7 @@ Query: ${query}` }],
       console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'}:`, moveErr);
       return null;
     });
-    if (!patched || !patched.data.id) return `Couldn't confirm the move of "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — please double-check your calendar.`;
+    if (!patched || !patched.data.id) return `Couldn't reschedule "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — it may be organized by someone else or on a restricted calendar. You could ask the organizer directly, or I can draft a message requesting a new time.`;
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
