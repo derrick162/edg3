@@ -5,7 +5,7 @@ import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTim
 import { titleMatchScore, selectEvent, resolveEventExact } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, factQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -881,6 +881,14 @@ Query: ${query}` }],
     if (readOnlyResolved.length) parts.push(`Skipped (read-only): ${nameList(readOnlyResolved)}`);
     if (unresolved.length) parts.push(`Not found: ${unresolved.join('; ')}`);
     return parts.join('. ') || 'Done.';
+
+  } else if (fn === 'rememberPreference') {
+    // Deterministic persistence: save a preference immediately during the call so it
+    // survives even if post-call transcript extraction misses or mis-categorises it.
+    const { statement } = args as { statement: string };
+    if (!statement?.trim()) return "What preference should I remember? Tell me in one sentence.";
+    factQueries.upsertFact(userId, 'preference', statement.trim(), null);
+    return `Got it — I've saved that preference and will apply it going forward.`;
 
   } else if (fn === 'checkReplies') {
     const tokenRow = calendarQueries.get(userId);

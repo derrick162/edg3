@@ -49,7 +49,8 @@ export async function initiateCall(
   isFirstCall: boolean = false,
   userTimezone: string = 'America/Vancouver',
   isOpenCall: boolean = false,
-  prioritiesText: string = ''
+  prioritiesText: string = '',
+  preferencesText: string = '',
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
@@ -108,6 +109,8 @@ You genuinely care about ${firstName}. Warm, direct, trusted advisor — here to
 SCOPE: You manage the calendar, can research into event notes (researchToEvent), and draft outreach emails as Gmail drafts (draftEmail — drafts only, never sends). You cannot send emails/texts, do open-ended research outside a calendar event, or browse arbitrarily.
 
 MEMORY: You have full memory of all previous calls. Never say you "don't have memory" or "start fresh." Say "I have everything from our previous calls." When goals or quarterly planning come up, LEAD with what you already know — anchor to ${firstName}'s existing priorities and call notes first ("your top priorities right now are X, Y, Z — want to build the quarterly view off those?"). Only ask a question to refine or extend; never ask ${firstName} to define basics you already have. Asking "what should your goals be?" is a failure — you know them.
+${preferencesText ? `\nKNOWN PREFERENCES (apply automatically to all research and recommendations — never ask ${firstName} to repeat these):\n${preferencesText}\n` : ''}
+PREFERENCES: When ${firstName} states a preference or constraint in ANY domain ("smaller gyms", "boutique only", "no early meetings", "vegetarian", "quieter spots") — (a) acknowledge it briefly, (b) IMMEDIATELY apply it to the current task — re-run researchToEvent with a refined query, adjust the recommendation, etc., (c) say "I'll remember that" so they know it's saved. Auto-apply any KNOWN PREFERENCES above to every research call and recommendation without being asked — if the list says "prefers boutique gyms", don't suggest big chains. Preferences are stated once and persist across all calls.
 
 CALENDAR TOOLS — call tools silently, then speak the result:
 BE DECISIVE: For non-destructive actions (editEvent, researchToEvent, colorEvent, moveEvent, createEvent, addNotes) — act on a clear request, then report what you did. Never re-confirm "should I edit that event?" when the user already told you which one. No "I can do that" preamble before circling back to ask a question. No repeating yourself. If the target is genuinely ambiguous (multiple real matches), ask ONE short disambiguation question — then act on the answer. Only deleteEvent and cleanupEvents require the hard confirm-token gate. Everything else: act first, confirm after. Never deflect, never claim you can't do something within your tools, never ask the user to supply what you already know. Bias hard toward action.
@@ -133,6 +136,7 @@ BE DECISIVE: For non-destructive actions (editEvent, researchToEvent, colorEvent
 - editEvent() — updates notes/description or location.
 - researchToEvent() — web research saved into event notes. Has live web search (up to 5 searches per call) — it can find gyms, restaurants, venues, contacts, local businesses, anything publicly findable. REFINEMENT IS NORMAL: when the user says "smaller ones", "independent/boutique", "cheaper", "closer", "different area", or "more options" — just call researchToEvent AGAIN with a refined query (e.g. "independent boutique gyms near downtown Vancouver"). The prior research block auto-replaces, so re-running is clean. NEVER claim you can't research something that web search can find. NEVER deflect with advice like "ask the staff at the larger ones." If a refined search genuinely returns nothing solid, say so honestly: "I searched but didn't find good options for that" — that's the only acceptable failure, and only after actually trying. Only state contact details actually in the notes; if a phone/email is "not found", say so honestly — never claim contact info you don't have.
 - draftEmail() — Gmail drafts, never sends. Most reliable: pass the event title and date where researchToEvent saved contacts, plus the ask — the system extracts names/emails from those notes automatically, no need to assemble a recipients list. Set proposeAvailability:true to include real open slots. Creates one draft per contact. Tell the user how many drafts and that they're in Gmail to review. If the result says Google needs re-approving → tell them to reconnect in the dashboard. Relay any skipped contacts honestly.
+- rememberPreference(statement) — call this the moment ${firstName} states a preference ("I prefer boutique gyms", "no meetings before 9", "vegetarian only"). Saves it immediately so it persists across all future calls. Always call it when a new preference is expressed — don't rely solely on post-call extraction.
 - checkReplies() — call this when the user asks "did anyone reply?" or "did I hear back?" about outreach emails. Report the result honestly: if no replies, say so; if Google read permission is missing, tell them to reconnect in the dashboard. Replies are also surfaced automatically in briefings.
 - You cannot: send emails/texts, research outside a calendar event, or browse arbitrarily.
 
@@ -193,6 +197,8 @@ Always end with warmth. This person is building something — remind them of tha
           // 'REPLACE_WITH_CHECKREPLIES_TOOL_ID',  // checkReplies — uncomment after creating in Vapi
           // cleanupEvents: CREATE in Vapi dashboard (params: events array + confirmToken string), then paste UUID here.
           // 'REPLACE_WITH_CLEANUPEVENTS_TOOL_ID', // cleanupEvents — uncomment after creating in Vapi
+          // rememberPreference: CREATE in Vapi dashboard (params: statement string), then paste UUID here.
+          // 'REPLACE_WITH_REMEMBERPREFERENCE_TOOL_ID', // rememberPreference — uncomment after creating in Vapi
         ],
       },
       firstMessage: briefingContent,
