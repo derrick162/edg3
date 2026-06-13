@@ -727,7 +727,7 @@ function ActivityTab() {
                                 <p className="font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Before</p>
                                 <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.before}</p>
                               </div>
-                              <div className="text-xs p-2 rounded" style={{ background: 'rgba(34,197,94,0.08)' }}>
+                              <div className="text-xs p-2 rounded" style={{ background: 'var(--edg-calendar-green-tint)' }}>
                                 <p className="font-semibold mb-1" style={{ color: 'var(--edg-success)' }}>After</p>
                                 <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.after}</p>
                               </div>
@@ -1530,12 +1530,12 @@ export default function Dashboard() {
                               const actions = JSON.parse((b as any).calendar_actions);
                               if (!actions.length) return null;
                               return (
-                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                                  <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>📅 CALENDAR ACTIONS</p>
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-calendar-green-tint)', border: '1px solid var(--edg-calendar-green-border)' }}>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-calendar-green)' }}>📅 CALENDAR ACTIONS</p>
                                   <div className="space-y-1">
                                     {actions.map((a: any, i: number) => (
                                       <p key={i} className="text-xs" style={{ color: 'var(--text-body)' }}>
-                                        <span style={{ color: '#4ade80' }}>✓</span> {a.type === 'created' ? 'Added' : a.type} — {a.title}
+                                        <span style={{ color: 'var(--edg-calendar-green)' }}>✓</span> {a.type === 'created' ? 'Added' : a.type} — {a.title}
                                         {a.start && <span style={{ color: 'var(--text-muted)' }}> · {new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
                                       </p>
                                     ))}
@@ -1555,7 +1555,7 @@ export default function Dashboard() {
                                   <div className="space-y-1.5">
                                     {labels.map((label: string, i: number) => (
                                       <div key={i} className="text-xs flex items-start gap-2" style={{ color: 'var(--text-body)' }}>
-                                        <span style={{ color: '#4ade80' }}>✓</span>
+                                        <span style={{ color: 'var(--edg-calendar-green)' }}>✓</span>
                                         <span>{label}</span>
                                       </div>
                                     ))}
