@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch SHIPPED**: all-day delete ambiguity, location param, anti-loop guardrail, call-resilience (generateDailyBriefing never throws), graceful hold, first-name, timezone (current-only), consolidation playbook, transcript link, book-error surfacing. Awaiting PM.)_ | — | 2026-06-11 |
-| 🔒 Security | `security` | ✅ **Whoop OAuth SHIPPED** — OAuth flow + encrypted token storage + fetch primitive (`getLatestRecovery`, `getLastSleep`, `getRecentStrain`). 311/311 green. Ready for Core to consume + PM to set `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET` on Railway. Queue exhausted — awaiting PM. | `lib/db.ts`, `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
+| 🔒 Security | `security` | ✅ **Restore drill + health check SHIPPED** — `scripts/restore-drill.sh`, `GET /api/admin/health`, LAUNCH.md §9–10 docs. 338/338 green. Queue exhausted — awaiting PM. | `scripts/restore-drill.sh`, `lib/healthCheck.ts`, `app/api/admin/health/**`, `LAUNCH.md` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 

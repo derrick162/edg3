@@ -8,6 +8,24 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-13** — **Litestream restore drill + encryption ops-readiness.**
+  Ticket 1: `scripts/restore-drill.sh` — standalone shell script that downloads
+  Litestream, runs `litestream restore` to a temp path, verifies the restored DB
+  with `better-sqlite3` (`PRAGMA integrity_check` + row counts on key tables), and
+  exits 0/1 with a clear PASS/FAIL summary. Documented in `LAUNCH.md` §10 (restore
+  drill log, how-to, PITR manual-restore command). Ticket 2: `lib/healthCheck.ts`
+  — `runHealthChecks()` asserts 5 launch-critical conditions: `DATA_ENCRYPTION_KEY`
+  (critical), `JWT_SECRET` (critical), DB connectivity (critical), Litestream S3
+  replication (high), `VAPI_SECRET_ENFORCE` (high). Returns `status: ok | degraded
+  | critical` + per-check detail. New admin endpoint `GET /api/admin/health` wraps
+  it (HTTP 503 on critical). Logs `console.warn` on any failure so Railway log
+  surfaces it. `LAUNCH.md` §9 (encryption ops: key generation, STRICT_ENCRYPTION
+  rollout, how to verify), §2 env-var table updated (WHOOP_, LITESTREAM_, STRICT_
+  ENCRYPTION). 8 new tests. 338/338 green.
+  🤝 **For PM:** After setting `DATA_ENCRYPTION_KEY` + `STRICT_ENCRYPTION=1` on Railway,
+  hit `GET /api/admin/health` (admin cookie) to confirm. After setting `LITESTREAM_S3_*`,
+  run `sh scripts/restore-drill.sh` from the Railway shell and record the result in
+  LAUNCH.md §10 restore drill log.
 - **2026-06-13** — **Whoop OAuth integration — foundation layer.**
   New `whoop_tokens` table in `lib/db.ts` (encrypted at rest — health data PII; same
   `encryptField`/`decryptField` pattern as `calendar_tokens`). `whoopQueries`: `upsert`,
