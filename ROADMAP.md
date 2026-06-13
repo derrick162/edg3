@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ **Whoop V1** (`7412561`): buildWhoopSection + briefing injection (RECOVERY/SLEEP/STRAIN, pacing guidance, silent degrade) + Connect Whoop dashboard UI. 363/363 green. Awaiting PM deploy + user credentials.)_ | `lib/briefing.ts`, `app/dashboard/page.tsx` | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop OAuth SHIPPED** (`/api/whoop/**`, encrypted `whoop_tokens`, `lib/whoop.ts` fetch primitive) + earlier scheduler catch-up + call-failure surfacing. Awaiting Core to consume + PM Railway creds.)_ | `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
-| 🎨 Design | `design` | Visual polish: calendar-green token + dashboard rough-edge cleanup | `app/globals.css`, `app/dashboard/page.tsx` | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ Whoop tokens + dashboard polish complete. 363/363 green. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
