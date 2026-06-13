@@ -6,6 +6,7 @@ import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts } from './facts';
+import { getLatestRecovery, getLastSleep, getRecentStrain, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -101,6 +102,29 @@ export function buildFallbackBriefing(greeting: string, userName: string, calend
   return `${greeting}, ${firstName}. I had a little trouble loading your full briefing today — let me give you the essentials. ${calSection}${prioSection ? ' ' + prioSection : ''} I'll have everything ready on tomorrow's call. What's the most important thing I should know before then?`;
 }
 
+/**
+ * Format Whoop recovery/sleep/strain into a compact briefing section string.
+ * Returns null when all inputs are null (not connected or fetch failed) — callers
+ * omit the health section entirely rather than injecting an empty block.
+ * Pure function; exported for unit tests.
+ */
+export function buildWhoopSection(
+  recovery: WhoopRecovery | null,
+  sleep: WhoopSleep | null,
+  strain: WhoopStrain | null,
+): string | null {
+  const parts: string[] = [];
+  if (recovery !== null) parts.push(`RECOVERY: ${recovery.recoveryScore}%`);
+  if (sleep !== null) {
+    const totalMin = Math.round(sleep.durationMs / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    parts.push(`SLEEP: ${h}h${String(m).padStart(2, '0')}m`);
+  }
+  if (strain !== null) parts.push(`STRAIN: ${strain.strain}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -120,9 +144,12 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
-  const [calendarEvents, weekEvents] = await Promise.all([
+  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
+    getLatestRecovery(userId).catch(() => null),
+    getLastSleep(userId).catch(() => null),
+    getRecentStrain(userId).catch(() => null),
   ]);
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
@@ -140,6 +167,21 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
   // Call streak: count consecutive days with completed briefings.
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
+  // Whoop: format and build pacing context block — degrades to empty string if not connected.
+  const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
+  const whoopContextBlock = (() => {
+    if (!whoopSection) return '';
+    const lines = [`HEALTH DATA (WHOOP):\n${whoopSection}`];
+    if (whoopRecovery !== null) {
+      const tier = whoopRecovery.recoveryScore >= 67
+        ? 'green (strong — push hard on the top priority today)'
+        : whoopRecovery.recoveryScore >= 34
+        ? 'yellow (moderate — proceed as planned, don\'t over-extend)'
+        : 'red (keep today lighter; defer deep work to a better-recovery day)';
+      lines.push(`Recovery tier: ${tier}. Weave one brief pacing note into section 1 and factor into section 3 (which priority to push vs. defer).`);
+    }
+    return '\n' + lines.join('\n') + '\n';
+  })();
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
   const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
   const prioritiesWeekOf = latestPriorities[0]?.week_of ?? null;
@@ -253,7 +295,7 @@ ${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
-` : ''}${hygieneFlag ? `
+` : ''}${whoopContextBlock}${hygieneFlag ? `
 CALENDAR HYGIENE FLAG (one concrete overload pattern — surface this in section 4):
 ${hygieneFlag}
 ` : ''}${edg3Commitment ? `

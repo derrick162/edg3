@@ -834,6 +834,8 @@ export default function Dashboard() {
   const [showNextCallTip, setShowNextCallTip] = useState(() => isWelcome);
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
+  const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
+  const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
@@ -884,6 +886,7 @@ export default function Dashboard() {
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
+    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setWhoopConnected(!!d.connected)).catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1065,6 +1068,21 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({}));
       alert(data.error || 'Failed to disconnect calendar');
     }
+  }
+
+  async function connectWhoop() {
+    const res = await fetch('/api/whoop/connect');
+    if (!res.ok) { alert('Whoop is not configured yet — contact support.'); return; }
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  }
+
+  async function disconnectWhoop() {
+    if (!confirm('Disconnect Whoop? Edge will stop including your recovery data in briefings.')) return;
+    setDisconnectingWhoop(true);
+    const res = await fetch('/api/whoop/disconnect', { method: 'POST' });
+    setDisconnectingWhoop(false);
+    if (res.ok) setWhoopConnected(false);
   }
 
   if (!user) {
@@ -1305,6 +1323,32 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+            {whoopConnected === false ? (
+              <button
+                onClick={connectWhoop}
+                className="w-full text-xs py-2 text-left px-2 rounded"
+                style={{ color: 'var(--text-faint)' }}
+              >
+                ⚡ Connect Whoop
+              </button>
+            ) : whoopConnected ? (
+              <div className="px-2 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
+                </div>
+                <div className="flex items-center gap-3 pl-3.5">
+                  <button
+                    onClick={disconnectWhoop}
+                    disabled={disconnectingWhoop}
+                    className="text-xs"
+                    style={{ color: 'var(--edg-danger)' }}
+                  >
+                    {disconnectingWhoop ? 'Disconnecting…' : 'Disconnect'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {briefings.length === 0 && (
               <button
                 onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
