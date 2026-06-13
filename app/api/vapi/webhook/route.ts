@@ -249,7 +249,7 @@ Transcript: ${transcript.slice(0, 1000)}`,
   }
 }
 
-async function saveCallSummaryToCalendar(briefing: { user_id: number; transcript: string | null; tool_actions?: string | null }, user: { name: string; timezone: string }) {
+async function saveCallSummaryToCalendar(briefing: { id: number; user_id: number; transcript: string | null; tool_actions?: string | null }, user: { name: string; timezone: string }) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   let toolSummary = 'None';
   try {
@@ -278,8 +278,10 @@ ${toolSummary}`,
   });
   const summary = res.content[0].type === 'text' ? res.content[0].text.trim() : '';
   if (!summary) return;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai').replace(/\/$/, '');
+  const fullSummary = `${summary}\n\n▶ Full transcript: ${appUrl}/dashboard?briefing=${briefing.id}`;
   const { addSummaryToTodaysBriefingEvent } = await import('@/lib/calendar');
-  const ok = await addSummaryToTodaysBriefingEvent(briefing.user_id, user.timezone, summary);
+  const ok = await addSummaryToTodaysBriefingEvent(briefing.user_id, user.timezone, fullSummary);
   console.log(`[webhook] Call summary ${ok ? 'saved to briefing event' : '(no briefing event found)'} for user ${briefing.user_id}`);
 }
 

@@ -36,17 +36,24 @@ export async function POST(req: NextRequest) {
   let ok = true;
   try {
     await createCalendarEvent(user.id, title, start, end, tz);
-  } catch {
+  } catch (err) {
     ok = false;
+    const errMsg = String(err);
+    console.error('[book] createCalendarEvent failed:', err);
     auditLogQueries.record({
       userId: user.id,
       briefingId: null,
       action: 'createEvent',
       argsJson: JSON.stringify({ title, date, time, durationMins: dur, source: 'web' }),
-      resultText: 'Failed — calendar not connected or request error',
+      resultText: `Failed: ${errMsg.slice(0, 300)}`,
       ok: false,
     });
-    return NextResponse.json({ error: 'Could not create the event — check that your Google Calendar is connected.' }, { status: 500 });
+    const isScope = /insufficientPermissions|forbidden|403/i.test(errMsg);
+    const isNoToken = /No calendar connected/i.test(errMsg);
+    const userError = (isScope || isNoToken)
+      ? "Couldn't create the event — your Google Calendar needs to be reconnected in the dashboard."
+      : `Couldn't create the event — ${errMsg.slice(0, 120)}`;
+    return NextResponse.json({ error: userError }, { status: 500 });
   }
 
   auditLogQueries.record({

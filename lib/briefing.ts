@@ -86,6 +86,21 @@ Rules:
   return sanitized;
 }
 
+/**
+ * Minimal spoken briefing returned when the main Anthropic generation call fails or times out.
+ * Pure function — no DB or API calls — so it always succeeds and the scheduler call still goes out.
+ */
+export function buildFallbackBriefing(greeting: string, userName: string, calendarText: string, prioritiesText: string): string {
+  const firstName = (userName || '').split(' ')[0] || userName;
+  const calSection = calendarText.trim()
+    ? `Here's what I have on your calendar: ${calendarText.trim().replace(/\n/g, ', ')}.`
+    : "I don't see any events on your calendar for today.";
+  const prioSection = prioritiesText.trim() && prioritiesText !== 'No priorities set for this week.'
+    ? `Your priorities this week are: ${prioritiesText.replace(/^\d+\.\s*/gm, '').trim().replace(/\n/g, ', ')}.`
+    : '';
+  return `${greeting}, ${firstName}. I had a little trouble loading your full briefing today — let me give you the essentials. ${calSection}${prioSection ? ' ' + prioSection : ''} I'll have everything ready on tomorrow's call. What's the most important thing I should know before then?`;
+}
+
 export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -123,10 +138,6 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
-  // Structured facts: all durable facts extracted from past call transcripts.
-  const structuredFacts = factQueries.getAll(userId);
-  // Event-linked memory: match today's + this-week's events to facts by entity name.
-  const linkedMemory = linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts);
   // Call streak: count consecutive days with completed briefings.
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
@@ -197,6 +208,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   const isFirstCall = recentMemories.length === 0;
 
+  // Structured facts — degrade to [] if DB throws.
+  const structuredFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+  // Event-linked memory — degrade to [] if thrown on malformed input.
+  const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts); } catch { return []; } })();
+
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.
@@ -266,7 +282,7 @@ ${recentlyCompletedTasks.length ? recentlyCompletedTasks.map(t => `- [${t.date}]
 Generate a briefing with these sections:
 CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. This includes flights, drives, appointments, meetings — everything. If a flight, drive, or any travel event does NOT appear in the calendar data above, do NOT mention it. Memory, conversation history, and past call transcripts are NOT reliable sources for current calendar events — they may be outdated. Before mentioning ANY event (grocery run, gym, flight, meeting, meal prep, drive, etc.) you MUST confirm it appears in the calendar data above. If it does not appear there, do NOT mention it. Do not say things like "I see you have a grocery run Friday" or "you have your drive to Blue Mountain" unless those exact events appear in the calendar sections above. Treat memory references to calendar events as historical only — not current facts.
 
-1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Examples: if there's a current event ("I see you're in early dinner"), if something significant just finished ("You just wrapped up your foreclosure hearing this morning"), if there's something notable coming up later today. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention.${callStreak >= 2 ? ` Then weave in ONE warm streak line (from CALL STREAK above). Keep it natural and encouraging — one sentence max.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY contains a genuinely relevant connection to today's calendar, weave in ONE dot-connecting moment (e.g. "Your two PM with Acme — you told me closing them is the top priority"). Only if it adds real value — skip if forced.` : ''} If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
+1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Skip routine/low-signal events (breakfast, lunch, dinner, meal prep, gym, morning walk, daily habits, personal standing blocks) — the opener must land on something MEANINGFUL and time-sensitive: a notable meeting, a deadline, a commitment due today, a high-stakes call, anything that makes them sit up. Example of GOOD opener: "You've got your investor call at two PM — let's make sure you're ready for it." Example of BAD opener: "You have lunch at noon." If there are no meaningful events today, skip the calendar hook and open with one sharp line tied to their top priority instead. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention.${callStreak >= 2 ? ` Then weave in ONE warm streak line (from CALL STREAK above). Keep it natural and encouraging — one sentence max.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY contains a genuinely relevant connection to today's calendar, weave in ONE dot-connecting moment (e.g. "Your two PM with Acme — you told me closing them is the top priority"). Only if it adds real value — skip if forced.` : ''} If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
 2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
 3. ALIGNMENT CHECK — ${alignmentText
   ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then offer to block time for the most under-served priority using a SPECIFIC slot from FREE TIME SLOTS above — name the exact day and time (e.g. "Want me to block Tuesday at two PM for fundraising?"). One sentence observation + one blocking offer. If all priorities are well-covered, say so briefly.'
@@ -281,19 +297,30 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 
 Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 450,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
-  });
+  // Main briefing generation: 30-second timeout guard so a slow/hanging Anthropic call
+  // can never block the scheduler from placing the call.
+  let briefingText: string;
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 450,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }, { signal: AbortSignal.timeout(30_000) });
+    const content = message.content[0];
+    briefingText = content.type === 'text' ? content.text : buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
+  } catch (err) {
+    console.error('[briefing] generateDailyBriefing main call failed — falling back to basics:', err);
+    briefingText = buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
+  }
 
-  const content = message.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected response type');
-
-  // Post-process: verify calendar references against actual calendar data
-  const briefingText = content.text;
-  return sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
+  // Post-process: verify calendar references. Degrade gracefully if this step fails.
+  try {
+    return await sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
+  } catch (err) {
+    console.error('[briefing] sanitizeCalendarReferences failed — returning raw briefing:', err);
+    return briefingText;
+  }
 }
 
 export async function generatePreviewBriefing(userId: number): Promise<string> {

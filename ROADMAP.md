@@ -101,9 +101,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Tasks filter + UpdateBox removal** (`1893a72`): Open/Completed/All segmented filter, 30-day window, voice prompt fixed. 276/276 green. Queue exhausted — awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch SHIPPED**: all-day delete ambiguity, location param, anti-loop guardrail, call-resilience (generateDailyBriefing never throws), graceful hold, first-name, timezone (current-only), consolidation playbook, transcript link, book-error surfacing. Awaiting PM.)_ | — | 2026-06-11 |
 | 🔒 Security | `security` | ✅ **Whoop OAuth SHIPPED** — OAuth flow + encrypted token storage + fetch primitive (`getLatestRecovery`, `getLastSleep`, `getRecentStrain`). 311/311 green. Ready for Core to consume + PM to set `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET` on Railway. Queue exhausted — awaiting PM. | `lib/db.ts`, `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
-| 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
+| 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
@@ -124,6 +124,65 @@ other lane and the PM can see live ownership claims.
   `/api/whoop/status`. Degrades to null when env vars unset. 21 new tests. 311/311 green.
   **Remaining:** PM sets `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET` on Railway. Core integrates
   `lib/whoop.ts` into `lib/briefing.ts` + adds "Connect Whoop" UI to dashboard.
+- **2026-06-11** — **Issues A+B+C — all-day ambiguity + location + endDate guidance (Core).** (`7424c53`)
+  - **ISSUE A [BUG] All-day event deletion/move ambiguity**: `deleteEvent` and `moveEvent` now
+    accept an optional `targetEndDate` param that pre-filters same-title all-day events to the
+    one whose last inclusive day matches before disambiguation. `describeOptions` now shows
+    `"Conrad Las Vegas" (all-day Jun 25–Jun 28)` instead of `at all day` so the model can
+    identify which span to target. Ambiguous all-day responses direct the model to re-call with
+    `targetEndDate` rather than `currentTime` (which is meaningless for all-day events). New
+    `prevDay` helper in `lib/time.ts` (companion to `nextDay`; converts Google's exclusive
+    `end.date` to last inclusive day). 6 new tests (3 for `prevDay`, 3 for all-day `selectEvent`
+    ambiguity branch). ⚠️ **External step**: add `targetEndDate` (string, optional) to the
+    `deleteEvent` and `moveEvent` Vapi dashboard tools.
+  - **ISSUE B [prompt] Multi-day all-day endDate guidance**: ALL-DAY & MULTI-DAY system-prompt
+    guidance now includes an explicit worked example ("Conrad Las Vegas June 25–28" →
+    allDay:true, startDateTime:2026-06-25, endDate:2026-06-28) and explicitly forbids omitting
+    endDate for multi-day events. DISAMBIGUATION updated to describe the `targetEndDate` path
+    for all-day events vs `currentTime` for timed events.
+  - **ISSUE C [param+prompt] Location param for createEvent**: `createEvent` now accepts
+    optional `location` (string) and writes it to the Google Calendar event. System prompt adds
+    LOCATION guidance: set real street address for hotels/venues (e.g. "3000 S Las Vegas Blvd,
+    Las Vegas, NV 89109" for Conrad Las Vegas); omit rather than guess. HONEST FAILURE
+    reinforced: never claim a field was set unless the tool confirmed it. ⚠️ **External step**:
+    add `location` (string, optional) to the `createEvent` Vapi dashboard tool.
+  288/288 tests, tsc clean.
+- **2026-06-11** — **T4 + T5 + firstName bug (Core).** (`f668d69`, `f138fb1`)
+  - **T4 [feature] View-transcript link in Call Summary**: New owner-only
+    `GET /api/briefing/[id]` returns the decrypted transcript (enforced via
+    `AND user_id = ?`; 404 for any other user). Calendar Call Summary appended
+    with `▶ Full transcript: <APP_URL>/dashboard?briefing=<id>`. Dashboard
+    handles `?briefing=<id>` deep-link: auto-expands the matching briefing and
+    switches to the Briefings tab on load.
+  - **T5 [config] Graceful hold instead of silent hangup**: `messagePlan` added
+    to both inline-assistant and assistantOverrides with 3 idle messages at 10s
+    intervals ("Still here — take your time." / "No rush…" / check-in).
+    `silenceTimeoutSeconds` extended 30 → 40. Applied to both briefing and
+    open-call modes. ⚠️ Needs live-call validation (idle behaviour can't be
+    unit-tested; Vapi field names confirmed against docs but verify on first call).
+  - **BUG firstName**: `initiateCall` now derives `firstName` from `userName` and
+    uses it in all addressing spots. Edge says "Derrick" not "Derrick Fung".
+  282/282 tests, tsc clean.
+- **2026-06-11** — **Dogfooding fixes — 3 tickets (Core).** (`d08e7f5`)
+  - **T1 [HIGH BUG] Read-only-calendar mutations**: delete/move/edit/research/color
+    now check calMeta.accessRole before calling the Google API. Events on
+    subscribed/shared read-only calendars return an honest "you can only view that
+    calendar — edit it there directly" instead of the misleading "reconnect" 403
+    message. calMetaCache replaces calIdsCache (stores id+accessRole+summary).
+    `isWritable()` extracted to `lib/calendarWritable.ts` (tested). Added
+    console.error with calId+accessRole on deleteEvent/moveEvent failures for
+    prod diagnosis. ⚠️ If logs show 403s on WRITABLE calendars, escalate to
+    Security (potential scope regression).
+  - **T2 [prompt] Briefing opener skips routine events**: GREETING instruction
+    now explicitly excludes breakfast/lunch/dinner/gym/meal-prep/daily-habit blocks.
+    Opener must land on a meaningful, time-sensitive event; falls back to the top
+    priority if nothing qualifies.
+  - **T3 [prompt+param] Consolidation description**: `createEvent` handler accepts
+    optional `description` param (passed to Google Calendar). System prompt
+    CONSOLIDATE guidance: when merging events, pass a description recording what
+    was combined. ⚠️ External step: add `description` (string, optional) to the
+    createEvent Vapi dashboard tool so the model can pass it.
+  282/282 tests, tsc clean.
 - **2026-06-11** — **Tasks Open/Completed/All filter + UpdateBox removal (Core).**
   Tasks tab: segmented Open | Completed | All filter (default Open). Open = today/tomorrow
   incomplete + carried-over; "Complete all" and progress badge scoped to Open. Completed =

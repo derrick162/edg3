@@ -903,6 +903,20 @@ export default function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
   // Reset memory pagination when switching tabs or when data reloads.
   useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
+  // Deep-link: ?briefing=<id> auto-expands that briefing entry once history loads.
+  useEffect(() => {
+    // Read from window (client-only) rather than useSearchParams — the latter forces a
+    // <Suspense> boundary / breaks static prerender of this page. Matches the ?linked pattern.
+    const idParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('briefing') : null;
+    if (!idParam || !briefingsLoaded || !briefings.length) return;
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) return;
+    const target = briefings.find(b => b.id === id);
+    if (target) {
+      setActiveTab('briefings');
+      setSelectedBriefing(target);
+    }
+  }, [briefingsLoaded, briefings]);
 
   // Streak: consecutive days with a completed briefing call.
   const callStreak = useMemo(
@@ -1360,7 +1374,12 @@ export default function Dashboard() {
           {activeTab === 'briefings' && (
             <div>
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
-              {briefings.length === 0 ? (
+              {!briefingsLoaded ? (
+                <div className="glass-card p-8 text-center">
+                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block mb-3" />
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading your briefings…</p>
+                </div>
+              ) : briefings.length === 0 ? (
                 previewLoading ? (
                   <div className="glass-card p-8 text-center" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
                     <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
