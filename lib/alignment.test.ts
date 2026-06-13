@@ -134,6 +134,22 @@ describe('computeAlignment', () => {
     expect(result!.unalignedHours).toBe(1.5);
   });
 
+  it('caps a long all-day event at 8h so vacations do not balloon totals', async () => {
+    // 45-day trip: without cap → 360h; with cap → 8h max.
+    const longTrip = { summary: 'Vegas trip', start: { date: '2026-06-01' }, end: { date: '2026-07-16' } };
+    h.create.mockResolvedValue(classifyResponse([{ event: 'Vegas trip', priority: 'none' }]));
+    const result = await computeAlignment([priority('fundraising', 1)], [longTrip], 'America/Vancouver');
+    expect(result!.unalignedHours).toBeLessThanOrEqual(8);
+    expect(result!.unalignedHours).toBeGreaterThan(0);
+  });
+
+  it('counts a single-day all-day event as 8h', async () => {
+    const oneDay = { summary: 'Conference', start: { date: '2026-06-10' }, end: { date: '2026-06-11' } };
+    h.create.mockResolvedValue(classifyResponse([{ event: 'Conference', priority: '1' }]));
+    const result = await computeAlignment([priority('fundraising', 1)], [oneDay], 'America/Vancouver');
+    expect(result!.perPriority[0].hours).toBe(8);
+  });
+
   it('caps event input at 40 and still returns a result', async () => {
     const manyEvents = Array.from({ length: 50 }, (_, i) => timedEvent(`Event ${i}`, 0.5));
     h.create.mockResolvedValue(classifyResponse([])); // empty classification → all unaligned, but only 40 sent

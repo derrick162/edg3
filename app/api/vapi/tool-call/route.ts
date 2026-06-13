@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove } from '@/lib/time';
-import { titleMatchScore, selectEvent } from '@/lib/eventMatch';
+import { titleMatchScore, selectEvent, resolveEventExact } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, factQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
 import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
-import { isWritable } from '@/lib/calendarWritable';
+import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -545,6 +545,12 @@ Query: ${query}` }],
       const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
       return `"${eventName}" is on a calendar you can only view ("${moveEntry.summary}") — I can't move it from here; you'd edit it in that calendar directly.`;
     }
+    if (!canUserReschedule(found.event)) {
+      const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
+      const org = found.event.organizer;
+      const orgId = org?.displayName || org?.email || 'the organizer';
+      return `"${eventName}" was set up by ${orgId} — Google only lets the organizer reschedule it, so I can't move it from your side. Want me to draft a quick message to ${orgId} requesting a different time?`;
+    }
     if (found.event.recurringEventId && !recurringScope) {
       return `"${found.event.summary}" is a recurring event. Should I move just this occurrence or all occurrences? Say "just this one" or "all".`;
     }
@@ -590,7 +596,7 @@ Query: ${query}` }],
       console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'}:`, moveErr);
       return null;
     });
-    if (!patched || !patched.data.id) return `Couldn't confirm the move of "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — please double-check your calendar.`;
+    if (!patched || !patched.data.id) return `Couldn't reschedule "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — it may be organized by someone else or on a restricted calendar. You could ask the organizer directly, or I can draft a message requesting a new time.`;
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
@@ -797,6 +803,98 @@ Query: ${query}` }],
       failed.length ? `couldn't draft for ${failed.join(', ')}` : '',
     ].filter(Boolean);
     return `Drafted ${draftedFor.length} email(s) in your Gmail — review and send.${notes.length ? ` I ${notes.join('; and ')}.` : ''}`;
+
+  } else if (fn === 'cleanupEvents') {
+    // Batch delete for consolidation cleanup — deletes a list of events by EXACT start time,
+    // bypassing fuzzy-title resolution that would otherwise hit the newly-created merged event.
+    const { events: eventList, confirmToken } = args as {
+      events: Array<{ title: string; startDateTime?: string; startDate?: string; targetEndDate?: string }>;
+      confirmToken?: string;
+    };
+    if (!Array.isArray(eventList) || !eventList.length) return 'I need a list of events to clean up.';
+
+    // Resolve each spec by exact datetime — avoids fuzzy-title collision on the merged event.
+    const resolved: { event: calendar_v3.Schema$Event; calId: string }[] = [];
+    const unresolved: string[] = [];
+    for (const spec of eventList) {
+      const date = (spec.startDateTime ?? spec.startDate ?? '').slice(0, 10);
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        unresolved.push(`"${spec.title}" (no date)`);
+        continue;
+      }
+      let dayMatches = await eventsOnDay(cal, calIds, date, tz);
+      if (spec.targetEndDate) {
+        const exclusive = nextDay(spec.targetEndDate);
+        dayMatches = dayMatches.filter(({ event }) => !event.start?.date || event.end?.date === exclusive);
+      }
+      const match = resolveEventExact(dayMatches, spec.title, spec.startDateTime, spec.startDate);
+      if (!match) {
+        unresolved.push(`"${spec.title}" on ${date} (not found or ambiguous)`);
+        continue;
+      }
+      resolved.push(match);
+    }
+
+    if (!resolved.length) {
+      return `Couldn't find any of the events to clean up${unresolved.length ? `: ${unresolved.join('; ')}` : ''}.`;
+    }
+
+    const writableResolved = resolved.filter(({ calId }) => {
+      const entry = calMeta.get(calId);
+      return !entry || isWritable(entry.accessRole);
+    });
+    const readOnlyResolved = resolved.filter(({ calId }) => {
+      const entry = calMeta.get(calId);
+      return entry && !isWritable(entry.accessRole);
+    });
+    const nameList = (items: { event: calendar_v3.Schema$Event }[]) =>
+      items.map(m => `"${(m.event.summary ?? '').replace(/^⚡\s*/, '')}"`).join(', ');
+
+    if (!writableResolved.length) {
+      return `All resolved events are on calendars you can only view — no deletions made.`;
+    }
+
+    // SINGLE confirmation gate for the whole batch.
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      const roNote = readOnlyResolved.length ? ` (${readOnlyResolved.length} on read-only calendars will be skipped)` : '';
+      const unresolvedNote = unresolved.length ? ` Couldn't find: ${unresolved.join('; ')}.` : '';
+      return `⚠️ Just confirming before I delete ${writableResolved.length} event(s): ${nameList(writableResolved)}${roNote}.${unresolvedNote} Should I go ahead? ONLY if the user says yes, call cleanupEvents again with the same events list and confirmToken set to "${token}". Token expires in 2 minutes.`;
+    }
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      const token = issueDeleteToken(userId);
+      return `⚠️ That confirmation code was invalid or expired. To delete ${nameList(writableResolved)}, call cleanupEvents again with the new confirmToken: "${token}". Token expires in 2 minutes.`;
+    }
+
+    const deleted: string[] = [];
+    const failedDel: string[] = [];
+    const recreates: UndoOp[] = [];
+    for (const { event: ev, calId } of writableResolved) {
+      try {
+        await cal.events.delete({ calendarId: calId, eventId: ev.id! });
+        deleted.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+        recreates.push({ type: 'recreate', calId, event: cleanForRecreate(ev) });
+      } catch (cleanErr) {
+        console.error(`[cleanupEvents] delete failed calId=${calId}:`, cleanErr);
+        failedDel.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+      }
+    }
+    if (recreates.length) recordUndo(userId, `batch-deleted ${recreates.length} event(s)`, recreates);
+
+    const parts: string[] = [];
+    if (deleted.length) parts.push(`Deleted: ${deleted.join(', ')}`);
+    if (failedDel.length) parts.push(`Couldn't delete: ${failedDel.join(', ')}`);
+    if (readOnlyResolved.length) parts.push(`Skipped (read-only): ${nameList(readOnlyResolved)}`);
+    if (unresolved.length) parts.push(`Not found: ${unresolved.join('; ')}`);
+    return parts.join('. ') || 'Done.';
+
+  } else if (fn === 'rememberPreference') {
+    // Deterministic persistence: save a preference immediately during the call so it
+    // survives even if post-call transcript extraction misses or mis-categorises it.
+    const { statement } = args as { statement: string };
+    if (!statement?.trim()) return "What preference should I remember? Tell me in one sentence.";
+    factQueries.upsertFact(userId, 'preference', statement.trim(), null);
+    return `Got it — I've saved that preference and will apply it going forward.`;
 
   } else if (fn === 'checkReplies') {
     const tokenRow = calendarQueries.get(userId);

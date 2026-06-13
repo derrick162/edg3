@@ -100,6 +100,16 @@ export async function extractAndUpsertFacts(userId: number, transcript: string):
 }
 
 /**
+ * Format up to 10 stored preference statements into a compact system-prompt section.
+ * Returns empty string when no preferences exist so the caller can skip the whole section.
+ * Pure — no DB or API calls.
+ */
+export function buildPreferencesPrompt(preferences: string[]): string {
+  if (!preferences.length) return '';
+  return preferences.slice(0, 10).map(p => `- ${p}`).join('\n');
+}
+
+/**
  * Match this week's/today's calendar events to stored facts by entity name.
  * Returns up to 3 most relevant (event, fact) pairs for briefing annotation.
  * Pure function — no DB or API calls.

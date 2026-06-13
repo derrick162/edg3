@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
-import { briefingQueries, userQueries, priorityQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, effectiveTimezone, User } from './db';
 
 /**
  * Structured call failure — carries a user-facing message and a reason code so
@@ -50,6 +50,14 @@ function currentPrioritiesText(userId: number): string {
   const prios = priorityQueries.getThisWeek(userId, getWeekOf());
   const eff = prios.length ? prios : priorityQueries.getMostRecent(userId);
   return eff.length ? eff.map((p, i) => `${i + 1}. ${p.text}`).join('\n') : '';
+}
+
+// Up to 10 most-recent stored preference facts as bullet lines for the KNOWN PREFERENCES
+// section of the live-call system prompt. Returns '' when none are stored.
+function currentPreferencesText(userId: number): string {
+  const prefs = factQueries.getByCategory(userId, 'preference');
+  if (!prefs.length) return '';
+  return prefs.slice(0, 10).map(p => `- ${p.statement}`).join('\n');
 }
 
 let schedulerRunning = false;
@@ -150,7 +158,7 @@ export async function scheduleBriefingCall(userId: number) {
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId));
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId));
       console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -192,7 +200,7 @@ export async function scheduleOpenCall(userId: number) {
 
     try {
       console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId));
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId));
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {

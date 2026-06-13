@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch SHIPPED**: all-day delete ambiguity, location param, anti-loop guardrail, call-resilience (generateDailyBriefing never throws), graceful hold, first-name, timezone (current-only), consolidation playbook, transcript link, book-error surfacing. Awaiting PM.)_ | — | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **research quality** (`7e59ee2`): role/direction intent, apply context, verify relevance before saving. 335/335 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **scheduler catch-up window** (missed-call fix) + **call-failure surfacing** (CallError code, briefing→failed, 503). Core-loop reliability done. Awaiting PM.)_ | `lib/scheduler.ts` | 2026-06-11 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
@@ -117,6 +117,53 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Research quality guidance (Core).** (`7e59ee2`)
+  - **ROOT CAUSE FIX for wrong-side results (SpotHero on "rent OUT parking spot").** Edge
+    grabbed a plausible brand without registering the user's actual role (supplier vs consumer).
+  - RESEARCH QUALITY block added to `researchToEvent` in `lib/vapi.ts`:
+    1. Nail exact role/direction first: "rent OUT"/"list"/"host" = supplier → listing platforms;
+       "find"/"book" = consumer. Build the query around the user's actual goal.
+    2. Apply known context (location, preferences, facts) before the first search.
+    3. Relevance-check results before saving: verify each result fits the intent; drop
+       mismatches; refine and re-search if off. Never save results that contradict the user's goal.
+  - Folds into the existing "grounded + capable" cluster. Prompt-only; 335/335 green.
+- **2026-06-13** — **moveEvent organizer check (Core).** (`704f4d0`)
+  - **ROOT CAUSE FIX for "couldn't move it" on other people's meetings.** `moveEvent`
+    checked the CALENDAR's accessRole but not the EVENT's organizer — Google 403s
+    time changes from non-organizers.
+  - `canUserReschedule(event)` added to `lib/calendarWritable.ts`: returns `true` if
+    `organizer.self === true` OR `guestsCanModify === true`; benefit-of-the-doubt `true`
+    when organizer field is absent. 7 new tests.
+  - Pre-patch check inserted after the calendar-level `isWritable` check: if user
+    isn't the organizer, returns honest message naming them
+    ("'Faiza CIBC meeting' was set up by Faiza — Google only lets the organizer
+    reschedule it…") + offer to draft a reschedule request via draftEmail.
+  - Generic patch-failure fallback improved: now explains organizer/restricted-calendar
+    possibility and offers the draft path.
+  - `draftEmail` prompt note added: when moveEvent bounces on organizer, call draftEmail
+    with `recipients:[{name, email}]` from the organizer info in the failure message.
+  - 335/335 green, tsc clean, next build clean.
+- **2026-06-11** — **cleanupEvents batch delete + resolveEventExact + Edg3 self-name (Core).** (`b66b20f`)
+  - **ROOT CAUSE FIX for consolidation failures.** Two compounding causes found from live call:
+    (1) 3 originals with different titles required 3 separate `deleteEvent`+confirm-token handshakes
+    — one "yes" can't fulfill all three. (2) Fuzzy-title collision: newly-created "Tax and expenses"
+    matched query "tax", causing disambiguation bail instead of clean delete.
+  - **`resolveEventExact`** (`lib/eventMatch.ts`): resolves by EXACT startDateTime (60s tolerance),
+    not fuzzy title. When `startDateTime` is provided, applies tolerance even for a single candidate
+    — the merged event at a different time is never returned. Falls back to title-only for single
+    unambiguous matches when no startDateTime given; `startDate` for all-day events.
+  - **`cleanupEvents` tool** (`app/api/vapi/tool-call/route.ts`): takes a list of
+    `{title, startDateTime?, startDate?, targetEndDate?}` specs; resolves each by exact datetime;
+    read-only check; SINGLE confirm-token gate for the whole batch; batch delete loop; undo per
+    deleted event.
+  - **Consolidation playbook updated** (`lib/vapi.ts`): step 1 now requires noting exact
+    startDateTimes before creating the merged event; step 3 calls `cleanupEvents` with those
+    exact times so the merged event is never confused with originals.
+  - **Self-name fixed**: "You are Edg3 (pronounced 'Edge')" for brand consistency.
+  - 8 new `resolveEventExact` tests. 317/317 green, tsc clean, next build clean.
+  - ⚠️ **External step**: create `cleanupEvents` tool in Vapi dashboard.
+    Params: `events` (array of `{title, startDateTime?, startDate?, targetEndDate?}`),
+    `confirmToken` (string, optional). Paste UUID into `lib/vapi.ts` toolIds comment and uncomment.
 - **2026-06-11** — **Issues A+B+C — all-day ambiguity + location + endDate guidance (Core).** (`7424c53`)
   - **ISSUE A [BUG] All-day event deletion/move ambiguity**: `deleteEvent` and `moveEvent` now
     accept an optional `targetEndDate` param that pre-filters same-title all-day events to the

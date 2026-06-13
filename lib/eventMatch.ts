@@ -55,3 +55,63 @@ export function selectEvent(candidates: EventCandidate[], query: string, targetM
 
   return { kind: 'ambiguous', indexes: pool.map(p => p.i) };
 }
+
+/** Minimal event shape needed for exact resolution — satisfied by both real Google events and test objects. */
+export interface EventLike {
+  summary?: string | null;
+  start?: { dateTime?: string | null; date?: string | null } | null;
+}
+
+/**
+ * Resolve a specific event by title + EXACT start datetime (within 1-minute tolerance).
+ * Used by cleanupEvents to avoid the fuzzy-title collision that hits during consolidation,
+ * where the newly-created merged event (e.g. "Tax and expenses") has "tax" in its title
+ * and would otherwise be matched when trying to delete the original "Tax" event.
+ *
+ * Resolution rules:
+ * - Filter to title matches (any score > 0).
+ * - If only one title match: return it directly.
+ * - If multiple title matches and startDateTime is provided: pick the one whose UTC instant
+ *   is within 60 seconds of startDateTime. The merged event at a different time is excluded.
+ * - If multiple title matches and only startDate: pick any that has that date (first wins).
+ * - If still ambiguous (no time provided, or nothing within tolerance): return null.
+ */
+export function resolveEventExact<T extends { event: EventLike; calId: string }>(
+  matches: T[],
+  title: string,
+  startDateTime?: string,
+  startDate?: string,
+): T | null {
+  const candidates = matches.filter(m => titleMatchScore(m.event.summary ?? '', title) > 0);
+  if (!candidates.length) return null;
+
+  // When startDateTime is given, ALWAYS apply the 60-second tolerance check — even for a
+  // single candidate. This is the whole point: prevents returning an event that shares the
+  // title but sits at a clearly different time (e.g. the newly-created merged event).
+  if (startDateTime) {
+    const targetMs = new Date(startDateTime).getTime();
+    const byTime = candidates.filter(m => {
+      if (!m.event.start?.dateTime) return false;
+      return Math.abs(new Date(m.event.start.dateTime).getTime() - targetMs) <= 60_000;
+    });
+    if (byTime.length >= 1) {
+      byTime.sort((a, b) =>
+        Math.abs(new Date(a.event.start!.dateTime!).getTime() - targetMs) -
+        Math.abs(new Date(b.event.start!.dateTime!).getTime() - targetMs)
+      );
+      return byTime[0];
+    }
+    return null;
+  }
+
+  // No startDateTime: a single title match is unambiguous.
+  if (candidates.length === 1) return candidates[0];
+
+  if (startDate) {
+    const byDate = candidates.filter(m => m.event.start?.date === startDate);
+    if (byDate.length >= 1) return byDate[0];
+  }
+
+  // Multiple title matches and no time to distinguish — refuse to guess
+  return null;
+}

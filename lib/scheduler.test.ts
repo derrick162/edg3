@@ -37,6 +37,7 @@ vi.mock('./db', () => ({
   briefingQueries: { create: h.briefingCreate, update: h.briefingUpdate },
   userQueries: { findById: h.findById },
   priorityQueries: { getThisWeek: vi.fn(() => []), getMostRecent: vi.fn(() => []) },
+  factQueries: { getByCategory: vi.fn(() => []) },
   memoryQueries: { getRecent: vi.fn(() => []) },
   effectiveTimezone: (u: { timezone?: string }) => u.timezone ?? 'America/Vancouver',
 }));
@@ -50,6 +51,7 @@ vi.mock('./briefing', () => ({
 // ── imports (after mock setup) ────────────────────────────────────────────────
 
 import { checkAndInitiateCalls, scheduleBriefingCall, scheduleOpenCall, CallError } from './scheduler';
+import { factQueries } from './db';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -175,5 +177,55 @@ describe('CallError', () => {
     expect(e).toBeInstanceOf(CallError);
     expect(e.code).toBe('vapi_daily_limit');
     expect(e.userMessage).toBe('Daily cap hit');
+  });
+});
+
+// ── preference injection ──────────────────────────────────────────────────────
+
+describe('preference injection into initiateCall', () => {
+  beforeEach(() => { process.env.VAPI_API_KEY = 'test-key'; });
+  afterEach(() => { delete process.env.VAPI_API_KEY; });
+
+  it('passes empty preferencesText when no preferences are stored', async () => {
+    (factQueries.getByCategory as ReturnType<typeof vi.fn>).mockReturnValue([]);
+    await scheduleBriefingCall(1);
+    // 8th arg (index 7) is preferencesText — should be ''
+    expect(h.initiateCall).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(String),
+      expect.any(Boolean), expect.any(String), false, expect.any(String), '',
+    );
+  });
+
+  it('passes formatted preferences when stored preferences exist', async () => {
+    (factQueries.getByCategory as ReturnType<typeof vi.fn>).mockReturnValue([
+      { id: 1, user_id: 1, category: 'preference', statement: 'Prefers boutique gyms', entity: null, learned_at: '2026-06-13' },
+      { id: 2, user_id: 1, category: 'preference', statement: 'No early meetings before 9am', entity: null, learned_at: '2026-06-13' },
+    ]);
+    await scheduleBriefingCall(1);
+    const callArgs = (h.initiateCall as ReturnType<typeof vi.fn>).mock.calls[0];
+    const preferencesArg = callArgs[7]; // 8th positional arg
+    expect(preferencesArg).toContain('Prefers boutique gyms');
+    expect(preferencesArg).toContain('No early meetings before 9am');
+  });
+
+  it('caps preferences at 10 entries in the injected text', async () => {
+    const manyPrefs = Array.from({ length: 15 }, (_, i) => ({
+      id: i + 1, user_id: 1, category: 'preference' as const,
+      statement: `Preference ${i}`, entity: null, learned_at: '2026-06-13',
+    }));
+    (factQueries.getByCategory as ReturnType<typeof vi.fn>).mockReturnValue(manyPrefs);
+    await scheduleBriefingCall(1);
+    const callArgs = (h.initiateCall as ReturnType<typeof vi.fn>).mock.calls[0];
+    const preferencesArg: string = callArgs[7];
+    expect(preferencesArg.split('\n')).toHaveLength(10);
+  });
+
+  it('also injects preferences on open calls', async () => {
+    (factQueries.getByCategory as ReturnType<typeof vi.fn>).mockReturnValue([
+      { id: 1, user_id: 1, category: 'preference', statement: 'Vegetarian restaurants only', entity: null, learned_at: '2026-06-13' },
+    ]);
+    await scheduleOpenCall(1);
+    const callArgs = (h.initiateCall as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs[7]).toContain('Vegetarian restaurants only');
   });
 });
