@@ -8,6 +8,25 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-13** — **Whoop OAuth integration — foundation layer.**
+  New `whoop_tokens` table in `lib/db.ts` (encrypted at rest — health data PII; same
+  `encryptField`/`decryptField` pattern as `calendar_tokens`). `whoopQueries`: `upsert`,
+  `get` (decrypt-on-read), `delete`. New `lib/whoop.ts`: `getAuthUrl(userId)`,
+  `exchangeCode(code)`, `refreshAccessToken` (auto-refresh 5 min before expiry),
+  `getLatestRecovery(userId)` → `{ recoveryScore, hrv, restingHeartRate }`,
+  `getLastSleep(userId)` → `{ durationMs, performancePct, efficiencyPct }` (naps
+  skipped), `getRecentStrain(userId)` → `{ strain, avgHeartRate }`, `hasWhoopConnected`.
+  All public fetch fns degrade to `null` when `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET`
+  unset or on any network failure. 1-hour in-memory cache per user (daily briefing pull).
+  Routes: `/api/whoop/connect` (start OAuth, sets backup uid cookie), `/api/whoop/callback`
+  (exactly `https://edg3.ai/api/whoop/callback` — matches Whoop dev-app redirect URI),
+  `/api/whoop/disconnect`, `/api/whoop/status`. 21 new tests. 311/311 green. tsc + next
+  build clean.
+  🤝 **For Core:** consume `getLatestRecovery`, `getLastSleep`, `getRecentStrain` from
+  `@/lib/whoop` in `lib/briefing.ts`. All return `null` when disconnected/unscored —
+  safe to skip. `hasWhoopConnected(userId)` for the dashboard "Connect Whoop" button.
+  **Env needed on Railway:** `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET` (user is creating
+  the Whoop dev app; PM will set these).
 - **2026-06-11** — **[CRITICAL] Surface Vapi/briefing failures — "Call me now" no longer fails opaquely.**
   `scheduleBriefingCall` and `scheduleOpenCall` previously awaited `initiateCall` and
   `generateDailyBriefing` with no try/catch — any Vapi rejection (e.g. free-tier daily

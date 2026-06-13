@@ -101,10 +101,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **research quality** (`7e59ee2`): role/direction intent, apply context, verify relevance before saving. 335/335 green. Awaiting PM.)_ | — | 2026-06-13 |
-| 🔒 Security | `security` | _(idle — ✅ **scheduler catch-up window** (missed-call fix) + **call-failure surfacing** (CallError code, briefing→failed, 503). Core-loop reliability done. Awaiting PM.)_ | `lib/scheduler.ts` | 2026-06-11 |
+| 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch + grounded cluster SHIPPED**: consolidation `cleanupEvents` batch-delete, moveEvent organizer check, no-invented-numbers, research quality (intent/role/relevance), BE-DECISIVE, ground-importance, preference-awareness, Edg3 self-name, + earlier all-day/location/anti-loop/call-resilience/hold/first-name/timezone/transcript-link. Awaiting PM.)_ | — | 2026-06-13 |
+| 🔒 Security | `security` | _(idle — ✅ **Whoop OAuth SHIPPED** (`/api/whoop/**`, encrypted `whoop_tokens`, `lib/whoop.ts` fetch primitive) + earlier scheduler catch-up + call-failure surfacing. Awaiting Core to consume + PM Railway creds.)_ | `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
-| 🔧 PM hotfix | `master` | _(✅ sidebar Google connect/disconnect controls no longer vanish on null calendar status; integrated Core+Security QA batches.)_ | — | 2026-06-10 |
 | 🎨 Design | `design` | _(idle — ✅ token pass + components/ui complete. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-10 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
@@ -164,6 +163,14 @@ other lane and the PM can see live ownership claims.
   - ⚠️ **External step**: create `cleanupEvents` tool in Vapi dashboard.
     Params: `events` (array of `{title, startDateTime?, startDate?, targetEndDate?}`),
     `confirmToken` (string, optional). Paste UUID into `lib/vapi.ts` toolIds comment and uncomment.
+- **2026-06-13** — **Whoop OAuth integration (Security).** Foundation layer for Whoop health
+  data in briefings. New `whoop_tokens` table (encrypted at rest — health PII); `whoopQueries`
+  in `lib/db.ts`. `lib/whoop.ts`: OAuth flow (`getAuthUrl`, `exchangeCode`), auto-refresh,
+  cached fetch primitive (`getLatestRecovery` / `getLastSleep` / `getRecentStrain`). Four new
+  routes: `/api/whoop/connect`, `/api/whoop/callback`, `/api/whoop/disconnect`,
+  `/api/whoop/status`. Degrades to null when env vars unset. 21 new tests. 311/311 green.
+  **Remaining:** PM sets `WHOOP_CLIENT_ID`/`WHOOP_CLIENT_SECRET` on Railway. Core integrates
+  `lib/whoop.ts` into `lib/briefing.ts` + adds "Connect Whoop" UI to dashboard.
 - **2026-06-11** — **Issues A+B+C — all-day ambiguity + location + endDate guidance (Core).** (`7424c53`)
   - **ISSUE A [BUG] All-day event deletion/move ambiguity**: `deleteEvent` and `moveEvent` now
     accept an optional `targetEndDate` param that pre-filters same-title all-day events to the
