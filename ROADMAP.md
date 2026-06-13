@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Full real-call fix batch + grounded cluster SHIPPED**: consolidation `cleanupEvents` batch-delete, moveEvent organizer check, no-invented-numbers, research quality (intent/role/relevance), BE-DECISIVE, ground-importance, preference-awareness, Edg3 self-name, + earlier all-day/location/anti-loop/call-resilience/hold/first-name/timezone/transcript-link. Awaiting PM.)_ | — | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ **Whoop V1** (`7412561`): buildWhoopSection + briefing injection (RECOVERY/SLEEP/STRAIN, pacing guidance, silent degrade) + Connect Whoop dashboard UI. 363/363 green. Awaiting PM deploy + user credentials.)_ | `lib/briefing.ts`, `app/dashboard/page.tsx` | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop OAuth SHIPPED** (`/api/whoop/**`, encrypted `whoop_tokens`, `lib/whoop.ts` fetch primitive) + earlier scheduler catch-up + call-failure surfacing. Awaiting Core to consume + PM Railway creds.)_ | `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🎨 Design | `design` | _(idle — ✅ Whoop visual tokens + component classes + spec shipped. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-13 |
@@ -116,6 +116,24 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Whoop V1 — recovery-aware briefings + Connect UI (Core).** (`7412561`)
+  - Consumes Security's `lib/whoop.ts` (`getLatestRecovery`/`getLastSleep`/`getRecentStrain`).
+  - `buildWhoopSection()` pure helper in `lib/briefing.ts`: formats recovery/sleep/strain into
+    a compact line ("RECOVERY: 34% · SLEEP: 5h12m · STRAIN: 14.2"); returns null when all
+    inputs null — health section omitted silently. 7 new tests.
+  - Whoop fetches run in parallel with the calendar fetch (`.catch(() => null)` guards) so
+    ANY failure degrades silently — briefing never blocked.
+  - HEALTH DATA block + recovery-tier pacing guidance injected into the briefing prompt when
+    connected (green ≥67% → push hard; yellow 34–66% → normal; red ≤33% → keep lighter,
+    defer deep work). Model weaves one pacing note into section 1 + factors recovery into
+    section 3 priority/defer call.
+  - Dashboard: `whoopConnected` state, `/api/whoop/status` polled on load, `connectWhoop()`/
+    `disconnectWhoop()` handlers, "⚡ Connect Whoop" / connected + Disconnect UI mirroring
+    the Google calendar controls.
+  - 363/363 green, tsc clean, next build clean.
+  - ⚠️ **External step (user):** Create Whoop developer app at developer.whoop.com →
+    set `WHOOP_CLIENT_ID` + `WHOOP_CLIENT_SECRET` on Railway, redirect URI =
+    `https://<app>/api/whoop/callback`. Then connect from the dashboard sidebar.
 - **2026-06-13** — **Research quality guidance (Core).** (`7e59ee2`)
   - **ROOT CAUSE FIX for wrong-side results (SpotHero on "rent OUT parking spot").** Edge
     grabbed a plausible brand without registering the user's actual role (supplier vs consumer).
