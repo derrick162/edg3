@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,7 +11,7 @@ const TIMEZONES = [
   { label: 'Denver (MT)', value: 'America/Denver' },
   { label: 'Chicago (CT)', value: 'America/Chicago' },
   { label: 'New York / Toronto (ET)', value: 'America/New_York' },
-  { label: 'S�o Paulo (BRT)', value: 'America/Sao_Paulo' },
+  { label: 'São Paulo (BRT)', value: 'America/Sao_Paulo' },
   { label: 'London (GMT)', value: 'Europe/London' },
   { label: 'Paris / Berlin (CET)', value: 'Europe/Paris' },
   { label: 'Cairo (EET)', value: 'Africa/Cairo' },
@@ -92,7 +92,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
     onSettingsSaved?.();
   }
 
-  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading�</div>;
+  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
 
   return (
     <div className="space-y-8">
@@ -126,9 +126,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
           </div>
           <div className="flex items-center gap-3">
             <button type="submit" className="btn-primary text-sm py-2 px-5" disabled={savingSettings}>
-              {savingSettings ? 'Saving�' : 'Save settings'}
+              {savingSettings ? 'Saving…' : 'Save settings'}
             </button>
-            {settingsSaved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>? Saved</span>}
+            {settingsSaved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
           </div>
         </form>
       </div>
@@ -142,9 +142,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         <div className="glass-card p-6">
           {currentTimezone ? (
             <div className="flex items-center gap-3 flex-wrap mb-4">
-              <span className="badge badge-info">?? Currently in {TIMEZONES.find(t => t.value === currentTimezone)?.label || currentTimezone}</span>
+              <span className="badge badge-info">📍 Currently in {TIMEZONES.find(t => t.value === currentTimezone)?.label || currentTimezone}</span>
               <button onClick={() => saveCurrentTimezone('')} disabled={savingTz} className="text-xs" style={{ color: 'var(--edg-danger)' }}>
-                {savingTz ? 'Saving�' : "Clear � I'm home"}
+                {savingTz ? 'Saving…' : "Clear — I'm home"}
               </button>
             </div>
           ) : (
@@ -171,10 +171,10 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">Your profile</h2>
           <div className="flex items-center gap-3">
-            {saved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>? Saved</span>}
+            {saved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
             {!editing && (
               <button onClick={() => setEditing(true)} className="btn-secondary text-sm py-2 px-4">
-                ? Edit
+                ✎ Edit
               </button>
             )}
           </div>
@@ -194,7 +194,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             />
             <div className="flex gap-3 mt-4">
               <button type="submit" className="btn-primary text-sm py-2 px-5" disabled={saving}>
-                {saving ? 'Saving�' : 'Save profile'}
+                {saving ? 'Saving…' : 'Save profile'}
               </button>
               <button type="button" className="btn-secondary text-sm py-2 px-4" onClick={() => setEditing(false)}>
                 Cancel
@@ -210,7 +210,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
               </p>
                 {profile.length > 280 && (
                   <button onClick={() => setProfileExpanded(v => !v)} className="text-xs mt-3" style={{ color: 'var(--text-accent)' }}>
-                    {profileExpanded ? '? Show less' : '? Show more'}
+                    {profileExpanded ? '▲ Show less' : '▼ Show more'}
                   </button>
                 )}
               </>
@@ -307,7 +307,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
               className="text-xs font-medium transition-colors"
               style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
             >
-              {completingAll ? 'Completing�' : `? Complete all (${incompleteVisible.length})`}
+              {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
             </button>
           )}
           {filterView === 'open' && (
@@ -318,11 +318,11 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
         </div>
       </div>
 
-      {/* Add task � always visible */}
+      {/* Add task — always visible */}
       <form onSubmit={handleAdd} className="flex gap-3 mb-6">
         <input
           className="input flex-1"
-          placeholder="Add a task�"
+          placeholder="Add a task…"
           value={newTask}
           onChange={e => setNewTask(e.target.value)}
         />
@@ -336,7 +336,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
         <>
           {todayTasks.filter(t => t.source === 'edg3').length > 0 && (
             <div className="mb-2">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>? SUGGESTED BY EDG3</p>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>✦ SUGGESTED BY EDG3</p>
               <div className="space-y-2">
                 {todayTasks.filter(t => t.source === 'edg3' && !t.completed).map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
@@ -365,7 +365,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
           )}
           {pastTasks.length > 0 && (
             <div className="mt-6">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>? CARRIED OVER</p>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>⚠ CARRIED OVER</p>
               <div className="space-y-2">
                 {pastTasks.map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
@@ -433,7 +433,7 @@ function TaskRow({ task, onToggle, onDelete }: {
           border: task.completed ? '2px solid #6366f1' : '2px solid rgba(255,255,255,0.15)',
         }}
       >
-        {task.completed && <span style={{ color: '#fff', fontSize: 10 }}>?</span>}
+        {task.completed && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
       </button>
       <span
         className="flex-1 text-sm"
@@ -452,7 +452,7 @@ function TaskRow({ task, onToggle, onDelete }: {
         className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
         style={{ color: 'var(--text-faint)' }}
       >
-        ?
+        ✕
       </button>
     </div>
   );
@@ -486,7 +486,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
         <h2 className="text-lg font-bold">This week's priorities</h2>
         {!editing && (
           <button onClick={startEdit} className="btn-secondary text-sm py-2 px-4">
-            ? Edit
+            ✎ Edit
           </button>
         )}
       </div>
@@ -509,7 +509,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
           ))}
           <div className="flex gap-3 pt-2">
             <button type="submit" className="btn-primary text-sm py-2 px-5" disabled={loading}>
-              {loading ? 'Saving�' : 'Save priorities'}
+              {loading ? 'Saving…' : 'Save priorities'}
             </button>
             <button type="button" className="btn-secondary text-sm py-2 px-4" onClick={() => setEditing(false)}>
               Cancel
@@ -593,7 +593,7 @@ function ActivityTab() {
     if (r.ok && d.success) {
       await load();
     } else {
-      setUndoError(d.error || 'Could not undo � please check your calendar.');
+      setUndoError(d.error || 'Could not undo — please check your calendar.');
       setTimeout(() => setUndoError(null), 4000);
     }
   }
@@ -610,16 +610,16 @@ function ActivityTab() {
     return `${d}d ago`;
   }
 
-  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading�</div>;
+  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">Recent activity</h2>
-        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>? Refresh</button>
+        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
       </div>
       <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-        Everything Edge has done on your calendar � click any row for details, undo individually.
+        Everything Edge has done on your calendar — click any row for details, undo individually.
       </p>
 
       {undoError && (
@@ -630,7 +630,7 @@ function ActivityTab() {
 
       {items.length === 0 ? (
         <div className="glass-card p-8 text-center">
-          <p className="text-2xl mb-3">?</p>
+          <p className="text-2xl mb-3">⏪</p>
           <p className="font-medium mb-1">No activity yet</p>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             When Edge creates or edits calendar events, each action will appear here so you can review and undo.
@@ -649,7 +649,7 @@ function ActivityTab() {
                 className="glass-card overflow-hidden"
                 style={{ opacity: isUndone ? 0.55 : 1 }}
               >
-                {/* Row header � click to expand if detail is available */}
+                {/* Row header — click to expand if detail is available */}
                 <div
                   className="p-4 flex items-center gap-3"
                   style={{ cursor: hasDetail ? 'pointer' : 'default' }}
@@ -658,14 +658,14 @@ function ActivityTab() {
                   aria-expanded={hasDetail ? isExpanded : undefined}
                 >
                   <span style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-accent)', flexShrink: 0 }}>
-                    {isUndone ? '?' : '?'}
+                    {isUndone ? '↩' : '✦'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm truncate" style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-strong)' }}>
                       {item.label}
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                      {isUndone ? 'Undone � ' : ''}{relativeTime(item.created_at)}
+                      {isUndone ? 'Undone · ' : ''}{relativeTime(item.created_at)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -681,12 +681,12 @@ function ActivityTab() {
                           cursor: undoingId !== null ? 'not-allowed' : 'pointer',
                         }}
                       >
-                        {undoingId === item.undoId ? 'Undoing�' : '? Undo'}
+                        {undoingId === item.undoId ? 'Undoing…' : '↩ Undo'}
                       </button>
                     )}
                     {hasDetail && (
                       <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                        {isExpanded ? '?' : '?'}
+                        {isExpanded ? '▲' : '▼'}
                       </span>
                     )}
                   </div>
@@ -849,16 +849,16 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
-    // immediately � then load everything else in the background. Previously the spinner
+    // immediately — then load everything else in the background. Previously the spinner
     // waited for ALL calls including the live Google Calendar checks (status/reminder),
     // which made the whole dashboard feel slow.
     const meRes = await fetch('/api/auth/me');
     if (!meRes.ok) { router.push('/login'); return; }
     setUser(await meRes.json());
 
-    // Background loads � each section fills in as its data arrives; none blocks render.
+    // Background loads — each section fills in as its data arrives; none blocks render.
     // Briefing history: a transient non-200 (cold start, session-timing race on first load)
-    // must NOT masquerade as "you have no briefings" � that made history vanish until a manual
+    // must NOT masquerade as "you have no briefings" — that made history vanish until a manual
     // reload, and wrongly tripped the Day-1 preview. Retry a few times; only commit on a real 200.
     const loadHistory = (attempt = 0) => {
       fetch('/api/briefing/history')
@@ -866,12 +866,12 @@ export default function Dashboard() {
         .then(d => { setBriefings(d.briefings || []); setBriefingsLoaded(true); })
         .catch(() => {
           if (attempt < 3) setTimeout(() => loadHistory(attempt + 1), 400 * (attempt + 1));
-          else setBriefingsLoaded(true); // genuine persistent failure � stop spinning
+          else setBriefingsLoaded(true); // genuine persistent failure — stop spinning
         });
     };
     loadHistory();
 
-    // Same retry-on-transient pattern for other user-facing data fetches � a cold-start or
+    // Same retry-on-transient pattern for other user-facing data fetches — a cold-start or
     // session-timing race must not silently blank out priorities/memory/tasks until a reload.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const retryFetch = (url: string, onSuccess: (d: any) => void, attempt = 0) => {
@@ -883,7 +883,7 @@ export default function Dashboard() {
     retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
     retryFetch('/api/tasks', d => setTasks(d.tasks || []));
-    // The slow ones (live Google Calendar) � no longer block the dashboard from showing.
+    // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setWhoopConnected(!!d.connected)).catch(() => {});
@@ -894,7 +894,7 @@ export default function Dashboard() {
     const res = await fetch('/api/calendar/reminder', { method: 'POST' });
     setReminderBusy(false);
     if (res.ok) setReminderInCalendar(true);
-    else alert('Could not add it � make sure your Google Calendar is connected.');
+    else alert('Could not add it — make sure your Google Calendar is connected.');
   }
   async function removeDailyCallReminder() {
     setReminderBusy(true);
@@ -908,7 +908,7 @@ export default function Dashboard() {
   useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
   // Deep-link: ?briefing=<id> auto-expands that briefing entry once history loads.
   useEffect(() => {
-    // Read from window (client-only) rather than useSearchParams � the latter forces a
+    // Read from window (client-only) rather than useSearchParams — the latter forces a
     // <Suspense> boundary / breaks static prerender of this page. Matches the ?linked pattern.
     const idParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('briefing') : null;
     if (!idParam || !briefingsLoaded || !briefings.length) return;
@@ -947,7 +947,7 @@ export default function Dashboard() {
   }
 
   // Day-1 preview: once we know the user is onboarded and has no real briefings, fetch the preview.
-  // The API generates it once and caches it � subsequent calls return instantly.
+  // The API generates it once and caches it — subsequent calls return instantly.
   useEffect(() => {
     if (!user || !briefingsLoaded) return;
     if (!user.onboarding_complete || briefings.length > 0) return;
@@ -979,7 +979,7 @@ export default function Dashboard() {
   }
 
   function openBook(n: { id: number; title: string | null }) {
-    const who = (n.title || '').split(' replied')[0].split(' � ')[0].trim() || 'contact';
+    const who = (n.title || '').split(' replied')[0].split(' · ')[0].trim() || 'contact';
     const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
     setBookForm({ title: `Meeting with ${who}`, date: today, time: '14:00', duration: 30 });
     setBookFor({ id: n.id });
@@ -996,8 +996,8 @@ export default function Dashboard() {
     else { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not book that.'); }
   }
 
-  // After re-linking Google, the callback returns to /dashboard?linked=1 � show a brief
-  // "linked ?" confirmation (and clean the URL) instead of any onboarding detour.
+  // After re-linking Google, the callback returns to /dashboard?linked=1 — show a brief
+  // "linked ✓" confirmation (and clean the URL) instead of any onboarding detour.
   useEffect(() => {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('linked')) {
       setLinkedNotice(true);
@@ -1016,7 +1016,7 @@ export default function Dashboard() {
       alert('Intro call failed: ' + (data.error || res.status));
       setIntroCalling(false);
     }
-    // Keep modal open in "calling" state � user dismisses after call ends
+    // Keep modal open in "calling" state — user dismisses after call ends
   }
 
 
@@ -1041,7 +1041,7 @@ export default function Dashboard() {
     if (!res.ok) {
       alert(data.error || 'Failed to start open call');
     } else {
-      alert('Calling you now for an open conversation � no briefing.');
+      alert('Calling you now for an open conversation — no briefing.');
       loadData();
     }
   }
@@ -1072,7 +1072,7 @@ export default function Dashboard() {
 
   async function connectWhoop() {
     const res = await fetch('/api/whoop/connect');
-    if (!res.ok) { alert('Whoop is not configured yet � contact support.'); return; }
+    if (!res.ok) { alert('Whoop is not configured yet — contact support.'); return; }
     const data = await res.json();
     if (data.url) window.location.href = data.url;
   }
@@ -1109,7 +1109,7 @@ export default function Dashboard() {
 
       {linkedNotice && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
-          ? Google account linked
+          ✓ Google account linked
         </div>
       )}
 
@@ -1120,7 +1120,7 @@ export default function Dashboard() {
           title="Notifications"
           style={{ position: 'relative', width: 40, height: 40, borderRadius: 9999, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 18, cursor: 'pointer' }}
         >
-          ??
+          🔔
           {notifUnread > 0 && (
             <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9999, background: 'var(--edg-danger)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {notifUnread}
@@ -1132,7 +1132,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Notifications</span>
               <button onClick={() => notifAction('check')} disabled={notifChecking} className="text-xs" style={{ color: 'var(--text-accent)' }}>
-                {notifChecking ? 'Checking�' : '? Check for replies'}
+                {notifChecking ? 'Checking…' : '↻ Check for replies'}
               </button>
             </div>
             {notifs.length === 0 ? (
@@ -1144,7 +1144,7 @@ export default function Dashboard() {
                   {n.body && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.body}</p>}
                   <div className="flex items-center justify-between mt-1">
                     <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{new Date(n.created_at).toLocaleString()}</p>
-                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: 'var(--text-accent)' }}>?? Book a time</button>
+                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: 'var(--text-accent)' }}>📅 Book a time</button>
                   </div>
                 </div>
               ))
@@ -1179,7 +1179,7 @@ export default function Dashboard() {
               <option value={120} style={{ background: 'var(--edg-bg-select)' }}>2 hours</option>
             </select>
             <div className="flex gap-2">
-              <button className="btn-primary text-sm py-2 px-5" onClick={submitBook} disabled={booking}>{booking ? 'Booking�' : 'Book it'}</button>
+              <button className="btn-primary text-sm py-2 px-5" onClick={submitBook} disabled={booking}>{booking ? 'Booking…' : 'Book it'}</button>
               <button className="btn-secondary text-sm py-2 px-4" onClick={() => setBookFor(null)}>Cancel</button>
             </div>
           </div>
@@ -1196,12 +1196,12 @@ export default function Dashboard() {
 
           <nav className="space-y-1">
             {[
-              { id: 'briefings', label: 'Briefings', icon: '??' },
-              { id: 'tasks', label: 'Tasks', icon: '?' },
-              { id: 'priorities', label: 'Priorities', icon: '??' },
-              { id: 'activity', label: 'Activity', icon: '?' },
-              { id: 'memory', label: 'Memory', icon: '??' },
-              { id: 'profile', label: 'Profile', icon: '??' },
+              { id: 'briefings', label: 'Briefings', icon: '📋' },
+              { id: 'tasks', label: 'Tasks', icon: '✓' },
+              { id: 'priorities', label: 'Priorities', icon: '🎯' },
+              { id: 'activity', label: 'Activity', icon: '⏪' },
+              { id: 'memory', label: 'Memory', icon: '🧠' },
+              { id: 'profile', label: 'Profile', icon: '👤' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -1232,7 +1232,7 @@ export default function Dashboard() {
                 {showNextCallTip && (
                   <span className="text-xs px-1.5 py-0.5 rounded font-semibold animate-pulse"
                     style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
-                    ? this is you
+                    ← this is you
                   </span>
                 )}
               </div>
@@ -1241,15 +1241,15 @@ export default function Dashboard() {
               </p>
               {callStreak >= 2 && (
                 <p className="text-xs mt-0.5" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
-                  ?? {callStreak}-day streak
+                  🔥 {callStreak}-day streak
                 </p>
               )}
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 {reminderInCalendar === true ? (
                   <>
-                    <span className="text-xs" style={{ color: 'var(--edg-success)' }}>? On your calendar</span>
+                    <span className="text-xs" style={{ color: 'var(--edg-success)' }}>✓ On your calendar</span>
                     <button onClick={removeDailyCallReminder} disabled={reminderBusy} className="text-xs ml-auto" style={{ color: 'var(--text-faint)' }}>
-                      {reminderBusy ? '�' : 'Remove'}
+                      {reminderBusy ? '…' : 'Remove'}
                     </button>
                   </>
                 ) : reminderInCalendar === false ? (
@@ -1259,7 +1259,7 @@ export default function Dashboard() {
                     className="text-xs py-1 px-2 rounded"
                     style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.2)' }}
                   >
-                    {reminderBusy ? 'Adding�' : '?? Add daily call to calendar'}
+                    {reminderBusy ? 'Adding…' : '📅 Add daily call to calendar'}
                   </button>
                 ) : null}
               </div>
@@ -1283,7 +1283,7 @@ export default function Dashboard() {
                     className="text-xs py-1 px-2 rounded flex-1"
                     style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-faint)', border: '1px solid rgba(255,255,255,0.1)' }}
                   >
-                    {keepingPriorities ? '�' : 'Keep'}
+                    {keepingPriorities ? '…' : 'Keep'}
                   </button>
                 </div>
               </div>
@@ -1294,14 +1294,14 @@ export default function Dashboard() {
                 className="w-full text-xs py-2 text-left px-2 rounded"
                 style={{ color: 'var(--text-faint)' }}
               >
-                ?? Connect calendar
+                📅 Connect calendar
               </button>
             ) : (
-              // Default for connected AND unknown/loading state � never leave the user with no
+              // Default for connected AND unknown/loading state — never leave the user with no
               // way to reconnect/disconnect (a null status used to render nothing here).
               <div className="px-2 py-2">
                 <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>?</span>
+                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{calendarConnected ? 'Calendar connected' : 'Google connection'}</p>
                 </div>
                 <div className="flex items-center gap-3 pl-3.5">
@@ -1318,7 +1318,7 @@ export default function Dashboard() {
                     className="text-xs"
                     style={{ color: 'var(--edg-danger)' }}
                   >
-                    {disconnectingCalendar ? 'Disconnecting�' : 'Disconnect'}
+                    {disconnectingCalendar ? 'Disconnecting…' : 'Disconnect'}
                   </button>
                 </div>
               </div>
@@ -1329,12 +1329,12 @@ export default function Dashboard() {
                 className="w-full text-xs py-2 text-left px-2 rounded"
                 style={{ color: 'var(--text-faint)' }}
               >
-                ? Connect Whoop
+                ⚡ Connect Whoop
               </button>
             ) : whoopConnected ? (
               <div className="px-2 py-2">
                 <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>?</span>
+                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
                 </div>
                 <div className="flex items-center gap-3 pl-3.5">
@@ -1344,7 +1344,7 @@ export default function Dashboard() {
                     className="text-xs"
                     style={{ color: 'var(--edg-danger)' }}
                   >
-                    {disconnectingWhoop ? 'Disconnecting�' : 'Disconnect'}
+                    {disconnectingWhoop ? 'Disconnecting…' : 'Disconnect'}
                   </button>
                 </div>
               </div>
@@ -1355,7 +1355,7 @@ export default function Dashboard() {
                 className="w-full text-xs py-2 text-left px-2 rounded"
                 style={{ color: 'var(--text-faint)' }}
               >
-                <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>??</span> Get intro call
+                <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Get intro call
               </button>
             )}
             <button
@@ -1387,16 +1387,16 @@ export default function Dashboard() {
                 onClick={openCall}
                 disabled={openingCall}
                 className="btn-secondary text-sm py-2 px-4"
-                title="An open conversation � no briefing"
+                title="An open conversation — no briefing"
               >
-                {openingCall ? 'Calling�' : '?? Open call'}
+                {openingCall ? 'Calling…' : '💬 Open call'}
               </button>
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
                 className="btn-primary text-sm py-2 px-4"
               >
-                {initiatingCall ? 'Calling�' : '?? Call me now'}
+                {initiatingCall ? 'Calling…' : '📞 Call me now'}
               </button>
             </div>
           </div>
@@ -1406,7 +1406,7 @@ export default function Dashboard() {
             <div className="glass-card p-6 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY'S BRIEFING PREVIEW</h3>
-                <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>? dismiss</button>
+                <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
               </div>
               <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                 {briefingText}
@@ -1421,20 +1421,20 @@ export default function Dashboard() {
               {!briefingsLoaded ? (
                 <div className="glass-card p-8 text-center">
                   <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block mb-3" />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading your briefings�</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading your briefings…</p>
                 </div>
               ) : briefings.length === 0 ? (
                 previewLoading ? (
                   <div className="glass-card p-8 text-center" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
-                    <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>? HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
+                    <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
                     <div className="flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}>
                       <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
-                      <span className="text-sm">Edg3 is putting together your preview�</span>
+                      <span className="text-sm">Edg3 is putting together your preview…</span>
                     </div>
                   </div>
                 ) : previewContent ? (
                   <div className="glass-card p-6 mb-4" style={{ borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.04)' }}>
-                    <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>? HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
+                    <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
                     <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                       {previewContent}
                     </p>
@@ -1444,7 +1444,7 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="glass-card p-8 text-center">
-                    <p className="text-4xl mb-3">??</p>
+                    <p className="text-4xl mb-3">📞</p>
                     <p className="font-medium mb-1">No briefings yet</p>
                     <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                       Click &quot;Call me now&quot; to get your first briefing, or wait for your scheduled call at {user.call_time}.
@@ -1462,7 +1462,7 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold text-sm">
-                            {format(new Date(b.scheduled_for), 'EEEE, MMM d � h:mm a')}
+                            {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
                           </p>
                           {b.user_response && (
                             <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: 'var(--text-muted)' }}>
@@ -1512,11 +1512,11 @@ export default function Dashboard() {
                               if (!promises.length) return null;
                               return (
                                 <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>? EDGE ACTION ITEMS</p>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>✅ EDGE ACTION ITEMS</p>
                                   <div className="space-y-1">
                                     {promises.map((p: string, i: number) => (
                                       <p key={i} className="text-xs" style={{ color: 'var(--text-body)' }}>
-                                        <span style={{ color: 'var(--edg-indigo)' }}>?</span> {p}
+                                        <span style={{ color: 'var(--edg-indigo)' }}>→</span> {p}
                                       </p>
                                     ))}
                                   </div>
@@ -1530,13 +1530,13 @@ export default function Dashboard() {
                               const actions = JSON.parse((b as any).calendar_actions);
                               if (!actions.length) return null;
                               return (
-                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-calendar-green-tint)', border: '1px solid var(--edg-calendar-green-border)' }}>
-                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-calendar-green)' }}>?? CALENDAR ACTIONS</p>
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>📅 CALENDAR ACTIONS</p>
                                   <div className="space-y-1">
                                     {actions.map((a: any, i: number) => (
                                       <p key={i} className="text-xs" style={{ color: 'var(--text-body)' }}>
-                                        <span style={{ color: 'var(--edg-calendar-green)' }}>?</span> {a.type === 'created' ? 'Added' : a.type} � {a.title}
-                                        {a.start && <span style={{ color: 'var(--text-muted)' }}> � {new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+                                        <span style={{ color: '#4ade80' }}>✓</span> {a.type === 'created' ? 'Added' : a.type} — {a.title}
+                                        {a.start && <span style={{ color: 'var(--text-muted)' }}> · {new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
                                       </p>
                                     ))}
                                   </div>
@@ -1551,11 +1551,11 @@ export default function Dashboard() {
                               if (!labels.length) return null;
                               return (
                                 <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>?? EDGE&apos;S ACTIONS THIS CALL</p>
+                                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
                                   <div className="space-y-1.5">
                                     {labels.map((label: string, i: number) => (
                                       <div key={i} className="text-xs flex items-start gap-2" style={{ color: 'var(--text-body)' }}>
-                                        <span style={{ color: 'var(--edg-calendar-green)' }}>?</span>
+                                        <span style={{ color: '#4ade80' }}>✓</span>
                                         <span>{label}</span>
                                       </div>
                                     ))}
@@ -1618,7 +1618,7 @@ export default function Dashboard() {
             <div>
               <h2 className="text-lg font-bold mb-4">What Edge knows</h2>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Structured facts Edge has learned about you, your work, and your world � built up over every call.
+                Structured facts Edge has learned about you, your work, and your world — built up over every call.
               </p>
 
               {/* Structured facts grouped by category */}
@@ -1682,7 +1682,7 @@ export default function Dashboard() {
                 );
               })()}
 
-              {/* Raw memories � paginated */}
+              {/* Raw memories — paginated */}
               {memories.length > 0 && (() => {
                 const PAGE_SIZE = 20;
                 const totalPages = Math.ceil(memories.length / PAGE_SIZE);
@@ -1709,7 +1709,7 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                            {m.content.length > 300 ? m.content.slice(0, 300) + '�' : m.content}
+                            {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
                           </p>
                         </div>
                       ))}
@@ -1763,11 +1763,11 @@ export default function Dashboard() {
             </div>
             <h2 className="text-2xl font-black mb-2">Edg3 wants to introduce himself.</h2>
             <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-              Edg3 will call you now at <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro � your first of many conversations.
+              Edg3 will call you now at <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
             </p>
             <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'rgba(99,102,241,0.05)' }}>
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>EDG3 WILL HELP YOU:</p>
-              {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable � honestly, like a great advisor'].map((item, i) => (
+              {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable — honestly, like a great advisor'].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className="text-indigo-400 font-bold text-sm">{i + 1}.</span>
                   <p className="text-sm" style={{ color: 'var(--text-body)' }}>{item}</p>
@@ -1779,20 +1779,20 @@ export default function Dashboard() {
                 onClick={callIntro}
                 className="btn-primary w-full py-3 text-base"
               >
-                <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>??</span> Meet Edg3
+                <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Meet Edg3
               </button>
             ) : (
               <div className="text-center space-y-4">
                 <div className="flex items-center justify-center gap-3 py-3">
                   <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="font-semibold" style={{ color: 'var(--text-accent)' }}>Edg3 is calling you now�</span>
+                  <span className="font-semibold" style={{ color: 'var(--text-accent)' }}>Edg3 is calling you now…</span>
                 </div>
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Pick up � it'll only take 30 seconds.</p>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Pick up — it'll only take 30 seconds.</p>
                 <button
                   onClick={() => { setShowWelcome(false); setShowNextCallTip(true); router.replace('/dashboard'); }}
                   className="btn-secondary w-full py-2 text-sm"
                 >
-                  ? Done, I got the call
+                  ✓ Done, I got the call
                 </button>
               </div>
             )}
