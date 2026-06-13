@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Whoop V1** (`7412561`): buildWhoopSection + briefing injection (RECOVERY/SLEEP/STRAIN, pacing guidance, silent degrade) + Connect Whoop dashboard UI. 363/363 green. Awaiting PM deploy + user credentials.)_ | `lib/briefing.ts`, `app/dashboard/page.tsx` | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ **Whoop V2** (`40155fd`): energy-matched time-blocking — `buildEnergyMatchingBlock()`, ENERGY PROFILE injection, section-5 guidance, ENERGY MATCHING in vapi.ts. 371/371 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop OAuth SHIPPED** (`/api/whoop/**`, encrypted `whoop_tokens`, `lib/whoop.ts` fetch primitive) + earlier scheduler catch-up + call-failure surfacing. Awaiting Core to consume + PM Railway creds.)_ | `lib/whoop.ts`, `app/api/whoop/**` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ integrated full real-call batch; fixed 2 Next.js-version build traps — async route params + useSearchParams/Suspense — that tsc missed but `next build` caught. Deploying.)_ | — | 2026-06-11 |
 | 🎨 Design | `design` | _(idle — ✅ Whoop visual tokens + component classes + spec shipped. Queue exhausted — awaiting PM for next tasks.)_ | — | 2026-06-13 |
@@ -116,6 +116,36 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Whoop V2 — energy-matched time-blocking (Core).** (`40155fd`)
+  - `buildEnergyMatchingBlock(preferences, recovery)` pure function in `lib/briefing.ts`.
+    Scans preference-category facts for energy-profile keywords (peak, trough, deep work,
+    admin, afternoon dip, flow state, focus block, etc.). Returns null when no energy
+    profile is stored — degrade silently, briefing never blocked.
+  - Combines user's stated energy preferences with today's Whoop recovery as the daily
+    modulator (green ≥67% → full capacity; yellow 34–66% → proceed; red ≤33% → protect
+    peak, lean toward admin). Includes honesty guard: never claims Whoop measured intraday.
+  - Briefing injection: ENERGY PROFILE block injected after whoopContextBlock when facts
+    exist. Section 5 (CALENDAR BLOCKS) updated to match deep/creative work to stated peak
+    window and batch low-energy tasks to stated trough. Scale to today's recovery tier.
+    Example: "Recovery's high and it's your nine to eleven peak — want me to block
+    vibe-coding there? I'll push email to your two PM dip."
+  - Soft invite: if Whoop connected but no energy profile yet, adds one line at the end
+    of the closing section inviting the user to share their peak/trough hours.
+  - Live-call support: ENERGY MATCHING note added to CALENDAR TOOLS in `lib/vapi.ts` —
+    when recommending or creating blocks mid-call, match to energy profile + recovery.
+  - 8 new tests. 371/371 green, tsc clean, next build clean.
+  - **How it activates:** user tells Edge their energy profile mid-call ("my peak is nine
+    to eleven, vibe-coding is high-energy, email is admin") → `rememberPreference()` stores
+    as preference facts → next morning's briefing automatically does energy-matched blocking.
+- **2026-06-13** — **Prompt consolidation + privacy Whoop section (Core).** (`bc843f6`)
+  - `lib/vapi.ts` trimmed ~30% with no behaviour dropped. Anchor: GROUNDED & DECISIVE (only
+    state what the data gives you, only ask what you don't know, act, refine, never fabricate).
+  - PREFERENCES: ~90→55 words. BE DECISIVE: absorbed ANTI-LOOP (~160→75 combined).
+  - HONEST FAILURE: ~100→50 words. researchToEvent guidance: ~180→90 words (rules intact).
+  - NEVER INVENT FACTS + GROUNDED OBSERVATIONS + NO INVENTED NUMBERS → single GROUNDED &
+    DECISIVE anchor block. 363/363 green, tsc clean, next build clean.
+  - `app/privacy/page.tsx`: added "Whoop Health Data" section (recovery/sleep/strain,
+    read-only, encrypted at rest, disconnect any time). Required before Whoop rolls to users.
 - **2026-06-13** — **Whoop V1 — recovery-aware briefings + Connect UI (Core).** (`7412561`)
   - Consumes Security's `lib/whoop.ts` (`getLatestRecovery`/`getLastSleep`/`getRecentStrain`).
   - `buildWhoopSection()` pure helper in `lib/briefing.ts`: formats recovery/sleep/strain into
