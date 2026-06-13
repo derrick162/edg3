@@ -50,6 +50,11 @@
   --edg-warning-tint: rgba(245, 158, 11,  0.15);
   --edg-danger-tint:  rgba(239, 68,  68,  0.15);
 
+  /* Calendar action success — brighter green-400, distinct from edg-success */
+  --edg-calendar-green:        #4ade80;
+  --edg-calendar-green-tint:   rgba(74, 222, 128, 0.06);
+  --edg-calendar-green-border: rgba(74, 222, 128, 0.15);
+
   /* ── Whoop / health recovery tokens ── */
   /* Recovery state colors (Whoop's green/amber/red scale) */
   --whoop-high:        #22c55e;  /* green-500  — 67–100% recovery */
