@@ -101,8 +101,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ Whoop V3 SHIPPED (proactive recovery defense + correlations). 437/437 green. Awaiting PM merge.)_ | — | 2026-06-13 |
-| 🔒 Security | `security` | _(idle — ✅ **encryption verification** (11 at-rest tests) + **user deletion fix** (9 missing tables incl. whoop_tokens) + **Google CASA doc** (`specs/google-verification.md`). 452/452 green. Awaiting PM.)_ | `lib/db-encryption.test.ts`, `app/api/admin/users/**`, `specs/` | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ `cleanupDuplicates` tool + meal-time awareness SHIPPED. ⚠️ PM: create Vapi tool + paste UUID — see changelog.)_ | `lib/eventMatch.ts`, `route.ts`, `lib/vapi.ts` | 2026-06-13 |
+| 🔒 Security | `security` | _(idle — ✅ **encryption verification** (11 at-rest tests) + **user deletion fix** (9 missing tables incl. whoop_tokens) + **Google CASA doc** (`specs/google-verification.md`). Awaiting PM.)_ | `lib/db-encryption.test.ts`, `app/api/admin/users/**`, `specs/` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ onboarding pass + mobile layout shipped. Awaiting PM.)_ | — | 2026-06-13 |
 
@@ -118,6 +118,26 @@ other lane and the PM can see live ownership claims.
 ## Changelog
 - **2026-06-13** — **Mobile responsiveness pass (Design).** Dashboard: `flex-col md:flex-row` layout; sidebar `w-full md:w-60` with horizontal icon-only scrolling tab nav on mobile; sidebar widgets `hidden md:flex`; main `p-4 md:p-8 min-w-0`. Onboarding: `py-8 md:py-16` outer, `p-5 md:p-8` card, StepIndicator tightened, CalendarStep false "read-only" copy corrected, inline rgba → token substitutions. `.no-scrollbar` added to `app/globals.css`.
 - **2026-06-13** — **Dashboard token polish + RecoveryCard sidebar spacing (Design).** `app/dashboard/page.tsx`: re-applied lost inline-color tokenization (UTF-8 safe, Edit tool only) — `rgba(99,102,241,0.2/0.15/0.08)` → `--edg-accent-20/15/08`, `#6366f1` → `--edg-indigo`. RecoveryCard sidebar wrapper restructured: card fills full sidebar width, status/disconnect row stays at `px-2` indent for alignment with calendar section.
+- **2026-06-13** — **`cleanupDuplicates` tool + meal-time awareness (Core).**
+  - **`cleanupDuplicates` Vapi tool** (`app/api/vapi/tool-call/route.ts`): scans a date window
+    (default: today through today+14 days; override with optional `startDate`/`endDate`). Groups
+    events by normalized title + start time (to-the-minute UTC). Keeps the earliest-created copy
+    of each group, queues the rest for deletion. Single `confirmToken` gate (same pattern as
+    `cleanupEvents`). `recordUndo` per deleted event. Returns spoken summary:
+    "Found and removed 8 duplicates — 2 morning walks, 2 breakfasts, ..." If none found, says so.
+  - **`findDuplicateGroups<T>(events)` pure helper** added to `lib/eventMatch.ts`:
+    `DuplicateEventLike` interface (extends `EventLike`; adds `id`, `created`). Groups by
+    `normalizeTitle(summary)|<UTC-minute-key>`. Sorts each group by `created` (ascending) then `id`
+    as tiebreaker. Returns `{ key, keep, remove[] }[]`. 9 new tests in `lib/eventMatch.test.ts`.
+  - **Prompt** (`lib/vapi.ts`): `CLEAN UP DUPLICATES` block — when user says "delete the
+    duplicates"/"clean up duplicates"/"remove the extras" → call `cleanupDuplicates`, NOT
+    one-by-one `deleteEvent`. `MEAL TIMES` block — breakfast ≈ morning (<10 AM), lunch ≈ midday
+    (~noon–1 PM), dinner ≈ evening (~6–8 PM). `CONFIRM BEFORE DELETING` updated to mention
+    `cleanupDuplicates`. Placeholder `cleanupDuplicates` toolId added (commented out).
+  - 450/450 green, tsc clean, next build clean.
+  - ⚠️ **External step (PM):** Create `cleanupDuplicates` Vapi dashboard tool.
+    Params: `startDate` (string, optional), `endDate` (string, optional), `confirmToken` (string, optional).
+    Paste UUID into `lib/vapi.ts` toolIds (commented placeholder is there) and uncomment.
 - **2026-06-13** — **Whoop V3 — Proactive recovery defense + correlations (Core).**
   - **Part A — Proactive recovery defense:** `detectRecoveryDrop(todayScore, history)` pure helper
     in `lib/whoopTrends.ts`. Fires on: red tier (≤33%) OR sharp drop (≥20pt below trailing-7d avg).

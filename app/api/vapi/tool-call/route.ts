@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
-import { titleMatchScore, selectEvent, resolveEventExact } from '@/lib/eventMatch';
+import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, factQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
@@ -925,6 +925,86 @@ Query: ${query}` }],
     if (failedDel.length) parts.push(`Couldn't delete: ${failedDel.join(', ')}`);
     if (readOnlyResolved.length) parts.push(`Skipped (read-only): ${nameList(readOnlyResolved)}`);
     if (unresolved.length) parts.push(`Not found: ${unresolved.join('; ')}`);
+    return parts.join('. ') || 'Done.';
+
+  } else if (fn === 'cleanupDuplicates') {
+    // Scan a date window for duplicate events (same normalized title + same minute), keep the
+    // earliest-created copy of each, delete the rest with a single confirmation token.
+    const { startDate: sdArg, endDate: edArg, confirmToken } = args as {
+      startDate?: string;
+      endDate?: string;
+      confirmToken?: string;
+    };
+    const today = todayInTz(tz);
+    const windowStart = sdArg ?? today;
+    const d14 = new Date(`${today}T00:00:00Z`);
+    d14.setUTCDate(d14.getUTCDate() + 14);
+    const windowEnd = edArg ?? d14.toISOString().slice(0, 10);
+
+    const timeMin = dayRangeUtc(tz, windowStart).start.toISOString();
+    const timeMax = dayRangeUtc(tz, windowEnd).end.toISOString();
+    const allEventsRaw = await Promise.all(calIds.map(async calId => {
+      const res = await cal.events.list({
+        calendarId: calId, timeMin, timeMax, singleEvents: true, maxResults: 2500, showHiddenInvitations: true,
+      }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+      return (res.data.items ?? []).map(e => ({ event: e, calId }));
+    }));
+    const allEvents = allEventsRaw.flat();
+
+    const dupeGroups = findDuplicateGroups(allEvents);
+    if (!dupeGroups.length) {
+      return `No duplicate events found between ${windowStart} and ${windowEnd} — your calendar looks clean.`;
+    }
+
+    const toRemove = dupeGroups.flatMap(g => g.remove);
+    const writableRemove = toRemove.filter(({ calId }) => {
+      const entry = calMeta.get(calId);
+      return !entry || isWritable(entry.accessRole);
+    });
+
+    if (!writableRemove.length) {
+      return `Found ${toRemove.length} duplicate(s) but they're all on read-only calendars — no deletions made.`;
+    }
+
+    const countByTitle = (items: { event: calendar_v3.Schema$Event }[]) => {
+      const m = new Map<string, number>();
+      for (const { event } of items) {
+        const t = (event.summary ?? 'Untitled').replace(/^⚡\s*/, '');
+        m.set(t, (m.get(t) ?? 0) + 1);
+      }
+      return [...m.entries()].map(([t, n]) => `${n} ${t}`).join(', ');
+    };
+
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      return `⚠️ Found ${writableRemove.length} duplicate event(s) — I'll keep the earliest copy of each and remove the rest: ${countByTitle(writableRemove)}. Should I go ahead? ONLY if the user says yes, call cleanupDuplicates again with the same args and confirmToken set to "${token}". Token expires in 2 minutes.`;
+    }
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      const token = issueDeleteToken(userId);
+      return `⚠️ That confirmation code was invalid or expired. To remove ${writableRemove.length} duplicate(s), call cleanupDuplicates again with confirmToken: "${token}". Token expires in 2 minutes.`;
+    }
+
+    const deleted: string[] = [];
+    const failedDel: string[] = [];
+    const recreates: UndoOp[] = [];
+    for (const { event: ev, calId } of writableRemove) {
+      try {
+        await cal.events.delete({ calendarId: calId, eventId: ev.id! });
+        deleted.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+        recreates.push({ type: 'recreate', calId, event: cleanForRecreate(ev) });
+      } catch (dupErr) {
+        console.error(`[cleanupDuplicates] delete failed calId=${calId}:`, dupErr);
+        failedDel.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+      }
+    }
+    if (recreates.length) recordUndo(userId, `removed ${recreates.length} duplicate event(s)`, recreates);
+
+    const removedCounts = new Map<string, number>();
+    for (const t of deleted) removedCounts.set(t, (removedCounts.get(t) ?? 0) + 1);
+    const removedSummary = [...removedCounts.entries()].map(([t, n]) => `${n} ${t}`).join(', ');
+    const parts: string[] = [];
+    if (deleted.length) parts.push(`Found and removed ${deleted.length} duplicate${deleted.length !== 1 ? 's' : ''} — ${removedSummary}`);
+    if (failedDel.length) parts.push(`Couldn't remove: ${failedDel.join(', ')}`);
     return parts.join('. ') || 'Done.';
 
   } else if (fn === 'rememberPreference') {

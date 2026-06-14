@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTitle, titleMatchScore, selectEvent, resolveEventExact } from './eventMatch';
+import { normalizeTitle, titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from './eventMatch';
 
 describe('titleMatchScore', () => {
   it('exact match beats partial', () => {
@@ -124,5 +124,91 @@ describe('resolveEventExact', () => {
     const a = makeMatch('Conrad Las Vegas', undefined, '2026-06-25');
     const b = makeMatch('Conrad Las Vegas', undefined, '2026-06-28');
     expect(resolveEventExact([a, b], 'Conrad Las Vegas', undefined, '2026-06-25')).toBe(a);
+  });
+});
+
+describe('findDuplicateGroups', () => {
+  const timed = (summary: string, dateTime: string, id = summary, created?: string) => ({
+    event: { summary, id, created, start: { dateTime } },
+    calId: 'primary',
+  });
+  const allDay = (summary: string, date: string, id = summary, created?: string) => ({
+    event: { summary, id, created, start: { date } },
+    calId: 'primary',
+  });
+
+  it('returns empty when there are no duplicates', () => {
+    const events = [
+      timed('Morning Walk', '2026-06-13T07:00:00Z'),
+      timed('Gym', '2026-06-13T09:00:00Z'),
+    ];
+    expect(findDuplicateGroups(events)).toHaveLength(0);
+  });
+
+  it('groups two timed events with the same title + same minute', () => {
+    const a = timed('Morning Walk', '2026-06-13T07:00:00Z', 'id-a', '2026-06-13T01:00:00Z');
+    const b = timed('Morning Walk', '2026-06-13T07:00:00Z', 'id-b', '2026-06-13T02:00:00Z');
+    const groups = findDuplicateGroups([a, b]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].keep).toBe(a);
+    expect(groups[0].remove).toEqual([b]);
+  });
+
+  it('keeps the earliest-created event, not the first in the array', () => {
+    const newer = timed('Breakfast', '2026-06-13T08:00:00Z', 'id-new', '2026-06-13T03:00:00Z');
+    const older = timed('Breakfast', '2026-06-13T08:00:00Z', 'id-old', '2026-06-13T01:00:00Z');
+    const groups = findDuplicateGroups([newer, older]);
+    expect(groups[0].keep).toBe(older);
+    expect(groups[0].remove).toEqual([newer]);
+  });
+
+  it('does NOT group events with the same title but different start times', () => {
+    const events = [
+      timed('Gym', '2026-06-13T09:00:00Z'),
+      timed('Gym', '2026-06-13T10:00:00Z'),
+    ];
+    expect(findDuplicateGroups(events)).toHaveLength(0);
+  });
+
+  it('does NOT group events at the same time but with different titles', () => {
+    const events = [
+      timed('Breakfast', '2026-06-13T08:00:00Z'),
+      timed('Lunch', '2026-06-13T08:00:00Z'),
+    ];
+    expect(findDuplicateGroups(events)).toHaveLength(0);
+  });
+
+  it('handles three duplicates — keeps one, removes two', () => {
+    const a = timed('Walk', '2026-06-13T07:00:00Z', 'a', '2026-06-13T01:00:00Z');
+    const b = timed('Walk', '2026-06-13T07:00:00Z', 'b', '2026-06-13T02:00:00Z');
+    const c = timed('Walk', '2026-06-13T07:00:00Z', 'c', '2026-06-13T03:00:00Z');
+    const groups = findDuplicateGroups([c, a, b]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].keep).toBe(a);
+    expect(groups[0].remove).toHaveLength(2);
+  });
+
+  it('groups all-day duplicate events by date', () => {
+    const a = allDay('Vacation', '2026-06-20', 'va', '2026-06-01T00:00:00Z');
+    const b = allDay('Vacation', '2026-06-20', 'vb', '2026-06-02T00:00:00Z');
+    const groups = findDuplicateGroups([a, b]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].keep).toBe(a);
+  });
+
+  it('normalizes ⚡ prefix and case when grouping', () => {
+    const a = timed('⚡ Morning Walk', '2026-06-13T07:00:00Z', 'a', '2026-06-13T01:00:00Z');
+    const b = timed('Morning Walk', '2026-06-13T07:00:00Z', 'b', '2026-06-13T02:00:00Z');
+    const groups = findDuplicateGroups([a, b]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].keep).toBe(a);
+  });
+
+  it('skips events with no start field', () => {
+    const noStart = { event: { summary: 'Ghost', id: 'g' }, calId: 'primary' };
+    const normal = timed('Morning Walk', '2026-06-13T07:00:00Z', 'n', '2026-06-13T01:00:00Z');
+    const dupe   = timed('Morning Walk', '2026-06-13T07:00:00Z', 'd', '2026-06-13T02:00:00Z');
+    const groups = findDuplicateGroups([noStart, normal, dupe]);
+    expect(groups).toHaveLength(1); // only the timed pair
   });
 });
