@@ -2,27 +2,42 @@
 
 import { useState } from 'react';
 
-// ── Types (contract with Core) ───────────────────────────────────────────────
+// ── Types (contract with Core — matches ScoreResult in lib/focusProgress.ts) ─
 
 export interface ScoreTopFix {
-  action: string;       // short imperative: "Block 90min for fundraising tomorrow"
-  impact: string;       // expected score delta: "+2 points"
-  toolHint?: string;    // optional: 'createEvent' | 'moveEvent' | etc.
+  description: string;   // plain-English action: "Move deep-work block to your 9–11 peak"
+  op?: 'create' | 'move' | 'delete' | 'recolor';
 }
 
-export interface CalendarScore {
-  score: number;          // 1–10
-  drivers: string[];      // 2–4 short plain-English reasons
+export interface ScoreResult {
+  score: number;         // 1–10
+  drivers: string[];     // 2–4 plain-English reasons
   topFix: ScoreTopFix | null;
-  loading?: boolean;
-  calibrating?: boolean;  // true while < 10 calls completed (energy still learning)
-  callsCompleted?: number; // for calibration progress "call N of 10"
+}
+
+export interface CalendarFit {
+  focusScore: ScoreResult;
+  energyScore: ScoreResult;
+  computedAt: string;
 }
 
 export interface CalendarFitCardProps {
-  focusScore: CalendarScore | null;
-  energyScore: CalendarScore | null;
+  fit: CalendarFit | null;        // null = loading
+  sparse?: boolean;               // true = < 3 focus areas or < 5 events — show gentle prompt
+  loading?: boolean;
+  calibrating?: boolean;          // energy score still learning (< 10 calls)
+  callsCompleted?: number;
   onRequestFix?: (type: 'focus' | 'energy') => void;
+}
+
+// Internal shape used by ScoreGauge
+interface CalendarScore {
+  score: number;
+  drivers: string[];
+  topFix: ScoreTopFix | null;
+  loading?: boolean;
+  calibrating?: boolean;
+  callsCompleted?: number;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -154,16 +169,16 @@ function ScoreGauge({
               className="flex items-start gap-2 px-2 py-2 rounded-lg"
               style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}
             >
-              <span className="text-xs" style={{ color: 'var(--text-accent)', lineHeight: 1.5 }}>
-                ✦ {topFix.action}
-                <span className="ml-1.5 font-semibold" style={{ color: 'var(--edg-success)' }}>
-                  {topFix.impact}
-                </span>
+              <span className="text-xs flex-1" style={{ color: 'var(--text-accent)', lineHeight: 1.5 }}>
+                ✦ {topFix.description}
+                {topFix.op && (
+                  <span className="ml-1.5 opacity-50 font-mono text-xs">[{topFix.op}]</span>
+                )}
               </span>
               {onRequestFix && (
                 <button
                   onClick={e => { e.stopPropagation(); onRequestFix(); }}
-                  className="flex-shrink-0 text-xs px-2 py-0.5 rounded font-semibold ml-auto"
+                  className="flex-shrink-0 text-xs px-2 py-0.5 rounded font-semibold"
                   style={{ background: 'var(--edg-accent-20)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-25)' }}
                 >
                   Fix it
@@ -179,14 +194,28 @@ function ScoreGauge({
 
 // ── CalendarFitCard ───────────────────────────────────────────────────────────
 
-export function CalendarFitCard({ focusScore, energyScore, onRequestFix }: CalendarFitCardProps) {
+export function CalendarFitCard({
+  fit,
+  sparse = false,
+  loading = false,
+  calibrating = false,
+  callsCompleted,
+  onRequestFix,
+}: CalendarFitCardProps) {
   const [expandedFocus, setExpandedFocus] = useState(false);
   const [expandedEnergy, setExpandedEnergy] = useState(false);
 
-  const hasScores = focusScore || energyScore;
-  const combinedAvg = (focusScore && energyScore)
-    ? Math.round((focusScore.score + energyScore.score) / 2)
-    : (focusScore?.score ?? energyScore?.score ?? null);
+  const combinedAvg = fit
+    ? Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
+    : null;
+
+  const focusData: CalendarScore | null = fit
+    ? { ...fit.focusScore, calibrating: false }
+    : loading ? { score: 0, drivers: [], topFix: null, loading: true } : null;
+
+  const energyData: CalendarScore | null = fit
+    ? { ...fit.energyScore, calibrating, callsCompleted }
+    : loading ? { score: 0, drivers: [], topFix: null, loading: true } : null;
 
   return (
     <div className="glass-card p-4">
@@ -196,21 +225,20 @@ export function CalendarFitCard({ focusScore, energyScore, onRequestFix }: Calen
           <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
             Calendar fit today
           </p>
-          {combinedAvg !== null && (
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-              {combinedAvg >= 8 ? 'Your schedule is working for you.' :
-               combinedAvg >= 5 ? 'Room to improve — see below.' :
-               'Schedule needs attention.'}
-            </p>
-          )}
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+            {sparse
+              ? 'Add focus areas and events to see your score.'
+              : combinedAvg === null
+              ? 'Scores appear after your first morning briefing.'
+              : combinedAvg >= 8 ? 'Your schedule is working for you.'
+              : combinedAvg >= 5 ? 'Room to improve — tap a score to see why.'
+              : 'Schedule needs attention — tap a score to fix it.'}
+          </p>
         </div>
-        {combinedAvg !== null && (
+        {combinedAvg !== null && !sparse && (
           <div
             className="text-2xl font-black tabular-nums"
-            style={{
-              color: gaugeColor(combinedAvg),
-              textShadow: gaugeGlow(combinedAvg),
-            }}
+            style={{ color: gaugeColor(combinedAvg), textShadow: gaugeGlow(combinedAvg) }}
           >
             {combinedAvg}
             <span className="text-xs font-normal ml-0.5" style={{ color: 'var(--text-faint)' }}>/10</span>
@@ -218,16 +246,20 @@ export function CalendarFitCard({ focusScore, energyScore, onRequestFix }: Calen
         )}
       </div>
 
-      {!hasScores ? (
-        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-          Scores appear after your first morning briefing.
-        </p>
+      {/* Sparse / empty state */}
+      {sparse ? (
+        <div
+          className="text-xs px-3 py-2 rounded-lg"
+          style={{ background: 'var(--edg-accent-08)', color: 'var(--text-muted)', border: '1px solid var(--edg-accent-20)' }}
+        >
+          ✦ Set your 3 focus areas and connect your calendar — Edge will start scoring your schedule.
+        </div>
       ) : (
         <div className="space-y-3">
           <ScoreGauge
             label="Focus"
             icon="🎯"
-            data={focusScore}
+            data={focusData}
             type="focus"
             expanded={expandedFocus}
             onToggle={() => setExpandedFocus(v => !v)}
@@ -237,7 +269,7 @@ export function CalendarFitCard({ focusScore, energyScore, onRequestFix }: Calen
           <ScoreGauge
             label="Energy"
             icon="⚡"
-            data={energyScore}
+            data={energyData}
             type="energy"
             expanded={expandedEnergy}
             onToggle={() => setExpandedEnergy(v => !v)}

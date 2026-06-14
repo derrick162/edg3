@@ -10,4 +10,4 @@ export type { RecoveryCardProps, RecoveryTier, RecoveryHistoryPoint } from './Re
 export { FocusScoreboard } from './FocusScoreboard';
 export type { FocusScoreboardProps, FocusArea, FocusMilestone, EnergyCost } from './FocusScoreboard';
 export { CalendarFitCard } from './CalendarFitCard';
-export type { CalendarFitCardProps, CalendarScore, ScoreTopFix } from './CalendarFitCard';
+export type { CalendarFitCardProps, CalendarFit, ScoreResult, ScoreTopFix } from './CalendarFitCard';

@@ -294,22 +294,18 @@ import { FocusScoreboard } from '@/components/ui';
 - **Calibrating state**: amber banner "Edge is learning your energy — call N of 10" when `calibrating: true`.
 - **Loading skeleton**: animated pulse bar while scores compute.
 
-### Prop contract (Core wires data)
+### Prop contract (Core wires data — matches `CalendarFit` from `lib/focusProgress.ts`)
 ```tsx
 import { CalendarFitCard } from '@/components/ui';
+// type CalendarFit = { focusScore: ScoreResult, energyScore: ScoreResult, computedAt: string }
+// type ScoreResult = { score: number, drivers: string[], topFix: { description: string, op?: 'create'|'move'|'delete'|'recolor' } | null }
 
 <CalendarFitCard
-  focusScore={{
-    score: 8,
-    drivers: ['2 focus areas have scheduled time', '68% of blocks are aligned'],
-    topFix: { action: 'Block 90min for Fundraising tomorrow', impact: '+1 point' },
-  }}
-  energyScore={{
-    score: 5,
-    drivers: ['Deep work sits in your 2pm trough', 'Red recovery day — 3 hard meetings'],
-    topFix: { action: 'Move deep vibe-coding to 9am peak', impact: '+3 points' },
-    calibrating: false,
-  }}
+  fit={calendarFit}              // null = not yet computed
+  sparse={priorities.length < 1} // graceful state: "build your calendar first"
+  loading={!calendarFit && !sparse}
+  calibrating={energyCallsCompleted < 10}
+  callsCompleted={energyCallsCompleted}
   onRequestFix={type => {
     // type: 'focus' | 'energy'
     // trigger the relevant Vapi tool call or API action
