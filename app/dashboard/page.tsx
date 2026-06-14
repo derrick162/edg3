@@ -238,7 +238,7 @@ function SectionHint({ id, text }: { id: string; text: string }) {
   return (
     <div
       className="flex items-start gap-3 mb-5 px-3 py-2.5 rounded-lg"
-      style={{ background: 'rgba(255,255,255,0.03)', borderLeft: '2px solid var(--edg-hairline)' }}
+      style={{ background: 'var(--edg-fill-04)', borderLeft: '2px solid var(--edg-hairline)' }}
     >
       <p className="text-xs flex-1 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
         {text}
@@ -304,7 +304,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
   const headingByView = { open: isTomorrow ? "Tomorrow's tasks" : "Today's tasks", completed: 'Completed', all: 'All tasks' };
 
   const filterControl = (
-    <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', width: 'fit-content' }}>
+    <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--edg-fill-04)', width: 'fit-content' }}>
       {(['open', 'completed', 'all'] as const).map(v => (
         <button
           key={v}
@@ -469,7 +469,7 @@ function TaskRow({ task, onToggle, onDelete }: {
         className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
         style={{
           background: task.completed ? 'var(--edg-indigo)' : 'transparent',
-          border: task.completed ? '2px solid var(--edg-indigo)' : '2px solid rgba(255,255,255,0.15)',
+          border: task.completed ? '2px solid var(--edg-indigo)' : '2px solid var(--edg-border-15)',
         }}
       >
         {task.completed && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
@@ -701,7 +701,7 @@ function ActivityTab() {
       </p>
 
       {undoError && (
-        <div className="mb-4 text-sm px-4 py-2 rounded-lg" style={{ background: 'var(--edg-danger-tint)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--edg-danger)' }}>
+        <div className="mb-4 text-sm px-4 py-2 rounded-lg" style={{ background: 'var(--edg-danger-tint)', border: '1px solid var(--edg-danger-border)', color: 'var(--edg-danger)' }}>
           {undoError}
         </div>
       )}
@@ -764,7 +764,7 @@ function ActivityTab() {
                             {isUndone && (
                               <span
                                 className="text-xs px-1.5 py-0.5 rounded"
-                                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-faint)' }}
+                                style={{ background: 'var(--edg-fill-hover)', color: 'var(--text-faint)' }}
                               >
                                 undone
                               </span>
@@ -780,7 +780,7 @@ function ActivityTab() {
                               disabled={undoingId !== null}
                               className="text-xs py-1 px-2.5 rounded-md font-medium"
                               style={{
-                                background: 'rgba(255,255,255,0.06)',
+                                background: 'var(--edg-fill-hover)',
                                 color: undoingId === item.undoId ? 'var(--text-faint)' : 'var(--text-muted)',
                                 border: '1px solid var(--edg-hairline)',
                                 cursor: undoingId !== null ? 'not-allowed' : 'pointer',
@@ -828,7 +828,7 @@ function ActivityTab() {
                                     {c.label} changed
                                   </p>
                                   <div className="grid grid-cols-2 gap-2">
-                                    <div className="text-xs p-2 rounded" style={{ background: 'rgba(239,68,68,0.08)' }}>
+                                    <div className="text-xs p-2 rounded" style={{ background: 'var(--edg-danger-tint)' }}>
                                       <p className="font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Before</p>
                                       <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.before}</p>
                                     </div>
@@ -1255,7 +1255,7 @@ export default function Dashboard() {
       <div className="orb orb-2" />
 
       {linkedNotice && (
-        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'var(--edg-success-tint)', border: '1px solid var(--edg-success-border)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
           ✓ Google account linked
         </div>
       )}
@@ -1265,7 +1265,7 @@ export default function Dashboard() {
         <button
           onClick={() => { const next = !notifOpen; setNotifOpen(next); if (next && notifUnread > 0) notifAction('markAllRead'); }}
           title="Notifications"
-          style={{ position: 'relative', width: 40, height: 40, borderRadius: 9999, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 18, cursor: 'pointer' }}
+          style={{ position: 'relative', width: 40, height: 40, borderRadius: 9999, background: 'var(--edg-fill-hover)', border: '1px solid var(--edg-border-10)', fontSize: 18, cursor: 'pointer' }}
         >
           🔔
           {notifUnread > 0 && (
@@ -1286,7 +1286,7 @@ export default function Dashboard() {
               <p className="text-xs py-6 text-center" style={{ color: 'var(--text-faint)' }}>No notifications yet. When someone replies to an email Edge drafted, it&apos;ll show up here.</p>
             ) : (
               notifs.map((n) => (
-                <div key={n.id} className="py-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', opacity: n.read ? 0.6 : 1 }}>
+                <div key={n.id} className="py-2" style={{ borderTop: '1px solid var(--edg-hairline)', opacity: n.read ? 0.6 : 1 }}>
                   <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>{n.title}</p>
                   {n.body && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.body}</p>}
                   <div className="flex items-center justify-between mt-1">
@@ -1302,7 +1302,7 @@ export default function Dashboard() {
 
       {/* Quick-book modal (from a notification's "Book a time") */}
       {bookFor && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setBookFor(null)}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'var(--edg-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setBookFor(null)}>
           <div className="glass-card" style={{ width: 380, maxWidth: '100%', padding: 22 }} onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Book a time</p>
             <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Confirm the details and Edge will add it to your calendar.</p>
@@ -1373,8 +1373,8 @@ export default function Dashboard() {
             <div
               className="glass-card p-3 transition-all"
               style={showNextCallTip ? {
-                border: '1px solid rgba(99,102,241,0.6)',
-                boxShadow: '0 0 16px rgba(99,102,241,0.25)',
+                border: '1px solid var(--edg-accent-60)',
+                boxShadow: '0 0 16px var(--edg-accent-25)',
               } : {}}
             >
               <div className="flex items-center gap-2 mb-1">
@@ -1390,7 +1390,7 @@ export default function Dashboard() {
                 {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
               </p>
               {callStreak >= 2 && (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--edg-warning)' }}>
                   🔥 {callStreak}-day streak
                 </p>
               )}
@@ -1415,7 +1415,7 @@ export default function Dashboard() {
               </div>
             </div>
             {prioritiesStale && !prioritiesDismissed && (
-              <div className="glass-card p-3" style={{ border: '1px solid rgba(245,158,11,0.3)' }}>
+              <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
                   Still your top priorities this week?
                 </p>
@@ -1431,7 +1431,7 @@ export default function Dashboard() {
                     onClick={handleKeepPriorities}
                     disabled={keepingPriorities}
                     className="text-xs py-1 px-2 rounded flex-1"
-                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-faint)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
                   >
                     {keepingPriorities ? '…' : 'Keep'}
                   </button>
@@ -1600,7 +1600,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : previewContent ? (
-                  <div className="glass-card p-6 mb-4" style={{ borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.04)' }}>
+                  <div className="glass-card p-6 mb-4" style={{ borderColor: 'var(--edg-accent-25)', background: 'var(--edg-accent-04)' }}>
                     <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
                     <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                       {previewContent}
@@ -1661,7 +1661,7 @@ export default function Dashboard() {
                                     <div key={i} className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                                       <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-xs"
                                         style={{
-                                          background: isUser ? 'var(--edg-accent-20)' : 'rgba(255,255,255,0.05)',
+                                          background: isUser ? 'var(--edg-accent-20)' : 'var(--edg-hairline)',
                                           color: isUser ? 'var(--text-strong)' : 'var(--text-muted)',
                                         }}>
                                         {text}
@@ -1678,7 +1678,7 @@ export default function Dashboard() {
                               const promises = JSON.parse(b.edge_promises);
                               if (!promises.length) return null;
                               return (
-                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid var(--edg-accent-20)' }}>
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-accent-06)', border: '1px solid var(--edg-accent-20)' }}>
                                   <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>✅ EDGE ACTION ITEMS</p>
                                   <div className="space-y-1">
                                     {promises.map((p: string, i: number) => (
@@ -1717,7 +1717,7 @@ export default function Dashboard() {
                               const labels = summarizeUserFacingActions(JSON.parse(b.tool_actions));
                               if (!labels.length) return null;
                               return (
-                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid var(--edg-accent-15)' }}>
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-accent-06)', border: '1px solid var(--edg-accent-15)' }}>
                                   <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
                                   <div className="space-y-1.5">
                                     {labels.map((label: string, i: number) => (
@@ -1859,7 +1859,7 @@ export default function Dashboard() {
                                         <button
                                           onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
                                           className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid rgba(99,102,241,0.25)' }}
+                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
                                         >
                                           Save
                                         </button>
@@ -1882,7 +1882,7 @@ export default function Dashboard() {
                                         <button
                                           onClick={() => deleteFact(f.id)}
                                           className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid rgba(239,68,68,0.25)' }}
+                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
                                         >
                                           Remove
                                         </button>
@@ -1911,9 +1911,9 @@ export default function Dashboard() {
                                                 onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
                                                 className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
                                                 style={{
-                                                  background: 'rgba(245,158,11,0.1)',
+                                                  background: 'var(--edg-warning-tint)',
                                                   color: 'var(--edg-warning)',
-                                                  border: '1px solid rgba(245,158,11,0.2)',
+                                                  border: '1px solid var(--edg-warning-border)',
                                                   lineHeight: 1,
                                                 }}
                                               >
@@ -2068,17 +2068,17 @@ export default function Dashboard() {
 
       {/* Welcome modal */}
       {showWelcome && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-          <div className="glass-card p-8 max-w-md w-full text-center relative" style={{ border: '1px solid rgba(99,102,241,0.3)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'var(--edg-overlay-dark)', backdropFilter: 'blur(4px)' }}>
+          <div className="glass-card p-8 max-w-md w-full text-center relative" style={{ border: '1px solid var(--border-accent)' }}>
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
-                 style={{ background: 'var(--edg-accent-15)', border: '1px solid rgba(99,102,241,0.3)' }}>
+                 style={{ background: 'var(--edg-accent-15)', border: '1px solid var(--border-accent)' }}>
               <span className="logo-text text-2xl">E</span>
             </div>
             <h2 className="text-2xl font-black mb-2">Edg3 wants to introduce himself.</h2>
             <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
               Edg3 will call you now at <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{(user as any)?.phone_number || 'your phone'}</span> for a quick 30-second intro — your first of many conversations.
             </p>
-            <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'rgba(99,102,241,0.05)' }}>
+            <div className="space-y-2 text-left glass-card p-4 mb-6" style={{ background: 'var(--edg-accent-08)' }}>
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>EDG3 WILL HELP YOU:</p>
               {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable — honestly, like a great advisor'].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
