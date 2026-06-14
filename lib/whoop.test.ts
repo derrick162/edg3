@@ -36,6 +36,9 @@ import {
   getLatestRecovery,
   getLastSleep,
   getRecentStrain,
+  getRecoveryHistory,
+  getSleepHistory,
+  getStrainHistory,
   hasWhoopConnected,
   WHOOP_SCOPES,
 } from './whoop';
@@ -311,5 +314,182 @@ describe('getRecentStrain', () => {
     h.whoopGet.mockReturnValue(VALID_TOKEN);
     // mockFetch defaults to { ok: false } from beforeEach.
     expect(await getRecentStrain(217)).toBeNull();
+  });
+});
+
+// ── 7. getRecoveryHistory ─────────────────────────────────────────────────────
+
+// Helpers: make a recovery record with a created_at date.
+function makeRecoveryRecord(date: string, score: number, state = 'SCORED') {
+  return { created_at: `${date}T06:00:00.000Z`, score_state: state, score: { recovery_score: score, hrv_rmssd_milli: 40, resting_heart_rate: 58 } };
+}
+
+describe('getRecoveryHistory', () => {
+  it('returns [] when client is not configured (userId=300)', async () => {
+    const prev = process.env.WHOOP_CLIENT_ID;
+    delete process.env.WHOOP_CLIENT_ID;
+    expect(await getRecoveryHistory(300)).toEqual([]);
+    process.env.WHOOP_CLIENT_ID = prev;
+  });
+
+  it('returns [] when no tokens stored (userId=301)', async () => {
+    h.whoopGet.mockReturnValue(undefined);
+    expect(await getRecoveryHistory(301)).toEqual([]);
+  });
+
+  it('returns mapped history oldest-first, filtering PENDING_SCORE (userId=302)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        records: [
+          makeRecoveryRecord('2026-06-13', 80),             // newest — API order
+          makeRecoveryRecord('2026-06-12', 45, 'PENDING_SCORE'), // filtered out
+          makeRecoveryRecord('2026-06-11', 65),
+        ],
+      }),
+    });
+    const result = await getRecoveryHistory(302);
+    // Oldest first; PENDING_SCORE excluded.
+    expect(result).toEqual([
+      { date: '2026-06-11', recoveryScore: 65 },
+      { date: '2026-06-13', recoveryScore: 80 },
+    ]);
+  });
+
+  it('paginates via next_token (userId=303)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    // Page 1 returns next_token; page 2 ends pagination.
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          records: [makeRecoveryRecord('2026-06-13', 80)],
+          next_token: 'page2',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          records: [makeRecoveryRecord('2026-06-12', 70)],
+        }),
+      });
+    const result = await getRecoveryHistory(303);
+    expect(result).toHaveLength(2);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // nextToken forwarded in the second request URL.
+    expect(mockFetch.mock.calls[1][0]).toContain('nextToken=page2');
+  });
+
+  it('uses cache on second call — fetch called only once (userId=304)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ records: [makeRecoveryRecord('2026-06-13', 77)] }),
+    });
+    await getRecoveryHistory(304);
+    await getRecoveryHistory(304);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns [] on API failure (userId=305)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    // mockFetch defaults to { ok: false } from beforeEach.
+    expect(await getRecoveryHistory(305)).toEqual([]);
+  });
+});
+
+// ── 8. getSleepHistory ────────────────────────────────────────────────────────
+
+function makeSleepRecord(date: string, durationMs: number, nap = false, state = 'SCORED') {
+  return {
+    start: `${date}T22:00:00.000Z`,
+    nap,
+    score_state: state,
+    score: { stage_summary: { total_in_bed_time_milli: durationMs }, sleep_performance_percentage: 85, sleep_efficiency_percentage: 90 },
+  };
+}
+
+describe('getSleepHistory', () => {
+  it('returns mapped sleep history, filtering naps (userId=310)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        records: [
+          makeSleepRecord('2026-06-13', 28_800_000),        // main sleep
+          makeSleepRecord('2026-06-13', 3_600_000, true),   // nap — filtered
+          makeSleepRecord('2026-06-12', 25_200_000),
+        ],
+      }),
+    });
+    const result = await getSleepHistory(310);
+    expect(result).toEqual([
+      { date: '2026-06-12', durationMs: 25_200_000 },
+      { date: '2026-06-13', durationMs: 28_800_000 },
+    ]);
+  });
+
+  it('returns [] when all records are naps (userId=311)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        records: [makeSleepRecord('2026-06-13', 3_600_000, true)],
+      }),
+    });
+    expect(await getSleepHistory(311)).toEqual([]);
+  });
+
+  it('returns [] on API failure (userId=312)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    expect(await getSleepHistory(312)).toEqual([]);
+  });
+});
+
+// ── 9. getStrainHistory ───────────────────────────────────────────────────────
+
+function makeStrainRecord(date: string, strain: number, state = 'SCORED') {
+  return { start: `${date}T00:00:00.000Z`, score_state: state, score: { strain, average_heart_rate: 75 } };
+}
+
+describe('getStrainHistory', () => {
+  it('returns mapped strain history oldest-first (userId=315)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        records: [
+          makeStrainRecord('2026-06-13', 16.3),
+          makeStrainRecord('2026-06-12', 8.55),
+        ],
+      }),
+    });
+    const result = await getStrainHistory(315);
+    expect(result).toEqual([
+      { date: '2026-06-12', strain: 8.6 },
+      { date: '2026-06-13', strain: 16.3 },
+    ]);
+  });
+
+  it('filters out PENDING_SCORE records (userId=316)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        records: [
+          makeStrainRecord('2026-06-13', 14.0, 'PENDING_SCORE'),
+          makeStrainRecord('2026-06-12', 12.0),
+        ],
+      }),
+    });
+    const result = await getStrainHistory(316);
+    expect(result).toEqual([{ date: '2026-06-12', strain: 12.0 }]);
+  });
+
+  it('returns [] on empty records (userId=317)', async () => {
+    h.whoopGet.mockReturnValue(VALID_TOKEN);
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ records: [] }) });
+    expect(await getStrainHistory(317)).toEqual([]);
   });
 });

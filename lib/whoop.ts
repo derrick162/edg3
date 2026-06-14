@@ -117,10 +117,14 @@ async function getAccessToken(userId: number): Promise<string | null> {
 // --- In-memory cache (1-hour TTL — one briefing pull per day) ---------------
 
 interface CacheEntry<T> { data: T; fetchedAt: number }
-const recoveryCache = new Map<number, CacheEntry<WhoopRecovery | null>>();
-const sleepCache    = new Map<number, CacheEntry<WhoopSleep | null>>();
-const strainCache   = new Map<number, CacheEntry<WhoopStrain | null>>();
-const CACHE_TTL_MS  = 60 * 60 * 1000;
+const recoveryCache    = new Map<number, CacheEntry<WhoopRecovery | null>>();
+const sleepCache       = new Map<number, CacheEntry<WhoopSleep | null>>();
+const strainCache      = new Map<number, CacheEntry<WhoopStrain | null>>();
+// History caches — keyed by userId; assumes default days=14 per PM spec.
+const recoveryHistCache = new Map<number, CacheEntry<WhoopRecoveryDay[]>>();
+const sleepHistCache    = new Map<number, CacheEntry<WhoopSleepDay[]>>();
+const strainHistCache   = new Map<number, CacheEntry<WhoopStrainDay[]>>();
+const CACHE_TTL_MS     = 60 * 60 * 1000;
 
 function fromCache<T>(cache: Map<number, CacheEntry<T>>, userId: number): T | undefined {
   const entry = cache.get(userId);
@@ -136,11 +140,13 @@ function setCache<T>(cache: Map<number, CacheEntry<T>>, userId: number, data: T)
 // --- Raw API types -----------------------------------------------------------
 
 interface WhoopRecoveryRecord {
+  created_at?: string; // ISO 8601 — when the score was computed (morning after sleep)
   score_state: string;
   score: { recovery_score: number; hrv_rmssd_milli: number; resting_heart_rate: number };
 }
 
 interface WhoopSleepRecord {
+  start?: string; // ISO 8601 — when the sleep session began
   nap: boolean;
   score_state: string;
   score: {
@@ -151,6 +157,7 @@ interface WhoopSleepRecord {
 }
 
 interface WhoopCycleRecord {
+  start?: string; // ISO 8601 — when the physiological cycle began (~ midnight local)
   score_state: string;
   score: { strain: number; average_heart_rate: number };
 }
@@ -175,6 +182,27 @@ async function whoopGet<T>(
   return res.json() as Promise<T>;
 }
 
+// Paginator — follows next_token until all records are fetched or maxRecords hit.
+async function whoopGetAll<T>(
+  userId: number,
+  path: string,
+  params: Record<string, string>,
+  maxRecords = 50,
+): Promise<T[]> {
+  const all: T[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const p = nextToken ? { ...params, nextToken } : params;
+    const page = await whoopGet<WhoopListResponse<T>>(userId, path, p);
+    if (!page?.records?.length) break;
+    all.push(...page.records);
+    nextToken = page.next_token;
+  } while (nextToken && all.length < maxRecords);
+
+  return all;
+}
+
 // --- Public types (for Core to consume) -------------------------------------
 
 export interface WhoopRecovery {
@@ -193,6 +221,11 @@ export interface WhoopStrain {
   strain:         number; // 0–21 (1 decimal)
   avgHeartRate:   number; // bpm
 }
+
+// History shapes — clean minimal arrays for Core's trend analysis.
+export interface WhoopRecoveryDay { date: string; recoveryScore: number } // date: YYYY-MM-DD
+export interface WhoopSleepDay    { date: string; durationMs:    number }
+export interface WhoopStrainDay   { date: string; strain:        number }
 
 // --- Public fetch functions --------------------------------------------------
 
@@ -275,5 +308,82 @@ export function hasWhoopConnected(userId: number): boolean {
     return !!whoopQueries.get(userId);
   } catch {
     return false;
+  }
+}
+
+// --- History fetch functions (for Core's trend analysis) --------------------
+// All return [] on any failure — never throw.
+// Degrade to [] when Whoop credentials are not configured.
+// Sorted oldest → newest for easy charting.
+
+export async function getRecoveryHistory(
+  userId: number,
+  days = 14,
+): Promise<WhoopRecoveryDay[]> {
+  if (!clientConfigured()) return [];
+  const cached = fromCache(recoveryHistCache, userId);
+  if (cached !== undefined) return cached;
+
+  try {
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const records = await whoopGetAll<WhoopRecoveryRecord>(
+      userId, '/recovery', { start, limit: '25' },
+    );
+    const result: WhoopRecoveryDay[] = records
+      .filter(r => r.score_state === 'SCORED' && !!r.created_at)
+      .map(r => ({ date: r.created_at!.slice(0, 10), recoveryScore: Math.round(r.score.recovery_score) }))
+      .reverse(); // API returns newest-first; we want oldest-first
+    setCache(recoveryHistCache, userId, result);
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+export async function getSleepHistory(
+  userId: number,
+  days = 14,
+): Promise<WhoopSleepDay[]> {
+  if (!clientConfigured()) return [];
+  const cached = fromCache(sleepHistCache, userId);
+  if (cached !== undefined) return cached;
+
+  try {
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const records = await whoopGetAll<WhoopSleepRecord>(
+      userId, '/activity/sleep', { start, limit: '25' },
+    );
+    const result: WhoopSleepDay[] = records
+      .filter(r => !r.nap && r.score_state === 'SCORED' && !!r.start)
+      .map(r => ({ date: r.start!.slice(0, 10), durationMs: r.score.stage_summary.total_in_bed_time_milli }))
+      .reverse();
+    setCache(sleepHistCache, userId, result);
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+export async function getStrainHistory(
+  userId: number,
+  days = 14,
+): Promise<WhoopStrainDay[]> {
+  if (!clientConfigured()) return [];
+  const cached = fromCache(strainHistCache, userId);
+  if (cached !== undefined) return cached;
+
+  try {
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const records = await whoopGetAll<WhoopCycleRecord>(
+      userId, '/cycle', { start, limit: '25' },
+    );
+    const result: WhoopStrainDay[] = records
+      .filter(r => r.score_state === 'SCORED' && !!r.start)
+      .map(r => ({ date: r.start!.slice(0, 10), strain: Math.round(r.score.strain * 10) / 10 }))
+      .reverse();
+    setCache(strainHistCache, userId, result);
+    return result;
+  } catch {
+    return [];
   }
 }
