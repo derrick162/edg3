@@ -20,10 +20,10 @@ want me to fix it?") and the top of the dashboard. The product loop becomes: **s
 propose add/move/delete/recolor → re-score.** The moat is (a) the quality + explainability of the
 scoring model and (b) the closed reshaping loop that actually raises the scores.
 
-## ⚠️ Naming — resolve the clash with "Focus Scoreboard"
+## Naming — resolved: unify (DECIDED 2026-06-14)
 We already have the **Focus Scoreboard** (in flight) = the OUTCOME layer: progress over time
 (milestones done, hours invested). The two new scores are different — they're a **point-in-time
-quality grade of the schedule**, not progress. Proposed unification so users + lanes don't confuse them:
+quality grade of the schedule**, not progress. **DECIDED: unify them on one surface** (Derrick):
 
 > The dashboard **Scoreboard** surface has two stacked halves:
 > 1. **Calendar Fit (today)** — the two live gauges: **Focus Score** + **Energy Score** (1–10). "Is my calendar set up right?"
@@ -61,10 +61,13 @@ score → outcomes later).
    visual energy map (peak = one color, trough = another), and mismatches are visible at a glance.
    Requires the energy profile (peak/trough windows). New action/tool to (re)color in a batch.
 2. **Energy detection from the morning call** — infer the user's energy from the call itself, not
-   just by asking. MVP = LLM classify the call transcript → red/yellow/green + confidence, used
-   **only when the user didn't explicitly state it**; writes `energy_log` with `source:'inferred-call'`;
-   user override always wins. v2 = voice/prosody analysis (speech rate/pitch/pauses) for a non-verbal
-   signal — more proprietary, more work.
+   just by asking. **DECIDED: transcript-first MVP** = LLM classify the call transcript →
+   red/yellow/green + confidence, used **only when the user didn't explicitly state it**; writes
+   `energy_log` with `source:'inferred-call'`; user override always wins. **v2 = voice/prosody**
+   (the proprietary path) — full research + build plan in `specs/voice-energy.md`.
+   **Calibration (build in from day one):** energy perception **calibrates over ~10 calls** (per-user
+   baseline — scientifically required, see voice-energy spec). Show "Edge is learning your energy —
+   call N of 10" until calibrated; don't act on a shaky read before then.
 3. **Score-driven reshaping** — when a score is low, Edge proposes the specific add/move/delete/recolor
    that raises it most (`topFix`), and acts on yes.
 
