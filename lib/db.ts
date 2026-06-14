@@ -267,7 +267,7 @@ function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS focus_milestones (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id      INTEGER NOT NULL REFERENCES users(id),
-      priority_id  INTEGER NOT NULL REFERENCES priorities(id) ON DELETE CASCADE,
+      priority_id  INTEGER NOT NULL REFERENCES priorities(id),
       title        TEXT NOT NULL,
       done         INTEGER NOT NULL DEFAULT 0,
       sort_order   INTEGER NOT NULL DEFAULT 0,
@@ -1144,13 +1144,12 @@ export const focusMilestoneQueries = {
       'INSERT INTO focus_milestones (user_id, priority_id, title) VALUES (?, ?, ?)'
     ).run(userId, priorityId, title);
   },
-  // Sets done=1 with completed_at=now, or done=0 with completed_at cleared.
-  setDone: (id: number, userId: number, done: boolean | 0 | 1) => {
-    if (done) {
-      return getDb().prepare(
-        "UPDATE focus_milestones SET done = 1, completed_at = datetime('now') WHERE id = ? AND user_id = ?"
-      ).run(id, userId);
-    }
+  markDone: (id: number, userId: number) => {
+    return getDb().prepare(
+      "UPDATE focus_milestones SET done = 1, completed_at = datetime('now') WHERE id = ? AND user_id = ?"
+    ).run(id, userId);
+  },
+  markUndone: (id: number, userId: number) => {
     return getDb().prepare(
       'UPDATE focus_milestones SET done = 0, completed_at = NULL WHERE id = ? AND user_id = ?'
     ).run(id, userId);

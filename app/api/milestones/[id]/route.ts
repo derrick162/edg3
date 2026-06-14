@@ -19,7 +19,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'done (boolean) is required' }, { status: 400 });
   }
 
-  focusMilestoneQueries.setDone(id, user.id, body.done);
+  if (body.done) {
+    focusMilestoneQueries.markDone(id, user.id);
+  } else {
+    focusMilestoneQueries.markUndone(id, user.id);
+  }
   return NextResponse.json({ success: true });
 }
 
