@@ -22,25 +22,25 @@ describe('energyLogQueries — basic read/write', () => {
   beforeEach(async () => { db = await loadDb(); });
 
   it('returns undefined when no record exists for a date', () => {
-    const result = db.energyLogQueries.getForDate(db.userId, '2026-06-14');
+    const result = db.energyLogQueries.getToday(db.userId, '2026-06-14');
     expect(result).toBeUndefined();
   });
 
   it('stores and retrieves a green energy record', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'green', 'whoop');
-    const result = db.energyLogQueries.getForDate(db.userId, '2026-06-14');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'green', 'whoop');
+    const result = db.energyLogQueries.getToday(db.userId, '2026-06-14');
     expect(result).toMatchObject({ user_id: db.userId, date: '2026-06-14', level: 'green', source: 'whoop' });
   });
 
   it('stores and retrieves a red energy record with manual source', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-15', 'red', 'manual');
-    const result = db.energyLogQueries.getForDate(db.userId, '2026-06-15');
+    db.energyLogQueries.upsert(db.userId, '2026-06-15', 'red', 'manual');
+    const result = db.energyLogQueries.getToday(db.userId, '2026-06-15');
     expect(result).toMatchObject({ level: 'red', source: 'manual' });
   });
 
   it('stores and retrieves a yellow energy record with override source', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-16', 'yellow', 'override');
-    const result = db.energyLogQueries.getForDate(db.userId, '2026-06-16');
+    db.energyLogQueries.upsert(db.userId, '2026-06-16', 'yellow', 'override');
+    const result = db.energyLogQueries.getToday(db.userId, '2026-06-16');
     expect(result).toMatchObject({ level: 'yellow', source: 'override' });
   });
 });
@@ -53,26 +53,26 @@ describe('energyLogQueries — upsert (one record per user per day)', () => {
   beforeEach(async () => { db = await loadDb(); });
 
   it('replaces an existing record on the same date', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'green', 'whoop');
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'red', 'override');
-    const result = db.energyLogQueries.getForDate(db.userId, '2026-06-14');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'green', 'whoop');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'red', 'override');
+    const result = db.energyLogQueries.getToday(db.userId, '2026-06-14');
     expect(result?.level).toBe('red');
     expect(result?.source).toBe('override');
   });
 
   it('keeps exactly one row per (user, date) after multiple upserts', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'green', 'whoop');
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'yellow', 'manual');
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'red', 'override');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'green', 'whoop');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'yellow', 'manual');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'red', 'override');
     const count = (db.getDb().prepare('SELECT COUNT(*) AS c FROM energy_log WHERE user_id = ? AND date = ?').get(db.userId, '2026-06-14') as { c: number }).c;
     expect(count).toBe(1);
   });
 
   it('allows different dates to have separate records', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-13', 'red', 'whoop');
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'green', 'manual');
-    const yesterday = db.energyLogQueries.getForDate(db.userId, '2026-06-13');
-    const today = db.energyLogQueries.getForDate(db.userId, '2026-06-14');
+    db.energyLogQueries.upsert(db.userId, '2026-06-13', 'red', 'whoop');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'green', 'manual');
+    const yesterday = db.energyLogQueries.getToday(db.userId, '2026-06-13');
+    const today = db.energyLogQueries.getToday(db.userId, '2026-06-14');
     expect(yesterday?.level).toBe('red');
     expect(today?.level).toBe('green');
   });
@@ -90,15 +90,15 @@ describe('energyLogQueries — user isolation', () => {
   });
 
   it('users do not see each other\'s energy records', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'green', 'whoop');
-    const user2Record = db.energyLogQueries.getForDate(userId2, '2026-06-14');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'green', 'whoop');
+    const user2Record = db.energyLogQueries.getToday(userId2, '2026-06-14');
     expect(user2Record).toBeUndefined();
   });
 
   it('two users can each have a record on the same date', () => {
-    db.energyLogQueries.setEnergy(db.userId, '2026-06-14', 'green', 'whoop');
-    db.energyLogQueries.setEnergy(userId2, '2026-06-14', 'red', 'manual');
-    expect(db.energyLogQueries.getForDate(db.userId, '2026-06-14')?.level).toBe('green');
-    expect(db.energyLogQueries.getForDate(userId2, '2026-06-14')?.level).toBe('red');
+    db.energyLogQueries.upsert(db.userId, '2026-06-14', 'green', 'whoop');
+    db.energyLogQueries.upsert(userId2, '2026-06-14', 'red', 'manual');
+    expect(db.energyLogQueries.getToday(db.userId, '2026-06-14')?.level).toBe('green');
+    expect(db.energyLogQueries.getToday(userId2, '2026-06-14')?.level).toBe('red');
   });
 });

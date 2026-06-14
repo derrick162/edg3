@@ -1100,19 +1100,4 @@ export const factQueries = {
   },
 };
 
-export const energyLogQueries = {
-  // Returns the energy record for the given YYYY-MM-DD date, or undefined if none set.
-  getForDate: (userId: number, date: string): EnergyLog | undefined => {
-    return getDb().prepare(
-      'SELECT * FROM energy_log WHERE user_id = ? AND date = ?'
-    ).get(userId, date) as EnergyLog | undefined;
-  },
-  // Upsert: inserts or replaces the daily energy record (UNIQUE on user_id+date).
-  // Callers pass the user's local YYYY-MM-DD date (not UTC) so the record aligns with
-  // what the user sees on the dashboard and what the briefing call uses.
-  setEnergy: (userId: number, date: string, level: 'red' | 'yellow' | 'green', source: 'whoop' | 'manual' | 'override') => {
-    return getDb().prepare(
-      'INSERT OR REPLACE INTO energy_log (user_id, date, level, source) VALUES (?, ?, ?, ?)'
-    ).run(userId, date, level, source);
-  },
-};
+// (energyLogQueries is defined once earlier with upsert/getToday — the API the app + tests use.)
