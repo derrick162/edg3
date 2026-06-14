@@ -226,18 +226,17 @@ priority from user feedback.
 
 ## Backlog (seed — PM refines from user feedback)
 ### Now
-- [ ] **★★ Energy OS — MVP (the product's new center of gravity)** — _Derrick product direction, 2026-06-14._
-  Make Edge run the calendar on the user's ENERGY. **Full vision + MVP: `specs/energy-os.md`.**
-  MVP (cheap validation, works for ALL users not just Whoop):
-  1. **Energy signal** {red/yellow/green} per day — auto from Whoop recovery (reuse tier mapping)
-     OR manual (Edge asks "energy — red/yellow/green?" at call start + a dashboard quick-set).
-     Additive `energy_log` table (coordinate 🔒 Security on schema).
-  2. **Energy-cost tags** on focus areas/priorities (high/med/low) — dashboard control + learnable.
-  3. **Energy-driven DAY recs + proactive moves** — if a HIGH-energy focus block sits on a RED day,
-     proactively offer to move it to a better day → on yes, moveEvent. Builds on existing recovery
-     pacing + energy-matching + alignment. (Overlaps Briefing V2 — coordinate; energy is the spine.)
-  - Lanes: 🛠️ Core (signal+tags+logic+wiring), 🎨 Design (red/yellow/green logger + tag UI), 🔒 Security (energy_log schema).
-  - After MVP: week-level optimization → energy forecasting → Oura (parked). Positioning shift → CoS.
+- [ ] **★★★ Focus Scoreboard (the OUTCOME layer — the heart of the vision)** — _Derrick, 2026-06-14._
+  The product's success metric: "am I getting more of my focus areas DONE?" We built the engine
+  (input + energy scheduling) but NOT the scoreboard. Full vision: `specs/energy-os.md` (Layer 3 + NEXT MVP).
+  - Present the 3 priorities as **"your areas of focus"** (each with energy cost).
+  - **Progress per area:** time invested this week (from alignment engine) + optional **milestones**
+    the user checks off (additive `focus_milestones` schema — coordinate 🔒 Security).
+  - **"Done" feels good:** checking off a milestone / completing an area → visible progress + a moment
+    of celebration; Edge acknowledges warmly on the next call.
+  - **Edge surfaces it:** momentum ("6h on fundraising"), neglected focus → offer to block time, celebrate completions.
+  - Lanes: 🛠️ Core (progress logic + milestones + briefing/call surfacing), 🎨 Design (scoreboard + check-off + celebration), 🔒 Security (milestones schema).
+- [x] **★★ Energy OS — MVP** — ✅ SHIPPED 2026-06-14 (`7024d91`, 543 green): energy signal red/yellow/green (Whoop-auto/dashboard/call), energy-cost tags, energy-driven day recs. Design's visual polish reconciling. `setEnergyLevel` Vapi tool pending (needs key).
 - [ ] **★ Briefing V2 — proactive, goal-driven, relational** — _from Derrick's 10/10 call feedback, 2026-06-14._
   Make the morning briefing PROACTIVE (not report-and-react). **Full spec: `specs/briefing-v2-proactive.md`.**
   - **Quick prompt wins (do first, low risk):** recovery → motivating encouragement tied to the
