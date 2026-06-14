@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ call-time reminder sync + research misheard-address fix SHIPPED. 471/471 green. Awaiting PM merge.)_ | `lib/calendar.ts`, `app/api/calendar/reminder/route.ts`, `app/api/onboarding/call-time/route.ts`, `lib/vapi.ts` | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ call-time in prompt + location awareness + edit/delete facts SHIPPED. 476/476 green. ⚠️ PM: merge `core` → `master`.)_ | `lib/db.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `app/api/memory/facts/route.ts`, `app/dashboard/page.tsx` | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **encryption verification** (11 at-rest tests) + **user deletion fix** (9 missing tables incl. whoop_tokens) + **Google CASA doc** (`specs/google-verification.md`). Awaiting PM.)_ | `lib/db-encryption.test.ts`, `app/api/admin/users/**`, `specs/` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ Activity + Memory tab trust redesign shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
