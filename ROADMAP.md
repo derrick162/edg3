@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(⚙️ **Working on voice-behavior fixes + moveEvent recurring investigation + Whoop Trends wiring**)_ | `lib/vapi.ts`, `app/api/vapi/tool-call/route.ts`, `lib/calendarWritable.ts`, `lib/briefing.ts` | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ **Voice-behavior fixes + Whoop Trends wired** (`9b9da87`): weekend awareness, no jargon, own failures, recurring moveEvent guidance, Trends hooked into briefing. 418/418 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ calendar-green token pass re-applied (Edit tool, UTF-8 safe, next build green). 371/371 tests. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
@@ -116,6 +116,27 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Voice-behavior fixes + Whoop Trends wired (Core).** (`9b9da87`)
+  - **[1] WORKING HOURS**: `lib/vapi.ts` — new WORKING HOURS block; defaults all suggestions to
+    weekday daytime (9 AM–6 PM Mon–Fri). When today is Sat/Sun, prompt explicitly tells Edge
+    never to suggest "do it tonight"/this weekend — always "when you're back at it Monday."
+    Never recommend evenings or weekends unless user has stated they work those hours. Addresses
+    live-call issue where Edge pushed writing the 90-day plan on a Saturday evening.
+  - **[2] NO JARGON**: New NATURAL LANGUAGE bullet forbids "the system", "friction point",
+    "not confirming", tool names, or any internal mechanics. Speak like a trusted advisor.
+  - **[3] NEVER PUNT**: Removed all "do it in your calendar" / "do it yourself" phrasing from:
+    `lib/vapi.ts` BE DECISIVE + CONSOLIDATE step 4; `tool-call/route.ts` editEvent read-only,
+    deleteEvent read-only (single + batch), moveEvent read-only + patch-failure messages.
+    Each replaced with own-it-honestly language or an offer to help another way.
+  - **[4] RECURRING moveEvent**: New RECURRING EVENTS prompt bullet — when tool returns a
+    recurring-scope question, ask user, then re-call with `recurringScope:'this'` or `'all'`.
+    Directly addresses the gym-move failure where Edge said "not confirming the shift."
+  - **[5] WHOOP TRENDS wired**: `lib/briefing.ts` — imports `getRecoveryHistory/getSleepHistory/
+    getStrainHistory` (Security shipped); adds 3 parallel fetches to `Promise.all`;
+    maps to `WhoopHistoryPoint` arrays; calls `computeWhoopTrends` + `formatTrendForBriefing`;
+    injects trend line into `whoopContextBlock` when notable. `lib/vapi.ts` — WHOOP TRENDS
+    note added so Edge can reference 2-week trends mid-call.
+  - 418/418 green (includes Security's new tests), tsc clean, next build clean.
 - **2026-06-13** — **Dashboard Whoop display (Core).** (`030d94a`)
   - `/api/whoop/status` extended: fetches `getLatestRecovery`, `getLastSleep`, `getRecentStrain` in
     parallel (all `.catch(→null)`) when Whoop is connected; returns
