@@ -135,7 +135,7 @@ export default function LandingPage() {
         </div>
 
         {/* Footer */}
-        <div className="max-w-5xl mx-auto px-8 py-8 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="max-w-5xl mx-auto px-8 py-8 text-center" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
             © 2026 Edg3 · Elite Daily Guidance Engine ·{' '}
             <Link href="/terms" style={{ color: 'var(--edg-indigo)' }}>Terms of Service</Link>
