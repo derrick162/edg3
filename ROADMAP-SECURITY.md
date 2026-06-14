@@ -8,6 +8,21 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-14** — **Event energy tag cache — `event_energy_tags` table (additive).**
+  - `lib/db.ts`: `event_energy_tags (id, user_id, google_event_id, type, demand CHECK('high','med','low'),
+    title_hash, tagged_at)`. UNIQUE(user_id, google_event_id) + upsert-on-conflict. Index on
+    `(user_id, google_event_id)`. `title_hash` enables automatic cache invalidation when an event is renamed.
+  - `eventEnergyTagQueries` exported: `get(userId, eventId)`, `upsert(userId, eventId, {type, demand,
+    titleHash})`, `getMany(userId, eventIds[])` (batch lookup; empty input → empty array).
+  - `EventEnergyTag` interface exported.
+  - Table added to admin + self-service deletion routes (leaf-first FK order).
+  - `lib/event-energy-tags.test.ts`: 10 in-memory integration tests — get/miss, upsert overwrite, cross-user
+    isolation, getMany partial hits + user scoping.
+  - 591/591 green, tsc clean, next build clean.
+  - **Core handoff:** `eventEnergyTagQueries` live from `@/lib/db`. Call `getMany(userId, eventIds)` to
+    batch-read cached tags before scoring; `upsert(userId, eventId, {type, demand, titleHash})` to write
+    after LLM classifies. Compare `title_hash` (e.g. `sha256(title).slice(0,8)`) on read — if mismatched,
+    re-classify and upsert the new tag.
 - **2026-06-14** — **Calendar scoring engine schema — `calendar_scores` + `energy_profile` tables (additive).**
   - `lib/db.ts`: `calendar_scores (id, user_id, date, focus_score, energy_score, focus_drivers TEXT/json,
     energy_drivers TEXT/json, created_at)`. UNIQUE(user_id, date) + upsert-on-conflict. Index on
