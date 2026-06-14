@@ -7,6 +7,21 @@ import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
 import { RecoveryCard } from '@/components/ui';
 
+// Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). The transcript is
+// verbatim, but we know the real spelling — so for DISPLAY only, correct capitalized words
+// that are clearly a mishearing of the user's first name (same first 3 letters, similar
+// length). Conservative on purpose: leaves all other words untouched.
+function correctNameInTranscript(text: string, firstName: string): string {
+  const fn = (firstName || '').trim();
+  if (fn.length < 3) return text;
+  const key = fn.slice(0, 3).toLowerCase();
+  return text.replace(/\b[A-Z][a-zA-Z]{2,}\b/g, (w) => {
+    if (w.toLowerCase() === fn.toLowerCase()) return w;
+    if (w.slice(0, 3).toLowerCase() === key && Math.abs(w.length - fn.length) <= 2) return fn;
+    return w;
+  });
+}
+
 const TIMEZONES = [
   { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
   { label: 'Denver (MT)', value: 'America/Denver' },
@@ -1717,10 +1732,11 @@ export default function Dashboard() {
                                 {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
                                   const isUser = line.startsWith('User:') || line.startsWith('Customer:');
                                   const isAI = line.startsWith('Assistant:') || line.startsWith('Bot:') || line.startsWith('AI:');
-                                  const text = line.replace(/^(User:|Customer:|Assistant:|Bot:|AI:)\s*/, '');
+                                  const rawText = line.replace(/^(User:|Customer:|Assistant:|Bot:|AI:)\s*/, '');
+                                  const text = correctNameInTranscript(rawText, (user?.name || '').split(' ')[0]);
                                   return (
                                     <div key={i} className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                                      <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-xs"
+                                      <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-[80%]"
                                         style={{
                                           background: isUser ? 'var(--edg-accent-20)' : 'var(--edg-hairline)',
                                           color: isUser ? 'var(--text-strong)' : 'var(--text-muted)',
