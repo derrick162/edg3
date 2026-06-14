@@ -3,7 +3,7 @@ import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock } fr
 import type { Fact } from './db';
 
 function makePref(statement: string, id = 1): Fact {
-  return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00' };
+  return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00', confidence: 'high', source_briefing_id: null };
 }
 
 describe('buildFallbackBriefing', () => {

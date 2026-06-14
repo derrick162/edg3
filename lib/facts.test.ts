@@ -16,7 +16,7 @@ vi.mock('./db', async (importOriginal) => {
     ...actual,
     factQueries: {
       getAll: vi.fn(() => store),
-      upsertFact: vi.fn((userId, category, statement, entity) => {
+      upsertFact: vi.fn((userId, category, statement, entity, confidence = 'high', sourceBriefingId = null) => {
         const entityNorm = entity?.toLowerCase() ?? null;
         const existing = store.find(f =>
           f.user_id === userId && f.category === category &&
@@ -30,7 +30,7 @@ vi.mock('./db', async (importOriginal) => {
             existing.learned_at = new Date().toISOString();
           }
         } else {
-          store.push({ id: store.length + 1, user_id: userId, category: category as import('./db').Fact['category'], statement, entity: entity ?? null, learned_at: new Date().toISOString() });
+          store.push({ id: store.length + 1, user_id: userId, category: category as import('./db').Fact['category'], statement, entity: entity ?? null, learned_at: new Date().toISOString(), confidence, source_briefing_id: sourceBriefingId });
         }
       }),
       getByCategory: vi.fn((userId, category) => store.filter(f => f.user_id === userId && f.category === category)),
@@ -117,17 +117,69 @@ describe('extractFactsFromTranscript', () => {
 // ── extractAndUpsertFacts (dedupe behaviour via the stub) ─────────────────────
 
 describe('extractAndUpsertFacts', () => {
-  it('calls upsertFact for each extracted fact', async () => {
+  it('calls upsertFact with confidence and sourceBriefingId', async () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([
-      { category: 'goal', statement: 'Close Acme by Q3', entity: 'Acme' },
+      { category: 'goal', statement: 'Close Acme by Q3', entity: 'Acme', confidence: 'high' },
     ])));
-    await extractAndUpsertFacts(1, 'transcript about Acme');
-    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'goal', 'Close Acme by Q3', 'Acme');
+    await extractAndUpsertFacts(1, 'transcript about Acme', 'Derrick', 42);
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'goal', 'Close Acme by Q3', 'Acme', 'high', 42);
+  });
+
+  it('skips person facts where entity is the user themselves (exact name)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick is the CEO', entity: 'Derrick', confidence: 'high' },
+      { category: 'goal', statement: 'Raise $2M by Q4', entity: null, confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledTimes(1); // goal only, self-person skipped
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'goal', 'Raise $2M by Q4', null, 'high', undefined);
+  });
+
+  it('skips person facts where entity is the user first name (case-insensitive)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'DERRICK is the founder', entity: 'DERRICK', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    // "DERRICK" (case-insensitive) matches first name "derrick" — skip
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('does NOT skip person facts about OTHER people', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Sarah is the CFO', entity: 'Sarah', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'person', 'Sarah is the CFO', 'Sarah', 'high', undefined);
   });
 
   it('does NOT throw when extraction fails', async () => {
     h.create.mockRejectedValue(new Error('API down'));
     await expect(extractAndUpsertFacts(1, 'transcript')).resolves.toBeUndefined();
+  });
+});
+
+describe('extractFactsFromTranscript — userName injection', () => {
+  it('includes userName in the prompt when provided', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    await extractFactsFromTranscript('some transcript', 'Derrick Fung');
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).toContain('"Derrick Fung"');
+  });
+
+  it('maps model confidence:"low" to ExtractedFact confidence:"low"', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Sarah is an investor', entity: 'Sarah', confidence: 'low' },
+    ])));
+    const facts = await extractFactsFromTranscript('transcript');
+    expect(facts[0].confidence).toBe('low');
+  });
+
+  it('defaults to confidence:"high" when model omits the field', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'goal', statement: 'Launch by September', entity: null },
+    ])));
+    const facts = await extractFactsFromTranscript('transcript');
+    expect(facts[0].confidence).toBe('high');
   });
 });
 
@@ -137,7 +189,7 @@ function event(title: string) {
   return { summary: title, start: { dateTime: '2026-06-10T14:00:00Z' }, end: { dateTime: '2026-06-10T15:00:00Z' } };
 }
 function fact(id: number, category: Fact['category'], statement: string, entity: string | null): Fact {
-  return { id, user_id: 1, category, statement, entity, learned_at: '2026-06-05' };
+  return { id, user_id: 1, category, statement, entity, learned_at: '2026-06-05', confidence: 'high', source_briefing_id: null };
 }
 
 describe('linkEventsToFacts', () => {

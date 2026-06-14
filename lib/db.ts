@@ -212,12 +212,14 @@ function initSchema(db: Database.Database) {
     -- Structured, durable facts extracted from call transcripts (compounding memory).
     -- Deduplicated by (category, entity) so facts evolve instead of accumulating noise.
     CREATE TABLE IF NOT EXISTS facts (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES users(id),
-      category    TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact')),
-      statement   TEXT NOT NULL,
-      entity      TEXT,
-      learned_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id            INTEGER NOT NULL REFERENCES users(id),
+      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact')),
+      statement          TEXT NOT NULL,
+      entity             TEXT,
+      learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      confidence         TEXT NOT NULL DEFAULT 'high' CHECK(confidence IN ('high','low')),
+      source_briefing_id INTEGER REFERENCES briefings(id)
     );
 
     -- Whoop OAuth tokens (health data PII — encrypted at rest).
@@ -257,6 +259,8 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE users ADD COLUMN phone_number TEXT",
     "ALTER TABLE users ADD COLUMN current_timezone TEXT",
     "ALTER TABLE calendar_tokens ADD COLUMN scope TEXT",
+    "ALTER TABLE facts ADD COLUMN confidence TEXT NOT NULL DEFAULT 'high'",
+    "ALTER TABLE facts ADD COLUMN source_briefing_id INTEGER REFERENCES briefings(id)",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -919,6 +923,8 @@ export interface Fact {
   statement: string;
   entity: string | null;
   learned_at: string;
+  confidence: 'high' | 'low';
+  source_briefing_id: number | null;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -966,7 +972,14 @@ export const factQueries = {
 
   // Upsert: dedupe by (category, entity) when entity present; by (category, first-80-chars-statement) otherwise.
   // Updates statement + learned_at when a fact evolved; skips exact duplicates; inserts new facts.
-  upsertFact: (userId: number, category: string, statement: string, entity?: string | null): void => {
+  upsertFact: (
+    userId: number,
+    category: string,
+    statement: string,
+    entity?: string | null,
+    confidence: 'high' | 'low' = 'high',
+    sourceBriefingId?: number | null,
+  ): void => {
     const db = getDb();
     let existing: Fact | undefined;
     if (entity) {
@@ -984,8 +997,8 @@ export const factQueries = {
       }
     } else {
       db.prepare(
-        'INSERT INTO facts (user_id, category, statement, entity) VALUES (?,?,?,?)'
-      ).run(userId, category, statement, entity ?? null);
+        'INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id) VALUES (?,?,?,?,?,?)'
+      ).run(userId, category, statement, entity ?? null, confidence, sourceBriefingId ?? null);
     }
   },
 

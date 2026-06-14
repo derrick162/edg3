@@ -227,6 +227,34 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   );
 }
 
+function SectionHint({ id, text }: { id: string; text: string }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !localStorage.getItem(`edg3-hint-${id}`)) {
+      setVisible(true);
+    }
+  }, [id]);
+  if (!visible) return null;
+  return (
+    <div
+      className="flex items-start gap-3 mb-5 px-3 py-2.5 rounded-lg"
+      style={{ background: 'rgba(255,255,255,0.03)', borderLeft: '2px solid var(--edg-hairline)' }}
+    >
+      <p className="text-xs flex-1 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+        {text}
+      </p>
+      <button
+        onClick={() => { localStorage.setItem(`edg3-hint-${id}`, '1'); setVisible(false); }}
+        className="text-xs flex-shrink-0 mt-0.5 px-1"
+        style={{ color: 'var(--text-faint)' }}
+        aria-label="Dismiss"
+      >
+        &#x2715;
+      </button>
+    </div>
+  );
+}
+
 function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
   tasks: Task[];
   onToggle: (id: number, completed: boolean) => Promise<void>;
@@ -296,33 +324,28 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
 
   return (
     <div>
-      {filterControl}
+      <SectionHint
+        id="tasks"
+        text="Things Edge is tracking for you. Complete them or let them carry over — Edge holds you accountable on your morning calls."
+      />
 
-      <div className="flex items-center justify-between mb-4">
+      {/* Heading row + filter pills on same line */}
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h2 className="text-lg font-bold">{headingByView[filterView]}</h2>
-        <div className="flex items-center gap-3">
-          {filterView === 'open' && incompleteVisible.length > 0 && (
-            <button
-              onClick={handleCompleteAll}
-              disabled={completingAll}
-              className="text-xs font-medium transition-colors"
-              style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
-            >
-              {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
-            </button>
-          )}
+        <div className="flex items-center gap-2">
           {filterView === 'open' && (
-            <span className="badge badge-info">
+            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
               {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
             </span>
           )}
+          {filterControl}
         </div>
       </div>
 
-      {/* Add task — always visible */}
-      <form onSubmit={handleAdd} className="flex gap-3 mb-6">
+      {/* Add task form */}
+      <form onSubmit={handleAdd} className="flex gap-2 mb-6">
         <input
-          className="input flex-1"
+          className="input flex-1 text-sm"
           placeholder="Add a task…"
           value={newTask}
           onChange={e => setNewTask(e.target.value)}
@@ -335,10 +358,12 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
       {/* Open view */}
       {filterView === 'open' && (
         <>
-          {todayTasks.filter(t => t.source === 'edg3').length > 0 && (
-            <div className="mb-2">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>✦ SUGGESTED BY EDG3</p>
-              <div className="space-y-2">
+          {todayTasks.filter(t => t.source === 'edg3' && !t.completed).length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--edg-indigo)' }}>
+                <span>✦</span> From Edge
+              </p>
+              <div className="space-y-1.5">
                 {todayTasks.filter(t => t.source === 'edg3' && !t.completed).map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
                 ))}
@@ -346,28 +371,41 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
             </div>
           )}
           {todayTasks.filter(t => t.source === 'manual' && !t.completed).length > 0 && (
-            <div className="mb-2 mt-4">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>YOUR TASKS</p>
-              <div className="space-y-2">
+            <div className="mb-4">
+              <div className="space-y-1.5">
                 {todayTasks.filter(t => t.source === 'manual' && !t.completed).map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
                 ))}
               </div>
             </div>
           )}
+          {incompleteVisible.length > 1 && (
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={handleCompleteAll}
+                disabled={completingAll}
+                className="text-xs font-medium"
+                style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
+              >
+                {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
+              </button>
+            </div>
+          )}
           {incompleteVisible.length === 0 && (
             <div className="glass-card p-8 text-center mb-4">
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 {todayTasks.length === 0
-                  ? 'No tasks yet today. They\'ll appear here after your morning call.'
+                  ? "No tasks yet — they'll appear after your morning call."
                   : 'All done for today.'}
               </p>
             </div>
           )}
           {pastTasks.length > 0 && (
-            <div className="mt-6">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>⚠ CARRIED OVER</p>
-              <div className="space-y-2">
+            <div className="mt-5">
+              <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--edg-warning)' }}>
+                <span>⚠</span> Carried over
+              </p>
+              <div className="space-y-1.5">
                 {pastTasks.map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
                 ))}
@@ -384,7 +422,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No completed tasks in the last 30 days.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {completedTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
             ))}
@@ -399,7 +437,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {allTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
             ))}
@@ -483,8 +521,12 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
 
   return (
     <div>
+      <SectionHint
+        id="priorities"
+        text="Your north star. Edge anchors every briefing and scheduling suggestion to these."
+      />
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">This week's priorities</h2>
+        <h2 className="text-lg font-bold">This week&apos;s priorities</h2>
         {!editing && (
           <button onClick={startEdit} className="btn-secondary text-sm py-2 px-4">
             ✎ Edit
@@ -646,6 +688,10 @@ function ActivityTab() {
 
   return (
     <div>
+      <SectionHint
+        id="activity"
+        text="Every change Edge made to your calendar. Review or undo anything."
+      />
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-lg font-bold">Edge&apos;s actions</h2>
         <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
@@ -853,6 +899,9 @@ interface Fact {
   statement: string;
   entity: string | null;
   learned_at: string;
+  // Core populates these when available
+  confidence?: 'low' | null;
+  source_briefing_id?: number | null;
 }
 
 interface Task {
@@ -883,7 +932,7 @@ export default function Dashboard() {
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
-  const [editingFactText, setEditingFactText] = useState('');
+  const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
@@ -984,27 +1033,24 @@ export default function Dashboard() {
     setReminderInCalendar(false);
   }
 
-  async function handleUpdateFact(id: number, statement: string, entity: string | null) {
-    setEditingFactId(null);
+  async function saveFact(id: number, statement: string) {
     setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
-    await fetch('/api/memory/facts', {
+    setEditingFactId(null);
+    await fetch(`/api/memory/facts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, statement, entity }),
+      body: JSON.stringify({ statement }),
     });
   }
 
-  async function handleDeleteFact(id: number) {
-    setDeletingFactId(null);
+  async function deleteFact(id: number) {
     setFacts(prev => prev.filter(f => f.id !== id));
-    await fetch('/api/memory/facts', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
+    setDeletingFactId(null);
+    await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
   // Reset memory pagination when switching tabs or when data reloads.
   useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
   // Deep-link: ?briefing=<id> auto-expands that briefing entry once history loads.
@@ -1534,6 +1580,10 @@ export default function Dashboard() {
           {/* Tab content */}
           {activeTab === 'briefings' && (
             <div>
+              <SectionHint
+                id="briefings"
+                text="Your call history and full transcripts."
+              />
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
               {!briefingsLoaded ? (
                 <div className="glass-card p-8 text-center">
@@ -1733,6 +1783,10 @@ export default function Dashboard() {
 
           {activeTab === 'memory' && (
             <div>
+              <SectionHint
+                id="memory"
+                text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
+              />
               <h2 className="text-lg font-bold mb-1">Here&apos;s what Edge knows about you</h2>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
                 Built up over your calls — everything here came directly from conversations with you.
@@ -1767,87 +1821,149 @@ export default function Dashboard() {
                             {meta.label}
                           </h3>
                           <div className="space-y-1.5">
-                            {visible.map(f => (
-                              <div key={f.id} className="glass-card px-4 py-3 flex items-start justify-between gap-4">
-                                {editingFactId === f.id ? (
-                                  <div className="flex-1 flex flex-col gap-2">
-                                    <textarea
-                                      className="input text-sm w-full resize-none"
-                                      value={editingFactText}
-                                      onChange={e => setEditingFactText(e.target.value)}
-                                      rows={2}
-                                      autoFocus
-                                    />
-                                    <div className="flex gap-3">
-                                      <button
-                                        className="text-xs px-3 py-1 rounded"
-                                        style={{ background: 'var(--edg-indigo)', color: '#fff' }}
-                                        onClick={() => handleUpdateFact(f.id, editingFactText, f.entity)}
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        className="text-xs"
-                                        style={{ color: 'var(--text-faint)' }}
-                                        onClick={() => setEditingFactId(null)}
-                                      >
-                                        Cancel
-                                      </button>
+                            {visible.map(f => {
+                              const isEditing = editingFactId === f.id;
+                              const isConfirmingDelete = deletingFactId === f.id;
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="glass-card px-4 py-3 group"
+                                  style={{ transition: 'background 0.1s' }}
+                                >
+                                  {isEditing ? (
+                                    /* ── Inline edit state ── */
+                                    <div className="flex items-start gap-2">
+                                      <div className="flex-1">
+                                        {f.entity && (
+                                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+                                            {f.entity}
+                                          </p>
+                                        )}
+                                        <textarea
+                                          autoFocus
+                                          value={editFactText}
+                                          onChange={e => setEditFactText(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                              e.preventDefault();
+                                              if (editFactText.trim()) saveFact(f.id, editFactText.trim());
+                                            }
+                                            if (e.key === 'Escape') setEditingFactId(null);
+                                          }}
+                                          rows={2}
+                                          className="input text-sm w-full resize-none"
+                                          style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                                        />
+                                      </div>
+                                      <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                                        <button
+                                          onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid rgba(99,102,241,0.25)' }}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingFactId(null)}
+                                          className="text-xs px-2.5 py-1 rounded-md"
+                                          style={{ color: 'var(--text-faint)' }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-                                ) : deletingFactId === f.id ? (
-                                  <div className="flex-1 flex items-center gap-3">
-                                    <span className="text-sm" style={{ color: 'var(--text-body)' }}>Remove this?</span>
-                                    <button
-                                      className="text-xs"
-                                      style={{ color: 'var(--text-faint)' }}
-                                      onClick={() => setDeletingFactId(null)}
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      className="text-xs font-medium"
-                                      style={{ color: '#ef4444' }}
-                                      onClick={() => handleDeleteFact(f.id)}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-body)' }}>
-                                      {f.entity && (
-                                        <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
-                                      )}
-                                      {f.statement}
-                                    </p>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                                        {format(new Date(f.learned_at), 'MMM d')}
-                                      </span>
-                                      <button
-                                        onClick={() => { setEditingFactId(f.id); setEditingFactText(f.statement); }}
-                                        className="opacity-40 hover:opacity-100 transition-opacity text-xs"
-                                        style={{ color: 'var(--text-faint)' }}
-                                        aria-label="Edit"
-                                        title="Edit"
-                                      >
-                                        ✏
-                                      </button>
-                                      <button
-                                        onClick={() => setDeletingFactId(f.id)}
-                                        className="opacity-40 hover:opacity-100 transition-opacity"
-                                        style={{ color: 'var(--text-faint)', fontSize: '1rem', lineHeight: 1 }}
-                                        aria-label="Delete"
-                                        title="Delete"
-                                      >
-                                        ×
-                                      </button>
+                                  ) : isConfirmingDelete ? (
+                                    /* ── Delete confirm state ── */
+                                    <div className="flex items-center justify-between gap-3">
+                                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                                        Remove this fact?
+                                      </p>
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <button
+                                          onClick={() => deleteFact(f.id)}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid rgba(239,68,68,0.25)' }}
+                                        >
+                                          Remove
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingFactId(null)}
+                                          className="text-xs px-2.5 py-1 rounded-md"
+                                          style={{ color: 'var(--text-faint)' }}
+                                        >
+                                          Keep
+                                        </button>
+                                      </div>
                                     </div>
-                                  </>
-                                )}
-                              </div>
-                            ))}
+                                  ) : (
+                                    /* ── Default read state ── */
+                                    <div>
+                                      <div className="flex items-start gap-3">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                            {f.entity && (
+                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                            )}
+                                            {f.statement}
+                                            {f.confidence === 'low' && (
+                                              <button
+                                                title="Edge isn't sure it caught this right — tap to fix"
+                                                onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                                className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
+                                                style={{
+                                                  background: 'rgba(245,158,11,0.1)',
+                                                  color: 'var(--edg-warning)',
+                                                  border: '1px solid rgba(245,158,11,0.2)',
+                                                  lineHeight: 1,
+                                                }}
+                                              >
+                                                &#x26A0; verify
+                                              </button>
+                                            )}
+                                          </p>
+                                          {/* Provenance line */}
+                                          {f.source_briefing_id ? (
+                                            <a
+                                              href={`/dashboard?briefing=${f.source_briefing_id}`}
+                                              className="text-xs mt-1 block hover:underline"
+                                              style={{ color: 'var(--text-faint)' }}
+                                            >
+                                              learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
+                                            </a>
+                                          ) : (
+                                            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                                              learned {format(new Date(f.learned_at), 'MMM d')}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                                          <button
+                                            title="Edit"
+                                            onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                            className="p-1 rounded"
+                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                          >
+                                            ✎
+                                          </button>
+                                          <button
+                                            title="Remove"
+                                            onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
+                                            className="p-1 rounded"
+                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
+                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                          >
+                                            &#x2715;
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                           {catItems.length > FACTS_CAT_LIMIT && (
                             <button
