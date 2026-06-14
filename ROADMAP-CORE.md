@@ -9,6 +9,18 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-14** — **Focus/Energy scoring engine (`lib/calendarScore.ts`) — the headline scores.**
+  - **`lib/calendarScore.ts`** (pure, 0 I/O, 33 new tests):
+    - `ScoreResult { score: 1-10, drivers: string[], topFix }` + `CalendarFit` + `EnergyProfile` — shared contract.
+    - `parseEnergyProfile(statements)` — parses peak/trough windows from free-text preference facts.
+    - `computeFocusScore(events, priorities, alignment)` — 4 weighted components: coverage (35%), aligned share (30%), protected blocks ≥90min (20%), balance vs ranking (15%).
+    - `computeEnergyScore(events, energySignal, energyProfile, priorities)` — 3 components: demand↔window match (40%), load vs capacity (35%), recovery protection (25%).
+    - `computeCalendarFit(...)` — both scores + `computedAt`.
+    - Both scores always populate `drivers` (plain-English reasons) and `topFix` (the single most impactful change) so Edge can say why and offer one fix.
+    - Degrades gracefully: no priorities → score 1 + setup message; no energy signal → score 5; no profile → neutral match score.
+  - **`lib/briefing.ts`**: parses energy profile from preference facts; calls `computeCalendarFit`; injects CALENDAR FIT block (both scores + drivers + topFix) into `userPrompt` — Edge opens every call with the scores.
+  - **`lib/vapi.ts`**: CALENDAR SCORES note — open with "Focus X, Energy Y — here's why", offer topFix immediately; act on yes.
+  - **`app/api/scores/route.ts`** (`GET /api/scores`): fetches today's events + alignment + energy; returns `CalendarFit` for dashboard. 603/603 green, tsc clean, next build clean.
 - **2026-06-14** — **Focus Scoreboard — milestone check-offs + per-area progress + briefing momentum.**
   - **`lib/db.ts`**: `focus_milestones` table (cascades on priority delete; `done_at` tracks completion time);
     `FocusMilestone` interface; `focusMilestoneQueries { listForUser, listForPriority, create, setDone, remove }`.
