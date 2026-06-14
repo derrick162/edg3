@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ **Whoop V1 + V2** (energy-matched time-blocking, `buildEnergyMatchingBlock` + ENERGY PROFILE) + **prompt-consolidation/trim pass** + privacy Whoop section. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | _(idle — ✅ RecoveryCard component + sparkline + DESIGN.md §7 spec shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
+| 🎨 Design | `design` | Re-applying lost dashboard token polish + RecoveryCard sidebar spacing pass | `app/dashboard/page.tsx` | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
