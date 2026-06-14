@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ `cleanupDuplicates` tool + meal-time awareness SHIPPED. ⚠️ PM: create Vapi tool + paste UUID — see changelog.)_ | `lib/eventMatch.ts`, `route.ts`, `lib/vapi.ts` | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **encryption verification** (11 at-rest tests) + **user deletion fix** (9 missing tables incl. whoop_tokens) + **Google CASA doc** (`specs/google-verification.md`). Awaiting PM.)_ | `lib/db-encryption.test.ts`, `app/api/admin/users/**`, `specs/` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | _(idle — ✅ onboarding pass + mobile layout shipped. Awaiting PM.)_ | — | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ Activity + Memory tab trust redesign shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
