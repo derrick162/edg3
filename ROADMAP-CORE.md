@@ -198,6 +198,18 @@ priority from user feedback.
 
 ## Backlog (seed — PM refines from user feedback)
 ### Now
+- [ ] **★★ Energy OS — MVP (the product's new center of gravity)** — _Derrick product direction, 2026-06-14._
+  Make Edge run the calendar on the user's ENERGY. **Full vision + MVP: `specs/energy-os.md`.**
+  MVP (cheap validation, works for ALL users not just Whoop):
+  1. **Energy signal** {red/yellow/green} per day — auto from Whoop recovery (reuse tier mapping)
+     OR manual (Edge asks "energy — red/yellow/green?" at call start + a dashboard quick-set).
+     Additive `energy_log` table (coordinate 🔒 Security on schema).
+  2. **Energy-cost tags** on focus areas/priorities (high/med/low) — dashboard control + learnable.
+  3. **Energy-driven DAY recs + proactive moves** — if a HIGH-energy focus block sits on a RED day,
+     proactively offer to move it to a better day → on yes, moveEvent. Builds on existing recovery
+     pacing + energy-matching + alignment. (Overlaps Briefing V2 — coordinate; energy is the spine.)
+  - Lanes: 🛠️ Core (signal+tags+logic+wiring), 🎨 Design (red/yellow/green logger + tag UI), 🔒 Security (energy_log schema).
+  - After MVP: week-level optimization → energy forecasting → Oura (parked). Positioning shift → CoS.
 - [ ] **★ Briefing V2 — proactive, goal-driven, relational** — _from Derrick's 10/10 call feedback, 2026-06-14._
   Make the morning briefing PROACTIVE (not report-and-react). **Full spec: `specs/briefing-v2-proactive.md`.**
   - **Quick prompt wins (do first, low risk):** recovery → motivating encouragement tied to the
