@@ -1,0 +1,31 @@
+<!-- @dsCard group="Brand" viewport="700x190" name="Iconography" subtitle="Emoji as the icon system — domain glyphs, single weight" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .wrap { padding: 22px 26px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .icon { width: 46px; height: 46px; border-radius: var(--radius-md); background: var(--edg-fill-subtle); border: 1px solid var(--border-card); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .note { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  .note b { color: var(--text-body); font-weight: 600; }
+  .uni { display: inline-flex; gap: 8px; margin-left: 6px; }
+  .uni span { color: var(--edg-indigo-bright); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div class="icon">📞</div><div class="icon">📋</div><div class="icon">✓</div>
+    <div class="icon">🎯</div><div class="icon">🧠</div><div class="icon">👤</div>
+    <div class="icon">📅</div><div class="icon">⚡</div><div class="icon">🔁</div>
+    <div class="icon">🔔</div><div class="icon">💬</div><div class="icon">📍</div>
+  </div>
+  <p class="note"><b>Edg3 uses emoji as iconography</b> — one glyph per concept, sat in a subtle inset tile. Pair with unicode marks for inline accents:
+  <span class="uni"><span>✦</span><span>→</span><span>↩</span><span>▲</span><span>●</span></span>. No custom SVG icon set; keep glyphs sparse and purposeful.</p>
+</div>
+</body>
+</html>

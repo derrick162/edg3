@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x180" name="Accent Ramp" subtitle="Indigo primary, bright indigo for text, violet partner" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 22px; }
+  .sw { border-radius: var(--radius-md); padding: 14px; height: 92px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .name { font-size: 13px; font-weight: 600; }
+  .val { font-size: 11px; opacity: 0.85; font-family: var(--font-mono); margin-top: 2px; }
+  .gradient { grid-column: span 1; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="sw" style="background:var(--edg-indigo);color:#fff"><span class="name">Indigo</span><span class="val">--edg-indigo · #6366f1</span></div>
+  <div class="sw" style="background:var(--edg-indigo-bright);color:#0a0a0f"><span class="name">Bright</span><span class="val">--edg-indigo-bright · #818cf8</span></div>
+  <div class="sw" style="background:var(--edg-violet);color:#fff"><span class="name">Violet</span><span class="val">--edg-violet · #8b5cf6</span></div>
+  <div class="sw gradient" style="background:var(--edg-gradient-accent);color:#fff"><span class="name">Accent gradient</span><span class="val">135° indigo→violet</span></div>
+</div>
+</body>
+</html>

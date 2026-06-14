@@ -512,6 +512,12 @@ function TaskRow({ task, onToggle, onDelete }: {
   );
 }
 
+const ENERGY_COST_OPTIONS: { value: 'high' | 'medium' | 'low'; label: string; color: string; tint: string; border: string }[] = [
+  { value: 'high',   label: '⚡ High', color: 'var(--energy-red)',    tint: 'var(--energy-red-tint)',    border: 'var(--energy-red-border)' },
+  { value: 'medium', label: '◑ Med',  color: 'var(--energy-yellow)', tint: 'var(--energy-yellow-tint)', border: 'var(--energy-yellow-border)' },
+  { value: 'low',    label: '○ Low',  color: 'var(--energy-green)',  tint: 'var(--energy-green-tint)',  border: 'var(--energy-green-border)' },
+];
+
 function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities: Priority[]; onSave: (p: string[]) => Promise<void>; onEnergyCostChange?: (id: number, cost: 'high' | 'medium' | 'low' | null) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(['', '', '']);
@@ -594,28 +600,28 @@ function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities:
                     <p className="font-medium text-sm mb-2">{p.text}</p>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Energy cost:</span>
-                      {(['high', 'medium', 'low'] as const).map(cost => (
-                        <button
-                          key={cost}
-                          disabled={savingCost === p.id}
-                          onClick={async () => {
-                            const next = p.energy_cost === cost ? null : cost;
-                            setSavingCost(p.id);
-                            await onEnergyCostChange?.(p.id, next);
-                            setSavingCost(null);
-                          }}
-                          className="text-xs py-0.5 px-2 rounded-full transition-all"
-                          style={{
-                            background: p.energy_cost === cost
-                              ? (cost === 'high' ? 'var(--edg-danger)' : cost === 'medium' ? 'var(--edg-warning)' : 'var(--edg-success)')
-                              : 'var(--edg-hairline)',
-                            color: p.energy_cost === cost ? '#fff' : 'var(--text-faint)',
-                            border: p.energy_cost === cost ? 'none' : '1px solid var(--edg-border-10)',
-                          }}
-                        >
-                          {cost}
-                        </button>
-                      ))}
+                      {ENERGY_COST_OPTIONS.map(opt => {
+                        const active = p.energy_cost === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            disabled={savingCost === p.id}
+                            onClick={async () => {
+                              const next = p.energy_cost === opt.value ? null : opt.value;
+                              setSavingCost(p.id);
+                              await onEnergyCostChange?.(p.id, next);
+                              setSavingCost(null);
+                            }}
+                            className="text-xs px-2 py-0.5 rounded-full transition-all"
+                            style={active
+                              ? { background: opt.tint, border: `1px solid ${opt.border}`, color: opt.color, fontWeight: 600 }
+                              : { background: 'transparent', border: '1px solid var(--edg-hairline)', color: 'var(--text-faint)' }
+                            }
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1469,7 +1475,7 @@ export default function Dashboard() {
                   )}
                   {(todayCallStatus.status === 'missed' || todayCallStatus.status === 'failed') && !retryCalled && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-xs" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
+                      <p className="text-xs" style={{ color: 'var(--edg-warning)' }}>
                         {todayCallStatus.status === 'missed' ? 'Missed today' : 'Call failed'}
                       </p>
                       <button
@@ -1531,21 +1537,19 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+            {/* Energy OS — daily energy logger */}
             <div className="glass-card p-3">
               <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
                 Today&apos;s energy
-                {energySignal && (
-                  <span className="ml-1 font-semibold" style={{
-                    color: energySignal.level === 'green' ? 'var(--edg-success)' : energySignal.level === 'yellow' ? 'var(--edg-warning)' : 'var(--edg-danger)',
-                  }}>
-                    {energySignal.level}
-                  </span>
-                )}
               </p>
-              <div className="flex gap-1">
-                {(['red', 'yellow', 'green'] as const).map(lvl => (
+              <div className="flex gap-2">
+                {([
+                  { level: 'green' as const, emoji: '🟢', label: 'High', color: 'var(--energy-green)', tint: 'var(--energy-green-tint)', border: 'var(--energy-green-border)' },
+                  { level: 'yellow' as const, emoji: '🟡', label: 'Med', color: 'var(--energy-yellow)', tint: 'var(--energy-yellow-tint)', border: 'var(--energy-yellow-border)' },
+                  { level: 'red' as const, emoji: '🔴', label: 'Low', color: 'var(--energy-red)', tint: 'var(--energy-red-tint)', border: 'var(--energy-red-border)' },
+                ] as const).map(({ level, emoji, label, color, tint, border }) => (
                   <button
-                    key={lvl}
+                    key={level}
                     disabled={settingEnergy}
                     onClick={async () => {
                       setSettingEnergy(true);
@@ -1553,24 +1557,34 @@ export default function Dashboard() {
                       const res = await fetch('/api/energy/today', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ level: lvl, source: src }),
+                        body: JSON.stringify({ level, source: src }),
                       });
-                      if (res.ok) setEnergySignal({ level: lvl, source: src });
+                      if (res.ok) setEnergySignal({ level, source: src });
                       setSettingEnergy(false);
                     }}
-                    className="flex-1 py-1 rounded text-xs font-semibold transition-all"
-                    style={{
-                      background: energySignal?.level === lvl
-                        ? (lvl === 'green' ? 'var(--edg-success)' : lvl === 'yellow' ? 'var(--edg-warning)' : 'var(--edg-danger)')
-                        : 'var(--edg-hairline)',
-                      color: energySignal?.level === lvl ? '#fff' : 'var(--text-faint)',
-                      border: energySignal?.level === lvl ? 'none' : '1px solid var(--edg-border-10)',
-                    }}
+                    className="flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-xs font-medium transition-all"
+                    style={energySignal?.level === level
+                      ? { background: tint, border: `1px solid ${border}`, color }
+                      : { background: 'transparent', border: '1px solid var(--edg-hairline)', color: 'var(--text-faint)' }
+                    }
                   >
-                    {lvl === 'red' ? 'Red' : lvl === 'yellow' ? 'Yellow' : 'Green'}
+                    <span style={{ fontSize: 16 }}>{emoji}</span>
+                    <span>{label}</span>
                   </button>
                 ))}
               </div>
+              {energySignal ? (
+                <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>
+                  {energySignal.level === 'green' ? 'Full power — Edge will schedule high-focus work today.' :
+                   energySignal.level === 'yellow' ? 'Moderate day — Edge will mix focused + lighter tasks.' :
+                   'Low energy — Edge will protect your schedule and defer deep work.'}
+                  {energySignal.source === 'whoop' && <span className="ml-1 opacity-60">(from Whoop)</span>}
+                </p>
+              ) : (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
+                  Set before your call → Edge skips asking
+                </p>
+              )}
             </div>
             {calendarConnected === false ? (
               <button

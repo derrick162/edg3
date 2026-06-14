@@ -1,0 +1,25 @@
+<!-- @dsCard group="Type" viewport="700x230" name="Headings" subtitle="Page, section & card titles" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .wrap { padding: 22px 26px; display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; align-items: baseline; gap: 16px; }
+  .val { font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); white-space: nowrap; }
+  .h1 { font-size: var(--text-2xl); font-weight: var(--weight-bold); letter-spacing: var(--tracking-tight); margin: 0; }
+  .h2 { font-size: var(--text-lg); font-weight: var(--weight-bold); margin: 0; }
+  .h3 { font-size: var(--text-base); font-weight: var(--weight-bold); margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row"><h1 class="h1">Good morning, Alex</h1><span class="val">24px / 700 · --text-2xl</span></div>
+  <div class="row"><h2 class="h2">This week's priorities</h2><span class="val">18px / 700 · --text-lg</span></div>
+  <div class="row"><h3 class="h3">Calls You Every Morning</h3><span class="val">16px / 700 · --text-base</span></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!-- @dsCard group="Brand" viewport="700x230" name="Glass Card Anatomy" subtitle="Surface, hairline border, blur — the default container" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .stage { position: relative; padding: 26px; display: flex; gap: 18px; }
+  .o { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: -150px; right: -40px; filter: blur(80px); background: radial-gradient(circle, rgba(99,102,241,0.14) 0%, transparent 70%); pointer-events: none; }
+  .demo { position: relative; z-index: 1; flex: 1; }
+  .annot { position: relative; z-index: 1; width: 220px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+  .annot b { color: var(--text-body); font-weight: 600; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; color: var(--text-accent); margin: 0 0 8px; }
+  .title { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+  .sub { margin: 0; font-size: 13px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="o"></div>
+  <div class="demo glass-card glass-card-hover" style="padding:22px">
+    <p class="eyebrow">CHAT WITH EDGE</p>
+    <p class="title">Tuesday · 7:00 AM briefing</p>
+    <p class="sub">You said: "Shipping the beta today." Saved to memory.</p>
+  </div>
+  <div class="annot">
+    <b>--surface-card</b> #111118 fill<br>
+    <b>--border-card</b> white 6% hairline<br>
+    <b>--radius-lg</b> 16px corners<br>
+    <b>backdrop blur</b> 10px<br>
+    Hover → indigo border + soft glow
+  </div>
+</div>
+</body>
+</html>

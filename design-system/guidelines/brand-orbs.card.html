@@ -1,0 +1,30 @@
+<!-- @dsCard group="Brand" viewport="700x260" name="Ambient Orbs" subtitle="Two blurred glow orbs give every page its depth" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .stage { position: relative; height: 260px; overflow: hidden; }
+  .o1 { position: absolute; width: 380px; height: 380px; border-radius: 50%; top: -160px; right: -80px; filter: blur(80px); background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%); }
+  .o2 { position: absolute; width: 260px; height: 260px; border-radius: 50%; bottom: -120px; left: -60px; filter: blur(80px); background: radial-gradient(circle, rgba(139,92,246,0.13) 0%, transparent 70%); }
+  .label { position: relative; z-index: 1; padding: 28px 30px; }
+  .label h3 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+  .label p { margin: 0; font-size: 13px; color: var(--text-muted); max-width: 360px; line-height: 1.6; }
+  .tag { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top: 14px; display: block; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="o1"></div>
+  <div class="o2"></div>
+  <div class="label">
+    <h3>Calm ambient depth</h3>
+    <p>An indigo orb top-right, a violet orb bottom-left. 80px blur, low opacity, fixed behind content. Never more than two — restraint keeps it premium.</p>
+    <span class="tag">.orb-1 indigo · .orb-2 violet · filter: blur(80px)</span>
+  </div>
+</div>
+</body>
+</html>
