@@ -24,6 +24,12 @@ const TIMEZONES = [
   { label: 'Auckland (NZST)', value: 'Pacific/Auckland' },
 ];
 
+function fmtSleep(ms: number): string {
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return `${h}h${m > 0 ? ` ${m}m` : ''}`;
+}
+
 function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [profile, setProfile] = useState('');
   const [profileExpanded, setProfileExpanded] = useState(false);
@@ -835,6 +841,11 @@ export default function Dashboard() {
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
+  const [whoopSummary, setWhoopSummary] = useState<{
+    recovery: { score: number; tier: 'green' | 'yellow' | 'red' } | null;
+    sleep: { durationMs: number } | null;
+    strain: { strain: number } | null;
+  } | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
@@ -886,7 +897,10 @@ export default function Dashboard() {
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
-    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setWhoopConnected(!!d.connected)).catch(() => {});
+    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false, recovery: null, sleep: null, strain: null }).then(d => {
+      setWhoopConnected(!!d.connected);
+      if (d.connected) setWhoopSummary({ recovery: d.recovery ?? null, sleep: d.sleep ?? null, strain: d.strain ?? null });
+    }).catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1335,8 +1349,35 @@ export default function Dashboard() {
               <div className="px-2 py-2">
                 <div className="flex items-center gap-2 mb-1">
                   <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop</p>
                 </div>
+                {/* TODO: replace with <RecoveryCard> from components/ui/RecoveryCard.tsx when Design ships */}
+                {whoopSummary?.recovery && (
+                  <div className="pl-3.5 mb-1.5">
+                    <span
+                      className="text-xs font-semibold"
+                      style={{
+                        color: whoopSummary.recovery.tier === 'green'
+                          ? 'var(--edg-success)'
+                          : whoopSummary.recovery.tier === 'red'
+                          ? 'var(--edg-danger)'
+                          : '#f59e0b',
+                      }}
+                    >
+                      {whoopSummary.recovery.score}%
+                    </span>
+                    {whoopSummary.sleep && (
+                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                        {' · '}{fmtSleep(whoopSummary.sleep.durationMs)} sleep
+                      </span>
+                    )}
+                    {whoopSummary.strain && (
+                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                        {' · '}{whoopSummary.strain.strain} strain
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center gap-3 pl-3.5">
                   <button
                     onClick={disconnectWhoop}
