@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock } from './briefing';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext } from './briefing';
 import type { Fact } from './db';
 
 function makePref(statement: string, id = 1): Fact {
@@ -147,5 +147,72 @@ describe('buildEnergyMatchingBlock', () => {
     const result = buildEnergyMatchingBlock(prefs, null);
     expect(result).not.toBeNull();
     expect(result).toContain('admin tasks');
+  });
+});
+
+describe('buildBaselineContext', () => {
+  const recovery = { recoveryScore: 45, hrv: 55, restingHeartRate: 60, date: '2026-06-13' };
+  const history7 = [
+    { date: '2026-06-12', value: 63 },
+    { date: '2026-06-11', value: 70 },
+    { date: '2026-06-10', value: 58 },
+    { date: '2026-06-09', value: 65 },
+    { date: '2026-06-08', value: 72 },
+    { date: '2026-06-07', value: 60 },
+    { date: '2026-06-06', value: 67 },
+  ];
+  const SLEEP_7H_MS = 7 * 3_600_000;
+  const SLEEP_5H_MS = 5 * 3_600_000;
+
+  it('returns null when no recovery data', () => {
+    expect(buildBaselineContext(null, history7, [], null)).toBeNull();
+  });
+
+  it('returns null when fewer than 3 history points', () => {
+    const thinHistory = [{ date: '2026-06-12', value: 63 }, { date: '2026-06-11', value: 70 }];
+    expect(buildBaselineContext(recovery, thinHistory, [], null)).toBeNull();
+  });
+
+  it('includes today, 7-day avg, and delta', () => {
+    const result = buildBaselineContext(recovery, history7, [], null);
+    expect(result).not.toBeNull();
+    expect(result).toContain('today 45%');
+    expect(result).toContain('7-day avg');
+    expect(result).toContain('-');
+  });
+
+  it('shows positive delta for above-average recovery', () => {
+    const highRecovery = { recoveryScore: 80, hrv: 70, restingHeartRate: 50, date: '2026-06-13' };
+    const result = buildBaselineContext(highRecovery, history7, [], null);
+    expect(result).toContain('+');
+  });
+
+  it('does NOT add composite signal with only one bad signal', () => {
+    // Red recovery only, sleep fine, no high strain
+    const redRecovery = { recoveryScore: 25, hrv: 35, restingHeartRate: 72, date: '2026-06-13' };
+    const goodSleep = Array(5).fill(SLEEP_7H_MS);
+    const result = buildBaselineContext(redRecovery, history7, goodSleep, null);
+    expect(result).not.toContain('COMPOSITE SIGNAL');
+  });
+
+  it('adds composite signal when red recovery + sleep debt compound', () => {
+    const redRecovery = { recoveryScore: 25, hrv: 35, restingHeartRate: 72, date: '2026-06-13' };
+    const shortSleep = Array(5).fill(SLEEP_5H_MS);
+    const result = buildBaselineContext(redRecovery, history7, shortSleep, null);
+    expect(result).toContain('COMPOSITE SIGNAL');
+    expect(result).toContain('red recovery');
+  });
+
+  it('adds composite signal when red recovery + high strain compound', () => {
+    const redRecovery = { recoveryScore: 25, hrv: 35, restingHeartRate: 72, date: '2026-06-13' };
+    const result = buildBaselineContext(redRecovery, history7, [], 18.5);
+    expect(result).toContain('COMPOSITE SIGNAL');
+    expect(result).toContain('high strain yesterday');
+  });
+
+  it('does not add composite signal when strain is moderate (≤15)', () => {
+    const highRecovery = { recoveryScore: 75, hrv: 75, restingHeartRate: 48, date: '2026-06-13' };
+    const result = buildBaselineContext(highRecovery, history7, [], 14.9);
+    expect(result).not.toContain('COMPOSITE SIGNAL');
   });
 });

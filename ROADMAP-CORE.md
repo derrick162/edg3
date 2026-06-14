@@ -9,6 +9,17 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-13** — **Stronger Whoop recommendations — baseline-relative + composite signal (Priority 4).**
+  - `buildBaselineContext(recovery, recoveryHistory, recentSleepMs, recentStrain)` pure helper
+    added to `lib/briefing.ts`. Computes "today 45% · 7-day avg 63% · −18 pts" baseline line.
+    Adds a COMPOSITE SIGNAL block when ≥2 signals compound (red recovery + sleep debt <6.5h avg +
+    high strain >15 on Whoop's 0–21 scale). Frame is coaching grounded in numbers — never
+    medical claims. Degrades to null when fewer than 3 history points.
+  - Injected into `whoopContextBlock` in `generateDailyBriefing` as "BASELINE (use these numbers
+    when coaching pacing...)" — placed after the tier line so the model can cite concrete delta
+    in section 1 ("18 points below your weekly average") and tie pacing advice to the actual gap.
+  - Sleep history sorted newest-first before slicing so the most recent 7 days are always used.
+  - 8 new tests. 490/490 green, tsc clean, next build clean.
 - **2026-06-13** — **Voice polish + call status + copy-transcript (Priorities 7, 3, 8).**
   - **P7 — Voice pronunciation avoid-list (prompt-only):** Added WORD CHOICE line to `lib/vapi.ts`
     system prompt. Instructs Edge to say "wrap up" not "wind up", "finish" not "wind down", and to
