@@ -283,7 +283,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
           onClick={() => setFilterView(v)}
           className="text-xs py-1 px-3 rounded-md transition-all capitalize"
           style={{
-            background: filterView === v ? 'rgba(99,102,241,0.2)' : 'transparent',
+            background: filterView === v ? 'var(--edg-accent-20)' : 'transparent',
             color: filterView === v ? 'var(--text-accent)' : 'var(--text-muted)',
             fontWeight: filterView === v ? 600 : 400,
           }}
@@ -431,7 +431,7 @@ function TaskRow({ task, onToggle, onDelete }: {
         className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
         style={{
           background: task.completed ? 'var(--edg-indigo)' : 'transparent',
-          border: task.completed ? '2px solid #6366f1' : '2px solid rgba(255,255,255,0.15)',
+          border: task.completed ? '2px solid var(--edg-indigo)' : '2px solid rgba(255,255,255,0.15)',
         }}
       >
         {task.completed && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
@@ -497,7 +497,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
           {values.map((v, i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
-                   style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
+                   style={{ background: 'var(--edg-accent-20)', color: 'var(--text-accent)' }}>
                 {i + 1}
               </div>
               <input
@@ -529,7 +529,7 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
               {priorities.map((p, i) => (
                 <div key={p.id} className="glass-card p-5 flex items-start gap-4">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
-                       style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
+                       style={{ background: 'var(--edg-accent-20)', color: 'var(--text-accent)' }}>
                     {i + 1}
                   </div>
                   <p className="font-medium text-sm pt-1">{p.text}</p>
@@ -1225,9 +1225,9 @@ export default function Dashboard() {
                 onClick={() => setActiveTab(tab.id as any)}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
-                  background: activeTab === tab.id ? 'rgba(99,102,241,0.15)' : 'transparent',
+                  background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
                   color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
-                  border: activeTab === tab.id ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
+                  border: activeTab === tab.id ? '1px solid var(--edg-accent-20)' : '1px solid transparent',
                 }}
               >
                 <span>{tab.icon}</span>
@@ -1248,7 +1248,7 @@ export default function Dashboard() {
                 <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Next call</p>
                 {showNextCallTip && (
                   <span className="text-xs px-1.5 py-0.5 rounded font-semibold animate-pulse"
-                    style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--text-accent)' }}>
+                    style={{ background: 'var(--edg-accent-20)', color: 'var(--text-accent)' }}>
                     ← this is you
                   </span>
                 )}
@@ -1274,7 +1274,7 @@ export default function Dashboard() {
                     onClick={addDailyCallReminder}
                     disabled={reminderBusy}
                     className="text-xs py-1 px-2 rounded"
-                    style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.2)' }}
+                    style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
                   >
                     {reminderBusy ? 'Adding…' : '📅 Add daily call to calendar'}
                   </button>
@@ -1290,7 +1290,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setActiveTab('priorities')}
                     className="text-xs py-1 px-2 rounded flex-1"
-                    style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.2)' }}
+                    style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
                   >
                     Update
                   </button>
@@ -1349,9 +1349,9 @@ export default function Dashboard() {
                 ⚡ Connect Whoop
               </button>
             ) : whoopConnected ? (
-              <div className="px-2 py-2">
+              <div>
                 {whoopData && whoopData.recoveryScore !== null && whoopData.tier && (
-                  <div className="mb-3">
+                  <div className="mb-2">
                     <RecoveryCard
                       recoveryScore={whoopData.recoveryScore}
                       tier={whoopData.tier}
@@ -1361,19 +1361,21 @@ export default function Dashboard() {
                     />
                   </div>
                 )}
-                <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
-                </div>
-                <div className="flex items-center gap-3 pl-3.5">
-                  <button
-                    onClick={disconnectWhoop}
-                    disabled={disconnectingWhoop}
-                    className="text-xs"
-                    style={{ color: 'var(--edg-danger)' }}
-                  >
-                    {disconnectingWhoop ? 'Disconnecting…' : 'Disconnect'}
-                  </button>
+                <div className="px-2 pt-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
+                  </div>
+                  <div className="flex items-center gap-3 pl-3.5">
+                    <button
+                      onClick={disconnectWhoop}
+                      disabled={disconnectingWhoop}
+                      className="text-xs"
+                      style={{ color: 'var(--edg-danger)' }}
+                    >
+                      {disconnectingWhoop ? 'Disconnecting…' : 'Disconnect'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -1431,7 +1433,7 @@ export default function Dashboard() {
 
           {/* Generated briefing preview */}
           {briefingText && (
-            <div className="glass-card p-6 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
+            <div className="glass-card p-6 mb-6" style={{ borderColor: 'var(--edg-accent-20)' }}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY'S BRIEFING PREVIEW</h3>
                 <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
@@ -1453,7 +1455,7 @@ export default function Dashboard() {
                 </div>
               ) : briefings.length === 0 ? (
                 previewLoading ? (
-                  <div className="glass-card p-8 text-center" style={{ borderColor: 'rgba(99,102,241,0.2)' }}>
+                  <div className="glass-card p-8 text-center" style={{ borderColor: 'var(--edg-accent-20)' }}>
                     <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
                     <div className="flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}>
                       <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
@@ -1511,7 +1513,7 @@ export default function Dashboard() {
                           </p>
 
                           {b.transcript && (
-                            <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                            <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
                               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>CALL TRANSCRIPT</p>
                               <div className="space-y-2">
                                 {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
@@ -1522,7 +1524,7 @@ export default function Dashboard() {
                                     <div key={i} className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                                       <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-xs"
                                         style={{
-                                          background: isUser ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
+                                          background: isUser ? 'var(--edg-accent-20)' : 'rgba(255,255,255,0.05)',
                                           color: isUser ? 'var(--text-strong)' : 'var(--text-muted)',
                                         }}>
                                         {text}
@@ -1539,7 +1541,7 @@ export default function Dashboard() {
                               const promises = JSON.parse(b.edge_promises);
                               if (!promises.length) return null;
                               return (
-                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid var(--edg-accent-20)' }}>
                                   <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>✅ EDGE ACTION ITEMS</p>
                                   <div className="space-y-1">
                                     {promises.map((p: string, i: number) => (
@@ -1578,7 +1580,7 @@ export default function Dashboard() {
                               const labels = summarizeUserFacingActions(JSON.parse(b.tool_actions));
                               if (!labels.length) return null;
                               return (
-                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                                <div className="mt-4 p-4 rounded-lg" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid var(--edg-accent-15)' }}>
                                   <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>🛠 EDGE&apos;S ACTIONS THIS CALL</p>
                                   <div className="space-y-1.5">
                                     {labels.map((label: string, i: number) => (
@@ -1786,7 +1788,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
           <div className="glass-card p-8 max-w-md w-full text-center relative" style={{ border: '1px solid rgba(99,102,241,0.3)' }}>
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
-                 style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}>
+                 style={{ background: 'var(--edg-accent-15)', border: '1px solid rgba(99,102,241,0.3)' }}>
               <span className="logo-text text-2xl">E</span>
             </div>
             <h2 className="text-2xl font-black mb-2">Edg3 wants to introduce himself.</h2>
