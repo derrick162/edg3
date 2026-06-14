@@ -260,7 +260,69 @@ import { FocusScoreboard } from '@/components/ui';
 
 ---
 
-## 9. First asks (suggested)
+## 9. CalendarFitCard component
+
+> **"Is my calendar set up right?"** — the top half of the Scoreboard surface. Two live 1–10 gauges
+> (Focus Score + Energy Score) above the per-area progress section (§8).
+
+### Layout
+```
+┌─────────────────────────────────────────────┐
+│  Calendar fit today              avg: 7/10  │
+│  Room to improve — see below.               │
+│                                             │
+│  🎯 Focus     good            ████████░░  8 ▼│
+│     · Focus area "Fundraising" has 0h      │
+│     · Only 32% of time is aligned          │
+│     ✦ Block 90min for fundraising tomorrow +2│  [Fix it]
+│  ─────────────────────────────────────────  │
+│  ⚡ Energy    fair            █████░░░░░  5 ▼│
+│     · High-demand work in your 2pm trough  │
+│     ✦ Move "Deep vibe-coding" to 9am      +3│  [Fix it]
+└─────────────────────────────────────────────┘
+```
+
+### Score bar
+- Thin horizontal bar (h-1.5, rounded, `--gauge-bg` track).
+- Fill color ramp: `--gauge-low` (1–3 red) → `--gauge-mid` (4–6 amber) → `--gauge-high` (7–8 indigo) → `--gauge-peak` (9–10 green). Matching glow on fill + score label.
+- 700ms CSS width transition on load.
+
+### Interactions
+- Each gauge row is a button — tap expands/collapses drivers + top fix.
+- **Drivers**: 2–4 short chip-style sentences explaining why the score is what it is.
+- **Top fix**: one `✦ action` + `+N points` impact label + optional "Fix it" button that triggers `onRequestFix` (Core wires to the Vapi tool call / API).
+- **Calibrating state**: amber banner "Edge is learning your energy — call N of 10" when `calibrating: true`.
+- **Loading skeleton**: animated pulse bar while scores compute.
+
+### Prop contract (Core wires data)
+```tsx
+import { CalendarFitCard } from '@/components/ui';
+
+<CalendarFitCard
+  focusScore={{
+    score: 8,
+    drivers: ['2 focus areas have scheduled time', '68% of blocks are aligned'],
+    topFix: { action: 'Block 90min for Fundraising tomorrow', impact: '+1 point' },
+  }}
+  energyScore={{
+    score: 5,
+    drivers: ['Deep work sits in your 2pm trough', 'Red recovery day — 3 hard meetings'],
+    topFix: { action: 'Move deep vibe-coding to 9am peak', impact: '+3 points' },
+    calibrating: false,
+  }}
+  onRequestFix={type => {
+    // type: 'focus' | 'energy'
+    // trigger the relevant Vapi tool call or API action
+  }}
+/>
+```
+
+### Tokens added (`app/globals.css` — Calendar Fit gauges)
+`--gauge-bg`, `--gauge-low/mid/high/peak`, `--gauge-glow-low/high/peak`, `--gauge-driver-bg`.
+
+---
+
+## 10. First asks (suggested)
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).
