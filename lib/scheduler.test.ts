@@ -189,10 +189,10 @@ describe('preference injection into initiateCall', () => {
   it('passes empty preferencesText when no preferences are stored', async () => {
     (factQueries.getByCategory as ReturnType<typeof vi.fn>).mockReturnValue([]);
     await scheduleBriefingCall(1);
-    // 8th arg (index 7) is preferencesText — should be ''
+    // 8th arg (index 7) = preferencesText (''); 9th arg (index 8) = whoopText ('' when Whoop not connected in tests)
     expect(h.initiateCall).toHaveBeenCalledWith(
       expect.any(String), expect.any(String), expect.any(String),
-      expect.any(Boolean), expect.any(String), false, expect.any(String), '',
+      expect.any(Boolean), expect.any(String), false, expect.any(String), '', '',
     );
   });
 

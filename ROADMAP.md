@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ **Voice-behavior fixes + Whoop Trends wired** (`9b9da87`): weekend awareness, no jargon, own failures, recurring moveEvent guidance, Trends hooked into briefing. 418/418 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | _(idle — ✅ calendar-green token pass re-applied (Edit tool, UTF-8 safe, next build green). 371/371 tests. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ RecoveryCard component + sparkline + DESIGN.md §7 spec shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -137,6 +137,7 @@ other lane and the PM can see live ownership claims.
     injects trend line into `whoopContextBlock` when notable. `lib/vapi.ts` — WHOOP TRENDS
     note added so Edge can reference 2-week trends mid-call.
   - 418/418 green (includes Security's new tests), tsc clean, next build clean.
+- **2026-06-13** — **RecoveryCard component (Design).** `components/ui/RecoveryCard.tsx` — self-contained presentational card: color-coded 36px score, tier label + energy dot, sleep/strain stat row, inline SVG sparkline with area fill + end-cap dot (falls back to placeholder before history loads). Exports `RecoveryCard`, `RecoveryCardProps`, `RecoveryTier`, `RecoveryHistoryPoint`. Added sparkline tokens to `app/globals.css`. Spec in `DESIGN.md §7`. Core: import from `@/components/ui`, derive tier with `s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low'`.
 - **2026-06-13** — **Dashboard Whoop display (Core).** (`030d94a`)
   - `/api/whoop/status` extended: fetches `getLatestRecovery`, `getLastSleep`, `getRecentStrain` in
     parallel (all `.catch(→null)`) when Whoop is connected; returns
@@ -149,7 +150,7 @@ other lane and the PM can see live ownership claims.
     `fmtSleep(ms)` pure helper added. `TODO` comment marks the `<RecoveryCard>` import slot for
     when Design ships `components/ui/RecoveryCard.tsx`.
   - 406/406 green, tsc clean, next build clean.
-- **2026-06-13** — **Whoop Trends — pure analysis layer (Core).** (`0aec055`) ⏳ *wiring pending Security history fetch*
+- **2026-06-13** — **Whoop Trends — pure analysis layer (Core).** (`0aec055`) ⏳ *wiring pending Security history fetch (now landed)*
   - `lib/whoopTrends.ts` (pure, 0 I/O): `computeWhoopTrends(recoveryHistory, sleepHistory, strainHistory)`
     → `WhoopTrendSummary { recoveryAvg7d, recoveryDirection, flags[] }`.
     Flags: `RECOVERY_DECLINING_3D` (last 3 days monotonically declining), `RECOVERY_LOW_STREAK`
@@ -160,9 +161,6 @@ other lane and the PM can see live ownership claims.
   - `formatTrendForBriefing(trend)` → one honest sentence or null. Priority:
     DECLINING_3D > LOW_STREAK > SLEEP_DEBT+HIGH_STRAIN combined > SLEEP_DEBT > HIGH_STRAIN > direction.
   - 35 new tests. 406/406 green, tsc clean, next build clean.
-  - **Wiring blocked on Security:** once `getRecoveryHistory/getSleepHistory/getStrainHistory`
-    land in `lib/whoop.ts` on master, Core wires them into `lib/briefing.ts` + adds WHOOP TRENDS
-    conversation note to `lib/vapi.ts`. Stub TODO comment left in `lib/briefing.ts`.
 - **2026-06-13** — **Whoop V2 — energy-matched time-blocking (Core).** (`40155fd`)
   - `buildEnergyMatchingBlock(preferences, recovery)` pure function in `lib/briefing.ts`.
     Scans preference-category facts for energy-profile keywords (peak, trough, deep work,

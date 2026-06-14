@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
+import { RecoveryCard } from '@/components/ui/RecoveryCard';
+import type { RecoveryTier } from '@/components/ui/RecoveryCard';
 
 const TIMEZONES = [
   { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
@@ -23,12 +25,6 @@ const TIMEZONES = [
   { label: 'Sydney (AEST)', value: 'Australia/Sydney' },
   { label: 'Auckland (NZST)', value: 'Pacific/Auckland' },
 ];
-
-function fmtSleep(ms: number): string {
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  return `${h}h${m > 0 ? ` ${m}m` : ''}`;
-}
 
 function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [profile, setProfile] = useState('');
@@ -1347,38 +1343,21 @@ export default function Dashboard() {
               </button>
             ) : whoopConnected ? (
               <div className="px-2 py-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop</p>
-                </div>
-                {/* TODO: replace with <RecoveryCard> from components/ui/RecoveryCard.tsx when Design ships */}
-                {whoopSummary?.recovery && (
-                  <div className="pl-3.5 mb-1.5">
-                    <span
-                      className="text-xs font-semibold"
-                      style={{
-                        color: whoopSummary.recovery.tier === 'green'
-                          ? 'var(--edg-success)'
-                          : whoopSummary.recovery.tier === 'red'
-                          ? 'var(--edg-danger)'
-                          : '#f59e0b',
-                      }}
-                    >
-                      {whoopSummary.recovery.score}%
-                    </span>
-                    {whoopSummary.sleep && (
-                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                        {' · '}{fmtSleep(whoopSummary.sleep.durationMs)} sleep
-                      </span>
-                    )}
-                    {whoopSummary.strain && (
-                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                        {' · '}{whoopSummary.strain.strain} strain
-                      </span>
-                    )}
+                {whoopSummary?.recovery ? (
+                  <RecoveryCard
+                    recoveryScore={whoopSummary.recovery.score}
+                    tier={(whoopSummary.recovery.tier === 'green' ? 'high' : whoopSummary.recovery.tier === 'red' ? 'low' : 'medium') as RecoveryTier}
+                    sleepHours={whoopSummary.sleep ? whoopSummary.sleep.durationMs / 3_600_000 : undefined}
+                    strain={whoopSummary.strain?.strain}
+                    className="mb-2"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 mb-1">
+                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
                   </div>
                 )}
-                <div className="flex items-center gap-3 pl-3.5">
+                <div className="flex items-center gap-3 pl-1">
                   <button
                     onClick={disconnectWhoop}
                     disabled={disconnectingWhoop}
