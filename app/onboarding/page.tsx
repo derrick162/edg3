@@ -11,14 +11,14 @@ function StepIndicator({ current }: { current: Step }) {
   const labels = ['Profile', 'Calendar', 'Priorities', 'Call Time'];
   const idx = STEPS.indexOf(current);
   return (
-    <div className="flex items-center gap-2 mb-8">
+    <div className="flex items-center gap-1.5 md:gap-2 mb-6 md:mb-8">
       {STEPS.map((s, i) => (
         <div key={s} className="flex items-center gap-2">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
             style={{
-              background: i < idx ? 'var(--edg-indigo)' : i === idx ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
-              border: i === idx ? '2px solid #6366f1' : '2px solid transparent',
+              background: i < idx ? 'var(--edg-indigo)' : i === idx ? 'var(--edg-accent-20)' : 'rgba(255,255,255,0.05)',
+              border: i === idx ? '2px solid var(--edg-indigo)' : '2px solid transparent',
               color: i <= idx ? 'var(--text-strong)' : 'var(--text-faint)',
             }}
           >
@@ -86,7 +86,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         EDG3 needs to understand your full context to give you truly useful briefings.
       </p>
 
-      <div className="glass-card p-5 mb-6" style={{ borderColor: 'rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.05)' }}>
+      <div className="glass-card p-5 mb-6" style={{ borderColor: 'var(--edg-accent-20)', background: 'rgba(99,102,241,0.05)' }}>
         <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>Step 1 of 2 — Get your profile from ChatGPT</p>
         <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
           Go to ChatGPT (or your most actively used AI tool) and send this prompt (it works best if you've had prior conversations with it):
@@ -108,7 +108,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         </button>
         {showExample && (
           <div className="mt-3 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap"
-            style={{ background: 'rgba(0,0,0,0.25)', color: 'var(--text-muted)', border: '1px solid rgba(99,102,241,0.15)', maxHeight: '220px', overflowY: 'auto' }}>
+            style={{ background: 'rgba(0,0,0,0.25)', color: 'var(--text-muted)', border: '1px solid var(--edg-accent-15)', maxHeight: '220px', overflowY: 'auto' }}>
             {EXAMPLE_PROFILE}
           </div>
         )}
@@ -178,7 +178,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
         <div className="text-4xl mb-3">📅</div>
         <h3 className="font-bold mb-2">Google Calendar</h3>
         <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
-          Read-only access. EDG3 sees your events to build smarter briefings. Nothing is modified.
+          Edg3 reads your Google Calendar and can create, move, or remove events during your voice calls.
         </p>
         <button className="btn-primary w-full" onClick={connectCalendar} disabled={loading}>
           {loading ? 'Connecting…' : 'Connect Google Calendar'}
@@ -240,7 +240,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
         </div>
       ) : priorities.some(p => p.trim()) && (
         <div className="flex items-center gap-2 mb-4 text-xs px-3 py-2 rounded-lg"
-          style={{ background: 'rgba(99,102,241,0.08)', color: 'var(--text-accent)', border: '1px solid rgba(99,102,241,0.15)' }}>
+          style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
           ✦ Suggested from your profile — edit freely
         </div>
       )}
@@ -424,7 +424,7 @@ function OnboardingContent() {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center px-4 py-16" style={{ background: 'var(--background)' }}>
+    <div className="min-h-screen relative flex items-center justify-center px-4 py-8 md:py-16" style={{ background: 'var(--background)' }}>
       <div className="orb orb-1" />
       <div className="orb orb-2" />
 
@@ -434,7 +434,7 @@ function OnboardingContent() {
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Setup · {STEPS.indexOf(step) + 1} of {STEPS.length}</p>
         </div>
 
-        <div className="glass-card p-8">
+        <div className="glass-card p-5 md:p-8">
           <StepIndicator current={step} />
 
           {step === 'profile' && <ProfileStep onNext={advance} />}
