@@ -62,6 +62,54 @@ export interface EventLike {
   start?: { dateTime?: string | null; date?: string | null } | null;
 }
 
+/** EventLike extended with the fields needed for duplicate detection. */
+export interface DuplicateEventLike extends EventLike {
+  id?: string | null;
+  created?: string | null;
+}
+
+/**
+ * Group events by normalized title + start time (to-the-minute UTC for timed events,
+ * or `allday:YYYY-MM-DD` for all-day events). Returns only groups with >1 member,
+ * each with the earliest-created event marked as `keep` and the rest as `remove`.
+ * Pure — no I/O.
+ */
+export function findDuplicateGroups<T extends { event: DuplicateEventLike; calId: string }>(
+  events: T[],
+): Array<{ key: string; keep: T; remove: T[] }> {
+  const groups = new Map<string, T[]>();
+  for (const item of events) {
+    const normTitle = normalizeTitle(item.event.summary ?? '');
+    if (!normTitle) continue;
+    let timeKey: string;
+    if (item.event.start?.dateTime) {
+      timeKey = new Date(item.event.start.dateTime).toISOString().slice(0, 16);
+    } else if (item.event.start?.date) {
+      timeKey = `allday:${item.event.start.date}`;
+    } else {
+      continue;
+    }
+    const key = `${normTitle}|${timeKey}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+  const result: Array<{ key: string; keep: T; remove: T[] }> = [];
+  for (const [key, items] of groups) {
+    if (items.length <= 1) continue;
+    const sorted = [...items].sort((a, b) => {
+      const ca = a.event.created ?? '';
+      const cb = b.event.created ?? '';
+      if (ca && cb) return ca.localeCompare(cb);
+      if (ca) return -1;
+      if (cb) return 1;
+      return (a.event.id ?? '').localeCompare(b.event.id ?? '');
+    });
+    const [keep, ...remove] = sorted;
+    result.push({ key, keep, remove });
+  }
+  return result;
+}
+
 /**
  * Resolve a specific event by title + EXACT start datetime (within 1-minute tolerance).
  * Used by cleanupEvents to avoid the fuzzy-title collision that hits during consolidation,
