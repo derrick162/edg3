@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ Whoop V3 SHIPPED (proactive recovery defense + correlations). 437/437 green. Awaiting PM merge.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | Onboarding visual/UX pass + mobile responsiveness (dashboard + onboarding) | `app/onboarding/page.tsx`, `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ onboarding pass + mobile layout shipped. Awaiting PM.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -116,6 +116,7 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Mobile responsiveness pass (Design).** Dashboard: `flex-col md:flex-row` layout; sidebar `w-full md:w-60` with horizontal icon-only scrolling tab nav on mobile; sidebar widgets `hidden md:flex`; main `p-4 md:p-8 min-w-0`. Onboarding: `py-8 md:py-16` outer, `p-5 md:p-8` card, StepIndicator tightened, CalendarStep false "read-only" copy corrected, inline rgba → token substitutions. `.no-scrollbar` added to `app/globals.css`.
 - **2026-06-13** — **Dashboard token polish + RecoveryCard sidebar spacing (Design).** `app/dashboard/page.tsx`: re-applied lost inline-color tokenization (UTF-8 safe, Edit tool only) — `rgba(99,102,241,0.2/0.15/0.08)` → `--edg-accent-20/15/08`, `#6366f1` → `--edg-indigo`. RecoveryCard sidebar wrapper restructured: card fills full sidebar width, status/disconnect row stays at `px-2` indent for alignment with calendar section.
 - **2026-06-13** — **Whoop V3 — Proactive recovery defense + correlations (Core).**
   - **Part A — Proactive recovery defense:** `detectRecoveryDrop(todayScore, history)` pure helper
