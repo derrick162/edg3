@@ -39,13 +39,13 @@ export default function AdminLoginPage() {
       <div className="relative z-10 w-full max-w-sm">
         <div className="text-center mb-8">
           <span className="logo-text text-3xl">EDG3</span>
-          <p className="text-xs mt-1" style={{ color: '#6366f1', letterSpacing: '0.1em' }}>ADMIN</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--edg-indigo)', letterSpacing: '0.1em' }}>ADMIN</p>
         </div>
 
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#aaa' }}>Admin Password</label>
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Admin Password</label>
               <input
                 className="input"
                 type="password"
@@ -58,7 +58,7 @@ export default function AdminLoginPage() {
             </div>
 
             {error && (
-              <p className="text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+              <p className="text-sm px-3 py-2 rounded-lg" style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)' }}>
                 {error}
               </p>
             )}
