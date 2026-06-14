@@ -15,29 +15,23 @@ async function retryCall(briefingId: number, userId: number) {
   try {
     const { userQueries: uq } = await import('@/lib/db');
     const user = uq.findById(userId);
-    if (!user) return;
-    const phoneNumber = user.phone_number;
-    if (!phoneNumber) return;
+    if (!user?.phone_number) return;
 
     console.log(`[webhook] Retrying call for user ${userId} in 10 minutes...`);
     await new Promise(resolve => setTimeout(resolve, 10 * 60 * 1000));
 
-    const { initiateCall } = await import('@/lib/vapi');
-    const { memoryQueries: mq } = await import('@/lib/db');
     const db = (await import('@/lib/db')).getDb();
     const briefing = db.prepare('SELECT * FROM briefings WHERE id = ?').get(briefingId) as Briefing | undefined;
-    if (!briefing || briefing.status === 'completed') return;
+    if (briefing?.status === 'completed') return; // user already got their call in the meantime
 
-    const recentMemories = mq.getRecent(userId, 1);
-    const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
-
-    console.log(`[webhook] Firing retry call for user ${userId}...`);
-    const call = await initiateCall(phoneNumber, briefing.content, user.name, isFirstCall);
-    const callId = call.id;
-    if (callId) {
-      briefingQueries.update(briefingId, { status: 'calling', vapi_call_id: callId });
-      console.log(`[webhook] Retry call initiated: ${callId}`);
-    }
+    // Regenerate a FRESH briefing with the CURRENT time + full context (correct timezone,
+    // priorities, preferences, Whoop) rather than re-dialing the original. A retry that
+    // connects hours later must not read stale time-relative advice ("block 9:30–11:15" when
+    // it's now past), and must use the user's real timezone — the old re-dial defaulted to
+    // America/Vancouver and reused the original 9:30 script.
+    const { scheduleBriefingCall } = await import('@/lib/scheduler');
+    await scheduleBriefingCall(userId, { force: true });
+    console.log(`[webhook] Retry call initiated for user ${userId} (fresh briefing, full context)`);
   } catch (err) {
     console.error('[webhook] Retry failed:', err);
   }
