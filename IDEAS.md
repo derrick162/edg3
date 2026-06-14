@@ -26,3 +26,14 @@
   Health Connect, or a manual-input fallback.
 - **Why parked:** bigger lift; Whoop already covers the founder; validate the health features pay
   off before widening. Apple Health specifically has no cloud API (blocker).
+
+## Product / feedback
+
+### In-product post-call feedback UI — _parked 2026-06-14_
+- **Idea:** after each call, a quick "rate this call / what would have made it a 10?" prompt in
+  the dashboard. **Dual-purpose:** (1) aggregate across users so the team sees patterns, and
+  (2) feed each user's notes into THEIR preferences so Edge personalizes per person over time.
+- **Why parked:** pre-launch with one user (Derrick), the chat→PM loop + `CALL-FEEDBACK.md` is a
+  higher-fidelity, zero-build training loop. Build the UI when there are real users who can't
+  give feedback in chat. Until then, feedback flows via CALL-FEEDBACK.md and "tell Edge on the
+  call" (rememberPreference).
