@@ -50,6 +50,17 @@
 - **Open decision:** the default (Privacy Mode on vs. improve on) — founder call.
 - **Cross-lane when built:** Design (screen), Core (flow + setting), Security (actually enforce it + CASA doc).
 
+### Outbound email drafting (`draftEmail`) — _parked 2026-06-14_
+- **Status:** SHIPPED + live (Edge can draft Gmail outreach drafts on a call). But under the new
+  Focus × Energy vision it's an **email-assistant** capability, not a focus/energy one — arguably
+  off-core for MVP.
+- **Decision (parked):** when we removed the email-**reply**→calendar feature (reply tracking +
+  Book-it), Derrick chose to remove that chain but **keep `draftEmail` for now** and decide its
+  fate separately. Not ripping it out yet.
+- **Revisit:** if it doesn't earn its keep against the vision (and it carries Gmail OAuth /
+  verification weight — see google-verification), retire it. If it does, keep as a calendar-adjacent
+  convenience. Founder call later.
+
 ## Growth / monetization
 
 ### Trial extension via daily call ("do your morning call → +1 free day") — _parked 2026-06-14_
