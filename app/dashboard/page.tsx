@@ -394,7 +394,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
               </div>
             </div>
           )}
-          {incompleteVisible.length > 1 && (
+          {incompleteVisible.length > 0 && (
             <div className="flex justify-end mb-2">
               <button
                 onClick={handleCompleteAll}
