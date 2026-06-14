@@ -882,6 +882,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
+  const [editingFactId, setEditingFactId] = useState<number | null>(null);
+  const [editingFactText, setEditingFactText] = useState('');
+  const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -979,6 +982,26 @@ export default function Dashboard() {
     await fetch('/api/calendar/reminder', { method: 'DELETE' });
     setReminderBusy(false);
     setReminderInCalendar(false);
+  }
+
+  async function handleUpdateFact(id: number, statement: string, entity: string | null) {
+    setEditingFactId(null);
+    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
+    await fetch('/api/memory/facts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, statement, entity }),
+    });
+  }
+
+  async function handleDeleteFact(id: number) {
+    setDeletingFactId(null);
+    setFacts(prev => prev.filter(f => f.id !== id));
+    await fetch('/api/memory/facts', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
   }
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -1746,15 +1769,83 @@ export default function Dashboard() {
                           <div className="space-y-1.5">
                             {visible.map(f => (
                               <div key={f.id} className="glass-card px-4 py-3 flex items-start justify-between gap-4">
-                                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                  {f.entity && (
-                                    <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
-                                  )}
-                                  {f.statement}
-                                </p>
-                                <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                                  {format(new Date(f.learned_at), 'MMM d')}
-                                </span>
+                                {editingFactId === f.id ? (
+                                  <div className="flex-1 flex flex-col gap-2">
+                                    <textarea
+                                      className="input text-sm w-full resize-none"
+                                      value={editingFactText}
+                                      onChange={e => setEditingFactText(e.target.value)}
+                                      rows={2}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-3">
+                                      <button
+                                        className="text-xs px-3 py-1 rounded"
+                                        style={{ background: 'var(--edg-indigo)', color: '#fff' }}
+                                        onClick={() => handleUpdateFact(f.id, editingFactText, f.entity)}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        className="text-xs"
+                                        style={{ color: 'var(--text-faint)' }}
+                                        onClick={() => setEditingFactId(null)}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : deletingFactId === f.id ? (
+                                  <div className="flex-1 flex items-center gap-3">
+                                    <span className="text-sm" style={{ color: 'var(--text-body)' }}>Remove this?</span>
+                                    <button
+                                      className="text-xs"
+                                      style={{ color: 'var(--text-faint)' }}
+                                      onClick={() => setDeletingFactId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      className="text-xs font-medium"
+                                      style={{ color: '#ef4444' }}
+                                      onClick={() => handleDeleteFact(f.id)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-body)' }}>
+                                      {f.entity && (
+                                        <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                      )}
+                                      {f.statement}
+                                    </p>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                                        {format(new Date(f.learned_at), 'MMM d')}
+                                      </span>
+                                      <button
+                                        onClick={() => { setEditingFactId(f.id); setEditingFactText(f.statement); }}
+                                        className="opacity-40 hover:opacity-100 transition-opacity text-xs"
+                                        style={{ color: 'var(--text-faint)' }}
+                                        aria-label="Edit"
+                                        title="Edit"
+                                      >
+                                        ✏
+                                      </button>
+                                      <button
+                                        onClick={() => setDeletingFactId(f.id)}
+                                        className="opacity-40 hover:opacity-100 transition-opacity"
+                                        style={{ color: 'var(--text-faint)', fontSize: '1rem', lineHeight: 1 }}
+                                        aria-label="Delete"
+                                        title="Delete"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             ))}
                           </div>

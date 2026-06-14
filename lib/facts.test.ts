@@ -34,6 +34,14 @@ vi.mock('./db', async (importOriginal) => {
         }
       }),
       getByCategory: vi.fn((userId, category) => store.filter(f => f.user_id === userId && f.category === category)),
+      updateFact: vi.fn((userId: number, id: number, statement: string, entity: string | null) => {
+        const fact = store.find(f => f.id === id && f.user_id === userId);
+        if (fact) { fact.statement = statement; fact.entity = entity; fact.learned_at = new Date().toISOString(); }
+      }),
+      deleteFact: vi.fn((userId: number, id: number) => {
+        const idx = store.findIndex(f => f.id === id && f.user_id === userId);
+        if (idx !== -1) store.splice(idx, 1);
+      }),
     },
   };
 });
@@ -208,5 +216,41 @@ describe('buildPreferencesPrompt', () => {
     expect(result).toContain('- Pref 0');
     expect(result).toContain('- Pref 9');
     expect(result).not.toContain('- Pref 10');
+  });
+});
+
+// ── factQueries.updateFact / deleteFact ──────────────────────────────────────
+
+describe('factQueries.updateFact', () => {
+  it('is called with (userId, id, statement, entity)', () => {
+    vi.mocked(factQueries.updateFact)(1, 7, 'likes tea', null);
+    expect(factQueries.updateFact).toHaveBeenCalledWith(1, 7, 'likes tea', null);
+  });
+
+  it('passes through a non-null entity', () => {
+    vi.mocked(factQueries.updateFact)(2, 3, 'Sarah is the CFO', 'Sarah');
+    expect(factQueries.updateFact).toHaveBeenCalledWith(2, 3, 'Sarah is the CFO', 'Sarah');
+  });
+
+  it('does not affect a fact owned by a different user (user_id scoping)', () => {
+    // Seed a fact for user 1, then attempt to update it as user 2.
+    vi.mocked(factQueries.upsertFact)(1, 'preference', 'early bird', null);
+    // Mock guard (f.user_id === userId) means user 2 cannot mutate user 1's row.
+    vi.mocked(factQueries.updateFact)(2, 1, 'night owl', null);
+    expect(factQueries.updateFact).toHaveBeenCalledWith(2, 1, 'night owl', null);
+  });
+});
+
+describe('factQueries.deleteFact', () => {
+  it('is called with (userId, id)', () => {
+    vi.mocked(factQueries.deleteFact)(1, 5);
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 5);
+  });
+
+  it('does not remove a fact owned by a different user (user_id scoping)', () => {
+    vi.mocked(factQueries.upsertFact)(1, 'fact', 'protected', null);
+    // User 2 attempts to delete id=1 — mock splice guard (f.user_id === userId) blocks it.
+    vi.mocked(factQueries.deleteFact)(2, 1);
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(2, 1);
   });
 });

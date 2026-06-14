@@ -994,4 +994,14 @@ export const factQueries = {
       'SELECT * FROM facts WHERE user_id=? AND category=? ORDER BY learned_at DESC'
     ).all(userId, category) as Fact[];
   },
+
+  updateFact: (userId: number, id: number, statement: string, entity: string | null): void => {
+    getDb().prepare(
+      "UPDATE facts SET statement=?, entity=?, learned_at=datetime('now') WHERE id=? AND user_id=?"
+    ).run(statement, entity, id, userId);
+  },
+
+  deleteFact: (userId: number, id: number): void => {
+    getDb().prepare('DELETE FROM facts WHERE id=? AND user_id=?').run(id, userId);
+  },
 };
