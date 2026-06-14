@@ -328,6 +328,39 @@ export function whoopFreshnessNote(
   return `DATA FRESHNESS: these are the most recent readings, not today's — ${stale.join('; ')}. Tell the user this is their latest available reading from that date; do NOT present it as today's.`;
 }
 
+/**
+ * Compact "last 7 days" WHOOP summary for a live call, so Edge can answer
+ * "how's my recovery/sleep been this week" instead of only knowing today.
+ * History arrays are oldest→newest; we take the most recent 7. Returns '' when
+ * there's no history. Spoken-friendly (no abbreviations the voice engine mangles).
+ */
+export function formatWhoopHistoryForCall(
+  recovery: WhoopRecoveryDay[],
+  sleep: WhoopSleepDay[],
+  strain: WhoopStrainDay[],
+): string {
+  const parts: string[] = [];
+  if (recovery.length) {
+    const days = recovery.slice(-7);
+    const list = days.map(d => `${d.recoveryScore}%`).join(', ');
+    const avg = Math.round(days.reduce((s, d) => s + d.recoveryScore, 0) / days.length);
+    parts.push(`recovery by day (oldest to newest): ${list} (avg ${avg}%)`);
+  }
+  if (sleep.length) {
+    const days = sleep.slice(-7);
+    const avgMs = days.reduce((s, d) => s + d.durationMs, 0) / days.length;
+    const h = Math.floor(avgMs / 3600000);
+    const m = Math.round((avgMs % 3600000) / 60000);
+    parts.push(`sleep averaged ${h} hours ${m} minutes`);
+  }
+  if (strain.length) {
+    const days = strain.slice(-7);
+    const avg = days.reduce((s, d) => s + d.strain, 0) / days.length;
+    parts.push(`strain averaged ${avg.toFixed(1)}`);
+  }
+  return parts.length ? `LAST 7 DAYS — ${parts.join('; ')}` : '';
+}
+
 // True if the user has connected their Whoop account.
 export function hasWhoopConnected(userId: number): boolean {
   if (!clientConfigured()) return false;

@@ -41,6 +41,7 @@ import {
   getStrainHistory,
   hasWhoopConnected,
   whoopFreshnessNote,
+  formatWhoopHistoryForCall,
   WHOOP_SCOPES,
 } from './whoop';
 
@@ -514,5 +515,38 @@ describe('whoopFreshnessNote', () => {
 
   it('never claims stale when dates are unknown', () => {
     expect(whoopFreshnessNote(undefined, undefined, '2026-06-14')).toBe('');
+  });
+});
+
+describe('formatWhoopHistoryForCall', () => {
+  it('returns empty string when there is no history', () => {
+    expect(formatWhoopHistoryForCall([], [], [])).toBe('');
+  });
+
+  it('lists recovery by day with an average', () => {
+    const rec = [
+      { date: '2026-06-12', recoveryScore: 50 },
+      { date: '2026-06-13', recoveryScore: 60 },
+      { date: '2026-06-14', recoveryScore: 70 },
+    ];
+    const out = formatWhoopHistoryForCall(rec, [], []);
+    expect(out).toContain('LAST 7 DAYS');
+    expect(out).toContain('50%, 60%, 70%');
+    expect(out).toContain('avg 60%');
+  });
+
+  it('averages sleep duration in spoken hours/minutes', () => {
+    const slp = [
+      { date: '2026-06-13', durationMs: 7 * 3600000 },        // 7h
+      { date: '2026-06-14', durationMs: 8 * 3600000 },        // 8h → avg 7h30m
+    ];
+    expect(formatWhoopHistoryForCall([], slp, [])).toContain('sleep averaged 7 hours 30 minutes');
+  });
+
+  it('uses only the most recent 7 days', () => {
+    const rec = Array.from({ length: 10 }, (_, i) => ({ date: `2026-06-0${i}`, recoveryScore: i * 10 }));
+    const out = formatWhoopHistoryForCall(rec, [], []);
+    // newest 7 = scores 30..90; oldest two (0,10,20) dropped → first shown is 30%
+    expect(out).toContain('30%, 40%, 50%, 60%, 70%, 80%, 90%');
   });
 });
