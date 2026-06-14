@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(✅ overnight batch — call-time+location+edit/delete facts, profile-name fix, fact confidence+provenance, missed-call retry, copy-transcript, voice word-choice, stronger Whoop recs. Integrated to master by PM.)_ | `lib/*`, `app/dashboard/**`, `app/api/memory/**` | 2026-06-14 |
 | 🔒 Security | `security` | _(✅ data export + self-service deletion + call reliability (idempotency + call-status) + encryption verification + Google CASA doc. Integrated.)_ | `app/api/account/**`, `app/api/vapi/call-status`, `lib/db.ts`, `specs/` | 2026-06-14 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | _(idle — ✅ Full token pass complete across all app pages (dashboard, onboarding, admin, privacy, terms, landing). Zero inline hex/rgba remaining on user-facing pages. 467/467 green. Awaiting PM.)_ | — | 2026-06-14 |
+| 🎨 Design | `design` | _(idle — ✅ Energy OS MVP UI shipped: energy logger widget (sidebar) + energy-cost tags (priorities tab) + energy tokens. Awaiting PM.)_ | — | 2026-06-14 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).

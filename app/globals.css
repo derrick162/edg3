@@ -63,6 +63,17 @@
   --edg-danger-tint:    rgba(239, 68,  68,  0.15);
   --edg-danger-border:  rgba(239, 68,  68,  0.30);
 
+  /* ── Energy OS — red / yellow / green daily signal ── */
+  --energy-green:        #22c55e;
+  --energy-green-tint:   rgba(34,  197, 94,  0.12);
+  --energy-green-border: rgba(34,  197, 94,  0.30);
+  --energy-yellow:       #f59e0b;
+  --energy-yellow-tint:  rgba(245, 158, 11,  0.12);
+  --energy-yellow-border: rgba(245, 158, 11, 0.30);
+  --energy-red:          #ef4444;
+  --energy-red-tint:     rgba(239, 68,  68,  0.12);
+  --energy-red-border:   rgba(239, 68,  68,  0.30);
+
   /* Calendar action success — brighter green-400, distinct from edg-success */
   --edg-calendar-green:        #4ade80;
   --edg-calendar-green-tint:   rgba(74, 222, 128, 0.06);
