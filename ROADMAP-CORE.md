@@ -208,14 +208,6 @@ priority from user feedback.
   - **★ Needs infra (highest trust):** remember + COMPLETE unfinished committed actions across calls
     (e.g. the gym move that failed repeatedly) — open the next call by finishing it. Coordinate with
     🔒 Security on the action/audit log.
-- [ ] **★ "You control your data" onboarding + Settings (cross-lane)** — _PM + user, 2026-06-14._
-  Plain-English data-control screen (consent: "Help improve Edg3" vs "Privacy Mode"), in
-  onboarding + Settings. Trust + Google/CASA asset. **Full spec: `specs/data-control-onboarding.md`.**
-  - 🛠️ **Core:** onboarding step + persist the choice (additive `users` column) + Settings toggle.
-  - 🎨 **Design:** the screen (mirror the reference layout; EDG3 copy from the spec).
-  - 🔒 **Security:** ENFORCE Privacy Mode end-to-end (exclude from any training/3rd-party) + CASA doc.
-  - ⚠️ Adaptation: Edge has MEMORY, so NOT "nothing stored" — Privacy Mode = "used only to power
-    your experience, never for training/3rd-party." Don't ship a false "nothing stored" promise.
 - [ ] **★ Whoop V3 — Proactive recovery defense + correlations** — _PM + user decision, 2026-06-13. The "magic tier" of the Whoop integration; user explicitly queued it after V1/V2 shipped._
   - **Context:** V1 (recovery-aware pacing) and V2 (energy-matched blocking) are live. Security shipped the history primitives (`getRecoveryHistory` / `getSleepHistory` / `getStrainHistory`, 14-day, in `lib/whoop.ts`). The dashboard RecoveryCard is wired (`/api/whoop/recovery`, PM commit `bf35921`). This ticket builds the two things on top of that data.
   - **Part A — Proactive recovery defense (briefing + live).**

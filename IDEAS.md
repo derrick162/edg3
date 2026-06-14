@@ -38,6 +38,18 @@
   give feedback in chat. Until then, feedback flows via CALL-FEEDBACK.md and "tell Edge on the
   call" (rememberPreference).
 
+## Product / privacy
+
+### "You control your data" onboarding + Settings — _parked 2026-06-14_
+- **Idea:** a data-control consent screen (in onboarding + Settings) — "Help improve Edg3" vs
+  "Privacy Mode" — so users explicitly control how their data is used. Trust + Google/CASA asset.
+  Full design: `specs/data-control-onboarding.md`.
+- **⚠️ Key adaptation:** Edge has MEMORY, so Privacy Mode ≠ "nothing stored" (that would break the
+  product). Privacy Mode = "your data powers only YOUR experience — never training or 3rd-party;
+  encrypted, exportable, deletable." Don't ship a false "nothing stored" promise.
+- **Open decision:** the default (Privacy Mode on vs. improve on) — founder call.
+- **Cross-lane when built:** Design (screen), Core (flow + setting), Security (actually enforce it + CASA doc).
+
 ## Growth / monetization
 
 ### Trial extension via daily call ("do your morning call → +1 free day") — _parked 2026-06-14_
