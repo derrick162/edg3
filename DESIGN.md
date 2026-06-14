@@ -152,7 +152,58 @@ When V2 ships (energy-matched time-blocking), the dashboard will show a simple d
 
 ---
 
-## 7. First asks (suggested)
+## 7. RecoveryCard component
+
+**File:** `components/ui/RecoveryCard.tsx`
+**Purpose:** Displays today's Whoop recovery data in a self-contained dashboard card. Pure presentational — no data fetching. Core imports it and passes live data from `lib/whoop.ts`.
+
+### Props
+| Prop | Type | Required | Notes |
+|---|---|---|---|
+| `recoveryScore` | `number` | yes | 0–100 Whoop recovery percentage |
+| `tier` | `'high' \| 'medium' \| 'low'` | yes | Caller derives: high=67–100, medium=34–66, low=0–33 |
+| `sleepHours` | `number` | no | Decimal hours, e.g. `7.5` → formats as `7h30m` |
+| `strain` | `number` | no | 0–21 Whoop day strain, rendered to 1 decimal |
+| `history` | `RecoveryHistoryPoint[]` | no | Up to 14 points `{score, date}`, newest last — drives sparkline |
+| `className` | `string` | no | Extra class names forwarded to the root `<div>` |
+
+### Visual anatomy
+1. **Left accent bar** — 3px vertical stripe in `--whoop-{tier}` color
+2. **Score** — 36px weight-900 number in tier color + small `%` suffix
+3. **Tier label** — `"High / Moderate / Low Recovery"` with glowing energy dot and `"Today"` label
+4. **Stats row** — `Sleep` (e.g. `7h30m`) and `Strain` (e.g. `14.2`) side by side in muted uppercase labels
+5. **Sparkline** — 14-day SVG trend: area fill + polyline in `--whoop-spark-{tier}` + end-cap dot for today. Falls back to a placeholder bar with helper text if `history` has < 2 points.
+
+### Token reference (sparkline)
+```css
+--whoop-spark-high:   rgba(34,  197, 94,  0.80);
+--whoop-spark-medium: rgba(245, 158, 11,  0.80);
+--whoop-spark-low:    rgba(239, 68,  68,  0.80);
+--whoop-spark-track:  rgba(255, 255, 255, 0.06);  /* midline grid */
+--whoop-spark-dot:    rgba(255, 255, 255, 0.90);  /* unused — reserved */
+```
+
+### Card theming
+Card background/border come from the existing `.recovery-card`, `--whoop-{tier}-tint`, and `--whoop-{tier}-border` tokens — no new CSS classes needed.
+
+### Integration note for Core
+```tsx
+import { RecoveryCard } from '@/components/ui';
+// tier derivation helper (add to lib/whoop.ts):
+// export const recTier = (s: number) => s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low';
+
+<RecoveryCard
+  recoveryScore={recovery.score}
+  tier={recTier(recovery.score)}
+  sleepHours={recovery.sleepHours}
+  strain={recovery.strain}
+  history={recoveryHistory}
+/>
+```
+
+---
+
+## 8. First asks (suggested)
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).
