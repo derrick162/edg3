@@ -50,7 +50,7 @@ vi.mock('./briefing', () => ({
 
 // ── imports (after mock setup) ────────────────────────────────────────────────
 
-import { checkAndInitiateCalls, scheduleBriefingCall, scheduleOpenCall, CallError } from './scheduler';
+import { checkAndInitiateCalls, scheduleBriefingCall, scheduleOpenCall, triggerBriefingCallNow, CallError } from './scheduler';
 import { factQueries } from './db';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ describe('scheduleBriefingCall — Vapi error surfacing', () => {
   it('sets briefing status to failed when Vapi rejects', async () => {
     h.initiateCall.mockRejectedValueOnce(new Error('timeout'));
     await expect(scheduleBriefingCall(1)).rejects.toBeInstanceOf(CallError);
-    expect(h.briefingUpdate).toHaveBeenCalledWith(expect.any(Number), { status: 'failed' });
+    expect(h.briefingUpdate).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ status: 'failed' }));
   });
 });
 
@@ -166,7 +166,7 @@ describe('scheduleOpenCall — Vapi error surfacing', () => {
   it('sets briefing status to failed when Vapi rejects on open call', async () => {
     h.initiateCall.mockRejectedValueOnce(new Error('network error'));
     await expect(scheduleOpenCall(1)).rejects.toBeInstanceOf(CallError);
-    expect(h.briefingUpdate).toHaveBeenCalledWith(expect.any(Number), { status: 'failed' });
+    expect(h.briefingUpdate).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ status: 'failed' }));
   });
 });
 
@@ -227,5 +227,79 @@ describe('preference injection into initiateCall', () => {
     await scheduleOpenCall(1);
     const callArgs = (h.initiateCall as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(callArgs[7]).toContain('Vegetarian restaurants only');
+  });
+});
+
+// ── 3. Idempotency guard in scheduleBriefingCall ─────────────────────────────
+
+describe('scheduleBriefingCall — idempotency guard', () => {
+  beforeEach(() => { process.env.VAPI_API_KEY = 'test-key'; });
+  afterEach(() => { delete process.env.VAPI_API_KEY; });
+
+  it('throws CallError(already_called) when a completed call exists today', async () => {
+    // The mock's .get() returns a truthy row for the idempotency check.
+    h.prepareGet.mockReturnValue({ status: 'completed' });
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'already_called' });
+    // Must NOT create a new briefing or call Vapi.
+    expect(h.briefingCreate).not.toHaveBeenCalled();
+    expect(h.initiateCall).not.toHaveBeenCalled();
+  });
+
+  it('throws CallError(already_called) when a call is in progress today', async () => {
+    h.prepareGet.mockReturnValue({ status: 'calling' });
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'already_called' });
+    expect(h.briefingCreate).not.toHaveBeenCalled();
+  });
+
+  it('proceeds normally when no calling/completed call exists today', async () => {
+    h.prepareGet.mockReturnValue(undefined); // default — no blocking row
+    await expect(scheduleBriefingCall(1)).resolves.toBeTypeOf('number');
+    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists error_code in update when Vapi fails', async () => {
+    h.prepareGet.mockReturnValue(undefined);
+    h.initiateCall.mockRejectedValueOnce(new Error('outbound-daily-limit reached'));
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'vapi_daily_limit' });
+    expect(h.briefingUpdate).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ status: 'failed', error_code: 'vapi_daily_limit' }),
+    );
+  });
+});
+
+// ── 4. triggerBriefingCallNow — safe re-trigger ───────────────────────────────
+
+describe('triggerBriefingCallNow', () => {
+  beforeEach(() => { process.env.VAPI_API_KEY = 'test-key'; });
+  afterEach(() => { delete process.env.VAPI_API_KEY; });
+
+  it('returns { ok: true, briefingId } on success', async () => {
+    h.prepareGet.mockReturnValue(undefined);
+    h.briefingCreate.mockReturnValue({ lastInsertRowid: 42 });
+    const result = await triggerBriefingCallNow(1);
+    expect(result).toEqual({ ok: true, briefingId: 42 });
+  });
+
+  it('returns { ok: false, code: already_called } when call already completed today', async () => {
+    h.prepareGet.mockReturnValue({ status: 'completed' });
+    const result = await triggerBriefingCallNow(1);
+    expect(result).toMatchObject({ ok: false, code: 'already_called' });
+    expect(h.initiateCall).not.toHaveBeenCalled();
+  });
+
+  it('returns { ok: false, code: vapi_daily_limit } when Vapi cap is hit', async () => {
+    h.prepareGet.mockReturnValue(undefined);
+    h.initiateCall.mockRejectedValueOnce(new Error('vapi-number-outbound-daily-limit exceeded'));
+    const result = await triggerBriefingCallNow(1);
+    expect(result).toMatchObject({ ok: false, code: 'vapi_daily_limit' });
+  });
+
+  it('returns { ok: false, code: unknown } for unexpected errors', async () => {
+    h.prepareGet.mockReturnValue(undefined);
+    h.generateDailyBriefing.mockRejectedValueOnce(new TypeError('network error'));
+    // briefing_gen_failed is a CallError, so it should surface its code
+    const result = await triggerBriefingCallNow(1);
+    expect(result).toMatchObject({ ok: false, code: 'briefing_gen_failed' });
   });
 });
