@@ -282,6 +282,16 @@ priority from user feedback.
   - **Coordination:** same Shared file as the all-day ticket (`tool-call/route.ts`) — batch them; both touch event description/creation logic.
 
 ### Next (decided)
+- [ ] **★★★ Focus Score + Energy Score — the proprietary calendar-intelligence engine** — _Derrick + PM, 2026-06-14. Full spec: `specs/calendar-scores.md`. Flagship "spend real time, make it proprietary" build. SEQUENCE right after the Focus Scoreboard._
+  - **What:** Edge scans the calendar and grades it with **two 1–10 scores**, recomputed daily + before every call. **Focus Score** = does the calendar reflect the 3 areas of focus? **Energy Score** = does what's booked match the user's energy? Loop: scan → score → propose add/move/delete/recolor → re-score.
+  - **Engine** `lib/calendarScore.ts` (pure, tested): `computeFocusScore(events, priorities, alignment)` + `computeEnergyScore(events, energySignal, energyProfile, energyCosts)`, each → `{ score, drivers[], topFix }`. Deterministic + explainable (Edge can always say *why* + offer the single best fix). Builds on `lib/alignment.ts` + the energy signal.
+  - **Surfacing:** headline on the morning call ("Focus 6, Energy 4 — want me to fix it?") + top of the dashboard Scoreboard as two gauges = **"Calendar Fit (today)"** above the existing **"Progress (over time)"**.
+  - ⚠️ **Naming:** resolve clash — "Focus Score" (calendar quality, point-in-time) ≠ "Focus Scoreboard" (progress over time). Unify on one Scoreboard surface holding both halves (see spec).
+  - **Then (same theme, sequenced):**
+    - **Energy color-coding** — Google Calendar `colorId` so the calendar is a visual energy map (peak/trough colors; mismatches visible). New `colorByEnergy` action/tool + `lib/calendar.ts` write. Needs the energy profile (peak/trough windows). Coordinate w/ Security on batch-write idempotency/audit.
+    - **Energy detection from the morning call** — infer red/yellow/green from the call transcript (LLM classify) when the user didn't state it; `energy_log` `source:'inferred-call'`; user override wins. Precedence: explicit > dashboard override > inferred-call > Whoop > none. v2 = voice prosody.
+    - **Score-driven reshaping** — when a score is low, Edge proposes + (on yes) executes the `topFix`.
+  - **Lane split:** Core = engine + surfacing + color-coding + call inference + reshaping; 🔒 Security = daily-score history schema (additive) + energy-profile storage + batch-recolor idempotency/audit + inferred-energy privacy; 🎨 Design = two-gauge Calendar Fit viz + energy color legend + "why a 6?" explanation UI.
 - [ ] **★★ Notifications, re-aimed at Focus × Energy** — _Derrick + PM, 2026-06-14. Full spec: `specs/notifications.md`. SEQUENCE AFTER the Focus Scoreboard lands._
   - **Principle:** notifications are Edge's voice between calls; every one must ladder up to focus or energy, be few + high-signal, and be **actionable** (one tap does the thing). Web-app notifications only (not SMS).
   - **Keep** the generic notification center (table / `notificationQueries` / `/api/notifications` / bell).

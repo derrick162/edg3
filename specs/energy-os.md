@@ -42,6 +42,20 @@ We measure nothing about whether the user is *advancing their focus areas*. Buil
   [focus area] in 5 days — want me to block time tomorrow?"; celebrates completions.
 - **The metric we optimize:** focus-area progress (milestones done + time invested vs intended).
 
+## ★ The proprietary engine — two scores that grade the calendar (added 2026-06-14)
+Calendar management is the center of the product (add / move / delete / **color-code by energy**).
+Edge's flagship capability: **scan the calendar and grade it with two 1–10 scores**, every day and
+before every call. This is the differentiating IP — full spec in `specs/calendar-scores.md`.
+- **Focus Score (1–10)** — does the calendar reflect the 3 areas of focus? (builds on `lib/alignment.ts`)
+- **Energy Score (1–10)** — does what's booked match the user's energy? (builds on the energy signal + profile)
+- **Loop:** scan → score → propose add/move/delete/recolor → re-score. The moat is the model quality +
+  the closed reshaping loop.
+- **Two new calendar capabilities this drives:** (a) **energy color-coding** (Google `colorId` → the
+  calendar becomes a visual energy map); (b) **energy detection from the morning call** (infer
+  red/yellow/green from the call transcript when the user doesn't state it; later, voice prosody).
+- **Naming:** the dashboard "Scoreboard" holds both — **Calendar Fit (today)** = the two live Score
+  gauges, and **Progress (over time)** = milestones + hours (the original Scoreboard).
+
 ## Honest read of what we built
 We over-indexed on the **input + scheduling mechanics** (energy signal, energy-matched moves) and
 under-built the **outcome** (am I getting my focus done?). The engine is real; the *scoreboard* —
@@ -65,6 +79,8 @@ Dashboard: one-tap setter writing the same record.
   check-off + celebration feel), 🔒 Security (milestones schema, additive).
 
 ## Sequence
-Focus Scoreboard MVP (the outcome layer) → fully-proactive focus+energy calendar shaping (Briefing V2)
-→ week-level optimization → energy forecasting → Oura. Positioning ("focus × energy chief of staff")
-→ Chief of Staff for messaging/onboarding/pitch.
+Focus Scoreboard MVP (outcome layer) → **★ Focus Score + Energy Score engine** (`lib/calendarScore.ts`,
+the proprietary core) surfaced on call + dashboard → **energy color-coding** → **call-energy inference**
+(transcript → later prosody) → **score-driven reshaping loop** → fully-proactive calendar shaping
+(Briefing V2) → week-level optimization → energy forecasting → Oura. Positioning ("focus × energy chief
+of staff") → Chief of Staff for messaging/onboarding/pitch.
