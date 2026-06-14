@@ -213,7 +213,7 @@ Always end with warmth. This person is building something — remind them of tha
           '988d5b88-03fe-4893-94f7-af45a3c84116', // checkReplies (created via API 2026-06-13)
           '9c8adb6d-af86-4628-8313-d28b23c4a255', // cleanupEvents (created via API 2026-06-13)
           '54e47823-ad97-4624-9fef-6f95e96b2ff1', // rememberPreference (created via API 2026-06-13)
-          // 'PASTE_CLEANUP_DUPLICATES_UUID_HERE', // cleanupDuplicates (⚠️ create in Vapi dashboard — see changelog)
+          '5606ea96-ca20-4c9d-9ac8-0f4f113ddd6e', // cleanupDuplicates (created via API 2026-06-13)
         ],
       },
       firstMessage: briefingContent,
