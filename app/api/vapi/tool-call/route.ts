@@ -625,8 +625,13 @@ Query: ${query}` }],
       confirmWhen = `${newStartDate} (same time, ${eventTz})`;
     } else {
       // Path 3: full datetime move (non-recurring, or single occurrence with explicit datetime).
-      rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
-      confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
+      // Robust timezone: a move/resize never changes the zone, so prefer the event's OWN timeZone;
+      // fall back to a valid model-supplied tz, then the user's tz. A bad/empty model `timezone`
+      // would otherwise make Google 400 the start/end patch (while colorEvent, which sends no tz,
+      // still succeeds) — the exact "color worked, move didn't" failure.
+      const moveTz = found.event.start?.timeZone || (isValidTimeZone(timezone) ? timezone : tz);
+      rb = { start: { dateTime: newStartDateTime, timeZone: moveTz }, end: { dateTime: newEndDateTime, timeZone: moveTz } };
+      confirmWhen = `${newStartDateTime.slice(11, 16)} ${moveTz} on ${newStartDateTime.slice(0, 10)}`;
     }
     if (found.event.colorId) rb.colorId = found.event.colorId;
     const origStart = found.event.start;
