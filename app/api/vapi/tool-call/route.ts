@@ -152,7 +152,7 @@ function friendlyError(err: unknown): string {
   if (msg.includes('No calendar connected')) return "I can't access your calendar right now — it may need to be reconnected in the dashboard.";
   if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — you may need to reconnect your calendar.";
   if (msg.includes('notFound') || msg.includes('404')) return "I couldn't find that event to modify it.";
-  return "Something went wrong — you'll need to make that change manually in your calendar.";
+  return "Something went wrong on my end — want me to try again or take a different approach?";
 }
 
 // Result strings that indicate the action did NOT succeed (used for the activity log status).
@@ -264,7 +264,7 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const editEntry = calMeta.get(r.calId);
     if (editEntry && !isWritable(editEntry.accessRole)) {
       const eventName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
-      return `"${eventName}" is on a calendar you can only view ("${editEntry.summary}") — I can't edit it from here; you'd change it in that calendar directly.`;
+      return `"${eventName}" is on a read-only calendar — I can't edit it from here. Want me to add a note to a related event or draft a message about it instead?`;
     }
     const e = r.event;
     const body: calendar_v3.Schema$Event = {};
@@ -480,7 +480,7 @@ Query: ${query}` }],
       const entry = calMeta.get(readOnlyItems[0].calId);
       const calName = entry?.summary ?? 'that calendar';
       const eventName = (readOnlyItems[0].event.summary ?? '').replace(/^⚡\s*/, '');
-      return `"${eventName}" is on a calendar you can only view ("${calName}") — I can't delete it from here; you'd remove it in that calendar directly.`;
+      return `"${eventName}" is on a read-only calendar — I can't remove it from here. Let me know if there's something else I can help with.`;
     }
     if (readOnlyItems.length > 0) {
       toDelete = toDelete.filter(({ calId }) => {
@@ -538,11 +538,11 @@ Query: ${query}` }],
     if (recreates.length) recordUndo(userId, `deleted ${describeDeleteTargets(toDelete, recurringScope, tz)}`, recreates);
     if (!deleted.length) {
       return failedDel.length
-        ? `I tried but couldn't delete ${failedDel.join(', ')} — you may need to remove ${failedDel.length > 1 ? 'them' : 'it'} manually in your calendar.`
+        ? `I hit a snag removing ${failedDel.join(', ')} — couldn't clear ${failedDel.length > 1 ? 'those' : 'that one'} from here.`
         : `No event matching "${title}" on ${date}.`;
     }
     return failedDel.length
-      ? `Deleted: ${deleted.join(', ')}. But I couldn't delete ${failedDel.join(', ')} — please check your calendar.`
+      ? `Deleted: ${deleted.join(', ')}. Hit a snag on ${failedDel.join(', ')} — couldn't remove ${failedDel.length > 1 ? 'those' : 'that one'} from here.`
       : `Deleted: ${deleted.join(', ')}`;
 
   } else if (fn === 'moveEvent') {
@@ -567,7 +567,7 @@ Query: ${query}` }],
     const moveEntry = calMeta.get(found.calId);
     if (moveEntry && !isWritable(moveEntry.accessRole)) {
       const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
-      return `"${eventName}" is on a calendar you can only view ("${moveEntry.summary}") — I can't move it from here; you'd edit it in that calendar directly.`;
+      return `"${eventName}" is on a read-only calendar — I can't move it from here. Want me to draft a note to the organizer about rescheduling?`;
     }
     if (!canUserReschedule(found.event)) {
       const eventName = (found.event.summary ?? '').replace(/^⚡\s*/, '');
@@ -624,7 +624,7 @@ Query: ${query}` }],
       rb = timedPatch;
       confirmWhen = `${newStartDate} (same time, ${eventTz})`;
     } else {
-      // Path 3: full datetime move.
+      // Path 3: full datetime move (non-recurring, or single occurrence with explicit datetime).
       rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
       confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
     }
@@ -635,7 +635,7 @@ Query: ${query}` }],
       console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'}:`, moveErr);
       return null;
     });
-    if (!patched || !patched.data.id) return `Couldn't reschedule "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — it may be organized by someone else or on a restricted calendar. You could ask the organizer directly, or I can draft a message requesting a new time.`;
+    if (!patched || !patched.data.id) return `Couldn't get that shift through for "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — want me to draft a message to the organizer requesting a different time?`;
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);

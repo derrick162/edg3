@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Whoop V1 + V2** (energy-matched time-blocking, `buildEnergyMatchingBlock` + ENERGY PROFILE) + **prompt-consolidation/trim pass** + privacy Whoop section. Awaiting PM.)_ | — | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ Whoop V3 SHIPPED (proactive recovery defense + correlations). 437/437 green. Awaiting PM merge.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ dashboard token polish re-applied + RecoveryCard sidebar spacing. Awaiting PM.)_ | — | 2026-06-13 |
@@ -117,7 +117,88 @@ other lane and the PM can see live ownership claims.
 
 ## Changelog
 - **2026-06-13** — **Dashboard token polish + RecoveryCard sidebar spacing (Design).** `app/dashboard/page.tsx`: re-applied lost inline-color tokenization (UTF-8 safe, Edit tool only) — `rgba(99,102,241,0.2/0.15/0.08)` → `--edg-accent-20/15/08`, `#6366f1` → `--edg-indigo`. RecoveryCard sidebar wrapper restructured: card fills full sidebar width, status/disconnect row stays at `px-2` indent for alignment with calendar section.
+- **2026-06-13** — **Whoop V3 — Proactive recovery defense + correlations (Core).**
+  - **Part A — Proactive recovery defense:** `detectRecoveryDrop(todayScore, history)` pure helper
+    in `lib/whoopTrends.ts`. Fires on: red tier (≤33%) OR sharp drop (≥20pt below trailing-7d avg).
+    Requires ≥3 history points for the avg; degrades to null on thin data. Returns `RecoveryAlert`
+    `{ reason, todayScore, trailing7dAvg, dropMagnitude }`.
+    `formatRecoveryAlertForBriefing(alert)` → RECOVERY ALERT block injected into `whoopContextBlock`
+    in `lib/briefing.ts`: identifies the heaviest deferrable block and offers to move or shrink it;
+    act when the user says yes. RECOVERY ALERT live-call note added to `lib/vapi.ts` so Edge can
+    proactively offer mid-call when briefing flagged it.
+  - **Part B — Correlations:** new `lib/whoopCorrelations.ts` (pure, 0 I/O). Inputs: recovery
+    history points + `CalendarDay[]` (date + latest timed-event end hour in user tz).
+    Checks: meetings running past 7 PM → lower next-day recovery? Sample/confidence gate:
+    ≥10 paired days, ≥3 in each group, ≥5pt diff — returns null otherwise. Returns
+    `CorrelationInsight { pattern (plain English), sampleDays }`.
+    New `getPastCalendarDays(userId, days, timezone)` in `lib/calendar.ts` fetches past 14 days
+    from Google (no new DB storage — live API call). In `lib/briefing.ts`, added to the main
+    `Promise.all`; maps to `CalendarDay[]`; correlation injected into `whoopContextBlock`
+    when non-null (surface ≤1 pattern, closing / alignment section).
+  - `specs/whoop-integration.md` updated with shipped status for V3 A+B.
+  - 15 new tests. 437/437 green, tsc clean, next build clean.
+- **2026-06-13** — **[BUG FIX] Gym-move recurring-all crash (Core).**
+  - **ROOT CAUSE:** `moveEvent` with `recurringScope='all'` patches the master event
+    using `newStartDateTime` from the model, which carries the occurrence's date (e.g.
+    June 18). Google 400s because the master series is anchored to a different base date
+    (e.g. June 16 — the original Monday). The date in the patch must match the RRULE
+    anchor, not any later occurrence.
+  - **Fix:** new `recurringAllTimeShift(masterStartDT, newStartDT, newEndDT)` pure helper
+    in `lib/time.ts`. Extracts the master's base date (`slice(0,10)`) and the model's
+    requested time (`slice(11,19)`), returns `{ startDateTime, endDateTime }` using the
+    master date + new time. No date arithmetic — just string compositing, which is what
+    makes it safe across DST.
+  - Route.ts path 3: when `recurringScope === 'all'`, fetches the master event to get its
+    base `start.dateTime`, runs it through `recurringAllTimeShift`, then patches with the
+    corrected datetimes. Falls back to `found.event.start.dateTime` if the master fetch
+    fails (better than crashing). Single-occurrence path unchanged.
+  - 4 new tests covering: mid-series occurrence date (Gym scenario), UTC-Z suffix, multi-week
+    recurring series, same-date (first occurrence) edge case. 422/422 green, tsc clean, next build clean.
+- **2026-06-13** — **Voice-behavior fixes + Whoop Trends wired (Core).** (`9b9da87`)
+  - **[1] WORKING HOURS**: `lib/vapi.ts` — new WORKING HOURS block; defaults all suggestions to
+    weekday daytime (9 AM–6 PM Mon–Fri). When today is Sat/Sun, prompt explicitly tells Edge
+    never to suggest "do it tonight"/this weekend — always "when you're back at it Monday."
+    Never recommend evenings or weekends unless user has stated they work those hours. Addresses
+    live-call issue where Edge pushed writing the 90-day plan on a Saturday evening.
+  - **[2] NO JARGON**: New NATURAL LANGUAGE bullet forbids "the system", "friction point",
+    "not confirming", tool names, or any internal mechanics. Speak like a trusted advisor.
+  - **[3] NEVER PUNT**: Removed all "do it in your calendar" / "do it yourself" phrasing from:
+    `lib/vapi.ts` BE DECISIVE + CONSOLIDATE step 4; `tool-call/route.ts` editEvent read-only,
+    deleteEvent read-only (single + batch), moveEvent read-only + patch-failure messages.
+    Each replaced with own-it-honestly language or an offer to help another way.
+  - **[4] RECURRING moveEvent**: New RECURRING EVENTS prompt bullet — when tool returns a
+    recurring-scope question, ask user, then re-call with `recurringScope:'this'` or `'all'`.
+    Directly addresses the gym-move failure where Edge said "not confirming the shift."
+  - **[5] WHOOP TRENDS wired**: `lib/briefing.ts` — imports `getRecoveryHistory/getSleepHistory/
+    getStrainHistory` (Security shipped); adds 3 parallel fetches to `Promise.all`;
+    maps to `WhoopHistoryPoint` arrays; calls `computeWhoopTrends` + `formatTrendForBriefing`;
+    injects trend line into `whoopContextBlock` when notable. `lib/vapi.ts` — WHOOP TRENDS
+    note added so Edge can reference 2-week trends mid-call.
+  - 418/418 green (includes Security's new tests), tsc clean, next build clean.
 - **2026-06-13** — **RecoveryCard component (Design).** `components/ui/RecoveryCard.tsx` — self-contained presentational card: color-coded 36px score, tier label + energy dot, sleep/strain stat row, inline SVG sparkline with area fill + end-cap dot (falls back to placeholder before history loads). Exports `RecoveryCard`, `RecoveryCardProps`, `RecoveryTier`, `RecoveryHistoryPoint`. Added sparkline tokens to `app/globals.css`. Spec in `DESIGN.md §7`. Core: import from `@/components/ui`, derive tier with `s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low'`.
+- **2026-06-13** — **Dashboard Whoop display (Core).** (`030d94a`)
+  - `/api/whoop/status` extended: fetches `getLatestRecovery`, `getLastSleep`, `getRecentStrain` in
+    parallel (all `.catch(→null)`) when Whoop is connected; returns
+    `{ connected, recovery: {score, tier} | null, sleep: {durationMs} | null, strain: {strain} | null }`.
+    `recoveryTier()` maps score to 'green' (≥67) / 'yellow' (34–66) / 'red' (≤33).
+    Degrades to `{ connected: false, recovery: null, … }` when not connected; always user-scoped.
+  - Dashboard sidebar: `whoopSummary` state; on `loadData` the Whoop status fetch now sets both
+    `whoopConnected` and `whoopSummary`. Whoop connected section updated: shows recovery score (tier
+    color — green/amber/red), sleep (`Xh Ym`), and strain inline below the "● Whoop" header.
+    `fmtSleep(ms)` pure helper added. `TODO` comment marks the `<RecoveryCard>` import slot for
+    when Design ships `components/ui/RecoveryCard.tsx`.
+  - 406/406 green, tsc clean, next build clean.
+- **2026-06-13** — **Whoop Trends — pure analysis layer (Core).** (`0aec055`) ⏳ *wiring pending Security history fetch (now landed)*
+  - `lib/whoopTrends.ts` (pure, 0 I/O): `computeWhoopTrends(recoveryHistory, sleepHistory, strainHistory)`
+    → `WhoopTrendSummary { recoveryAvg7d, recoveryDirection, flags[] }`.
+    Flags: `RECOVERY_DECLINING_3D` (last 3 days monotonically declining), `RECOVERY_LOW_STREAK`
+    (last 3 days all < 40%), `SLEEP_DEBT` (7-day avg sleep < 6.5h, input in ms),
+    `HIGH_STRAIN_STREAK` (last 3 days all > 14 on Whoop's 0–21 scale).
+    Direction: recent 3d avg vs prior 3d avg (≥5pt delta → up/down, else flat).
+    Sorts input by date regardless of order. Returns null when all inputs empty.
+  - `formatTrendForBriefing(trend)` → one honest sentence or null. Priority:
+    DECLINING_3D > LOW_STREAK > SLEEP_DEBT+HIGH_STRAIN combined > SLEEP_DEBT > HIGH_STRAIN > direction.
+  - 35 new tests. 406/406 green, tsc clean, next build clean.
 - **2026-06-13** — **Whoop V2 — energy-matched time-blocking (Core).** (`40155fd`)
   - `buildEnergyMatchingBlock(preferences, recovery)` pure function in `lib/briefing.ts`.
     Scans preference-category facts for energy-profile keywords (peak, trough, deep work,

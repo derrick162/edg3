@@ -244,6 +244,93 @@ export async function getUpcomingEvents(userId: number, days: number = 7) {
   });
 }
 
+/**
+ * Fetch timed events from the past `days` calendar days.
+ * Returns one entry per local calendar date in `timezone`, with the end-hour
+ * (decimal, 0–24) of the latest timed event that day — or null if no timed events.
+ * Used by the Whoop correlation analysis to correlate "late meetings" with next-day recovery.
+ */
+export async function getPastCalendarDays(
+  userId: number,
+  days: number,
+  timezone: string,
+): Promise<{ date: string; latestEndHour: number | null }[]> {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return [];
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  oauth2Client.on('tokens', (tokens) => {
+    if (tokens.access_token) {
+      calendarQueries.upsert(
+        userId,
+        tokens.access_token,
+        tokens.refresh_token || tokenRow.refresh_token || '',
+        tokens.expiry_date?.toString() || ''
+      );
+    }
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const now = new Date();
+  const timeMax = now;
+  const timeMin = new Date(now.getTime() - days * 86400000);
+
+  const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calendarIds = (calendarList.data.items || [])
+    .filter(c => !c.hidden)
+    .map(c => c.id!)
+    .filter(Boolean);
+
+  const allEvents = await Promise.all(
+    calendarIds.map(calId =>
+      calendar.events.list({
+        calendarId: calId,
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        singleEvents: true,
+        showHiddenInvitations: true,
+        orderBy: 'startTime',
+        maxResults: 200,
+      }).then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  // Group timed events by local calendar date; track the latest end hour per day
+  const dayMap = new Map<string, number>(); // date → latest end hour (decimal)
+  for (const event of allEvents.flat()) {
+    if (!event.end?.dateTime) continue; // skip all-day events
+    const endDate = new Date(event.end.dateTime);
+    const localDate = endDate.toLocaleDateString('en-CA', { timeZone: timezone }); // 'YYYY-MM-DD'
+    const localHour = endDate.toLocaleTimeString('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const [h, m] = localHour.split(':').map(Number);
+    const decimalHour = h + (m || 0) / 60;
+    const current = dayMap.get(localDate);
+    if (current === undefined || decimalHour > current) {
+      dayMap.set(localDate, decimalHour);
+    }
+  }
+
+  // Build result: one entry per day in the window (days with no events → latestEndHour: null)
+  const result: { date: string; latestEndHour: number | null }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    const date = d.toLocaleDateString('en-CA', { timeZone: timezone });
+    result.push({ date, latestEndHour: dayMap.get(date) ?? null });
+  }
+  return result;
+}
+
 export async function createCalendarEvent(
   userId: number,
   title: string,
