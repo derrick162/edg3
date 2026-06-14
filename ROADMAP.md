@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ Focus Scoreboard — milestones, focusProgress pure layer, briefing scoreboard block, 5 API routes, dashboard checklist. 558/558 green. ⚠️ PM: merge `core` → `master`; notify Design to polish milestone UI.)_ | `lib/db.ts`, `lib/focusProgress.ts`, `lib/briefing.ts`, `lib/vapi.ts`, `app/api/milestones/**`, `app/api/priorities/**`, `app/dashboard/page.tsx` | 2026-06-14 |
-| 🔒 Security | `security` | _(✅ Energy OS schema (`energy_log` + `energyLogQueries`) + data export/deletion + call reliability + encryption verification + CASA. Integrated.)_ | `lib/db.ts`, `app/api/account/**`, `lib/energy-log.test.ts`, `specs/` | 2026-06-14 |
+| 🔒 Security | `security` | _(✅ Energy OS schema (`energy_log` + `energyLogQueries`) + Focus Scoreboard schema + data export/deletion + call reliability + encryption verification + CASA. Integrated.)_ | `lib/db.ts`, `app/api/account/**`, `lib/energy-log.test.ts`, `specs/` | 2026-06-14 |
 | 🔧 PM | `master` | _(✅ integrated Design's Energy-OS UI reconcile (`a5bc544`, 543 green, UTF-8 clean). Vision evolved to Focus × Energy (`dc5f08e`); Focus Scoreboard is the new ★★★ Core priority. Awaiting Derrick's go to dispatch the Scoreboard build.)_ | `ROADMAP.md`, `specs/energy-os.md` | 2026-06-14 |
 | 🎨 Design | `design` | _(idle — ✅ Energy OS MVP UI reconciled onto Core's logic + integrated to master by PM. Awaiting next: Focus Scoreboard visuals (scoreboard + milestone check-off + celebration feel).)_ | — | 2026-06-14 |
 

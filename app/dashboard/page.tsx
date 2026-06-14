@@ -521,9 +521,9 @@ const ENERGY_COST_OPTIONS: { value: 'high' | 'medium' | 'low'; label: string; co
 interface Milestone {
   id: number;
   priority_id: number;
-  text: string;
+  title: string;
   done: number;
-  done_at: string | null;
+  completed_at: string | null;
 }
 
 function PrioritiesTab({
@@ -670,7 +670,7 @@ function PrioritiesTab({
                                 color: m.done === 1 ? 'var(--text-faint)' : 'var(--text-muted)',
                                 textDecoration: m.done === 1 ? 'line-through' : 'none',
                               }}>
-                                {m.text}
+                                {m.title}
                               </span>
                               <button
                                 onClick={() => onMilestoneDelete?.(m.id)}
@@ -2050,7 +2050,7 @@ export default function Dashboard() {
                 await fetch(`/api/priorities/${priorityId}/milestones`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ text }),
+                  body: JSON.stringify({ title: text }),
                 });
                 fetch('/api/milestones').then(r => r.ok ? r.json() : null).then(d => { if (d) setMilestones(d.milestones || []); });
               }}

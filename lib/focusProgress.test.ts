@@ -7,8 +7,9 @@ const makeP = (id: number, text: string): Priority => ({
   id, user_id: 1, text, week_of: '2026-06-08', rank: id, created_at: '2026-06-14T00:00:00',
 });
 
-const makeM = (id: number, priorityId: number, text: string, done = 0): FocusMilestone => ({
-  id, user_id: 1, priority_id: priorityId, text, done, done_at: done ? '2026-06-14T10:00:00' : null,
+const makeM = (id: number, priorityId: number, title: string, done = 0): FocusMilestone => ({
+  id, user_id: 1, priority_id: priorityId, title, done, sort_order: 0,
+  completed_at: done ? '2026-06-14T10:00:00' : null,
   created_at: '2026-06-14T00:00:00',
 });
 

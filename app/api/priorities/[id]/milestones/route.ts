@@ -24,13 +24,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const priorityId = parseInt(idStr, 10);
   if (!priorityId) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-  let body: { text?: string };
+  let body: { title?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const text = (body.text || '').trim();
-  if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 });
+  const title = (body.title || '').trim();
+  if (!title) return NextResponse.json({ error: 'title is required' }, { status: 400 });
 
-  const result = focusMilestoneQueries.create(user.id, priorityId, text) as { lastInsertRowid: number };
+  const result = focusMilestoneQueries.create(user.id, priorityId, title) as { lastInsertRowid: number };
   const milestones = focusMilestoneQueries.listForPriority(user.id, priorityId);
   return NextResponse.json({ success: true, id: result.lastInsertRowid, milestones }, { status: 201 });
 }

@@ -411,7 +411,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const focusProgress = buildFocusProgress(priorities, alignment, allMilestones);
   // "Recent" = done in the last 26 hours (generous window so it catches yesterday evening + this morning).
   const recentCutoff = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
-  const recentlyDoneMilestones = allMilestones.filter(m => m.done === 1 && m.done_at && m.done_at >= recentCutoff);
+  const recentlyDoneMilestones = allMilestones.filter(m => m.done === 1 && m.completed_at && m.completed_at >= recentCutoff);
   const focusScoreboardBlock = formatFocusScoreboardForBriefing(focusProgress, recentlyDoneMilestones);
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.

@@ -69,13 +69,11 @@ export function formatFocusScoreboardForBriefing(
     lines.push(`  - ${p.title}: ${hourStr} this week${msStr}${tag}`);
   }
 
-  // Celebrate milestones completed since the last call (done_at present in last 24h is a
-  // proxy — briefing runs once a day). Surface as a distinct celebration beat in the briefing.
   if (recentlyCompletedMilestones.length > 0) {
     lines.push('');
     lines.push('CELEBRATE THESE MILESTONE WINS (weave a warm, specific acknowledgment into section 1 or the greeting):');
     for (const m of recentlyCompletedMilestones) {
-      lines.push(`  - "${m.text}"`);
+      lines.push(`  - "${m.title}"`);
     }
   }
 
