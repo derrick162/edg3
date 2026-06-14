@@ -882,6 +882,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
+  const [editingFactId, setEditingFactId] = useState<number | null>(null);
+  const [editFactText, setEditFactText] = useState('');
+  const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -982,6 +985,23 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  async function saveFact(id: number, statement: string) {
+    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
+    setEditingFactId(null);
+    await fetch(`/api/memory/facts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statement }),
+    });
+  }
+
+  async function deleteFact(id: number) {
+    setFacts(prev => prev.filter(f => f.id !== id));
+    setDeletingFactId(null);
+    await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
   // Reset memory pagination when switching tabs or when data reloads.
   useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
   // Deep-link: ?briefing=<id> auto-expands that briefing entry once history loads.
@@ -1744,19 +1764,119 @@ export default function Dashboard() {
                             {meta.label}
                           </h3>
                           <div className="space-y-1.5">
-                            {visible.map(f => (
-                              <div key={f.id} className="glass-card px-4 py-3 flex items-start justify-between gap-4">
-                                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                  {f.entity && (
-                                    <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                            {visible.map(f => {
+                              const isEditing = editingFactId === f.id;
+                              const isConfirmingDelete = deletingFactId === f.id;
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="glass-card px-4 py-3 group"
+                                  style={{ transition: 'background 0.1s' }}
+                                >
+                                  {isEditing ? (
+                                    /* ── Inline edit state ── */
+                                    <div className="flex items-start gap-2">
+                                      <div className="flex-1">
+                                        {f.entity && (
+                                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+                                            {f.entity}
+                                          </p>
+                                        )}
+                                        <textarea
+                                          autoFocus
+                                          value={editFactText}
+                                          onChange={e => setEditFactText(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                              e.preventDefault();
+                                              if (editFactText.trim()) saveFact(f.id, editFactText.trim());
+                                            }
+                                            if (e.key === 'Escape') setEditingFactId(null);
+                                          }}
+                                          rows={2}
+                                          className="input text-sm w-full resize-none"
+                                          style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                                        />
+                                      </div>
+                                      <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                                        <button
+                                          onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid rgba(99,102,241,0.25)' }}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingFactId(null)}
+                                          className="text-xs px-2.5 py-1 rounded-md"
+                                          style={{ color: 'var(--text-faint)' }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : isConfirmingDelete ? (
+                                    /* ── Delete confirm state ── */
+                                    <div className="flex items-center justify-between gap-3">
+                                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                                        Remove this fact?
+                                      </p>
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <button
+                                          onClick={() => deleteFact(f.id)}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid rgba(239,68,68,0.25)' }}
+                                        >
+                                          Remove
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingFactId(null)}
+                                          className="text-xs px-2.5 py-1 rounded-md"
+                                          style={{ color: 'var(--text-faint)' }}
+                                        >
+                                          Keep
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    /* ── Default read state ── */
+                                    <div className="flex items-start gap-3">
+                                      <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-body)' }}>
+                                        {f.entity && (
+                                          <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                        )}
+                                        {f.statement}
+                                      </p>
+                                      <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                        <span className="text-xs mr-1" style={{ color: 'var(--text-faint)' }}>
+                                          {format(new Date(f.learned_at), 'MMM d')}
+                                        </span>
+                                        <button
+                                          title="Edit"
+                                          onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                          className="p-1 rounded"
+                                          style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                        >
+                                          ✎
+                                        </button>
+                                        <button
+                                          title="Remove"
+                                          onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
+                                          className="p-1 rounded"
+                                          style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
+                                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                        >
+                                          &#x2715;
+                                        </button>
+                                      </div>
+                                    </div>
                                   )}
-                                  {f.statement}
-                                </p>
-                                <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                                  {format(new Date(f.learned_at), 'MMM d')}
-                                </span>
-                              </div>
-                            ))}
+                                </div>
+                              );
+                            })}
                           </div>
                           {catItems.length > FACTS_CAT_LIMIT && (
                             <button
