@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ Whoop V3 SHIPPED (proactive recovery defense + correlations). 437/437 green. Awaiting PM merge.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | _(idle — ✅ RecoveryCard component + sparkline + DESIGN.md §7 spec shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ dashboard token polish re-applied + RecoveryCard sidebar spacing. Awaiting PM.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -174,6 +174,7 @@ other lane and the PM can see live ownership claims.
     injects trend line into `whoopContextBlock` when notable. `lib/vapi.ts` — WHOOP TRENDS
     note added so Edge can reference 2-week trends mid-call.
   - 418/418 green (includes Security's new tests), tsc clean, next build clean.
+- **2026-06-13** — **Dashboard token polish + RecoveryCard sidebar spacing (Design).** `app/dashboard/page.tsx`: re-applied lost inline-color tokenization (UTF-8 safe, Edit tool only) — `rgba(99,102,241,0.2/0.15/0.08)` → `--edg-accent-20/15/08`, `#6366f1` → `--edg-indigo`. RecoveryCard sidebar wrapper restructured: card fills full sidebar width, status/disconnect row stays at `px-2` indent for alignment with calendar section.
 - **2026-06-13** — **RecoveryCard component (Design).** `components/ui/RecoveryCard.tsx` — self-contained presentational card: color-coded 36px score, tier label + energy dot, sleep/strain stat row, inline SVG sparkline with area fill + end-cap dot (falls back to placeholder before history loads). Exports `RecoveryCard`, `RecoveryCardProps`, `RecoveryTier`, `RecoveryHistoryPoint`. Added sparkline tokens to `app/globals.css`. Spec in `DESIGN.md §7`. Core: import from `@/components/ui`, derive tier with `s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low'`.
 - **2026-06-13** — **Dashboard Whoop display (Core).** (`030d94a`)
   - `/api/whoop/status` extended: fetches `getLatestRecovery`, `getLastSleep`, `getRecentStrain` in
