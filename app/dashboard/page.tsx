@@ -1204,14 +1204,17 @@ export default function Dashboard() {
       )}
 
       {/* Sidebar + main layout */}
-      <div className="relative z-10 flex min-h-screen">
+      <div className="relative z-10 flex flex-col md:flex-row min-h-screen">
         {/* Sidebar */}
-        <aside className="w-60 flex-shrink-0 flex flex-col py-6 px-4 border-r" style={{ borderColor: 'var(--card-border)' }}>
-          <div className="mb-8">
+        <aside className="w-full md:w-60 md:flex-shrink-0 flex flex-col py-3 md:py-6 px-4 border-b md:border-b-0 md:border-r" style={{ borderColor: 'var(--card-border)' }}>
+          <div className="hidden md:block mb-8">
             <span className="logo-text text-xl">EDG3</span>
           </div>
+          <div className="flex md:hidden items-center mb-2">
+            <span className="logo-text text-lg">EDG3</span>
+          </div>
 
-          <nav className="space-y-1">
+          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
             {[
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'tasks', label: 'Tasks', icon: '✓' },
@@ -1223,7 +1226,7 @@ export default function Dashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
+                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
                   color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
@@ -1231,12 +1234,12 @@ export default function Dashboard() {
                 }}
               >
                 <span>{tab.icon}</span>
-                {tab.label}
+                <span className="hidden md:inline">{tab.label}</span>
               </button>
             ))}
           </nav>
 
-          <div className="mt-6 space-y-3">
+          <div className="hidden md:flex md:flex-col mt-6 space-y-3">
             <div
               className="glass-card p-3 transition-all"
               style={showNextCallTip ? {
@@ -1399,9 +1402,9 @@ export default function Dashboard() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-8 overflow-auto">
+        <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-4 md:mb-8">
             <div>
               <h1 className="text-2xl font-bold">{(() => {
                 const h = new Date().getHours();
