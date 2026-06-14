@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringAllTimeShift } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -217,5 +217,48 @@ describe('timedEventDateMove — timed event + date-only input preserves wall-cl
     const r = timedEventDateMove('2026-06-15T10:00:00Z', '', '2026-06-26', 'UTC');
     expect(r.start.dateTime).toBe('2026-06-26T10:00:00');
     expect(r.end.dateTime).toBe('2026-06-26T11:00:00');
+  });
+});
+
+describe('recurringAllTimeShift — preserves master base date, shifts only time', () => {
+  it('uses master base date with new time from model occurrence', () => {
+    // Master started Monday June 16; model requests move on occurrence June 18 (Wednesday) to 14:00
+    const r = recurringAllTimeShift(
+      '2026-06-16T11:00:00-04:00', // master start (series anchored to June 16)
+      '2026-06-18T14:00:00',        // model's desired new start (from occurrence date)
+      '2026-06-18T15:00:00',        // model's desired new end
+    );
+    expect(r.startDateTime).toBe('2026-06-16T14:00:00');
+    expect(r.endDateTime).toBe('2026-06-16T15:00:00');
+  });
+
+  it('handles master with UTC Z suffix', () => {
+    const r = recurringAllTimeShift(
+      '2026-06-09T09:00:00Z',  // master base
+      '2026-06-13T10:30:00',   // model occurrence date
+      '2026-06-13T11:00:00',
+    );
+    expect(r.startDateTime).toBe('2026-06-09T10:30:00');
+    expect(r.endDateTime).toBe('2026-06-09T11:00:00');
+  });
+
+  it('handles multi-week recurring — keeps series start date not occurrence date', () => {
+    const r = recurringAllTimeShift(
+      '2026-05-04T07:00:00-05:00', // master anchored to May 4
+      '2026-06-15T08:00:00',        // occurrence six weeks later
+      '2026-06-15T09:00:00',
+    );
+    expect(r.startDateTime).toBe('2026-05-04T08:00:00');
+    expect(r.endDateTime).toBe('2026-05-04T09:00:00');
+  });
+
+  it('handles same-date case (first occurrence moved — no date conflict)', () => {
+    const r = recurringAllTimeShift(
+      '2026-06-13T07:00:00',
+      '2026-06-13T14:00:00',
+      '2026-06-13T15:00:00',
+    );
+    expect(r.startDateTime).toBe('2026-06-13T14:00:00');
+    expect(r.endDateTime).toBe('2026-06-13T15:00:00');
   });
 });

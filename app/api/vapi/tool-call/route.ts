@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringAllTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
@@ -586,8 +586,22 @@ Query: ${query}` }],
       confirmWhen = `${newStartDate} (same time, ${eventTz})`;
     } else {
       // Path 3: full datetime move.
-      rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
-      confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
+      if (recurringScope === 'all' && found.event.recurringEventId) {
+        // Google 400s when patching a master event's start/end with a date from a later
+        // occurrence (e.g. model passes June 18 but the series started June 16). Fetch
+        // the master to get its base date, then preserve that date and shift only the time.
+        const masterRes = await cal.events.get({ calendarId: found.calId, eventId }).catch(() => null);
+        const masterBaseDT = masterRes?.data.start?.dateTime ?? found.event.start?.dateTime ?? newStartDateTime;
+        const { startDateTime, endDateTime } = recurringAllTimeShift(masterBaseDT, newStartDateTime, newEndDateTime);
+        rb = {
+          start: { dateTime: startDateTime, timeZone: timezone },
+          end:   { dateTime: endDateTime,   timeZone: timezone },
+        };
+        confirmWhen = `${startDateTime.slice(11, 16)}–${endDateTime.slice(11, 16)} ${timezone}`;
+      } else {
+        rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
+        confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
+      }
     }
     if (found.event.colorId) rb.colorId = found.event.colorId;
     const origStart = found.event.start;

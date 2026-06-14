@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ voice fixes + Trends + RecoveryCard wired (`ddb0c84`). 418/418 green. Awaiting PM on gym-move log.)_ | — | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ gym-move recurring-all BUG FIXED. `recurringAllTimeShift` preserves master base date; 422/422 green. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ RecoveryCard component + sparkline + DESIGN.md §7 spec shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
@@ -116,6 +116,23 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **[BUG FIX] Gym-move recurring-all crash (Core).**
+  - **ROOT CAUSE:** `moveEvent` with `recurringScope='all'` patches the master event
+    using `newStartDateTime` from the model, which carries the occurrence's date (e.g.
+    June 18). Google 400s because the master series is anchored to a different base date
+    (e.g. June 16 — the original Monday). The date in the patch must match the RRULE
+    anchor, not any later occurrence.
+  - **Fix:** new `recurringAllTimeShift(masterStartDT, newStartDT, newEndDT)` pure helper
+    in `lib/time.ts`. Extracts the master's base date (`slice(0,10)`) and the model's
+    requested time (`slice(11,19)`), returns `{ startDateTime, endDateTime }` using the
+    master date + new time. No date arithmetic — just string compositing, which is what
+    makes it safe across DST.
+  - Route.ts path 3: when `recurringScope === 'all'`, fetches the master event to get its
+    base `start.dateTime`, runs it through `recurringAllTimeShift`, then patches with the
+    corrected datetimes. Falls back to `found.event.start.dateTime` if the master fetch
+    fails (better than crashing). Single-occurrence path unchanged.
+  - 4 new tests covering: mid-series occurrence date (Gym scenario), UTC-Z suffix, multi-week
+    recurring series, same-date (first occurrence) edge case. 422/422 green, tsc clean, next build clean.
 - **2026-06-13** — **Voice-behavior fixes + Whoop Trends wired (Core).** (`9b9da87`)
   - **[1] WORKING HOURS**: `lib/vapi.ts` — new WORKING HOURS block; defaults all suggestions to
     weekday daytime (9 AM–6 PM Mon–Fri). When today is Sat/Sun, prompt explicitly tells Edge

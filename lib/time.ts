@@ -194,3 +194,26 @@ export function timedEventDateMove(
   };
 }
 
+/**
+ * For moveEvent with recurringScope='all': Google requires the master event's
+ * patch to use the ORIGINAL SERIES BASE DATE, not an occurrence date.
+ * (Patching the master with a mid-series occurrence date causes a 400 —
+ * the date doesn't match where the RRULE anchors the series.)
+ *
+ * Returns new start/end datetimes using the master's base date + the model's
+ * requested time, ready to pass as requestBody to cal.events.patch.
+ */
+export function recurringAllTimeShift(
+  masterStartDT: string, // master event's start.dateTime — any ISO format
+  newStartDT:    string, // model's desired new start  (YYYY-MM-DDTHH:MM:SS…)
+  newEndDT:      string, // model's desired new end
+): { startDateTime: string; endDateTime: string } {
+  const masterDate = masterStartDT.slice(0, 10); // 'YYYY-MM-DD' of first occurrence
+  const newTime    = newStartDT.slice(11, 19);   // 'HH:MM:SS' (strips date + any tz offset)
+  const newEndTime = newEndDT.slice(11, 19);
+  return {
+    startDateTime: `${masterDate}T${newTime}`,
+    endDateTime:   `${masterDate}T${newEndTime}`,
+  };
+}
+
