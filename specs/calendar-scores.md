@@ -56,6 +56,46 @@ Components:
 Both are pure, unit-tested, and **stored daily** so we get score *trends* (and can correlate
 score → outcomes later).
 
+## ★ Two-component scoring: hard numbers + human judgment (added 2026-06-14, Derrick)
+Pure hours are the easy ~20% of the truth; the valuable part is **judgment** — "more hours isn't
+better; focused hours at the right energy are; an over-packed week wrecks sleep and sinks everything."
+Encoding that operator/coach wisdom is harder to copy than hours math → **truer scores AND a deeper moat.**
+
+**Every score = two halves, blended and shown transparently:**
+1. **Quantitative half (deterministic):** coverage, aligned hours, balance (the components above).
+2. **Judgment half (encoded expert wisdom):** adjusts the raw numbers by principles a seasoned chief
+   of staff / coach knows. Generalizable rules to encode (v1, deterministic + explainable):
+   - **Diminishing returns** — beyond a point more hours on a focus area stop helping (quality > volume).
+   - **Right-energy timing** — focused hours in green/peak energy weigh more than the same hours in a red trough.
+   - **Recovery & whitespace** — over-packed days / no gaps / late-night load → penalty (it costs sleep,
+     which sinks everything else). The "too many gym events → can't sleep → won't hit the goal" case.
+   - **Domain archetypes** — "what good looks like" differs by focus type (delegation/leadership ≠ deep
+     work ≠ fitness ≠ fundraising); each archetype carries its own judgment rules.
+
+**Blend weight:** start at **50% quant / 50% judgment** (Derrick's call) — but it's a **tunable dial**, not a constant.
+
+**Score shape (extended):**
+```
+ScoreResult = { score, quantScore, judgmentScore, weights:{quant,judgment}, drivers[], topFix }
+```
+Both halves contribute `drivers` so the breakdown is always explainable (no black box).
+
+### Human-assisted training loop (what keeps the judgment true)
+- Edge shows the score **with its breakdown** (numbers + judgment + reasons).
+- The human reacts ("too high — more board-prep hours isn't the point, focused green-energy hours are").
+- Feedback **tunes the weights/rules** + builds a labeled dataset. Early = Derrick is the expert-in-the-loop;
+  later = a seasoned-CEO advisor seeds the "expert playbook"; eventually real-user feedback + outcomes refine it.
+- ⚠️ **Keep generalizable PRINCIPLES separate from PERSONAL tuning** (Derrick's prefs) so "good judgment"
+  doesn't silently become "Derrick's preferences" — this is where overfitting-to-one-user concentrates
+  (the strongest reason to get a 2nd ICP user in soon; flagged to CoS).
+
+### Build phasing for the engine
+- **MVP (now):** build the **two-component structure** (`computeQuantScore` + `computeJudgmentScore`,
+  weighted blend, 50/50 default, weights as params). Judgment half = a **deterministic rules engine**
+  encoding the top generalizable principles above. Fully explainable. Capture a hook for human feedback.
+- **Later:** LLM-judge augmentation (bounded, reasoned adjustments only) + a real feedback-driven
+  tuning loop + expert-advisor-seeded archetype playbook.
+
 ## New capabilities this unlocks (calendar management becomes central)
 1. **Energy color-coding** — color events via Google Calendar `colorId` so the calendar becomes a
    visual energy map (peak = one color, trough = another), and mismatches are visible at a glance.
