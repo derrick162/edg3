@@ -301,6 +301,21 @@ function initSchema(db: Database.Database) {
       trough_end  INTEGER NOT NULL,
       updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- LLM-derived energy classification cache for Google Calendar events.
+    -- Keyed by (user_id, google_event_id). title_hash detects title changes so
+    -- a renamed event is re-tagged automatically on next score computation.
+    -- demand: high | med | low. type: free-text category (e.g. 'deep-work', 'admin').
+    CREATE TABLE IF NOT EXISTS event_energy_tags (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL REFERENCES users(id),
+      google_event_id TEXT NOT NULL,
+      type            TEXT NOT NULL,
+      demand          TEXT NOT NULL CHECK(demand IN ('high', 'med', 'low')),
+      title_hash      TEXT NOT NULL,
+      tagged_at       TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, google_event_id)
+    );
   `);
 
   // Indexes for performance
@@ -319,6 +334,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
     CREATE INDEX IF NOT EXISTS idx_calendar_scores_user_date ON calendar_scores(user_id, date);
+    CREATE INDEX IF NOT EXISTS idx_event_energy_tags_user ON event_energy_tags(user_id, google_event_id);
   `);
 
   // Migrations for existing databases
@@ -1263,5 +1279,47 @@ export const energyProfileQueries = {
         trough_end   = excluded.trough_end,
         updated_at   = datetime('now')
     `).run(userId, profile.peakStart, profile.peakEnd, profile.troughStart, profile.troughEnd);
+  },
+};
+
+export interface EventEnergyTag {
+  id: number;
+  user_id: number;
+  google_event_id: string;
+  type: string;
+  demand: 'high' | 'med' | 'low';
+  title_hash: string;
+  tagged_at: string;
+}
+
+export const eventEnergyTagQueries = {
+  get: (userId: number, eventId: string): EventEnergyTag | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM event_energy_tags WHERE user_id = ? AND google_event_id = ?'
+    ).get(userId, eventId) as EventEnergyTag | undefined;
+  },
+
+  upsert: (
+    userId: number,
+    eventId: string,
+    tag: { type: string; demand: 'high' | 'med' | 'low'; titleHash: string }
+  ): void => {
+    getDb().prepare(`
+      INSERT INTO event_energy_tags (user_id, google_event_id, type, demand, title_hash)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, google_event_id) DO UPDATE SET
+        type       = excluded.type,
+        demand     = excluded.demand,
+        title_hash = excluded.title_hash,
+        tagged_at  = datetime('now')
+    `).run(userId, eventId, tag.type, tag.demand, tag.titleHash);
+  },
+
+  getMany: (userId: number, eventIds: string[]): EventEnergyTag[] => {
+    if (eventIds.length === 0) return [];
+    const placeholders = eventIds.map(() => '?').join(', ');
+    return getDb().prepare(
+      `SELECT * FROM event_energy_tags WHERE user_id = ? AND google_event_id IN (${placeholders})`
+    ).all(userId, ...eventIds) as EventEnergyTag[];
   },
 };
