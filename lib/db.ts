@@ -888,6 +888,10 @@ export interface Briefing {
   scheduled_for: string;
   transcript: string | null;
   user_response: string | null;
+  retry_attempted: number;
+  calendar_actions: string | null;
+  edge_promises: string | null;
+  tool_actions: string | null;
   error_code: string | null;
   created_at: string;
 }

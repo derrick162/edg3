@@ -8,6 +8,25 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-13** — **Data export + self-service account deletion (GDPR / Google CASA launch requirement).**
+  - `GET /api/account/export` — user-scoped, returns a full JSON download of all user data:
+    profile (no password_hash), priorities, memories, facts, tasks, briefings (with decrypted
+    transcript/user_response), and email draft history (recipient/subject decrypted). Sets
+    `Content-Disposition: attachment` so browsers download the file. 10000-row cap on
+    briefings/memories (ample for any real user at launch).
+  - `DELETE /api/account` — user-scoped, irreversible self-service deletion. Requires body
+    `{ "confirm": "delete my account" }` (explicit contract for Core's UI — 400 without it).
+    Deletes all 16 tables in FK-safe order (same coverage as admin route: whoop_tokens,
+    calendar_tokens, gmail_drafts_log, watched_threads, notifications, audit_log, facts,
+    briefings, preview_briefings, memories, priorities, tasks, undo_log, event_dedupe_keys,
+    delete_confirm_tokens, users). Clears the session cookie on success.
+  - `lib/db.ts`: `Briefing` interface completed (was missing `retry_attempted`,
+    `calendar_actions`, `edge_promises`, `tool_actions` fields).
+  - 15 new tests (auth guards, response shape, confirm contract, deletion coverage,
+    cookie clearing). 490/490 green, tsc clean, next build clean.
+  - **Core action items:** wire "Export my data" link → `GET /api/account/export` and
+    "Delete account" confirmation flow → `DELETE /api/account` (with the exact phrase UI).
+    Also add Google token revocation call in `lib/calendar.ts` disconnect (CASA requirement).
 - **2026-06-13** — **Call reliability: idempotency guard + error_code persistence + call-status endpoint.**
   - `lib/db.ts`: `briefings` table gains `error_code TEXT` column (migration + `ALLOWED_FIELDS`
     + `Briefing` interface + `briefingQueries.getTodayForUser(userId, datePrefix)` helper).
