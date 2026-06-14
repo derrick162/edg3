@@ -101,8 +101,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ overnight batch — call-time+location+edit/delete facts, profile-name fix, fact confidence+provenance, missed-call retry, copy-transcript, voice word-choice, stronger Whoop recs. Integrated to master by PM.)_ | `lib/*`, `app/dashboard/**`, `app/api/memory/**` | 2026-06-14 |
-| 🔒 Security | `security` | _(idle — ✅ **Energy OS schema** (`energy_log` table + `energyLogQueries` + `EnergyLog` type). 522/522 green. Awaiting PM.)_ | `lib/db.ts`, `lib/energy-log.test.ts` | 2026-06-14 |
+| 🛠️ Core | `core` | _(✅ Energy OS MVP — daily energy signal, priority cost tags, dashboard quick-set, setEnergyLevel tool. ⚠️ PM: create `setEnergyLevel` Vapi tool.)_ | `lib/energy.ts`, `lib/db.ts`, `lib/briefing.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `app/api/energy/**`, `app/api/priorities/**`, `app/dashboard/page.tsx` | 2026-06-14 |
+| 🔒 Security | `security` | _(✅ Energy OS schema (`energy_log` + `energyLogQueries`) + data export/deletion + call reliability + encryption verification + CASA. Integrated.)_ | `lib/db.ts`, `app/api/account/**`, `lib/energy-log.test.ts`, `specs/` | 2026-06-14 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ Full token pass complete across all app pages (dashboard, onboarding, admin, privacy, terms, landing). Zero inline hex/rgba remaining on user-facing pages. 467/467 green. Awaiting PM.)_ | — | 2026-06-14 |
 

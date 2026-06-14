@@ -4,7 +4,8 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, effectiveTimezone, User } from './db';
+import { deriveEnergySignal, formatEnergyForCall } from './energy';
 
 /**
  * Structured call failure — carries a user-facing message and a reason code so
@@ -124,6 +125,22 @@ async function currentWhoopText(userId: number): Promise<string> {
     if (note) out += ` — ${note}`;
     if (history) out += ` · ${history}`;
     return out;
+  } catch { return ''; }
+}
+
+// Today's energy signal as a compact string for the live-call system prompt.
+async function currentEnergyText(userId: number): Promise<string> {
+  try {
+    const user = userQueries.findById(userId);
+    if (!user) return '';
+    const tz = effectiveTimezone(user);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const log = energyLogQueries.getToday(userId, today);
+    // Whoop recovery needed for auto-derive only when no log entry exists
+    const whoopScore = log ? null : await import('./whoop').then(m => m.getLatestRecovery(userId).catch(() => null)).then(r => r?.recoveryScore ?? null);
+    const signal = deriveEnergySignal(log, whoopScore);
+    const firstName = user.name.split(' ')[0];
+    return formatEnergyForCall(signal, firstName);
   } catch { return ''; }
 }
 
@@ -256,7 +273,7 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '');
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId));
       console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -299,7 +316,7 @@ export async function scheduleOpenCall(userId: number) {
 
     try {
       console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '');
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId));
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
