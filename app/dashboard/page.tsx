@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard } from '@/components/ui/RecoveryCard';
-import type { RecoveryTier } from '@/components/ui/RecoveryCard';
+import { RecoveryCard } from '@/components/ui';
 
 const TIMEZONES = [
   { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
@@ -837,12 +836,14 @@ export default function Dashboard() {
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
-  const [whoopSummary, setWhoopSummary] = useState<{
-    recovery: { score: number; tier: 'green' | 'yellow' | 'red' } | null;
-    sleep: { durationMs: number } | null;
-    strain: { strain: number } | null;
-  } | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
+  const [whoopData, setWhoopData] = useState<{
+    recoveryScore: number | null;
+    tier: 'high' | 'medium' | 'low' | null;
+    sleepHours: number | null;
+    strain: number | null;
+    history: { date: string; score: number }[];
+  } | null>(null);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
@@ -893,9 +894,15 @@ export default function Dashboard() {
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
-    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false, recovery: null, sleep: null, strain: null }).then(d => {
+    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
       setWhoopConnected(!!d.connected);
-      if (d.connected) setWhoopSummary({ recovery: d.recovery ?? null, sleep: d.sleep ?? null, strain: d.strain ?? null });
+      if (d.connected) {
+        // Connected → pull recovery score + 14-day history for the dashboard card.
+        fetch('/api/whoop/recovery')
+          .then(r => r.ok ? r.json() : null)
+          .then(rd => { if (rd && rd.connected) setWhoopData(rd); })
+          .catch(() => {});
+      }
     }).catch(() => {});
   }, [router]);
 
@@ -1343,21 +1350,22 @@ export default function Dashboard() {
               </button>
             ) : whoopConnected ? (
               <div className="px-2 py-2">
-                {whoopSummary?.recovery ? (
-                  <RecoveryCard
-                    recoveryScore={whoopSummary.recovery.score}
-                    tier={(whoopSummary.recovery.tier === 'green' ? 'high' : whoopSummary.recovery.tier === 'red' ? 'low' : 'medium') as RecoveryTier}
-                    sleepHours={whoopSummary.sleep ? whoopSummary.sleep.durationMs / 3_600_000 : undefined}
-                    strain={whoopSummary.strain?.strain}
-                    className="mb-2"
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 mb-1">
-                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
+                {whoopData && whoopData.recoveryScore !== null && whoopData.tier && (
+                  <div className="mb-3">
+                    <RecoveryCard
+                      recoveryScore={whoopData.recoveryScore}
+                      tier={whoopData.tier}
+                      sleepHours={whoopData.sleepHours ?? undefined}
+                      strain={whoopData.strain ?? undefined}
+                      history={whoopData.history}
+                    />
                   </div>
                 )}
-                <div className="flex items-center gap-3 pl-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
+                </div>
+                <div className="flex items-center gap-3 pl-3.5">
                   <button
                     onClick={disconnectWhoop}
                     disabled={disconnectingWhoop}
