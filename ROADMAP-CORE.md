@@ -129,6 +129,22 @@ priority from user feedback.
 
 ## Backlog (seed — PM refines from user feedback)
 ### Now
+- [ ] **★ Whoop V3 — Proactive recovery defense + correlations** — _PM + user decision, 2026-06-13. The "magic tier" of the Whoop integration; user explicitly queued it after V1/V2 shipped._
+  - **Context:** V1 (recovery-aware pacing) and V2 (energy-matched blocking) are live. Security shipped the history primitives (`getRecoveryHistory` / `getSleepHistory` / `getStrainHistory`, 14-day, in `lib/whoop.ts`). The dashboard RecoveryCard is wired (`/api/whoop/recovery`, PM commit `bf35921`). This ticket builds the two things on top of that data.
+  - **Part A — Proactive recovery defense (briefing + live).**
+    - **Goal:** When recovery is RED (≤33%) **or drops sharply vs the recent baseline** (e.g. ≥20-pt drop from the trailing-7-day average), Edge *proactively* proposes lightening today — names the heaviest / most-deferrable block(s) and offers to move or shrink them. Edge offers → user confirms → Edge acts via the existing `moveEvent`/`deleteEvent`/`createEvent` tools. Never auto-edits without consent.
+    - **Impl:** pure helper, e.g. `detectRecoveryDrop(today, history)` in `lib/whoop*`/`lib/briefing.ts` → returns `{ red | sharp_drop, deltaVsBaseline, suggestion }` or `null`. Inject a `RECOVERY ALERT` block into the briefing prompt; add a matching live-call note in `lib/vapi.ts` so a mid-call "how's my recovery" with a low score triggers the same offer. Degrades to `null` when history is thin — never fabricate.
+    - **Honesty guard:** only claim a drop the data supports; never say Whoop measured something intraday it didn't (reuse the V2 honesty wording).
+  - **Part B — Correlations over time (the high-value piece).**
+    - **Goal:** With ≥~10–14 days of data, surface 1–2 plain-English patterns tied to a concrete calendar action: e.g. *"Your recovery runs ~X% lower the day after evenings with a meeting past 7pm — want me to keep this week's evenings clear after 7?"* or *"You sleep ~N min less when your last event ends after 9pm."*
+    - **Impl:** new pure module `lib/whoopCorrelations.ts` — input = Whoop history (recovery/sleep/strain by date) **+ the user's recent calendar history**; output = ranked plain-English insights with a confidence/sample-size gate. Returns `null`/empty below the data threshold (briefing simply omits the section). Surface at most ONE correlation in the briefing when confidence is sufficient; pair it with an offer to act.
+    - **⚠️ Key dependency / scoping decision (flag before building):** correlations need **historical calendar context**, but today we only fetch the *current* day's calendar. Two options — Core to pick:
+      1. **Pull a 14-day past window from Google** (`timeMin`/`timeMax` in the past) at briefing time and correlate by date — *no new storage, simplest, preferred.*
+      2. Log a lightweight daily event-summary snapshot going forward (new table) — more durable but slower to produce signal and needs a Security-coordinated schema add.
+      Start with option 1 unless it proves too heavy.
+    - **Strictness:** never assert a correlation without enough days; phrase with the implicit window ("over the last two weeks"); never fabricate a number.
+  - **Acceptance:** (A) On a red/sharp-drop recovery morning, the briefing proactively offers to lighten the day with a specific block; "yes" → Edge moves it. (B) After ~2 weeks of data, the briefing surfaces one real, data-backed sleep/recovery↔calendar pattern with an offer to act; below the threshold it stays silent (no invented patterns).
+  - **Coordination:** `lib/briefing.ts` + new `lib/whoop*` modules are Core-owned. Live-call note touches Shared `lib/vapi.ts` (claim in Status Board). History primitives already exist (Security) — no new Security work unless Core picks option 2 (then coordinate a schema add). Update `specs/whoop-integration.md` (V2.5/V3 sections) + this changelog when shipped.
 - [x] **Multi-day all-day events + ability to edit/fix them** — _from a real user call, 2026-06-09._ **✅ Shipped 2026-06-09 (see changelog).**
   - **Symptom:** User asked Edge to "create all-day events from June 25–28." Edge made four separate one-day all-day events instead of one spanning event, then could not fix it when asked.
   - **Root cause:**
