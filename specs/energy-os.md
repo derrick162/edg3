@@ -6,6 +6,27 @@ _Crystallized with Derrick 2026-06-14._
 > **Edge is the intelligent AI chief of staff that organizes your calendar around your *focus*
 > and your *energy* — so you get more of what matters most actually done.**
 
+## ★ The magic moment (the hero loop) — added 2026-06-14
+> You do a 3-minute call. Edge already knows your focus + energy. He opens with the diagnosis —
+> *"Your focus score's a 6, energy's a 4; here's why"* — then *"here's what I'll change."* You do
+> **as little as possible** (one "yes," maybe one tweak), and **your week is reshaped.** You hang up
+> feeling lighter and more productive: *"whoa, that improved my week."*
+
+The whole product exists to deliver this feeling. Design principle: **minimum user effort, maximum
+calendar improvement, felt as relief.** Edge LEADS with specific proposals (not open questions),
+executes on a single lightweight approval, and proves it worked by re-scoring ("focus went 6 → 8").
+Trust is preserved by: read-back before executing, **one undo for the whole reshape**, and the
+Activity log. Full build: `specs/calendar-scores.md` (the scores find what to change) + the hero-loop
+roadmap item (propose-plan → one-yes → batch-execute the week as one undoable unit).
+
+## ★ Ideal customer (ICP) — added 2026-06-14
+**Core user: the overwhelmed, already-calendar-driven power user.** They live by their calendar, it's
+full, and they're drowning in it — "I need help managing this." We optimize for **reorganizing /
+optimizing an existing rich calendar** (move, recolor, rebalance to focus + energy), not for filling
+an empty one. The Focus/Energy scores require a substantive calendar to grade — which is exactly this
+user. **Secondary path:** a user who joins with a sparse calendar gets a "let's build it together"
+mode (help block focus time) — supported, but NOT the hero experience we design around.
+
 ## The thesis (input → engine → outcome)
 1. **INPUT.** You declare your **3 areas of focus** (+ each area's energy cost). Each day you give
    (or Edge auto-derives) your **energy** — red / yellow / green.
