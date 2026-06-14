@@ -397,6 +397,20 @@ Query: ${query}` }],
         return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
       }
     }
+    // Anti-duplication guard (timed): refuse to create an event identical to one already
+    // on the calendar — same title at the same wall-clock start. This is the corruption from
+    // the "copied the whole day" call, which replicated walks/meals/gym across the week.
+    // Runs regardless of overrideConflicts (overriding a conflict ≠ duplicating the same event).
+    {
+      const dt = startDateTime.slice(0, 10);
+      const existingTimed = (await Promise.all(calIds.map(calId =>
+        cal.events.list({ calendarId: calId, timeMin: `${prevDay(dt)}T00:00:00Z`, timeMax: `${nextDay(nextDay(dt))}T00:00:00Z`, singleEvents: true }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+      ))).flat();
+      const nT = (s: string) => s.replace(/^⚡\s*/, '').trim().toLowerCase();
+      if (existingTimed.some(ev => ev.start?.dateTime && nT(ev.summary ?? '') === nT(title) && ev.start.dateTime.slice(0, 16) === startDateTime.slice(0, 16))) {
+        return `"${title}" is already on your calendar at that time — I won't create a duplicate. Nothing changed.`;
+      }
+    }
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }

@@ -120,8 +120,10 @@ export function buildWhoopSection(
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
     // Spell out hours/minutes — this is spoken on the call, and "8h59m" gets misread
-    // by the voice engine as "8 H 59 meters".
-    parts.push(`SLEEP: ${m === 0 ? `${h} hours` : `${h} hours ${m} minutes`}`);
+    // by the voice engine as "8 H 59 meters". Include WHOOP's sleep performance % —
+    // that's the "sleep score" users ask for, distinct from time in bed.
+    const dur = m === 0 ? `${h} hours` : `${h} hours ${m} minutes`;
+    parts.push(`SLEEP: ${dur} (score ${sleep.performancePct}%)`);
   }
   if (strain !== null) parts.push(`STRAIN: ${strain.strain}`);
   return parts.length ? parts.join(' · ') : null;
