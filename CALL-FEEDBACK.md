@@ -34,6 +34,29 @@ Each entry: date · what happened · what would've made it a 10 · → resulting
 
 ## 🗒️ Call log (newest first)
 
+### 2026-06-14 (Sun) — ★ detailed 10/10 feedback on the morning briefing
+Derrick's vision of a 10/10 morning call — the gap is **proactivity + goal-driving + memory**:
+1. **Recovery-aware encouragement tied to the actual event.** Good sleep/recovery → "you're
+   recovered, push hard" — and connect it to what's on the calendar (the storage-locker block).
+2. **Encourage a hard gym session** on good recovery — explicitly aim to beat his **strain goal
+   (>10)**. [NEW FACT: Derrick's strain goal = push above 10.]
+3. **Push-hard framing:** good recovery → go hard today so tonight's sleep is good too.
+4. **Look ahead to tomorrow** — notice the free afternoon and plan into it.
+5. **★ Remember + proactively COMPLETE unfinished commitments.** He'd tried to move gym 11→2 on
+   prior calls and it never happened — a 10/10 opens with "I noticed I never moved your gym —
+   doing it now," then does it. Biggest trust-builder.
+6. **Proactively fill free slots with goal-aligned work + ACT on yes.** "First open slot after
+   lunch (1–2pm) — want it for your 30-60-90 plan?" → yes → created, done.
+7–8. **Allocate free time to his GOALS, offering choices** — after gym (3pm+): energy-management
+   work, OR the 130lb goal (grocery/protein run). Ask which.
+9. **Nutrition awareness for the 130lb goal** — ask "what's for dinner tomorrow?"
+10. **Engage personal events** — it's his dad's birthday on the calendar; acknowledge it, ask
+    what he's doing, offer to help.
+- **→ Themes:** (a) PROACTIVE/agentic, not report-and-react; (b) complete pending commitments
+  across calls; (c) drive the user's stated goals into free time + act on yes; (d) recovery →
+  motivating encouragement incl. strain goal; (e) forward-look to tomorrow; (f) relational
+  (birthdays, dinner). → Spec: `specs/briefing-v2-proactive.md`.
+
 ### 2026-06-14 (Sun) — morning briefing + reschedule attempts
 - **What happened:** suggested a 9:30–11:15 block at ~11:19 (past); proposed Sunday work;
   couldn't move the planning block to tomorrow; couldn't bulk-move gym/energy events.

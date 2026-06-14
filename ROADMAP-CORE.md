@@ -198,6 +198,16 @@ priority from user feedback.
 
 ## Backlog (seed — PM refines from user feedback)
 ### Now
+- [ ] **★ Briefing V2 — proactive, goal-driven, relational** — _from Derrick's 10/10 call feedback, 2026-06-14._
+  Make the morning briefing PROACTIVE (not report-and-react). **Full spec: `specs/briefing-v2-proactive.md`.**
+  - **Quick prompt wins (do first, low risk):** recovery → motivating encouragement tied to the
+    actual event + tonight's sleep; proactively offer to fill the first free slot with a stated
+    priority and ACT on yes; offer choices among goals for free time; look ahead to TOMORROW; warmly
+    engage personal events (e.g. "Dad's Birthday" → ask + offer help).
+  - **Needs stored facts:** strain goal (Derrick's = ">10"); dinner/nutrition for the 130lb goal.
+  - **★ Needs infra (highest trust):** remember + COMPLETE unfinished committed actions across calls
+    (e.g. the gym move that failed repeatedly) — open the next call by finishing it. Coordinate with
+    🔒 Security on the action/audit log.
 - [ ] **★ "You control your data" onboarding + Settings (cross-lane)** — _PM + user, 2026-06-14._
   Plain-English data-control screen (consent: "Help improve Edg3" vs "Privacy Mode"), in
   onboarding + Settings. Trust + Google/CASA asset. **Full spec: `specs/data-control-onboarding.md`.**
