@@ -345,6 +345,16 @@ Query: ${query}` }],
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startOnly)) return "I didn't catch the date for that all-day event — what day is it?";
       const endOnly = (endDate || '').slice(0, 10);
       const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(endOnly) && endOnly >= startOnly ? endOnly : startOnly;
+      // Anti-duplication guard: never create an all-day event that already exists on that
+      // date (e.g. re-adding "Dad's birthday" while booking around it). Checks the live
+      // calendar, not just the in-memory retry claim, so it catches model-driven dupes.
+      const dupWin = (await Promise.all(calIds.map(calId =>
+        cal.events.list({ calendarId: calId, timeMin: `${prevDay(startOnly)}T00:00:00Z`, timeMax: `${nextDay(nextDay(lastDay))}T00:00:00Z`, singleEvents: true }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+      ))).flat();
+      const normTitle = (s: string) => s.replace(/^⚡\s*/, '').trim().toLowerCase();
+      if (dupWin.some(ev => ev.start?.date && !ev.start?.dateTime && normTitle(ev.summary ?? '') === normTitle(title))) {
+        return `"${title}" is already on your calendar around then — I won't create a duplicate. It's still there; nothing changed.`;
+      }
       if (!claimEventCreate(userId, buildEventDedupeKey(title, lastDay === startOnly ? startOnly : `${startOnly}..${lastDay}`))) {
         const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
         return `All-day "${title}" ${span} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
