@@ -7,6 +7,10 @@ import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts } from './facts';
 import { getLatestRecovery, getLastSleep, getRecentStrain, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
+// Whoop Trends (wiring TODO — see lib/whoopTrends.ts): once Security ships
+// getRecoveryHistory/getSleepHistory/getStrainHistory in lib/whoop.ts, import
+// computeWhoopTrends + formatTrendForBriefing here, add the fetches to the
+// Promise.all below, and inject the formatted trend line after whoopContextBlock.
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
