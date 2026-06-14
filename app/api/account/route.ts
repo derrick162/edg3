@@ -26,6 +26,8 @@ export async function DELETE(req: NextRequest) {
     const userId = user.id;
 
     // Delete leaf tables first (no outbound FK dependencies to users), users row last.
+    db.prepare('DELETE FROM calendar_scores WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM energy_profile WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM focus_milestones WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM energy_log WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM whoop_tokens WHERE user_id = ?').run(userId);

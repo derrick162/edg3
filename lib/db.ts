@@ -274,6 +274,33 @@ function initSchema(db: Database.Database) {
       created_at   TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at TEXT
     );
+
+    -- Daily Focus + Energy scores. One row per user per day (UNIQUE enforces upsert).
+    -- Recomputed before every morning call; drivers stored as JSON arrays so Core and
+    -- Design can render explanations without re-running the scoring logic.
+    CREATE TABLE IF NOT EXISTS calendar_scores (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL REFERENCES users(id),
+      date            TEXT NOT NULL,
+      focus_score     INTEGER NOT NULL,
+      energy_score    INTEGER NOT NULL,
+      focus_drivers   TEXT,
+      energy_drivers  TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, date)
+    );
+
+    -- Structured energy profile: the user's stated peak/trough windows (hour 0–23).
+    -- One row per user (upserted). Peak = high-energy window; trough = low-energy dip.
+    -- Core derives this from free-text preference facts as v1 and swaps to this once live.
+    CREATE TABLE IF NOT EXISTS energy_profile (
+      user_id     INTEGER PRIMARY KEY REFERENCES users(id),
+      peak_start  INTEGER NOT NULL,
+      peak_end    INTEGER NOT NULL,
+      trough_start INTEGER NOT NULL,
+      trough_end  INTEGER NOT NULL,
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -291,6 +318,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
+    CREATE INDEX IF NOT EXISTS idx_calendar_scores_user_date ON calendar_scores(user_id, date);
   `);
 
   // Migrations for existing databases
@@ -1158,5 +1186,82 @@ export const focusMilestoneQueries = {
     return getDb().prepare(
       'DELETE FROM focus_milestones WHERE id = ? AND user_id = ?'
     ).run(id, userId);
+  },
+};
+
+export interface CalendarScore {
+  id: number;
+  user_id: number;
+  date: string;
+  focus_score: number;
+  energy_score: number;
+  focus_drivers: string | null;
+  energy_drivers: string | null;
+  created_at: string;
+}
+
+export const calendarScoreQueries = {
+  upsert: (
+    userId: number,
+    date: string,
+    scores: { focusScore: number; energyScore: number; focusDrivers: string[]; energyDrivers: string[] }
+  ): void => {
+    getDb().prepare(`
+      INSERT INTO calendar_scores (user_id, date, focus_score, energy_score, focus_drivers, energy_drivers)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        focus_score    = excluded.focus_score,
+        energy_score   = excluded.energy_score,
+        focus_drivers  = excluded.focus_drivers,
+        energy_drivers = excluded.energy_drivers,
+        created_at     = datetime('now')
+    `).run(
+      userId, date,
+      scores.focusScore, scores.energyScore,
+      JSON.stringify(scores.focusDrivers),
+      JSON.stringify(scores.energyDrivers),
+    );
+  },
+
+  getRange: (userId: number, fromDate: string, toDate: string): CalendarScore[] => {
+    return getDb().prepare(
+      'SELECT * FROM calendar_scores WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date ASC'
+    ).all(userId, fromDate, toDate) as CalendarScore[];
+  },
+
+  getLatest: (userId: number): CalendarScore | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM calendar_scores WHERE user_id = ? ORDER BY date DESC LIMIT 1'
+    ).get(userId) as CalendarScore | undefined;
+  },
+};
+
+export interface EnergyProfile {
+  user_id: number;
+  peak_start: number;
+  peak_end: number;
+  trough_start: number;
+  trough_end: number;
+  updated_at: string;
+}
+
+export const energyProfileQueries = {
+  get: (userId: number): EnergyProfile | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM energy_profile WHERE user_id = ?'
+    ).get(userId) as EnergyProfile | undefined;
+  },
+
+  upsert: (userId: number, profile: { peakStart: number; peakEnd: number; troughStart: number; troughEnd: number }): void => {
+    getDb().prepare(`
+      INSERT INTO energy_profile (user_id, peak_start, peak_end, trough_start, trough_end)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        peak_start   = excluded.peak_start,
+        peak_end     = excluded.peak_end,
+        trough_start = excluded.trough_start,
+        trough_end   = excluded.trough_end,
+        updated_at   = datetime('now')
+    `).run(userId, profile.peakStart, profile.peakEnd, profile.troughStart, profile.troughEnd);
   },
 };
