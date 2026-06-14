@@ -222,6 +222,7 @@ Always end with warmth. This person is building something — remind them of tha
           '9c8adb6d-af86-4628-8313-d28b23c4a255', // cleanupEvents (created via API 2026-06-13)
           '54e47823-ad97-4624-9fef-6f95e96b2ff1', // rememberPreference (created via API 2026-06-13)
           '5606ea96-ca20-4c9d-9ac8-0f4f113ddd6e', // cleanupDuplicates (created via API 2026-06-13)
+          '8aac93a3-74bd-40ce-b08b-6a6843917209', // setEnergyLevel (created via API 2026-06-14)
         ],
       },
       firstMessage: briefingContent,
