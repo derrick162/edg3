@@ -637,7 +637,7 @@ Query: ${query}` }],
     const origStart = found.event.start;
     const origEnd = found.event.end;
     const patched = await cal.events.patch({ calendarId: found.calId, eventId, requestBody: rb }).catch((moveErr: unknown) => {
-      console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'}:`, moveErr);
+      console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'} rb=${JSON.stringify(rb)}:`, moveErr instanceof Error ? moveErr.message : moveErr);
       return null;
     });
     if (!patched || !patched.data.id) return `Couldn't get that shift through for "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — want me to draft a message to the organizer requesting a different time?`;
