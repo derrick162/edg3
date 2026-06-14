@@ -12,6 +12,7 @@
 
 import { randomBytes } from 'crypto';
 import { whoopQueries } from './db';
+import { prevDay } from './time';
 
 const AUTH_URL  = 'https://api.prod.whoop.com/oauth/oauth2/auth';
 const TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token';
@@ -209,12 +210,14 @@ export interface WhoopRecovery {
   recoveryScore:    number; // 0–100
   hrv:              number; // RMSSD in ms (rounded)
   restingHeartRate: number; // bpm
+  date?:            string; // YYYY-MM-DD the score was computed (morning after sleep)
 }
 
 export interface WhoopSleep {
   durationMs:     number; // total in-bed time
   performancePct: number; // 0–100
   efficiencyPct:  number; // 0–100
+  date?:          string; // YYYY-MM-DD the sleep session began (evening before a morning wake)
 }
 
 export interface WhoopStrain {
@@ -244,6 +247,7 @@ export async function getLatestRecovery(userId: number): Promise<WhoopRecovery |
       recoveryScore:    Math.round(rec.score.recovery_score),
       hrv:              Math.round(rec.score.hrv_rmssd_milli),
       restingHeartRate: rec.score.resting_heart_rate,
+      date:             rec.created_at?.slice(0, 10),
     };
     setCache(recoveryCache, userId, result);
     return result;
@@ -269,6 +273,7 @@ export async function getLastSleep(userId: number): Promise<WhoopSleep | null> {
       durationMs:     rec.score.stage_summary.total_in_bed_time_milli,
       performancePct: Math.round(rec.score.sleep_performance_percentage),
       efficiencyPct:  Math.round(rec.score.sleep_efficiency_percentage),
+      date:           rec.start?.slice(0, 10),
     };
     setCache(sleepCache, userId, result);
     return result;
@@ -299,6 +304,28 @@ export async function getRecentStrain(userId: number): Promise<WhoopStrain | nul
     setCache(strainCache, userId, null);
     return null;
   }
+}
+
+/**
+ * Human note when WHOOP readings aren't current, for the morning briefing / live call.
+ * Recovery is computed each morning, so "fresh" = dated today. Sleep starts the evening
+ * before a morning wake, so "fresh" = dated today or yesterday. Returns '' when both are
+ * current (or their dates are unknown — never claim stale without a date).
+ *
+ * @param recoveryDate WhoopRecovery.date (YYYY-MM-DD) or undefined
+ * @param sleepDate    WhoopSleep.date (YYYY-MM-DD) or undefined
+ * @param today        today's date in the user's timezone (YYYY-MM-DD)
+ */
+export function whoopFreshnessNote(
+  recoveryDate: string | undefined,
+  sleepDate: string | undefined,
+  today: string,
+): string {
+  const stale: string[] = [];
+  if (recoveryDate && recoveryDate < today) stale.push(`recovery is from ${recoveryDate} (today's hasn't synced yet)`);
+  if (sleepDate && sleepDate < prevDay(today)) stale.push(`sleep is from ${sleepDate}`);
+  if (!stale.length) return '';
+  return `DATA FRESHNESS: these are the most recent readings, not today's — ${stale.join('; ')}. Tell the user this is their latest available reading from that date; do NOT present it as today's.`;
 }
 
 // True if the user has connected their Whoop account.

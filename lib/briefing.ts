@@ -6,7 +6,7 @@ import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts } from './facts';
-import { getLatestRecovery, getLastSleep, getRecentStrain, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
+import { getLatestRecovery, getLastSleep, getRecentStrain, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -220,6 +220,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const whoopContextBlock = (() => {
     if (!whoopSection) return '';
     const lines = [`HEALTH DATA (WHOOP):\n${whoopSection}`];
+    const freshness = whoopFreshnessNote(whoopRecovery?.date, whoopSleep?.date, today);
+    if (freshness) lines.push(freshness);
     if (whoopRecovery !== null) {
       const tier = whoopRecovery.recoveryScore >= 67
         ? 'green (strong — push hard on the top priority today)'

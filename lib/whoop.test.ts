@@ -40,6 +40,7 @@ import {
   getSleepHistory,
   getStrainHistory,
   hasWhoopConnected,
+  whoopFreshnessNote,
   WHOOP_SCOPES,
 } from './whoop';
 
@@ -491,5 +492,27 @@ describe('getStrainHistory', () => {
     h.whoopGet.mockReturnValue(VALID_TOKEN);
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ records: [] }) });
     expect(await getStrainHistory(317)).toEqual([]);
+  });
+});
+
+describe('whoopFreshnessNote', () => {
+  it('returns empty when recovery is today and sleep is last night', () => {
+    // sleep starts the evening before → yesterday is fresh for a morning call
+    expect(whoopFreshnessNote('2026-06-14', '2026-06-13', '2026-06-14')).toBe('');
+  });
+
+  it('flags stale recovery when it is from a previous day', () => {
+    const note = whoopFreshnessNote('2026-06-12', '2026-06-13', '2026-06-14');
+    expect(note).toContain('recovery is from 2026-06-12');
+    expect(note).toContain("today's hasn't synced");
+  });
+
+  it('flags stale sleep when older than the night before', () => {
+    const note = whoopFreshnessNote('2026-06-14', '2026-06-11', '2026-06-14');
+    expect(note).toContain('sleep is from 2026-06-11');
+  });
+
+  it('never claims stale when dates are unknown', () => {
+    expect(whoopFreshnessNote(undefined, undefined, '2026-06-14')).toBe('');
   });
 });

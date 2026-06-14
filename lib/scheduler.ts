@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
-import { getLatestRecovery, getLastSleep, getRecentStrain } from './whoop';
+import { getLatestRecovery, getLastSleep, getRecentStrain, whoopFreshnessNote } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, effectiveTimezone, User } from './db';
 
 /**
@@ -74,7 +74,14 @@ async function currentWhoopText(userId: number): Promise<string> {
     if (rec) parts.push(`recovery ${rec.recoveryScore}%`);
     if (slp) { const h = Math.floor(slp.durationMs / 3600000); const m = Math.round((slp.durationMs % 3600000) / 60000); const dur = m === 0 ? `${h} hours` : `${h} hours ${m} minutes`; parts.push(`sleep ${dur} (sleep score ${slp.performancePct}%)`); }
     if (str) parts.push(`strain ${str.strain}`);
-    return parts.join(' · ');
+    if (!parts.length) return '';
+    // Freshness: flag when recovery/sleep aren't today's so Edge says so instead of
+    // presenting a stale reading as current.
+    const user = userQueries.findById(userId);
+    const tz = user ? effectiveTimezone(user) : 'America/Vancouver';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const note = whoopFreshnessNote(rec?.date, slp?.date, today);
+    return note ? `${parts.join(' · ')} — ${note}` : parts.join(' · ');
   } catch { return ''; }
 }
 
