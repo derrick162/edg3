@@ -64,7 +64,23 @@ week-optimization, forecasting, or Oura.
 Validate (Derrick is the test case) → week-level optimization → energy forecasting from Whoop/Oura
 trends → Oura integration (parked in IDEAS until demand).
 
+## Energy capture flow (DECIDED 2026-06-14)
+One daily energy record per user `{ user_id, date, level, source: 'whoop'|'manual'|'override' }`,
+shared by the call and the dashboard (set in one place → the other reflects it; never re-ask once set).
+
+**On the briefing call** — energy is captured EARLY (right after the greeting, before the plan) so it
+shapes the whole briefing:
+- **No Whoop / Whoop empty:** Edge asks once — "Before I run your day, how's your energy: red,
+  yellow, or green?" → tailor the briefing to the answer.
+- **Whoop present:** don't ask — STATE it ("recovery's green, full capacity") and offer a light
+  override ("feel about right, or running lower?"). A subjective override WINS over the Whoop tier
+  (felt energy ≠ recovery score); store as source 'override'.
+- **Already set today** (dashboard or earlier call): use it, don't re-ask.
+
+**On the dashboard** — a one-tap red/yellow/green setter writing the same daily record. Set before a
+call → Edge skips the question and uses it.
+
 ## Open decisions
-- Manual energy input location: call + dashboard (recommended both).
+- Default if the user never sets it and there's no Whoop: assume 'yellow' (neutral) vs. ask-only.
 - Focus-area energy cost: manual tag first; learned later.
 - Positioning shift (messaging/onboarding/pitch) → **Chief of Staff** strategy call.
