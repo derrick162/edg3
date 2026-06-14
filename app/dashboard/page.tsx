@@ -7,11 +7,11 @@ import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
 import { RecoveryCard } from '@/components/ui';
 
-// Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). The transcript is
-// verbatim, but we know the real spelling — so for DISPLAY only, correct capitalized words
-// that are clearly a mishearing of the user's first name (same first 3 letters, similar
-// length). Conservative on purpose: leaves all other words untouched.
-function correctNameInTranscript(text: string, firstName: string): string {
+// Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
+// and call-derived memories are verbatim, but we know the real spelling from the profile — so
+// for DISPLAY only, correct capitalized words that are clearly a mishearing of the user's first
+// name (same first 3 letters, similar length). Conservative: leaves all other words untouched.
+function correctName(text: string, firstName: string): string {
   const fn = (firstName || '').trim();
   if (fn.length < 3) return text;
   const key = fn.slice(0, 3).toLowerCase();
@@ -1733,7 +1733,7 @@ export default function Dashboard() {
                                   const isUser = line.startsWith('User:') || line.startsWith('Customer:');
                                   const isAI = line.startsWith('Assistant:') || line.startsWith('Bot:') || line.startsWith('AI:');
                                   const rawText = line.replace(/^(User:|Customer:|Assistant:|Bot:|AI:)\s*/, '');
-                                  const text = correctNameInTranscript(rawText, (user?.name || '').split(' ')[0]);
+                                  const text = correctName(rawText, (user?.name || '').split(' ')[0]);
                                   return (
                                     <div key={i} className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                                       <p className="text-xs leading-relaxed px-3 py-2 rounded-lg max-w-[80%]"
@@ -1913,7 +1913,7 @@ export default function Dashboard() {
                                       <div className="flex-1">
                                         {f.entity && (
                                           <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-                                            {f.entity}
+                                            {correctName(f.entity, (user?.name || '').split(' ')[0])}
                                           </p>
                                         )}
                                         <textarea
@@ -1979,9 +1979,9 @@ export default function Dashboard() {
                                         <div className="flex-1 min-w-0">
                                           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
                                             {f.entity && (
-                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, (user?.name || '').split(' ')[0])}: </span>
                                             )}
-                                            {f.statement}
+                                            {correctName(f.statement, (user?.name || '').split(' ')[0])}
                                             {f.confidence === 'low' && (
                                               <button
                                                 title="Edge isn't sure it caught this right — tap to fix"
@@ -2095,7 +2095,7 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                            {m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content}
+                            {correctName(m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content, (user?.name || '').split(' ')[0])}
                           </p>
                         </div>
                       ))}
