@@ -56,7 +56,35 @@ Components:
 Both are pure, unit-tested, and **stored daily** so we get score *trends* (and can correlate
 score → outcomes later).
 
-## ★ Two-component scoring: hard numbers + human judgment (added 2026-06-14, Derrick)
+## ★★ MVP SIMPLIFICATION (2026-06-14, Derrick) — supersedes the judgment layer for now
+With only Derrick to train it, a human-judgment layer would just encode one person's preferences.
+**Strip it for MVP; add it back when real users give feedback.** The MVP is purely quantitative:
+
+- **Focus Score = % of working hours booked toward the 3 areas of focus.** `score = focusAlignedHours
+  / totalWorkingHours * 100` (0–100). Working hours = the user's working window (profile/default
+  9–6 Mon–Fri). `focusAlignedHours` from `lib/alignment.ts` (events mapped to a focus area). Fully
+  deterministic + explainable. `drivers` = which areas have time / are starved; `topFix` = e.g.
+  "fundraising has 0h — block some." **No human component.**
+- **Energy Score = how well the calendar's energy demands fit the user's energy** — REQUIRES the new
+  **per-event energy tagging** capability (below). 0–100.
+- **Both scores are 0–100 (percentages)** — NOT 1–10. (Supersedes the earlier 1–10 framing.)
+- **Score shape (MVP):** `ScoreResult = { score /*0–100*/, drivers[], topFix }`. (Drop
+  quantScore/judgmentScore/weights — no blend in MVP.)
+
+### ★ NEW capability — per-event energy tagging (prerequisite for the Energy Score)
+Edge must understand every event. Classify each calendar event into:
+- a **type** — meeting / meal / workout / deep work / admin / social / travel / personal / other, and
+- an **energy demand** — high / medium / low (how much energy the event requires).
+LLM classification over the event title (+ description/attendees/duration). **MVP: classify the week's
+events on-demand in one batch LLM call** when computing the Energy Score (no storage dependency →
+Core unblocked). **Fast-follow:** cache tags (Security `event_energy_tags` table keyed by user +
+google_event_id, re-tag on title change) to avoid re-classifying. **This double-pays:** the same tags
+power **energy color-coding** later. Then Energy Score = fit of the calendar's tagged demands vs the
+user's energy level/capacity (red day overloaded with high-demand → low; high-demand in peak window →
+good). `drivers` + `topFix` ("your hardest block is in your low-energy window — move it?").
+
+## Two-component scoring (FUTURE — DEFERRED until multi-user feedback exists)
+_Not MVP — see the simplification above. Kept for when real users can train the judgment half._
 Pure hours are the easy ~20% of the truth; the valuable part is **judgment** — "more hours isn't
 better; focused hours at the right energy are; an over-packed week wrecks sleep and sinks everything."
 Encoding that operator/coach wisdom is harder to copy than hours math → **truer scores AND a deeper moat.**
