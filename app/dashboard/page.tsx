@@ -1510,7 +1510,7 @@ export default function Dashboard() {
                   )}
                   {(todayCallStatus.status === 'missed' || todayCallStatus.status === 'failed') && !retryCalled && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-xs" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
+                      <p className="text-xs" style={{ color: 'var(--edg-warning)' }}>
                         {todayCallStatus.status === 'missed' ? 'Missed today' : 'Call failed'}
                       </p>
                       <button
