@@ -68,28 +68,61 @@ export interface DuplicateEventLike extends EventLike {
   created?: string | null;
 }
 
+// Event types you normally have at most ONCE per day. For these, two on the same day
+// (even at different times) count as duplicates — e.g. two "dinner" entries. For every
+// other title we only treat exact same-time copies as duplicates, so two real meetings
+// at 10am and 2pm are never wrongly merged.
+const DAILY_SINGLETON_KEYWORDS = [
+  'breakfast', 'brunch', 'lunch', 'dinner', 'supper',
+  'gym', 'workout', 'work out', 'walk', 'run', 'jog', 'meditat', 'yoga',
+  'morning routine', 'wind down', 'wind-down', 'bedtime',
+];
+
+function isDailySingleton(normTitle: string): boolean {
+  return DAILY_SINGLETON_KEYWORDS.some(k => normTitle.includes(k));
+}
+
+/** Local calendar day (YYYY-MM-DD) for an event, in the given tz when timed. */
+function eventLocalDay(event: DuplicateEventLike, timezone?: string): string | null {
+  if (event.start?.date) return event.start.date;
+  if (event.start?.dateTime) {
+    if (timezone) {
+      try { return new Date(event.start.dateTime).toLocaleDateString('en-CA', { timeZone: timezone }); } catch { /* fall through */ }
+    }
+    return event.start.dateTime.slice(0, 10);
+  }
+  return null;
+}
+
 /**
- * Group events by normalized title + start time (to-the-minute UTC for timed events,
- * or `allday:YYYY-MM-DD` for all-day events). Returns only groups with >1 member,
- * each with the earliest-created event marked as `keep` and the rest as `remove`.
- * Pure — no I/O.
+ * Group events into duplicate sets. Two grouping rules:
+ *  - DAILY-SINGLETON titles (meals, gym, walk, …): grouped by normalized title + local
+ *    DAY, so two "dinner" entries on the same day at different times are caught.
+ *  - Every other title: grouped by normalized title + exact start time (to-the-minute UTC,
+ *    or `allday:YYYY-MM-DD`), so only genuine same-time copies count.
+ * Returns only groups with >1 member; each keeps the earliest-created event and marks the
+ * rest as `remove`. Pure (uses Intl for the local-day calc when a timezone is supplied).
  */
 export function findDuplicateGroups<T extends { event: DuplicateEventLike; calId: string }>(
   events: T[],
+  opts?: { timezone?: string },
 ): Array<{ key: string; keep: T; remove: T[] }> {
   const groups = new Map<string, T[]>();
   for (const item of events) {
     const normTitle = normalizeTitle(item.event.summary ?? '');
     if (!normTitle) continue;
-    let timeKey: string;
-    if (item.event.start?.dateTime) {
-      timeKey = new Date(item.event.start.dateTime).toISOString().slice(0, 16);
+    let key: string;
+    if (isDailySingleton(normTitle)) {
+      const day = eventLocalDay(item.event, opts?.timezone);
+      if (!day) continue;
+      key = `${normTitle}|day:${day}`;
+    } else if (item.event.start?.dateTime) {
+      key = `${normTitle}|${new Date(item.event.start.dateTime).toISOString().slice(0, 16)}`;
     } else if (item.event.start?.date) {
-      timeKey = `allday:${item.event.start.date}`;
+      key = `${normTitle}|allday:${item.event.start.date}`;
     } else {
       continue;
     }
-    const key = `${normTitle}|${timeKey}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
   }

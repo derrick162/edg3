@@ -162,12 +162,30 @@ describe('findDuplicateGroups', () => {
     expect(groups[0].remove).toEqual([newer]);
   });
 
-  it('does NOT group events with the same title but different start times', () => {
+  it('does NOT group NON-singleton events with the same title but different start times', () => {
+    // Two real meetings at different times are distinct, not duplicates.
     const events = [
-      timed('Gym', '2026-06-13T09:00:00Z'),
-      timed('Gym', '2026-06-13T10:00:00Z'),
+      timed('Project Review', '2026-06-13T09:00:00Z'),
+      timed('Project Review', '2026-06-13T10:00:00Z'),
     ];
     expect(findDuplicateGroups(events)).toHaveLength(0);
+  });
+
+  it('GROUPS daily-singleton events (e.g. dinner) on the same day at DIFFERENT times', () => {
+    // You only have one dinner a day — two on the same day is a duplicate even at
+    // different times. Keep the earliest-created.
+    const real = timed('Dinner', '2026-06-13T23:00:00Z', 'real', '2026-06-10T00:00:00Z'); // 6pm-ish
+    const dupe = timed('Dinner', '2026-06-14T01:00:00Z', 'dupe', '2026-06-13T00:00:00Z'); // later, newer
+    const groups = findDuplicateGroups([real, dupe], { timezone: 'America/New_York' });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].keep).toBe(real);
+    expect(groups[0].remove).toEqual([dupe]);
+  });
+
+  it('does NOT group daily-singleton events on DIFFERENT days', () => {
+    const mon = timed('Gym', '2026-06-15T13:00:00Z', 'mon', '2026-06-01T00:00:00Z');
+    const tue = timed('Gym', '2026-06-16T13:00:00Z', 'tue', '2026-06-01T00:00:00Z');
+    expect(findDuplicateGroups([mon, tue], { timezone: 'America/New_York' })).toHaveLength(0);
   });
 
   it('does NOT group events at the same time but with different titles', () => {

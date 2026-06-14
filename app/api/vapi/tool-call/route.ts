@@ -951,7 +951,7 @@ Query: ${query}` }],
     }));
     const allEvents = allEventsRaw.flat();
 
-    const dupeGroups = findDuplicateGroups(allEvents);
+    const dupeGroups = findDuplicateGroups(allEvents, { timezone: tz });
     if (!dupeGroups.length) {
       return `No duplicate events found between ${windowStart} and ${windowEnd} — your calendar looks clean.`;
     }
@@ -966,18 +966,30 @@ Query: ${query}` }],
       return `Found ${toRemove.length} duplicate(s) but they're all on read-only calendars — no deletions made.`;
     }
 
-    const countByTitle = (items: { event: calendar_v3.Schema$Event }[]) => {
-      const m = new Map<string, number>();
-      for (const { event } of items) {
-        const t = (event.summary ?? 'Untitled').replace(/^⚡\s*/, '');
-        m.set(t, (m.get(t) ?? 0) + 1);
-      }
-      return [...m.entries()].map(([t, n]) => `${n} ${t}`).join(', ');
+    // Per-group description with times, so different-time copies (e.g. two "dinner"
+    // entries on the same day) are clear and the user can veto the right one.
+    const fmtWhen = (ev: calendar_v3.Schema$Event): string => {
+      if (ev.start?.date) return 'all day';
+      if (ev.start?.dateTime) return new Date(ev.start.dateTime).toLocaleString('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+      return '';
     };
+    const groupDescriptions = dupeGroups.map(g => {
+      const writRemove = g.remove.filter(({ calId }) => { const e = calMeta.get(calId); return !e || isWritable(e.accessRole); });
+      if (!writRemove.length) return null;
+      const title = (g.keep.event.summary ?? 'Untitled').replace(/^⚡\s*/, '');
+      const keepWhen = fmtWhen(g.keep.event);
+      const removeWhens = writRemove.map(r => fmtWhen(r.event)).filter(Boolean);
+      const sameTime = removeWhens.every(w => w === keepWhen);
+      return sameTime
+        ? `${title} (${keepWhen}) — ${writRemove.length} exact duplicate${writRemove.length > 1 ? 's' : ''}`
+        : `${title} — keep ${keepWhen}, remove ${removeWhens.join(' and ')}`;
+    }).filter(Boolean) as string[];
+    const shownGroups = groupDescriptions.slice(0, 8).join('; ');
+    const moreGroups = groupDescriptions.length > 8 ? ` …and ${groupDescriptions.length - 8} more` : '';
 
     if (!confirmToken) {
       const token = issueDeleteToken(userId);
-      return `⚠️ Found ${writableRemove.length} duplicate event(s) — I'll keep the earliest copy of each and remove the rest: ${countByTitle(writableRemove)}. Should I go ahead? ONLY if the user says yes, call cleanupDuplicates again with the same args and confirmToken set to "${token}". Token expires in 2 minutes.`;
+      return `⚠️ Found ${writableRemove.length} duplicate event(s) to remove (keeping the earliest copy of each): ${shownGroups}${moreGroups}. Read this back so the user can confirm — and if any "keep/remove" choice is wrong, they can tell you which time to keep. ONLY if the user says yes, call cleanupDuplicates again with the same args and confirmToken set to "${token}". Token expires in 2 minutes.`;
     }
     if (!consumeDeleteToken(userId, confirmToken)) {
       const token = issueDeleteToken(userId);
