@@ -131,6 +131,55 @@ export function buildWhoopSection(
   return parts.length ? parts.join(' · ') : null;
 }
 
+/**
+ * Baseline-relative Whoop context for the briefing prompt.
+ * Returns null when fewer than 3 history points are available (no meaningful average yet).
+ * When multiple signals compound (red recovery + sleep debt + high strain), flags it explicitly
+ * so the model can surface a concrete deferral action — not generic pacing advice.
+ * Pure — no I/O.
+ */
+export function buildBaselineContext(
+  recovery: WhoopRecovery | null,
+  recoveryHistory: { date: string; value: number }[],
+  recentSleepMs: number[],   // sleep durations in ms, any order; sliced to 7 internally
+  recentStrain: number | null, // latest strain score on Whoop's 0–21 scale
+): string | null {
+  if (!recovery || recoveryHistory.length < 3) return null;
+
+  const sorted = [...recoveryHistory]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 7);
+  const avg7d = Math.round(sorted.reduce((s, p) => s + p.value, 0) / sorted.length);
+  const today = recovery.recoveryScore;
+  const delta = today - avg7d;
+  const sign = delta >= 0 ? '+' : '';
+
+  const lines: string[] = [
+    `Recovery vs baseline: today ${today}% · 7-day avg ${avg7d}% · ${sign}${delta} pts`,
+  ];
+
+  const badSignals: string[] = [];
+  if (today < 34) badSignals.push('red recovery');
+  const sleepSlice = recentSleepMs.slice(0, 7);
+  if (sleepSlice.length >= 3) {
+    const avgSleepH = sleepSlice.reduce((s, v) => s + v, 0) / sleepSlice.length / 3_600_000;
+    if (avgSleepH < 6.5) badSignals.push(`recent sleep averaging ${avgSleepH.toFixed(1)} h`);
+  }
+  if (recentStrain !== null && recentStrain > 15) {
+    badSignals.push(`high strain yesterday (${recentStrain.toFixed(1)} / 21)`);
+  }
+
+  if (badSignals.length >= 2) {
+    lines.push(
+      `COMPOSITE SIGNAL: ${badSignals.join(' + ')} — compounding deficit. ` +
+      `Identify the single heaviest deferrable calendar block and offer to move or shrink it. ` +
+      `Frame as coaching grounded in numbers — never make medical claims.`,
+    );
+  }
+
+  return lines.join('\n');
+}
+
 // Keywords that identify energy-profile preference facts (peak/trough hours,
 // high/low-energy activity types). Module-level so the function stays pure.
 const ENERGY_PREF_KEYWORDS = [
@@ -237,6 +286,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
   const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
+  const baselineContext = buildBaselineContext(
+    whoopRecovery,
+    recoveryHistoryPoints,
+    sleepHistory
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(d => d.durationMs),
+    whoopStrain?.strain ?? null,
+  );
   const whoopContextBlock = (() => {
     if (!whoopSection) return '';
     const lines = [`HEALTH DATA (WHOOP):\n${whoopSection}`];
@@ -249,6 +306,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
         ? 'yellow (moderate — proceed as planned, don\'t over-extend)'
         : 'red (keep today lighter; defer deep work to a better-recovery day)';
       lines.push(`Recovery tier: ${tier}. Weave one brief pacing note into section 1 and factor into section 3 (which priority to push vs. defer).`);
+    }
+    if (baselineContext) {
+      lines.push(`BASELINE (use these numbers when coaching pacing — grounded in data, not medical advice):\n${baselineContext}`);
     }
     if (whoopTrendLine) {
       lines.push(`WHOOP TREND (past ~2 weeks): ${whoopTrendLine} Surface this as one honest line in section 1 — no additional commentary.`);

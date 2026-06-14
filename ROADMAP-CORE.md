@@ -9,6 +9,75 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-13** — **Stronger Whoop recommendations — baseline-relative + composite signal (Priority 4).**
+  - `buildBaselineContext(recovery, recoveryHistory, recentSleepMs, recentStrain)` pure helper
+    added to `lib/briefing.ts`. Computes "today 45% · 7-day avg 63% · −18 pts" baseline line.
+    Adds a COMPOSITE SIGNAL block when ≥2 signals compound (red recovery + sleep debt <6.5h avg +
+    high strain >15 on Whoop's 0–21 scale). Frame is coaching grounded in numbers — never
+    medical claims. Degrades to null when fewer than 3 history points.
+  - Injected into `whoopContextBlock` in `generateDailyBriefing` as "BASELINE (use these numbers
+    when coaching pacing...)" — placed after the tier line so the model can cite concrete delta
+    in section 1 ("18 points below your weekly average") and tie pacing advice to the actual gap.
+  - Sleep history sorted newest-first before slicing so the most recent 7 days are always used.
+  - 8 new tests. 490/490 green, tsc clean, next build clean.
+- **2026-06-13** — **Voice polish + call status + copy-transcript (Priorities 7, 3, 8).**
+  - **P7 — Voice pronunciation avoid-list (prompt-only):** Added WORD CHOICE line to `lib/vapi.ts`
+    system prompt. Instructs Edge to say "wrap up" not "wind up", "finish" not "wind down", and to
+    avoid homographs ElevenLabs mispronounces. ~1 line addition to the NATURAL LANGUAGE cluster.
+  - **P3 — Call status + report-missed-call:**
+    - `GET /api/briefing/today-status` — queries today's briefings for the logged-in user (by
+      `scheduled_for LIKE <today>%`), returns `{ status, scheduledFor }` or `{ status: 'none' }`.
+    - `POST /api/briefing/retry-call` — guards against double-calling (409 if already completed
+      or calling); calls `scheduleBriefingCall(userId)` which generates a fresh briefing + initiates
+      Vapi call; returns `{ success, briefingId }`.
+    - Dashboard sidebar: fetches today's status on load. Shows "✓ Call done for today" (green),
+      "● In progress…" (accent), or "Missed today / Call failed" + "Call me now" button when
+      status is missed/failed. Button fires retry endpoint; sidebar optimistically shows "Calling
+      you now…" on success.
+  - **P8 — Copy-transcript button:** In the expanded briefing detail (Briefings tab), the CALL
+    TRANSCRIPT header row now has a "Copy" button. On click → `navigator.clipboard.writeText`
+    with the full transcript text → "Copied ✓" for 2s then reverts. `copiedTranscriptId` state
+    tracks which card has the active confirmation so multiple cards don't interfere.
+  - 482/482 green, tsc clean, next build clean.
+- **2026-06-13** — **Fact trustworthiness + profile-name fix (Priorities 1, 2).**
+  - **P1 — Profile-name fix:** `extractFactsFromTranscript(transcript, userName?)` now injects the
+    correct user name into the Haiku prompt so STT mis-spellings ("Derek" for "Derrick") are
+    corrected at extraction time. `isSelfEntity(entity, userName)` secondary guard skips `person`
+    facts about the user themselves. `extractAndUpsertFacts` updated to pass `user.name` from the
+    webhook caller.
+  - **P2 — Fact trustworthiness:** `confidence TEXT ('high'|'low')` and `source_briefing_id`
+    columns added to `facts` table (migration-safe ALTERs). `upsertFact` accepts both; Haiku
+    returns `"confidence":"low"` for STT-risky entities (unusual names, street addresses). Dashboard
+    shows "⚠ verify" badge on low-confidence facts; "learned from your <date> call ↗" provenance
+    link on facts with a source briefing.
+  - 9 new tests. 482/482 green, tsc clean, next build clean.
+- **2026-06-13** — **Call-time in prompt + location awareness + edit/delete facts.** (`75589c4`)
+  - **Call-time in system prompt (addendum 1):** `initiateCall` gains a `callTime` 10th arg (default `''`).
+    Injects `SCHEDULED CALL TIME: <HH:MM tz>` into the live-call prompt so Edge can answer "when do
+    you call me?" directly without relying on the calendar block. Both briefing + open-call scheduler
+    paths pass `user.call_time || ''`.
+  - **Location awareness (addendum 2, prompt-only):** LOCATION AWARENESS bullet added to `lib/vapi.ts`.
+    Edge calls `rememberPreference("CURRENT LOCATION: <address>")` when user says where they are, and
+    `"NAMED PLACE: <alias> = <address>"` for place nicknames ("up north = 119 Scandia Lane"). "Near me"
+    / "nearby" searches look up the stored CURRENT LOCATION fact rather than using freshly-transcribed
+    speech (which STT commonly mishears). Always echoes address back before storing.
+  - **Edit/delete facts (addendum 3):** `factQueries.updateFact(userId, id, statement, entity)` and
+    `factQueries.deleteFact(userId, id)` added to `lib/db.ts` — both enforce `AND user_id = ?`.
+    New `PATCH /api/memory/facts` and `DELETE /api/memory/facts` routes (401 unauth, 400 on missing
+    fields). Dashboard Memory tab: per-fact ✏ (inline textarea → Save/Cancel) and × (inline confirm →
+    Delete). Optimistic state update. CORRECTING MEMORIES prompt bullet: when user says Edge got
+    something wrong → apologise, correct for this call, point to "What Edge knows" on dashboard.
+  - 5 new tests (updateFact/deleteFact mock contract + user-scoping). 476/476 green, tsc clean, next build clean.
+- **2026-06-13** — **Call-time reminder sync + research misheard-address retry.** (`8d25e4f`)
+  - **T1 — Call-time change syncs calendar reminder:** `buildBriefingReminderBody` (pure, tested)
+    and `resyncBriefingReminder(userId)` extracted to `lib/calendar.ts`. ONLY-IF-EXISTS: finds
+    existing reminder masters and recreates them at the new time; never force-creates for users
+    who skipped setup. Called fire-and-forget from the call-time route. `findBriefingReminderMasters`
+    shared with the reminder POST route (no drift). 4 new tests.
+  - **T2 — Research on garbled address retries:** `lib/vapi.ts` prompt extended: when a local
+    business search returns no results, treat it as a likely-bad query (misheard address), re-confirm
+    location + terms, and retry before reporting "nothing found." Never save a NORESULTS block.
+  - 471/471 green, tsc clean, next build clean.
 - **2026-06-10** — **QA bug batch — 5 bugs fixed** (3 commits `0390c63`→`dfc0bf2`). All from autonomous audit:
   - **Bug 1 [MEDIUM, data-destructive]** `moveEvent` silently converted timed events to all-day when model supplied only `newStartDate`. Root: `dateMove = isAllDay || !!newStartDate` fell into the date-only patch path for timed events. Fix: 3 explicit branches — (a) all-day → date patch, (b) timed + date-only input → new `timedEventDateMove()` that extracts wall-clock time via Intl and preserves duration, (c) full datetime → unchanged. `timedEventDateMove` added to `lib/time.ts` with 4 tests.
   - **Bug 2 [HIGH]** Outreach emails showed availability slots with no timezone label — recipients couldn't tell which timezone "2:00 PM" referred to. Fix: `buildOutreachBody()` now accepts `userTimezone` and derives a short abbreviation (e.g. "PDT") via Intl, inserting it into the slot header. Threaded through `composeOutreachEmail()` and the `draftEmail` handler in `route.ts`. 2 new tests.
