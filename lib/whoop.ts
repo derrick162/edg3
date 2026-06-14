@@ -239,10 +239,12 @@ export async function getLatestRecovery(userId: number): Promise<WhoopRecovery |
 
   try {
     const data = await whoopGet<WhoopListResponse<WhoopRecoveryRecord>>(
-      userId, '/recovery', { limit: '1' },
+      userId, '/recovery', { limit: '10' },
     );
-    const rec = data?.records?.[0];
-    if (!rec || rec.score_state !== 'SCORED') { setCache(recoveryCache, userId, null); return null; }
+    // Find the most recent SCORED record — WHOOP often has a pending/unscored record on
+    // top, so limit:1 would return null even when scored data exists just below it.
+    const rec = data?.records?.find(r => r.score_state === 'SCORED');
+    if (!rec) return null; // don't cache "no data" — it may sync within the hour
     const result: WhoopRecovery = {
       recoveryScore:    Math.round(rec.score.recovery_score),
       hrv:              Math.round(rec.score.hrv_rmssd_milli),
@@ -252,8 +254,7 @@ export async function getLatestRecovery(userId: number): Promise<WhoopRecovery |
     setCache(recoveryCache, userId, result);
     return result;
   } catch {
-    setCache(recoveryCache, userId, null);
-    return null;
+    return null; // transient failure — don't cache it
   }
 }
 
@@ -264,11 +265,11 @@ export async function getLastSleep(userId: number): Promise<WhoopSleep | null> {
 
   try {
     const data = await whoopGet<WhoopListResponse<WhoopSleepRecord>>(
-      userId, '/activity/sleep', { limit: '5' },
+      userId, '/activity/sleep', { limit: '10' },
     );
-    // Skip naps — find the most recent main sleep session.
+    // Skip naps — find the most recent SCORED main sleep session.
     const rec = data?.records?.find(r => !r.nap && r.score_state === 'SCORED');
-    if (!rec) { setCache(sleepCache, userId, null); return null; }
+    if (!rec) return null; // don't cache "no data" — it may sync within the hour
     const result: WhoopSleep = {
       durationMs:     rec.score.stage_summary.total_in_bed_time_milli,
       performancePct: Math.round(rec.score.sleep_performance_percentage),
@@ -278,8 +279,7 @@ export async function getLastSleep(userId: number): Promise<WhoopSleep | null> {
     setCache(sleepCache, userId, result);
     return result;
   } catch {
-    setCache(sleepCache, userId, null);
-    return null;
+    return null; // transient failure — don't cache it
   }
 }
 
@@ -290,10 +290,11 @@ export async function getRecentStrain(userId: number): Promise<WhoopStrain | nul
 
   try {
     const data = await whoopGet<WhoopListResponse<WhoopCycleRecord>>(
-      userId, '/cycle', { limit: '1' },
+      userId, '/cycle', { limit: '10' },
     );
-    const rec = data?.records?.[0];
-    if (!rec || rec.score_state !== 'SCORED') { setCache(strainCache, userId, null); return null; }
+    // Most recent SCORED cycle — see getLatestRecovery note on the limit:1 pitfall.
+    const rec = data?.records?.find(r => r.score_state === 'SCORED');
+    if (!rec) return null; // don't cache "no data"
     const result: WhoopStrain = {
       strain:       Math.round(rec.score.strain * 10) / 10,
       avgHeartRate: rec.score.average_heart_rate,
@@ -301,8 +302,7 @@ export async function getRecentStrain(userId: number): Promise<WhoopStrain | nul
     setCache(strainCache, userId, result);
     return result;
   } catch {
-    setCache(strainCache, userId, null);
-    return null;
+    return null; // transient failure — don't cache it
   }
 }
 
