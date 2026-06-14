@@ -2,9 +2,20 @@
 
 _Crystallized with Derrick 2026-06-14._
 
+## Mission (the why) — added 2026-06-14
+> **Prevent burnout.** Edge keeps high-performers focused on the right things and spending their
+> energy effectively — sustainably — so they don't run themselves into the ground. "Using your energy
+> well" *includes resting*; protecting recovery and whitespace is core, not a footnote.
+- **Founder-market fit:** Derrick has lived this (his own burnout journey + ADHD) — an authentic story
+  and a moat competitors can't copy. (Narrative/GTM owned by the Chief of Staff.)
+- **Why now / white space:** calendar tools optimize *logistics*, productivity tools optimize *output* —
+  almost nothing optimizes for **sustainable energy**. That gap is the opening.
+- **Guardrail:** frame as a **wellbeing/sustainability** tool, NEVER clinical/medical — no diagnosis or
+  treatment claims (keep the existing "never make medical claims" rule in the call prompts).
+
 ## Positioning
 > **Edge is the intelligent AI chief of staff that organizes your calendar around your *focus*
-> and your *energy* — so you get more of what matters most actually done.**
+> and your *energy* — so you get more of what matters most done, without burning out.**
 
 ## ★ The magic moment (the hero loop) — added 2026-06-14
 > You do a 3-minute call. Edge already knows your focus + energy. He opens with the diagnosis —
@@ -20,12 +31,19 @@ Activity log. Full build: `specs/calendar-scores.md` (the scores find what to ch
 roadmap item (propose-plan → one-yes → batch-execute the week as one undoable unit).
 
 ## ★ Ideal customer (ICP) — added 2026-06-14
-**Core user: the overwhelmed, already-calendar-driven power user.** They live by their calendar, it's
-full, and they're drowning in it — "I need help managing this." We optimize for **reorganizing /
-optimizing an existing rich calendar** (move, recolor, rebalance to focus + energy), not for filling
-an empty one. The Focus/Energy scores require a substantive calendar to grade — which is exactly this
-user. **Secondary path:** a user who joins with a sparse calendar gets a "let's build it together"
-mode (help block focus time) — supported, but NOT the hero experience we design around.
+**Core user: the high-performer at risk of (or recovering from) burnout — overwhelmed and already
+calendar-driven.** They live by their calendar, it's full, and they're drowning in it — "I need help
+managing this before it breaks me." Two views of the same person: *functionally* the overwhelmed power
+user; *emotionally* someone protecting themselves from burnout.
+- **Strong sub-segment: high-performers with ADHD.** Edge acts as external executive-function
+  scaffolding — prioritization, time-blindness, decision fatigue, energy regulation — and the
+  "do as little as possible, I'll handle the calendar" design removes the friction that kills ADHD
+  follow-through. Large, loyal, growing, under-served.
+- We optimize for **reorganizing / optimizing an existing rich calendar** (move, recolor, rebalance to
+  focus + energy AND protect recovery), not for filling an empty one. The Focus/Energy scores require a
+  substantive calendar to grade — which is exactly this user.
+- **Secondary path:** a sparse-calendar user gets a "let's build it together" mode — supported, but not
+  the hero experience we design around.
 
 ## The thesis (input → engine → outcome)
 1. **INPUT.** You declare your **3 areas of focus** (+ each area's energy cost). Each day you give
