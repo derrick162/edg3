@@ -6,11 +6,8 @@ import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts } from './facts';
-import { getLatestRecovery, getLastSleep, getRecentStrain, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
-// Whoop Trends (wiring TODO — see lib/whoopTrends.ts): once Security ships
-// getRecoveryHistory/getSleepHistory/getStrainHistory in lib/whoop.ts, import
-// computeWhoopTrends + formatTrendForBriefing here, add the fetches to the
-// Promise.all below, and inject the formatted trend line after whoopContextBlock.
+import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
+import { computeWhoopTrends, formatTrendForBriefing } from './whoopTrends';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -192,13 +189,22 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
-  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain] = await Promise.all([
+  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
     getLatestRecovery(userId).catch(() => null),
     getLastSleep(userId).catch(() => null),
     getRecentStrain(userId).catch(() => null),
+    getRecoveryHistory(userId).catch(() => []),
+    getSleepHistory(userId).catch(() => []),
+    getStrainHistory(userId).catch(() => []),
   ]);
+  const whoopTrend = computeWhoopTrends(
+    recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore })),
+    sleepHistory.map(d => ({ date: d.date, value: d.durationMs })),
+    strainHistory.map(d => ({ date: d.date, value: d.strain })),
+  );
+  const whoopTrendLine = whoopTrend ? formatTrendForBriefing(whoopTrend) : null;
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
   // source='edg3' tasks come from extractTasksFromTranscript at call end.
@@ -227,6 +233,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
         ? 'yellow (moderate — proceed as planned, don\'t over-extend)'
         : 'red (keep today lighter; defer deep work to a better-recovery day)';
       lines.push(`Recovery tier: ${tier}. Weave one brief pacing note into section 1 and factor into section 3 (which priority to push vs. defer).`);
+    }
+    if (whoopTrendLine) {
+      lines.push(`WHOOP TREND (past ~2 weeks): ${whoopTrendLine} Surface this as one honest line in section 1 — no additional commentary.`);
     }
     return '\n' + lines.join('\n') + '\n';
   })();
