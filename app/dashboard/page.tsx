@@ -611,16 +611,47 @@ function ActivityTab() {
     return `${d}d ago`;
   }
 
+  function dayLabel(created_at: string): string {
+    const d = new Date(created_at);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return format(d, 'EEEE, MMM d');
+  }
+
+  function actionIcon(action: string): string {
+    if (action.includes('delete') || action.includes('Delete')) return '🗑';
+    if (action.includes('move') || action.includes('Move')) return '⇅';
+    if (action.includes('email') || action.includes('Email') || action.includes('draft') || action.includes('Draft')) return '✉';
+    if (action.includes('research') || action.includes('Research')) return '🔍';
+    if (action.includes('edit') || action.includes('Edit') || action.includes('update') || action.includes('Update')) return '✎';
+    return '📅';
+  }
+
   if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
+
+  // Group items by day
+  const groups: { day: string; items: ActivityItem[] }[] = [];
+  for (const item of items) {
+    const day = dayLabel(item.created_at);
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) {
+      last.items.push(item);
+    } else {
+      groups.push({ day, items: [item] });
+    }
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Recent activity</h2>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-bold">Edge&apos;s actions</h2>
         <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
       </div>
-      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-        Everything Edge has done on your calendar — click any row for details, undo individually.
+      <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
+        Every change Edge makes appears here — review it, undo it, or just keep the audit trail.
       </p>
 
       {undoError && (
@@ -631,117 +662,147 @@ function ActivityTab() {
 
       {items.length === 0 ? (
         <div className="glass-card p-8 text-center">
-          <p className="text-2xl mb-3">⏪</p>
-          <p className="font-medium mb-1">No activity yet</p>
+          <p className="text-3xl mb-3" role="img" aria-label="shield">&#x1F6E1;</p>
+          <p className="font-semibold mb-2">Edge hasn&apos;t changed anything yet</p>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            When Edge creates or edits calendar events, each action will appear here so you can review and undo.
+            You&apos;ll see every calendar action here — nothing happens without a trace.
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {items.map(item => {
-            const isExpanded = expandedId === item.id;
-            const isUndone = item.undone === 1;
-            const canUndo = item.undoId !== null && !isUndone;
-            const hasDetail = !!item.detail;
-            return (
-              <div
-                key={item.id}
-                className="glass-card overflow-hidden"
-                style={{ opacity: isUndone ? 0.55 : 1 }}
-              >
-                {/* Row header — click to expand if detail is available */}
-                <div
-                  className="p-4 flex items-center gap-3"
-                  style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-                  onClick={() => hasDetail && setExpandedId(isExpanded ? null : item.id)}
-                  role={hasDetail ? 'button' : undefined}
-                  aria-expanded={hasDetail ? isExpanded : undefined}
-                >
-                  <span style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-accent)', flexShrink: 0 }}>
-                    {isUndone ? '↩' : '✦'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate" style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-strong)' }}>
-                      {item.label}
-                    </p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                      {isUndone ? 'Undone · ' : ''}{relativeTime(item.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {canUndo && (
-                      <button
-                        onClick={e => { e.stopPropagation(); handleUndo(item.undoId!); }}
-                        disabled={undoingId !== null}
-                        className="text-xs py-1 px-3 rounded"
-                        style={{
-                          background: 'rgba(245,158,11,0.12)',
-                          color: undoingId === item.undoId ? 'var(--text-muted)' : 'var(--edg-warning)',
-                          border: '1px solid rgba(245,158,11,0.2)',
-                          cursor: undoingId !== null ? 'not-allowed' : 'pointer',
-                        }}
+        <div className="space-y-5">
+          {groups.map(group => (
+            <div key={group.day}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-faint)' }}>
+                {group.day}
+              </p>
+              <div className="space-y-1.5">
+                {group.items.map(item => {
+                  const isExpanded = expandedId === item.id;
+                  const isUndone = item.undone === 1;
+                  const canUndo = item.undoId !== null && !isUndone;
+                  const hasDetail = !!item.detail;
+                  return (
+                    <div
+                      key={item.id}
+                      className="glass-card overflow-hidden"
+                      style={{ opacity: isUndone ? 0.5 : 1, transition: 'opacity 0.15s' }}
+                    >
+                      <div
+                        className="px-4 py-3 flex items-center gap-3"
+                        style={{ cursor: hasDetail ? 'pointer' : 'default' }}
+                        onClick={() => hasDetail && setExpandedId(isExpanded ? null : item.id)}
+                        role={hasDetail ? 'button' : undefined}
+                        aria-expanded={hasDetail ? isExpanded : undefined}
                       >
-                        {undoingId === item.undoId ? 'Undoing…' : '↩ Undo'}
-                      </button>
-                    )}
-                    {hasDetail && (
-                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                        {isExpanded ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                        {/* Action icon */}
+                        <span
+                          className="text-base flex-shrink-0 w-6 text-center"
+                          style={{ filter: isUndone ? 'grayscale(1)' : 'none' }}
+                          aria-hidden="true"
+                        >
+                          {actionIcon(item.action)}
+                        </span>
 
-                {/* Expanded detail panel */}
-                {isExpanded && item.detail && (
-                  <div
-                    className="px-4 pb-4"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                  >
-                    {item.detail.sections.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {item.detail.sections.map((sec, i) => (
-                          <div key={i} className="flex gap-3">
-                            <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: 'var(--text-faint)' }}>
-                              {sec.label}
+                        {/* Label + time */}
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className="text-sm leading-snug"
+                            style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-body)' }}
+                          >
+                            {item.label}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                              {relativeTime(item.created_at)}
                             </span>
-                            <span
-                              className="text-sm flex-1"
-                              style={{ color: 'var(--text-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                            {isUndone && (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded"
+                                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-faint)' }}
+                              >
+                                undone
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {canUndo && (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleUndo(item.undoId!); }}
+                              disabled={undoingId !== null}
+                              className="text-xs py-1 px-2.5 rounded-md font-medium"
+                              style={{
+                                background: 'rgba(255,255,255,0.06)',
+                                color: undoingId === item.undoId ? 'var(--text-faint)' : 'var(--text-muted)',
+                                border: '1px solid var(--edg-hairline)',
+                                cursor: undoingId !== null ? 'not-allowed' : 'pointer',
+                              }}
                             >
-                              {sec.value}
+                              {undoingId === item.undoId ? 'Undoing…' : '↩ Undo'}
+                            </button>
+                          )}
+                          {hasDetail && (
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                              {isExpanded ? '▲' : '▼'}
                             </span>
-                          </div>
-                        ))}
+                          )}
+                        </div>
                       </div>
-                    )}
-                    {item.detail.changes && item.detail.changes.length > 0 && (
-                      <div className="mt-3 space-y-3">
-                        {item.detail.changes.map((c, i) => (
-                          <div key={i}>
-                            <p className="text-xs mb-1.5" style={{ color: 'var(--text-faint)' }}>
-                              {c.label} changed
-                            </p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="text-xs p-2 rounded" style={{ background: 'rgba(239,68,68,0.08)' }}>
-                                <p className="font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Before</p>
-                                <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.before}</p>
-                              </div>
-                              <div className="text-xs p-2 rounded" style={{ background: 'var(--edg-calendar-green-tint)' }}>
-                                <p className="font-semibold mb-1" style={{ color: 'var(--edg-success)' }}>After</p>
-                                <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.after}</p>
-                              </div>
+
+                      {/* Expanded detail panel */}
+                      {isExpanded && item.detail && (
+                        <div
+                          className="px-4 pb-4"
+                          style={{ borderTop: '1px solid var(--edg-hairline)' }}
+                        >
+                          {item.detail.sections.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {item.detail.sections.map((sec, i) => (
+                                <div key={i} className="flex gap-3">
+                                  <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: 'var(--text-faint)' }}>
+                                    {sec.label}
+                                  </span>
+                                  <span
+                                    className="text-sm flex-1"
+                                    style={{ color: 'var(--text-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                  >
+                                    {sec.value}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          )}
+                          {item.detail.changes && item.detail.changes.length > 0 && (
+                            <div className="mt-3 space-y-3">
+                              {item.detail.changes.map((c, i) => (
+                                <div key={i}>
+                                  <p className="text-xs mb-1.5" style={{ color: 'var(--text-faint)' }}>
+                                    {c.label} changed
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="text-xs p-2 rounded" style={{ background: 'rgba(239,68,68,0.08)' }}>
+                                      <p className="font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Before</p>
+                                      <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.before}</p>
+                                    </div>
+                                    <div className="text-xs p-2 rounded" style={{ background: 'var(--edg-calendar-green-tint)' }}>
+                                      <p className="font-semibold mb-1" style={{ color: 'var(--edg-success)' }}>After</p>
+                                      <p style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{c.after}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1649,19 +1710,19 @@ export default function Dashboard() {
 
           {activeTab === 'memory' && (
             <div>
-              <h2 className="text-lg font-bold mb-4">What Edge knows</h2>
+              <h2 className="text-lg font-bold mb-1">Here&apos;s what Edge knows about you</h2>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Structured facts Edge has learned about you, your work, and your world — built up over every call.
+                Built up over your calls — everything here came directly from conversations with you.
               </p>
 
               {/* Structured facts grouped by category */}
               {facts.length > 0 && (() => {
-                const CATEGORY_LABELS: Record<string, string> = {
-                  goal: 'Goals',
-                  project: 'Projects',
-                  person: 'People',
-                  preference: 'Preferences',
-                  fact: 'Facts',
+                const CATEGORY_META: Record<string, { label: string; icon: string }> = {
+                  goal:       { label: 'Goals',       icon: '🎯' },
+                  project:    { label: 'Projects',    icon: '🗂' },
+                  person:     { label: 'People',      icon: '👤' },
+                  preference: { label: 'Preferences', icon: '⚡' },
+                  fact:       { label: 'Facts',       icon: '📌' },
                 };
                 const FACTS_CAT_LIMIT = 15;
                 const ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
@@ -1672,17 +1733,19 @@ export default function Dashboard() {
                 }, {});
                 return (
                   <div className="space-y-6 mb-8">
-                    {Object.entries(grouped).map(([cat, items]) => {
+                    {Object.entries(grouped).map(([cat, catItems]) => {
                       const isExpanded = expandedFactCats.has(cat);
-                      const visible = items.length > FACTS_CAT_LIMIT && !isExpanded ? items.slice(0, FACTS_CAT_LIMIT) : items;
+                      const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
+                      const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
                       return (
                         <div key={cat}>
-                          <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
-                            {CATEGORY_LABELS[cat] ?? cat}
+                          <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                            <span aria-hidden="true">{meta.icon}</span>
+                            {meta.label}
                           </h3>
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             {visible.map(f => (
-                              <div key={f.id} className="glass-card p-3 flex items-start justify-between gap-4">
+                              <div key={f.id} className="glass-card px-4 py-3 flex items-start justify-between gap-4">
                                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
                                   {f.entity && (
                                     <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
@@ -1690,12 +1753,12 @@ export default function Dashboard() {
                                   {f.statement}
                                 </p>
                                 <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                                  learned {format(new Date(f.learned_at), 'MMM d')}
+                                  {format(new Date(f.learned_at), 'MMM d')}
                                 </span>
                               </div>
                             ))}
                           </div>
-                          {items.length > FACTS_CAT_LIMIT && (
+                          {catItems.length > FACTS_CAT_LIMIT && (
                             <button
                               onClick={() => setExpandedFactCats(prev => {
                                 const next = new Set(prev);
@@ -1705,7 +1768,7 @@ export default function Dashboard() {
                               className="mt-2 text-xs"
                               style={{ color: 'var(--text-accent)' }}
                             >
-                              {isExpanded ? 'Show less' : `Show all (${items.length})`}
+                              {isExpanded ? 'Show less' : `Show all (${catItems.length})`}
                             </button>
                           )}
                         </div>
@@ -1715,6 +1778,11 @@ export default function Dashboard() {
                 );
               })()}
 
+              {/* Divider between structured facts and raw call notes */}
+              {facts.length > 0 && memories.length > 0 && (
+                <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+              )}
+
               {/* Raw memories — paginated */}
               {memories.length > 0 && (() => {
                 const PAGE_SIZE = 20;
@@ -1723,7 +1791,8 @@ export default function Dashboard() {
                 const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
                 return (
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-faint)' }}>
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">📋</span>
                       Call notes
                     </h3>
                     <div className="space-y-3">
@@ -1774,7 +1843,11 @@ export default function Dashboard() {
 
               {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No memories yet. They'll build after your first call.</p>
+                  <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
+                  <p className="font-semibold mb-2">Nothing stored yet</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    After your first call, Edge will start building a picture of you here — goals, projects, preferences, and more.
+                  </p>
                 </div>
               )}
             </div>
