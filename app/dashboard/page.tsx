@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
+import { RecoveryCard } from '@/components/ui';
 
 const TIMEZONES = [
   { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
@@ -836,6 +837,13 @@ export default function Dashboard() {
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
+  const [whoopData, setWhoopData] = useState<{
+    recoveryScore: number | null;
+    tier: 'high' | 'medium' | 'low' | null;
+    sleepHours: number | null;
+    strain: number | null;
+    history: { date: string; score: number }[];
+  } | null>(null);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
@@ -886,7 +894,16 @@ export default function Dashboard() {
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
-    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setWhoopConnected(!!d.connected)).catch(() => {});
+    fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
+      setWhoopConnected(!!d.connected);
+      if (d.connected) {
+        // Connected → pull recovery score + 14-day history for the dashboard card.
+        fetch('/api/whoop/recovery')
+          .then(r => r.ok ? r.json() : null)
+          .then(rd => { if (rd && rd.connected) setWhoopData(rd); })
+          .catch(() => {});
+      }
+    }).catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1333,6 +1350,17 @@ export default function Dashboard() {
               </button>
             ) : whoopConnected ? (
               <div className="px-2 py-2">
+                {whoopData && whoopData.recoveryScore !== null && whoopData.tier && (
+                  <div className="mb-3">
+                    <RecoveryCard
+                      recoveryScore={whoopData.recoveryScore}
+                      tier={whoopData.tier}
+                      sleepHours={whoopData.sleepHours ?? undefined}
+                      strain={whoopData.strain ?? undefined}
+                      history={whoopData.history}
+                    />
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mb-1">
                   <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Whoop connected</p>
