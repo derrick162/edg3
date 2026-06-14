@@ -101,8 +101,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ **Dashboard Whoop display** (`030d94a`): `/api/whoop/status` now returns recovery+sleep+strain; sidebar shows inline score/sleep/strain with tier color + Design's RecoveryCard slot. 406/406 green. ⏳ Whoop Trends wiring still blocked on Security's history fetch functions.)_ | — | 2026-06-13 |
-| 🔒 Security | `security` | _(idle — ✅ **Restore drill + health check SHIPPED** (`scripts/restore-drill.sh`, `GET /api/admin/health`, LAUNCH.md §9–10) + earlier Whoop OAuth + scheduler catch-up. Awaiting PM.)_ | `scripts/restore-drill.sh`, `lib/healthCheck.ts` | 2026-06-13 |
+| 🛠️ Core | `core` | _(⚙️ **Working on voice-behavior fixes + moveEvent recurring investigation + Whoop Trends wiring**)_ | `lib/vapi.ts`, `app/api/vapi/tool-call/route.ts`, `lib/calendarWritable.ts`, `lib/briefing.ts` | 2026-06-13 |
+| 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ calendar-green token pass re-applied (Edit tool, UTF-8 safe, next build green). 371/371 tests. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
