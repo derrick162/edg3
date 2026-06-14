@@ -910,6 +910,96 @@ ${briefingContent}`,
   }
 }
 
+// ─── Briefing reminder helpers ────────────────────────────────────────────────
+
+export const BRIEFING_REMINDER_TITLE = 'Edg3 Morning Briefing';
+
+/**
+ * Build the Google Calendar event requestBody for the recurring "Edg3 Morning Briefing"
+ * reminder. Pure — no I/O. Pass `now` to override the current instant (useful in tests).
+ */
+export function buildBriefingReminderBody(
+  callTime: string,
+  timezone: string,
+  now: Date = new Date(),
+): {
+  summary: string;
+  description: string;
+  start: { dateTime: string; timeZone: string };
+  end:   { dateTime: string; timeZone: string };
+  colorId: string;
+  recurrence: string[];
+  reminders: { useDefault: boolean; overrides: { method: string; minutes: number }[] };
+} {
+  const [hours, minutes] = callTime.split(':').map(Number);
+  // Compute "right now" as local wall-clock values in the target timezone.
+  const localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+  const startLocal = new Date(localNow);
+  startLocal.setHours(hours, minutes, 0, 0);
+  if (startLocal <= localNow) startLocal.setDate(startLocal.getDate() + 1);
+  const endLocal = new Date(startLocal);
+  endLocal.setMinutes(endLocal.getMinutes() + 15);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toLocalISO = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+  return {
+    summary: BRIEFING_REMINDER_TITLE,
+    description:
+      'Your daily AI Chief of Staff call. Edge calls you at this time every morning and adds a summary of each call here afterward.',
+    start: { dateTime: toLocalISO(startLocal), timeZone: timezone },
+    end:   { dateTime: toLocalISO(endLocal),   timeZone: timezone },
+    colorId: '9',
+    recurrence: ['RRULE:FREQ=DAILY'],
+    reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 2 }] },
+  };
+}
+
+async function getBriefingCal(userId: number): Promise<calendar_v3.Calendar | null> {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return null;
+  const o = getOAuthClient();
+  o.setCredentials({
+    access_token:  tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date:   tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+  return google.calendar({ version: 'v3', auth: o });
+}
+
+/** Find recurring "Edg3 Morning Briefing" master event IDs on the user's primary calendar. */
+export async function findBriefingReminderMasters(cal: calendar_v3.Calendar): Promise<string[]> {
+  const res = await cal.events.list({
+    calendarId: 'primary', q: BRIEFING_REMINDER_TITLE, singleEvents: false, maxResults: 50,
+  }).catch(() => ({ data: { items: [] as calendar_v3.Schema$Event[] } }));
+  return (res.data.items ?? [])
+    .filter(e => e.summary === BRIEFING_REMINDER_TITLE && (e.recurrence?.length || e.recurringEventId))
+    .map(e => e.id!)
+    .filter(Boolean);
+}
+
+/**
+ * Re-sync the "Edg3 Morning Briefing" recurring reminder to the user's current call_time.
+ * ONLY-IF-EXISTS: if the user never set up the reminder this is a no-op — we never force-create.
+ * Called fire-and-forget from the call-time route after updateCallTime.
+ */
+export async function resyncBriefingReminder(userId: number): Promise<void> {
+  const cal = await getBriefingCal(userId);
+  if (!cal) return;
+  const existingIds = await findBriefingReminderMasters(cal);
+  if (!existingIds.length) return;
+  const user = userQueries.findById(userId);
+  if (!user) return;
+  await Promise.all(existingIds.map(id =>
+    cal.events.delete({ calendarId: 'primary', eventId: id }).catch(() => undefined),
+  ));
+  await cal.events.insert({
+    calendarId: 'primary',
+    requestBody: buildBriefingReminderBody(user.call_time || '07:00', user.timezone || 'America/Vancouver'),
+  });
+}
+
+// ─── Free-time slots ──────────────────────────────────────────────────────────
+
 export function getFreeTimeSlots(events: calendar_v3.Schema$Event[], timezone: string, daysAhead: number = 7): string {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
   const workdayStart = 8; // 8am

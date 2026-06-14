@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
+import { resyncBriefingReminder } from '@/lib/calendar';
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
@@ -27,6 +28,12 @@ export async function POST(req: NextRequest) {
   }
 
   userQueries.completeOnboarding(user.id);
+
+  // Sync the recurring calendar reminder to the new call time — fire-and-forget.
+  // Only updates if the user already has a reminder set up; never force-creates one.
+  resyncBriefingReminder(user.id).catch(err =>
+    console.error('[call-time] resyncBriefingReminder failed:', err),
+  );
 
   return NextResponse.json({ success: true });
 }

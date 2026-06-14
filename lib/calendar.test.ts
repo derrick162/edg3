@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFreeSlots } from './calendar';
+import { findFreeSlots, buildBriefingReminderBody, BRIEFING_REMINDER_TITLE } from './calendar';
 import type { calendar_v3 } from 'googleapis';
 
 // Use a far-future date so the "don't suggest past slots today" clamp never affects results.
@@ -43,5 +43,40 @@ describe('findFreeSlots', () => {
     const withSpanning: calendar_v3.Schema$Event[] = [...events, ev('2027-06-15T00:00:00-04:00', '2027-06-15T23:59:00-04:00')];
     const r = findFreeSlots(withSpanning, NY, '2027-06-15', '2027-06-15', 30);
     expect(r).toContain('(120 min free)'); // still finds the gaps despite the day-long block
+  });
+});
+
+describe('buildBriefingReminderBody', () => {
+  const TOR = 'America/Toronto';
+
+  it('produces the correct summary, color, and recurrence', () => {
+    const now = new Date('2026-06-13T12:00:00Z'); // 8am Toronto (EDT -4)
+    const body = buildBriefingReminderBody('09:00', TOR, now);
+    expect(body.summary).toBe(BRIEFING_REMINDER_TITLE);
+    expect(body.colorId).toBe('9');
+    expect(body.recurrence).toEqual(['RRULE:FREQ=DAILY']);
+    expect(body.reminders.useDefault).toBe(false);
+  });
+
+  it('schedules at the requested call time when it is still in the future today', () => {
+    // now = 8am Toronto; callTime = 9am → event starts today at 9am
+    const now = new Date('2026-06-13T12:00:00Z'); // 8am EDT
+    const body = buildBriefingReminderBody('09:00', TOR, now);
+    expect(body.start.dateTime).toBe('2026-06-13T09:00:00');
+    expect(body.start.timeZone).toBe(TOR);
+  });
+
+  it('rolls to tomorrow when call time has already passed today', () => {
+    // now = 10am Toronto; callTime = 7am → already passed → next occurrence is tomorrow
+    const now = new Date('2026-06-13T14:00:00Z'); // 10am EDT
+    const body = buildBriefingReminderBody('07:00', TOR, now);
+    expect(body.start.dateTime).toMatch(/^2026-06-14T07:00:00/);
+  });
+
+  it('sets end time exactly 15 minutes after start', () => {
+    const now = new Date('2026-06-13T12:00:00Z'); // 8am EDT
+    const body = buildBriefingReminderBody('09:00', TOR, now);
+    expect(body.start.dateTime).toBe('2026-06-13T09:00:00');
+    expect(body.end.dateTime).toBe('2026-06-13T09:15:00');
   });
 });

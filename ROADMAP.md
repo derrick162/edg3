@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ `cleanupDuplicates` tool + meal-time awareness SHIPPED. ⚠️ PM: create Vapi tool + paste UUID — see changelog.)_ | `lib/eventMatch.ts`, `route.ts`, `lib/vapi.ts` | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ call-time reminder sync + research misheard-address fix SHIPPED. 471/471 green. Awaiting PM merge.)_ | `lib/calendar.ts`, `app/api/calendar/reminder/route.ts`, `app/api/onboarding/call-time/route.ts`, `lib/vapi.ts` | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **encryption verification** (11 at-rest tests) + **user deletion fix** (9 missing tables incl. whoop_tokens) + **Google CASA doc** (`specs/google-verification.md`). Awaiting PM.)_ | `lib/db-encryption.test.ts`, `app/api/admin/users/**`, `specs/` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ Activity + Memory tab trust redesign shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
@@ -116,6 +116,30 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Call-time reminder sync + research misheard-address fix (Core).**
+  - **[T1 BUG FIX] Call-time change now syncs the calendar reminder.**
+    - **ROOT CAUSE:** `POST /api/onboarding/call-time` updated `call_time` in the DB (scheduler
+      reads it live so calls moved) but never re-synced the "Edg3 Morning Briefing" recurring
+      calendar block — it kept showing the old time.
+    - **Fix:** `buildBriefingReminderBody(callTime, timezone, now?)` — pure helper extracted to
+      `lib/calendar.ts`. Returns the full Google Calendar event requestBody. No I/O; testable.
+      Exported alongside `BRIEFING_REMINDER_TITLE` and `findBriefingReminderMasters(cal)` so the
+      reminder route uses the same builder (no drift).
+    - `resyncBriefingReminder(userId)` — new exported helper. ONLY-IF-EXISTS: finds existing
+      reminder masters; if none → no-op (never force-creates for users who skipped the reminder).
+      Deletes + recreates at the current `call_time`/`timezone`. Called fire-and-forget from the
+      call-time route after `updateCallTime`.
+    - `app/api/calendar/reminder/route.ts` refactored to import `buildBriefingReminderBody`,
+      `findBriefingReminderMasters`, `BRIEFING_REMINDER_TITLE` from `lib/calendar.ts`.
+    - 4 new tests for `buildBriefingReminderBody` in `lib/calendar.test.ts`.
+  - **[T2 PROMPT FIX] Research no longer gives up on local-business NORESULTS.**
+    - **ROOT CAUSE:** STT heard "1 Yassen Avenue"; `researchToEvent` searched it → NORESULTS →
+      Edge reported "nothing came up" without retrying.
+    - **Fix** (`lib/vapi.ts`): (4) use stored profile/home address for "near me"/"nearby" —
+      not a freshly-transcribed street name; confirm uncertain addresses before searching.
+      (5) NORESULTS on local search → re-confirm location/terms and retry; only report
+      "nothing found" after a second attempt; NEVER save a NORESULTS block as research.
+  - 471/471 green, tsc clean, next build clean.
 - **2026-06-13** — **Mobile responsiveness pass (Design).** Dashboard: `flex-col md:flex-row` layout; sidebar `w-full md:w-60` with horizontal icon-only scrolling tab nav on mobile; sidebar widgets `hidden md:flex`; main `p-4 md:p-8 min-w-0`. Onboarding: `py-8 md:py-16` outer, `p-5 md:p-8` card, StepIndicator tightened, CalendarStep false "read-only" copy corrected, inline rgba → token substitutions. `.no-scrollbar` added to `app/globals.css`.
 - **2026-06-13** — **Dashboard token polish + RecoveryCard sidebar spacing (Design).** `app/dashboard/page.tsx`: re-applied lost inline-color tokenization (UTF-8 safe, Edit tool only) — `rgba(99,102,241,0.2/0.15/0.08)` → `--edg-accent-20/15/08`, `#6366f1` → `--edg-indigo`. RecoveryCard sidebar wrapper restructured: card fills full sidebar width, status/disconnect row stays at `px-2` indent for alignment with calendar section.
 - **2026-06-13** — **`cleanupDuplicates` tool + meal-time awareness (Core).**
