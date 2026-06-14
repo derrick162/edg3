@@ -8,6 +8,26 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-14** — **Calendar scoring engine schema — `calendar_scores` + `energy_profile` tables (additive).**
+  - `lib/db.ts`: `calendar_scores (id, user_id, date, focus_score, energy_score, focus_drivers TEXT/json,
+    energy_drivers TEXT/json, created_at)`. UNIQUE(user_id, date) + upsert-on-conflict. Index on
+    `(user_id, date)`. Stores daily Focus + Energy scores (1–10) with JSON driver arrays for explanation UI.
+  - `calendarScoreQueries` exported: `upsert(userId, date, {focusScore, energyScore, focusDrivers,
+    energyDrivers})`, `getRange(userId, fromDate, toDate)`, `getLatest(userId)`. All user-scoped.
+  - `CalendarScore` interface exported.
+  - `lib/db.ts`: `energy_profile (user_id PK, peak_start, peak_end, trough_start, trough_end, updated_at)`.
+    One row per user (PK = user_id); upsert via `ON CONFLICT(user_id) DO UPDATE SET …`. Stores the user's
+    stated energy windows as integer hours (0–23) for the Energy Score engine.
+  - `energyProfileQueries` exported: `get(userId)`, `upsert(userId, {peakStart, peakEnd, troughStart,
+    troughEnd})`. User-scoped (PK enforces isolation).
+  - `EnergyProfile` interface exported.
+  - Both tables added to admin + self-service deletion routes (leaf-first FK order).
+  - `lib/calendar-scores.test.ts`: 11 in-memory integration tests — upsert semantics, getLatest ordering,
+    getRange bounds + user isolation, energy profile CRUD + upsert overwrite + cross-user isolation.
+  - 581/581 green, tsc clean, next build clean.
+  - **Core handoff:** `calendarScoreQueries` + `energyProfileQueries` are live from `@/lib/db`. Wire into
+    `lib/calendarScore.ts` (scoring engine) — call `calendarScoreQueries.upsert` to persist each day's
+    score, and `energyProfileQueries.get` to read peak/trough for the Energy Score input.
 - **2026-06-14** — **Focus Scoreboard schema — `focus_milestones` table (additive).**
   - `lib/db.ts`: `focus_milestones (id, user_id, priority_id, title, done, sort_order,
     created_at, completed_at)`. FK to `priorities(id)`. Index on `(user_id, priority_id)`.
