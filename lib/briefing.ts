@@ -119,7 +119,9 @@ export function buildWhoopSection(
     const totalMin = Math.round(sleep.durationMs / 60000);
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
-    parts.push(`SLEEP: ${h}h${String(m).padStart(2, '0')}m`);
+    // Spell out hours/minutes — this is spoken on the call, and "8h59m" gets misread
+    // by the voice engine as "8 H 59 meters".
+    parts.push(`SLEEP: ${m === 0 ? `${h} hours` : `${h} hours ${m} minutes`}`);
   }
   if (strain !== null) parts.push(`STRAIN: ${strain.strain}`);
   return parts.length ? parts.join(' · ') : null;

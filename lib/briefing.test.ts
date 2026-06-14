@@ -56,16 +56,16 @@ describe('buildWhoopSection', () => {
     expect(result).toContain('RECOVERY: 34%');
   });
 
-  it('formats sleep duration as hours and minutes', () => {
+  it('formats sleep duration as spoken hours and minutes', () => {
     // 5h 12m = 312 minutes = 18720000 ms
     const result = buildWhoopSection(null, { durationMs: 18_720_000, performancePct: 82, efficiencyPct: 91 }, null);
-    expect(result).toContain('SLEEP: 5h12m');
+    expect(result).toContain('SLEEP: 5 hours 12 minutes');
   });
 
-  it('pads single-digit minutes with a leading zero', () => {
-    // 6h 05m = 365 minutes = 21900000 ms
+  it('drops minutes when the duration is a whole number of hours', () => {
+    // 6h 05m = 365 minutes = 21900000 ms — spoken, not "6h05m" (misread as "6 H 5 meters")
     const result = buildWhoopSection(null, { durationMs: 21_900_000, performancePct: 88, efficiencyPct: 93 }, null);
-    expect(result).toContain('SLEEP: 6h05m');
+    expect(result).toContain('SLEEP: 6 hours 5 minutes');
   });
 
   it('includes strain when provided', () => {
@@ -79,7 +79,7 @@ describe('buildWhoopSection', () => {
       { durationMs: 25_200_000, performancePct: 90, efficiencyPct: 94 }, // 7h00m
       { strain: 8.5, avgHeartRate: 98 },
     );
-    expect(result).toBe('RECOVERY: 72% · SLEEP: 7h00m · STRAIN: 8.5');
+    expect(result).toBe('RECOVERY: 72% · SLEEP: 7 hours · STRAIN: 8.5');
   });
 
   it('returns just the available parts when some are null', () => {
