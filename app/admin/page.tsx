@@ -136,7 +136,7 @@ export default function AdminPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
           <div>
             <span className="logo-text" style={{ fontSize: 28 }}>EDG3</span>
-            <span style={{ marginLeft: 10, fontSize: 13, color: '#6366f1', letterSpacing: '0.12em', fontWeight: 700 }}>ADMIN</span>
+            <span style={{ marginLeft: 10, fontSize: 13, color: 'var(--edg-indigo)', letterSpacing: '0.12em', fontWeight: 700 }}>ADMIN</span>
           </div>
           <button
             onClick={load}
@@ -155,9 +155,9 @@ export default function AdminPage() {
               padding: '10px 16px',
               borderRadius: 10,
               fontSize: 14,
-              background: message.ok ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-              color: message.ok ? '#10b981' : '#ef4444',
-              border: `1px solid ${message.ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              background: message.ok ? 'var(--edg-success-tint)' : 'var(--edg-danger-tint)',
+              color: message.ok ? 'var(--edg-success)' : 'var(--edg-danger)',
+              border: `1px solid ${message.ok ? 'var(--edg-success-border)' : 'var(--edg-danger-border)'}`,
             }}
           >
             {message.text}
@@ -168,14 +168,14 @@ export default function AdminPage() {
         {stats && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
             {[
-              { label: 'Total Users', value: stats.totalUsers, color: '#818cf8' },
-              { label: 'Calls Today', value: stats.callsToday, color: '#f59e0b' },
-              { label: 'Completed Today', value: stats.completedToday, color: '#10b981' },
-              { label: 'Missed Today', value: stats.missedToday, color: '#ef4444' },
+              { label: 'Total Users', value: stats.totalUsers, color: 'var(--edg-indigo-bright)' },
+              { label: 'Calls Today', value: stats.callsToday, color: 'var(--edg-warning)' },
+              { label: 'Completed Today', value: stats.completedToday, color: 'var(--edg-success)' },
+              { label: 'Missed Today', value: stats.missedToday, color: 'var(--edg-danger)' },
             ].map(stat => (
               <div key={stat.label} className="glass-card" style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 28, fontWeight: 800, color: stat.color }}>{stat.value}</div>
-                <div style={{ fontSize: 12, color: '#888899', marginTop: 4 }}>{stat.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{stat.label}</div>
               </div>
             ))}
           </div>
@@ -188,16 +188,16 @@ export default function AdminPage() {
           </div>
 
           {loading ? (
-            <div style={{ padding: 48, textAlign: 'center', color: '#888899' }}>Loading…</div>
+            <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
           ) : users.length === 0 ? (
-            <div style={{ padding: 48, textAlign: 'center', color: '#888899' }}>No users found</div>
+            <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>No users found</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
                     {['User', 'Phone', 'Call Time', 'Last Call', 'Next Call', 'Calls', 'Onboarding', 'Actions'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#888899', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -210,18 +210,18 @@ export default function AdminPage() {
                       {/* User */}
                       <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: 600 }}>{user.name}</div>
-                        <div style={{ color: '#888899', fontSize: 12 }}>{user.email}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{user.email}</div>
                       </td>
 
                       {/* Phone */}
-                      <td style={{ padding: '14px 16px', color: '#aaa', whiteSpace: 'nowrap' }}>
-                        {user.phone_number || <span style={{ color: '#555' }}>—</span>}
+                      <td style={{ padding: '14px 16px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {user.phone_number || <span style={{ color: 'var(--text-faint)' }}>—</span>}
                       </td>
 
                       {/* Call time */}
                       <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                         <div>{user.call_time || '—'}</div>
-                        <div style={{ color: '#888899', fontSize: 11 }}>{user.timezone}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{user.timezone}</div>
                       </td>
 
                       {/* Last call */}
@@ -229,22 +229,22 @@ export default function AdminPage() {
                         {user.last_briefing ? (
                           <>
                             <div style={{ marginBottom: 4 }}><StatusBadge status={user.last_briefing.status} /></div>
-                            <div style={{ color: '#888899', fontSize: 11 }}>{formatDate(user.last_briefing.scheduled_for)}</div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{formatDate(user.last_briefing.scheduled_for)}</div>
                           </>
                         ) : (
-                          <span style={{ color: '#555' }}>—</span>
+                          <span style={{ color: 'var(--text-faint)' }}>—</span>
                         )}
                       </td>
 
                       {/* Next call */}
-                      <td style={{ padding: '14px 16px', whiteSpace: 'nowrap', color: '#818cf8' }}>
+                      <td style={{ padding: '14px 16px', whiteSpace: 'nowrap', color: 'var(--edg-indigo-bright)' }}>
                         {user.next_call || '—'}
                       </td>
 
                       {/* Calls count */}
                       <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                        <span style={{ color: '#10b981', fontWeight: 600 }}>{user.completed_briefings}</span>
-                        <span style={{ color: '#555' }}> / </span>
+                        <span style={{ color: 'var(--edg-success)', fontWeight: 600 }}>{user.completed_briefings}</span>
+                        <span style={{ color: 'var(--text-faint)' }}> / </span>
                         <span>{user.total_briefings}</span>
                       </td>
 
@@ -263,7 +263,7 @@ export default function AdminPage() {
                           <button
                             onClick={() => loadBriefings(user.id)}
                             className="text-xs px-2 py-1 rounded"
-                            style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                            style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--border-accent)' }}
                           >
                             📋 Calls
                           </button>
@@ -271,9 +271,9 @@ export default function AdminPage() {
                             onClick={() => triggerCall(user.id)}
                             disabled={triggerLoading === user.id}
                             style={{
-                              background: 'rgba(99,102,241,0.15)',
-                              color: '#818cf8',
-                              border: '1px solid rgba(99,102,241,0.3)',
+                              background: 'var(--edg-accent-15)',
+                              color: 'var(--edg-indigo-bright)',
+                              border: '1px solid var(--border-accent)',
                               borderRadius: 8,
                               padding: '6px 12px',
                               fontSize: 12,
@@ -289,9 +289,9 @@ export default function AdminPage() {
                             onClick={() => deleteUser(user.id, user.name)}
                             disabled={deleteLoading === user.id}
                             style={{
-                              background: 'rgba(239,68,68,0.1)',
-                              color: '#ef4444',
-                              border: '1px solid rgba(239,68,68,0.2)',
+                              background: 'var(--edg-danger-tint)',
+                              color: 'var(--edg-danger)',
+                              border: '1px solid var(--whoop-low-border)',
                               borderRadius: 8,
                               padding: '6px 12px',
                               fontSize: 12,
@@ -317,7 +317,7 @@ export default function AdminPage() {
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">Call History — User #{selectedUserId}</h2>
-              <button onClick={() => { setBriefings([]); setSelectedUserId(null); }} className="text-xs" style={{ color: '#4a4a5a' }}>Close</button>
+              <button onClick={() => { setBriefings([]); setSelectedUserId(null); }} className="text-xs" style={{ color: 'var(--text-faint)' }}>Close</button>
             </div>
             <div className="space-y-4">
               {briefings.map(b => {
@@ -330,15 +330,15 @@ export default function AdminPage() {
                     <div className="flex items-center gap-3 mb-3">
                       <StatusBadge status={b.status} />
                       <span className="text-sm font-semibold">{formatDate(b.scheduled_for)}</span>
-                      <span className="text-xs" style={{ color: '#4a4a5a' }}>Briefing #{b.id}</span>
+                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Briefing #{b.id}</span>
                     </div>
 
                     {promises.length > 0 ? (
                       <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                         <thead>
-                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                            <th className="text-left py-2 pr-4" style={{ color: '#6366f1', fontWeight: 600 }}>PROMISE</th>
-                            <th className="text-center py-2 w-16" style={{ color: '#6366f1', fontWeight: 600 }}>DONE</th>
+                          <tr style={{ borderBottom: '1px solid var(--edg-hairline)' }}>
+                            <th className="text-left py-2 pr-4" style={{ color: 'var(--edg-indigo)', fontWeight: 600 }}>PROMISE</th>
+                            <th className="text-center py-2 w-16" style={{ color: 'var(--edg-indigo)', fontWeight: 600 }}>DONE</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -353,12 +353,12 @@ export default function AdminPage() {
                               return pNorm.split(' ').some(w => w.length > 4 && t.includes(w));
                             });
                             return (
-                              <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td className="py-2 pr-4" style={{ color: '#c8c8d8' }}>{p}</td>
+                              <tr key={i} style={{ borderBottom: '1px solid var(--edg-fill-04)' }}>
+                                <td className="py-2 pr-4" style={{ color: 'var(--text-body)' }}>{p}</td>
                                 <td className="text-center py-2">
                                   {done
-                                    ? <span style={{ color: '#4ade80', fontSize: 16 }}>✓</span>
-                                    : <span style={{ color: '#ef4444', fontSize: 16 }}>✗</span>
+                                    ? <span style={{ color: 'var(--edg-calendar-green)', fontSize: 16 }}>✓</span>
+                                    : <span style={{ color: 'var(--edg-danger)', fontSize: 16 }}>✗</span>
                                   }
                                 </td>
                               </tr>
@@ -369,28 +369,28 @@ export default function AdminPage() {
                     ) : toolActions.length > 0 ? (
                       <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                         <thead>
-                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                            <th className="text-left py-2 pr-4" style={{ color: '#6366f1', fontWeight: 600 }}>ACTION</th>
-                            <th className="text-center py-2 w-16" style={{ color: '#6366f1', fontWeight: 600 }}>DONE</th>
+                          <tr style={{ borderBottom: '1px solid var(--edg-hairline)' }}>
+                            <th className="text-left py-2 pr-4" style={{ color: 'var(--edg-indigo)', fontWeight: 600 }}>ACTION</th>
+                            <th className="text-center py-2 w-16" style={{ color: 'var(--edg-indigo)', fontWeight: 600 }}>DONE</th>
                           </tr>
                         </thead>
                         <tbody>
                           {toolActions.map((a, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                              <td className="py-2 pr-4" style={{ color: '#c8c8d8' }}>{a.result}</td>
+                            <tr key={i} style={{ borderBottom: '1px solid var(--edg-fill-04)' }}>
+                              <td className="py-2 pr-4" style={{ color: 'var(--text-body)' }}>{a.result}</td>
                               <td className="text-center py-2">
-                                <span style={{ color: '#4ade80', fontSize: 16 }}>✓</span>
+                                <span style={{ color: 'var(--edg-calendar-green)', fontSize: 16 }}>✓</span>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     ) : (
-                      <p className="text-xs" style={{ color: '#4a4a5a' }}>No promises or actions recorded.</p>
+                      <p className="text-xs" style={{ color: 'var(--text-faint)' }}>No promises or actions recorded.</p>
                     )}
 
                     {b.user_response && (
-                      <p className="text-xs mt-3" style={{ color: '#888899' }}>You said: "{b.user_response}"</p>
+                      <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>You said: "{b.user_response}"</p>
                     )}
                   </div>
                 );
