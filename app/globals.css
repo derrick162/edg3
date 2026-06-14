@@ -76,6 +76,13 @@
   --whoop-connect-border: rgba(255, 255, 255, 0.10);
   --whoop-connect-hover:  rgba(255, 255, 255, 0.08);
 
+  /* Sparkline (recovery history chart) */
+  --whoop-spark-high:   rgba(34,  197, 94,  0.80);
+  --whoop-spark-medium: rgba(245, 158, 11,  0.80);
+  --whoop-spark-low:    rgba(239, 68,  68,  0.80);
+  --whoop-spark-track:  rgba(255, 255, 255, 0.06);  /* baseline grid line */
+  --whoop-spark-dot:    rgba(255, 255, 255, 0.90);  /* current-day end-cap dot */
+
   /* Gradients */
   --edg-gradient-accent: linear-gradient(135deg, #6366f1, #8b5cf6);
   --edg-gradient-logo:   linear-gradient(135deg, #e8e8f0 0%, #8b5cf6 50%, #6366f1 100%);

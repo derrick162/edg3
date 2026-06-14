@@ -104,7 +104,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(idle — ✅ **Whoop V1 + V2** (energy-matched time-blocking, `buildEnergyMatchingBlock` + ENERGY PROFILE) + **prompt-consolidation/trim pass** + privacy Whoop section. Awaiting PM.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Restore drill + health check SHIPPED** (`scripts/restore-drill.sh`, `GET /api/admin/health`, LAUNCH.md §9–10) + earlier Whoop OAuth + scheduler catch-up. Awaiting PM.)_ | `scripts/restore-drill.sh`, `lib/healthCheck.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
-| 🎨 Design | `design` | _(idle — ✅ calendar-green token pass re-applied (Edit tool, UTF-8 safe, next build green). 371/371 tests. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
+| 🎨 Design | `design` | _(idle — ✅ RecoveryCard component + sparkline + DESIGN.md §7 spec shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
@@ -116,6 +116,7 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **RecoveryCard component (Design).** `components/ui/RecoveryCard.tsx` — self-contained presentational card: color-coded 36px score, tier label + energy dot, sleep/strain stat row, inline SVG sparkline with area fill + end-cap dot (falls back to placeholder before history loads). Exports `RecoveryCard`, `RecoveryCardProps`, `RecoveryTier`, `RecoveryHistoryPoint`. Added sparkline tokens to `app/globals.css`. Spec in `DESIGN.md §7`. Core: import from `@/components/ui`, derive tier with `s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low'`.
 - **2026-06-13** — **Whoop V2 — energy-matched time-blocking (Core).** (`40155fd`)
   - `buildEnergyMatchingBlock(preferences, recovery)` pure function in `lib/briefing.ts`.
     Scans preference-category facts for energy-profile keywords (peak, trough, deep work,
