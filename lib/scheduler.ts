@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
-import { getLatestRecovery, getLastSleep, getRecentStrain, whoopFreshnessNote } from './whoop';
+import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, effectiveTimezone, User } from './db';
 
 /**
@@ -65,10 +65,14 @@ function currentPreferencesText(userId: number): string {
 // strain are available on ANY call (briefing OR open), not just the briefing. '' if unavailable.
 async function currentWhoopText(userId: number): Promise<string> {
   try {
-    const [rec, slp, str] = await Promise.all([
+    // Today's snapshot + last-7-days history, all in parallel (history fetches are cached).
+    const [rec, slp, str, recHist, slpHist, strHist] = await Promise.all([
       getLatestRecovery(userId).catch(() => null),
       getLastSleep(userId).catch(() => null),
       getRecentStrain(userId).catch(() => null),
+      getRecoveryHistory(userId, 7).catch(() => []),
+      getSleepHistory(userId, 7).catch(() => []),
+      getStrainHistory(userId, 7).catch(() => []),
     ]);
     const parts: string[] = [];
     if (rec) parts.push(`recovery ${rec.recoveryScore}%`);
@@ -81,7 +85,12 @@ async function currentWhoopText(userId: number): Promise<string> {
     const tz = user ? effectiveTimezone(user) : 'America/Vancouver';
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
     const note = whoopFreshnessNote(rec?.date, slp?.date, today);
-    return note ? `${parts.join(' · ')} — ${note}` : parts.join(' · ');
+    // Last-7-days history so Edge can answer "how's my recovery/sleep been this week".
+    const history = formatWhoopHistoryForCall(recHist, slpHist, strHist);
+    let out = parts.join(' · ');
+    if (note) out += ` — ${note}`;
+    if (history) out += ` · ${history}`;
+    return out;
   } catch { return ''; }
 }
 
