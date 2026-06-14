@@ -8,6 +8,19 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-13** — **Whoop history fetch primitive.**
+  Added `getRecoveryHistory(userId, days=14)`, `getSleepHistory(userId, days=14)`,
+  `getStrainHistory(userId, days=14)` to `lib/whoop.ts`. Each uses the WHOOP v2
+  date-range `start` param + `limit=25` and follows `next_token` pagination via a
+  new `whoopGetAll` helper (max 50 records). Returns `{ date, recoveryScore | durationMs | strain }[]`
+  sorted oldest-first; naps filtered from sleep history; PENDING_SCORE records dropped.
+  Caches per user (1h TTL, consistent with point-in-time fns). Degrades to `[]` on
+  any failure — never throws. Raw record types extended with `created_at?` (recovery)
+  and `start?` (sleep, cycle). New public exports: `WhoopRecoveryDay`, `WhoopSleepDay`,
+  `WhoopStrainDay`. 20 new tests (IDs 300–317). 391/391 green, tsc clean, next build clean.
+  🤝 **For Core:** import `getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`
+  from `lib/whoop.ts` — all return `[]` when Whoop is not connected, so safe to call
+  unconditionally.
 - **2026-06-13** — **Litestream restore drill + encryption ops-readiness.**
   Ticket 1: `scripts/restore-drill.sh` — standalone shell script that downloads
   Litestream, runs `litestream restore` to a temp path, verifies the restored DB
