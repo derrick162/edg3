@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   computeWhoopTrends,
   formatTrendForBriefing,
+  detectRecoveryDrop,
+  formatRecoveryAlertForBriefing,
   type WhoopHistoryPoint,
 } from './whoopTrends';
 
@@ -220,5 +222,65 @@ describe('formatTrendForBriefing', () => {
   it('DECLINING_3D flag takes priority over LOW_STREAK', () => {
     const result = formatTrendForBriefing({ recoveryAvg7d: 30, recoveryDirection: 'down', flags: ['RECOVERY_DECLINING_3D', 'RECOVERY_LOW_STREAK'] });
     expect(result).toContain('three days running');
+  });
+});
+
+describe('detectRecoveryDrop', () => {
+  const history7 = [
+    rec('2026-06-06', 70), rec('2026-06-07', 72), rec('2026-06-08', 68),
+    rec('2026-06-09', 74), rec('2026-06-10', 66), rec('2026-06-11', 71),
+    rec('2026-06-12', 70),
+  ]; // trailing avg = 70
+
+  it('returns null when today is healthy and no sharp drop', () => {
+    expect(detectRecoveryDrop(65, history7)).toBeNull();
+  });
+
+  it('fires reason:red when todayScore <= 33', () => {
+    const alert = detectRecoveryDrop(28, history7);
+    expect(alert).not.toBeNull();
+    expect(alert!.reason).toBe('red');
+    expect(alert!.todayScore).toBe(28);
+    expect(alert!.trailing7dAvg).toBe(70);
+  });
+
+  it('fires reason:sharp_drop when drop >= 20 pts from trailing avg', () => {
+    const alert = detectRecoveryDrop(45, history7); // 70 - 45 = 25 >= 20
+    expect(alert).not.toBeNull();
+    expect(alert!.reason).toBe('sharp_drop');
+    expect(alert!.dropMagnitude).toBe(25);
+  });
+
+  it('does NOT fire when drop is exactly 19 pts (below threshold)', () => {
+    expect(detectRecoveryDrop(51, history7)).toBeNull(); // 70 - 51 = 19
+  });
+
+  it('fires reason:red even when trailing avg is null (thin history)', () => {
+    // Fewer than 3 points → trailing avg is null; red still fires
+    const thin = [rec('2026-06-12', 70), rec('2026-06-11', 68)];
+    const alert = detectRecoveryDrop(20, thin);
+    expect(alert).not.toBeNull();
+    expect(alert!.reason).toBe('red');
+    expect(alert!.trailing7dAvg).toBeNull();
+  });
+
+  it('does NOT fire sharp_drop when history has fewer than 3 points (no reliable avg)', () => {
+    const thin = [rec('2026-06-12', 70), rec('2026-06-11', 68)];
+    expect(detectRecoveryDrop(45, thin)).toBeNull(); // not red; can't compute avg
+  });
+});
+
+describe('formatRecoveryAlertForBriefing', () => {
+  it('includes score and "red tier" language for reason:red', () => {
+    const text = formatRecoveryAlertForBriefing({ reason: 'red', todayScore: 28, trailing7dAvg: 70, dropMagnitude: 42 });
+    expect(text).toContain('28%');
+    expect(text).toContain('red tier');
+    expect(text).toContain('70%');
+  });
+
+  it('includes drop magnitude for reason:sharp_drop', () => {
+    const text = formatRecoveryAlertForBriefing({ reason: 'sharp_drop', todayScore: 45, trailing7dAvg: 70, dropMagnitude: 25 });
+    expect(text).toContain('25-point drop');
+    expect(text).toContain('45%');
   });
 });

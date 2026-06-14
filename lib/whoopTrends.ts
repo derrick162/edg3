@@ -22,6 +22,13 @@ export interface WhoopTrendSummary {
   flags:             WhoopTrendFlag[];
 }
 
+export interface RecoveryAlert {
+  reason:        'red' | 'sharp_drop';
+  todayScore:    number;
+  trailing7dAvg: number | null;
+  dropMagnitude: number | null; // pts below trailing avg (sharp_drop only)
+}
+
 // --- Constants -----------------------------------------------------------------
 
 const RECOVERY_LOW_THRESHOLD  = 40;                      // below = low-recovery day
@@ -113,6 +120,60 @@ export function computeWhoopTrends(
   }
 
   return { recoveryAvg7d, recoveryDirection, flags };
+}
+
+/**
+ * Fire a RECOVERY ALERT when today's score is in the red tier (≤33%) OR when
+ * it has dropped sharply (≥20 points) below the trailing 7-day average.
+ *
+ * Requires ≥3 history points to compute a reliable trailing average — returns
+ * null on thin history even if today is red (avoids first-day false alarms).
+ * History should NOT include today — pass only prior days.
+ */
+export function detectRecoveryDrop(
+  todayScore: number,
+  history: WhoopHistoryPoint[], // prior days only (value = recovery score 0–100)
+): RecoveryAlert | null {
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const last7 = sorted.slice(-7).map(p => p.value);
+  const trailing7dAvg = last7.length >= 3
+    ? Math.round(last7.reduce((s, v) => s + v, 0) / last7.length)
+    : null;
+
+  if (todayScore <= 33) {
+    return {
+      reason: 'red',
+      todayScore,
+      trailing7dAvg,
+      dropMagnitude: trailing7dAvg !== null ? trailing7dAvg - todayScore : null,
+    };
+  }
+  if (trailing7dAvg !== null && trailing7dAvg - todayScore >= 20) {
+    return {
+      reason: 'sharp_drop',
+      todayScore,
+      trailing7dAvg,
+      dropMagnitude: trailing7dAvg - todayScore,
+    };
+  }
+  return null;
+}
+
+/** Format a RecoveryAlert into a RECOVERY ALERT block for the briefing prompt. */
+export function formatRecoveryAlertForBriefing(alert: RecoveryAlert): string {
+  const vsAvg = alert.trailing7dAvg !== null
+    ? ` (week average has been ${alert.trailing7dAvg}%)`
+    : '';
+  if (alert.reason === 'red') {
+    return `RECOVERY ALERT — Today's Whoop recovery is ${alert.todayScore}%${vsAvg}: red tier.`
+      + ` Proactively offer to lighten the day: identify the heaviest or most-deferrable block`
+      + ` in TODAY'S CALENDAR and name it — then offer to move or shrink it.`
+      + ` When the user says yes, call moveEvent immediately. Never fabricate a recovery number.`;
+  }
+  return `RECOVERY ALERT — Today's recovery is ${alert.todayScore}%${vsAvg},`
+    + ` a ${alert.dropMagnitude}-point drop from the trailing average — sharper than usual.`
+    + ` Proactively offer to lighten the day: name the heaviest or most-deferrable block`
+    + ` in TODAY'S CALENDAR and offer to move or shrink it. Act immediately when the user says yes.`;
 }
 
 /**

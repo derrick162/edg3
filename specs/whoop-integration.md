@@ -61,11 +61,18 @@ Create a Whoop developer app at **developer.whoop.com** → get `CLIENT_ID` + `C
   Briefing example: "Recovery's high and it's your 9–11 peak — let's block vibe-coding now and
   push email to your 2pm dip." Builds directly on V1 + preference-awareness + the calendar
   blocking we already ship.
-- **V2.5 — Proactive recovery adjustments:** sleep-aware morning ("5h12m — move your 8am?") +
-  overtraining/rest-day guard (hard strain + low-recovery streak → "block a real rest day?").
-- **V3 — Auto-learn + sharpen the energy profile:** infer peak/trough from Whoop sleep/wake
+- **V2.5 — Proactive recovery adjustments (NOW V3 Part A — SHIPPED):** red-tier (≤33%) OR
+  sharp-drop (≥20pt below trailing-7d avg) → briefing identifies heaviest deferrable block and
+  proactively offers to move or shrink it. `detectRecoveryDrop` pure helper in `lib/whoopTrends.ts`.
+  Edge picks up the live RECOVERY ALERT note mid-call and moves the block immediately on "yes".
+- **V3 Part B — Correlations (SHIPPED):** `lib/whoopCorrelations.ts` (pure, 0 I/O). Matches
+  14-day Whoop recovery history against 14-day PAST calendar data (fetched live from Google via
+  `getPastCalendarDays` in `lib/calendar.ts` — no new storage). Checks: "meetings running past 7 PM
+  → lower next-day recovery?" Sample/confidence gate: ≥10 paired days, ≥3 in each group, ≥5pt diff.
+  Surfaces ≤1 pattern in briefing (closing / alignment section). Degrades to null on thin data.
+- **V3 (original roadmap) — Auto-learn + sharpen the energy profile:** infer peak/trough from Whoop sleep/wake
   (circadian) + observed recovery patterns + user feedback, so the profile gets sharper without
-  the user re-stating it — the "knows me better than I know myself" magic.
+  the user re-stating it — the "knows me better than I know myself" magic. (Still future work.)
 - **Data honesty (critical):** Whoop reports a clean DAILY recovery score, NOT a literal
   intraday energy curve. Time-of-day energy is built from chronotype (sleep/wake times + the
   user's stated peak hours + circadian science), with recovery as a daily modulator — we

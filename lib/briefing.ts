@@ -1,13 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, effectiveTimezone, User, type Fact } from './db';
-import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots } from './calendar';
+import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts } from './facts';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
-import { computeWhoopTrends, formatTrendForBriefing } from './whoopTrends';
+import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
+import { computeWhoopCorrelations } from './whoopCorrelations';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -189,7 +190,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
-  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory] = await Promise.all([
+  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
     getLatestRecovery(userId).catch(() => null),
@@ -198,13 +199,22 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getRecoveryHistory(userId).catch(() => []),
     getSleepHistory(userId).catch(() => []),
     getStrainHistory(userId).catch(() => []),
+    getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
   ]);
+  const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(
-    recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore })),
+    recoveryHistoryPoints,
     sleepHistory.map(d => ({ date: d.date, value: d.durationMs })),
     strainHistory.map(d => ({ date: d.date, value: d.strain })),
   );
   const whoopTrendLine = whoopTrend ? formatTrendForBriefing(whoopTrend) : null;
+  // Part A: proactive recovery defense — fires on red tier OR sharp drop vs trailing avg.
+  // Pass prior history only (excludes today); degrade to null on thin data.
+  const recoveryAlert = whoopRecovery
+    ? detectRecoveryDrop(whoopRecovery.recoveryScore, recoveryHistoryPoints)
+    : null;
+  // Part B: calendar ↔ recovery correlation (≥10 days data required).
+  const correlationInsight = computeWhoopCorrelations(recoveryHistoryPoints, pastCalendarDays);
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
   // source='edg3' tasks come from extractTasksFromTranscript at call end.
@@ -236,6 +246,12 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     }
     if (whoopTrendLine) {
       lines.push(`WHOOP TREND (past ~2 weeks): ${whoopTrendLine} Surface this as one honest line in section 1 — no additional commentary.`);
+    }
+    if (recoveryAlert) {
+      lines.push(formatRecoveryAlertForBriefing(recoveryAlert));
+    }
+    if (correlationInsight) {
+      lines.push(`WHOOP CORRELATION (${correlationInsight.sampleDays}-day pattern, honest — do NOT fabricate): ${correlationInsight.pattern} Surface at most once, naturally, in the closing or alignment section if relevant.`);
     }
     return '\n' + lines.join('\n') + '\n';
   })();

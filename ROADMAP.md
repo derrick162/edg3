@@ -101,7 +101,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(idle — ✅ gym-move recurring-all BUG FIXED. `recurringAllTimeShift` preserves master base date; 422/422 green. Awaiting PM.)_ | — | 2026-06-13 |
+| 🛠️ Core | `core` | _(idle — ✅ Whoop V3 SHIPPED (proactive recovery defense + correlations). 437/437 green. Awaiting PM merge.)_ | — | 2026-06-13 |
 | 🔒 Security | `security` | _(idle — ✅ **Whoop history fetch SHIPPED** (`getRecoveryHistory`, `getSleepHistory`, `getStrainHistory`; 391/391 green) + restore drill + health check + Whoop OAuth. Awaiting PM.)_ | `lib/whoop.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ RecoveryCard component + sparkline + DESIGN.md §7 spec shipped. Awaiting PM for next tasks.)_ | — | 2026-06-13 |
@@ -116,6 +116,26 @@ other lane and the PM can see live ownership claims.
 ---
 
 ## Changelog
+- **2026-06-13** — **Whoop V3 — Proactive recovery defense + correlations (Core).**
+  - **Part A — Proactive recovery defense:** `detectRecoveryDrop(todayScore, history)` pure helper
+    in `lib/whoopTrends.ts`. Fires on: red tier (≤33%) OR sharp drop (≥20pt below trailing-7d avg).
+    Requires ≥3 history points for the avg; degrades to null on thin data. Returns `RecoveryAlert`
+    `{ reason, todayScore, trailing7dAvg, dropMagnitude }`.
+    `formatRecoveryAlertForBriefing(alert)` → RECOVERY ALERT block injected into `whoopContextBlock`
+    in `lib/briefing.ts`: identifies the heaviest deferrable block and offers to move or shrink it;
+    act when the user says yes. RECOVERY ALERT live-call note added to `lib/vapi.ts` so Edge can
+    proactively offer mid-call when briefing flagged it.
+  - **Part B — Correlations:** new `lib/whoopCorrelations.ts` (pure, 0 I/O). Inputs: recovery
+    history points + `CalendarDay[]` (date + latest timed-event end hour in user tz).
+    Checks: meetings running past 7 PM → lower next-day recovery? Sample/confidence gate:
+    ≥10 paired days, ≥3 in each group, ≥5pt diff — returns null otherwise. Returns
+    `CorrelationInsight { pattern (plain English), sampleDays }`.
+    New `getPastCalendarDays(userId, days, timezone)` in `lib/calendar.ts` fetches past 14 days
+    from Google (no new DB storage — live API call). In `lib/briefing.ts`, added to the main
+    `Promise.all`; maps to `CalendarDay[]`; correlation injected into `whoopContextBlock`
+    when non-null (surface ≤1 pattern, closing / alignment section).
+  - `specs/whoop-integration.md` updated with shipped status for V3 A+B.
+  - 15 new tests. 437/437 green, tsc clean, next build clean.
 - **2026-06-13** — **[BUG FIX] Gym-move recurring-all crash (Core).**
   - **ROOT CAUSE:** `moveEvent` with `recurringScope='all'` patches the master event
     using `newStartDateTime` from the model, which carries the occurrence's date (e.g.
