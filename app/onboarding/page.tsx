@@ -17,7 +17,7 @@ function StepIndicator({ current }: { current: Step }) {
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
             style={{
-              background: i < idx ? 'var(--edg-indigo)' : i === idx ? 'var(--edg-accent-20)' : 'rgba(255,255,255,0.05)',
+              background: i < idx ? 'var(--edg-indigo)' : i === idx ? 'var(--edg-accent-20)' : 'var(--edg-hairline)',
               border: i === idx ? '2px solid var(--edg-indigo)' : '2px solid transparent',
               color: i <= idx ? 'var(--text-strong)' : 'var(--text-faint)',
             }}
@@ -28,7 +28,7 @@ function StepIndicator({ current }: { current: Step }) {
             {labels[i]}
           </span>
           {i < STEPS.length - 1 && (
-            <div className="w-8 h-px mx-1" style={{ background: i < idx ? 'var(--edg-indigo)' : 'rgba(255,255,255,0.08)' }} />
+            <div className="w-8 h-px mx-1" style={{ background: i < idx ? 'var(--edg-indigo)' : 'var(--edg-fill-subtle)' }} />
           )}
         </div>
       ))}
@@ -86,12 +86,12 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         EDG3 needs to understand your full context to give you truly useful briefings.
       </p>
 
-      <div className="glass-card p-5 mb-6" style={{ borderColor: 'var(--edg-accent-20)', background: 'rgba(99,102,241,0.05)' }}>
+      <div className="glass-card p-5 mb-6" style={{ borderColor: 'var(--edg-accent-20)', background: 'var(--edg-accent-08)' }}>
         <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-accent)' }}>Step 1 of 2 — Get your profile from ChatGPT</p>
         <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
           Go to ChatGPT (or your most actively used AI tool) and send this prompt (it works best if you've had prior conversations with it):
         </p>
-        <div className="rounded-lg p-4 text-sm font-mono leading-relaxed" style={{ background: 'rgba(0,0,0,0.3)', color: 'var(--text-body)', userSelect: 'all', cursor: 'text' }}>
+        <div className="rounded-lg p-4 text-sm font-mono leading-relaxed" style={{ background: 'var(--edg-overlay)', color: 'var(--text-body)', userSelect: 'all', cursor: 'text' }}>
           "Summarize everything you know about me including goals, projects, strengths, weaknesses, recurring challenges, opportunities, financial goals, health goals, relationship goals, and areas where I may be self-sabotaging. Format as a briefing for a Chief of Staff."
         </div>
       </div>
@@ -108,7 +108,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         </button>
         {showExample && (
           <div className="mt-3 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap"
-            style={{ background: 'rgba(0,0,0,0.25)', color: 'var(--text-muted)', border: '1px solid var(--edg-accent-15)', maxHeight: '220px', overflowY: 'auto' }}>
+            style={{ background: 'var(--edg-overlay)', color: 'var(--text-muted)', border: '1px solid var(--edg-accent-15)', maxHeight: '220px', overflowY: 'auto' }}>
             {EXAMPLE_PROFILE}
           </div>
         )}
@@ -358,7 +358,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
           </label>
           <div className="flex gap-2">
             <div className="input flex items-center px-3 text-sm font-semibold flex-shrink-0"
-              style={{ width: '64px', color: 'var(--text-strong)', background: 'rgba(255,255,255,0.04)', cursor: 'default' }}>
+              style={{ width: '64px', color: 'var(--text-strong)', background: 'var(--edg-fill-04)', cursor: 'default' }}>
               +1
             </div>
             <input
