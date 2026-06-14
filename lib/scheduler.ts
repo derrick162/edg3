@@ -67,6 +67,12 @@ function classifyVapiError(err: unknown): CallError {
 // place a morning briefing call in the afternoon.
 const CALL_GRACE_MINUTES = 120;
 
+// A 'calling' briefing row older than this means the call was initiated but never
+// completed (the end-webhook never arrived / the call didn't connect). Past this age it
+// must NOT keep blocking the day's call — otherwise one silently-dropped call permanently
+// suppresses every retry (auto + manual) for the rest of the day.
+const STALE_CALLING_MS = 15 * 60 * 1000;
+
 function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -166,13 +172,16 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       const callMinutes = timeToMinutes(user.call_time);
       if (userMinutes < callMinutes || userMinutes >= callMinutes + CALL_GRACE_MINUTES) continue;
 
-      // Check if already called today (in user's local date)
+      // Check if already called today (in user's local date). A 'completed' call always
+      // blocks; a 'calling' row blocks ONLY if recent — a stale 'calling' (>15 min) means
+      // the call was initiated but never completed, so it must stay retryable.
+      const callingCutoff = new Date(now.getTime() - STALE_CALLING_MS).toISOString();
       const alreadyCalled = db.prepare(`
         SELECT 1 FROM briefings
         WHERE user_id = ?
         AND scheduled_for LIKE ?
-        AND status IN ('calling', 'completed')
-      `).get(user.id, `${userToday}%`);
+        AND (status = 'completed' OR (status = 'calling' AND scheduled_for >= ?))
+      `).get(user.id, `${userToday}%`, callingCutoff);
 
       if (alreadyCalled) continue;
 
@@ -192,9 +201,13 @@ export async function scheduleBriefingCall(userId: number) {
   // progress or has completed today (in the user's local timezone).
   const tz = effectiveTimezone(user);
   const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  // Only a COMPLETED call, or a call started in the last 15 min, blocks a new one. A stale
+  // 'calling' row (initiated but never completed — e.g. the end-webhook never arrived) must
+  // NOT permanently block the day, or "call me now" / the scheduler can never recover.
+  const callingCutoff = new Date(Date.now() - STALE_CALLING_MS).toISOString();
   const existing = getDb().prepare(
-    `SELECT status FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND status IN ('calling', 'completed') ORDER BY scheduled_for DESC LIMIT 1`
-  ).get(userId, `${today}%`) as { status: string } | undefined;
+    `SELECT status FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (status = 'completed' OR (status = 'calling' AND scheduled_for >= ?)) ORDER BY scheduled_for DESC LIMIT 1`
+  ).get(userId, `${today}%`, callingCutoff) as { status: string } | undefined;
   if (existing) {
     const msg = existing.status === 'completed'
       ? "You already had a call today — use the open call to chat with Edge now."
