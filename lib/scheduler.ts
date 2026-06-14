@@ -72,7 +72,7 @@ async function currentWhoopText(userId: number): Promise<string> {
     ]);
     const parts: string[] = [];
     if (rec) parts.push(`recovery ${rec.recoveryScore}%`);
-    if (slp) { const h = Math.floor(slp.durationMs / 3600000); const m = Math.round((slp.durationMs % 3600000) / 60000); parts.push(`sleep ${m === 0 ? `${h} hours` : `${h} hours ${m} minutes`}`); }
+    if (slp) { const h = Math.floor(slp.durationMs / 3600000); const m = Math.round((slp.durationMs % 3600000) / 60000); const dur = m === 0 ? `${h} hours` : `${h} hours ${m} minutes`; parts.push(`sleep ${dur} (sleep score ${slp.performancePct}%)`); }
     if (str) parts.push(`strain ${str.strain}`);
     return parts.join(' · ');
   } catch { return ''; }
