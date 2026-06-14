@@ -203,7 +203,64 @@ import { RecoveryCard } from '@/components/ui';
 
 ---
 
-## 8. First asks (suggested)
+## 8. FocusScoreboard component
+
+> **The emotional payoff of the product.** Users open the dashboard and instantly see
+> whether they're winning at each area of focus. Checking off a milestone feels good.
+
+### Visual structure (per area card)
+```
+┌─────────────────────────────────────────────────────┐
+│  [Ring]  1  Fundraising              ⚡ High energy │
+│   68%    6.2h this week · 3/5 milestones            │
+│                                                     │
+│  ○ Close seed round                                 │
+│  ✓ Deck updated         ← checked, strikethrough   │
+│  ✓ 5 intro calls done   ← milestone-done bg tint   │
+│  + Add milestone                                    │
+└─────────────────────────────────────────────────────┘
+```
+
+### Progress ring
+- 52px SVG ring, 5px stroke, `--score-ring-bg` track.
+- Fill color: `--score-fill-low` (<30%) → `--score-fill-mid` (30–69%) → `--score-fill-high` (≥70%) → `--score-fill-done` (complete).
+- Smooth CSS transition on `stroke-dasharray` (0.6s ease).
+- Progress = 40% time-invested (0–10h → 0–100%) + 60% milestones-done; pure time when no milestones.
+
+### Milestone check-off
+- Round checkbox: on check → `--edg-success` border+fill, SVG ✓, row bg → `--score-milestone-done`, text strikethrough. Optimistic UI.
+- On check: 🎉 bounces beside row for 1.8s.
+
+### Celebration moments
+- **Milestone done**: 🎉 bounce + row tint.
+- **Area complete**: card glow (`--score-celebrate-glow`), done-tint bg+border, `✓ done` badge, pulsing ✓ overlay 2s.
+- **All areas done**: banner above list in done-tint/glow.
+
+### Prop contract (Core wires data)
+```tsx
+import { FocusScoreboard } from '@/components/ui';
+
+<FocusScoreboard
+  areas={priorities.map(p => ({
+    priorityId: p.id, title: p.text,
+    hoursThisWeek: alignment[p.id]?.hours ?? 0,
+    milestonesDone: milestones.filter(m => m.priority_id === p.id && m.done).length,
+    milestonesTotal: milestones.filter(m => m.priority_id === p.id).length,
+    isComplete: ..., neglected: alignment[p.id]?.neglected ?? false,
+    energyCost: p.energy_cost ?? undefined,
+    milestones: milestones.filter(m => m.priority_id === p.id),
+  }))}
+  onToggleMilestone={async (priorityId, milestoneId, done) => { /* PATCH /api/milestones/:id */ }}
+  onAddMilestone={async (priorityId, title) => { /* POST /api/milestones */ }}
+/>
+```
+
+### Tokens (`app/globals.css` — Focus Scoreboard section)
+`--score-ring-bg`, `--score-fill-low/mid/high/done`, `--score-done-tint/border`, `--score-neglected-tint`, `--score-milestone-done`, `--score-celebrate-glow`. Plus `@keyframes pop-in` for the completion ✓.
+
+---
+
+## 9. First asks (suggested)
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).

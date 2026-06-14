@@ -74,6 +74,18 @@
   --energy-red-tint:     rgba(239, 68,  68,  0.12);
   --energy-red-border:   rgba(239, 68,  68,  0.30);
 
+  /* ── Focus Scoreboard ── */
+  --score-ring-bg:         rgba(255, 255, 255, 0.06);
+  --score-fill-low:        rgba(239, 68,  68,  0.80);
+  --score-fill-mid:        rgba(245, 158, 11,  0.90);
+  --score-fill-high:       rgba(99,  102, 241, 1.00);
+  --score-fill-done:       rgba(34,  197, 94,  1.00);
+  --score-done-tint:       rgba(34,  197, 94,  0.10);
+  --score-done-border:     rgba(34,  197, 94,  0.30);
+  --score-neglected-tint:  rgba(239, 68,  68,  0.06);
+  --score-milestone-done:  rgba(34,  197, 94,  0.12);
+  --score-celebrate-glow:  0 0 24px rgba(99, 102, 241, 0.50);
+
   /* Calendar action success — brighter green-400, distinct from edg-success */
   --edg-calendar-green:        #4ade80;
   --edg-calendar-green-tint:   rgba(74, 222, 128, 0.06);
@@ -337,6 +349,12 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
 }
 
 .pulse-ring { animation: pulse-ring 1.5s infinite; }
+
+@keyframes pop-in {
+  0%   { transform: scale(0.4); opacity: 0; }
+  70%  { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1);   opacity: 1; }
+}
 
 .badge {
   display: inline-flex;

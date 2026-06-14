@@ -7,3 +7,5 @@ export { Badge }    from './Badge';
 export { Logo }         from './Logo';
 export { RecoveryCard } from './RecoveryCard';
 export type { RecoveryCardProps, RecoveryTier, RecoveryHistoryPoint } from './RecoveryCard';
+export { FocusScoreboard } from './FocusScoreboard';
+export type { FocusScoreboardProps, FocusArea, FocusMilestone, EnergyCost } from './FocusScoreboard';
