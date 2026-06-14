@@ -195,25 +195,47 @@ export function timedEventDateMove(
 }
 
 /**
- * For moveEvent with recurringScope='all': Google requires the master event's
- * patch to use the ORIGINAL SERIES BASE DATE, not an occurrence date.
- * (Patching the master with a mid-series occurrence date causes a 400 —
- * the date doesn't match where the RRULE anchors the series.)
+ * Build the patch body to move an ENTIRE recurring series to a new time-of-day.
  *
- * Returns new start/end datetimes using the master's base date + the model's
- * requested time, ready to pass as requestBody to cal.events.patch.
+ * Keeps the master event's anchor DATE (so the RRULE / BYDAY pattern stays aligned)
+ * and the master's timezone — only the clock time changes. Patching a recurring
+ * master with an arbitrary absolute date (the old behavior) re-anchors the series
+ * and Google rejects it, which is what made "move my gym to 2pm every day" fail.
+ *
+ * @param masterStartDateTime  master.start.dateTime (RFC3339; date portion is the anchor)
+ * @param masterEndDateTime    master.end.dateTime ('' → fall back to a 1 h duration)
+ * @param newStartTime         new start clock time, "HH:MM" or "HH:MM:SS"
+ * @param newEndTime           new end clock time, "HH:MM"/"HH:MM:SS"; '' → preserve original duration
+ * @param timeZone             IANA tz for the patch (the master's tz, preferred)
  */
-export function recurringAllTimeShift(
-  masterStartDT: string, // master event's start.dateTime — any ISO format
-  newStartDT:    string, // model's desired new start  (YYYY-MM-DDTHH:MM:SS…)
-  newEndDT:      string, // model's desired new end
-): { startDateTime: string; endDateTime: string } {
-  const masterDate = masterStartDT.slice(0, 10); // 'YYYY-MM-DD' of first occurrence
-  const newTime    = newStartDT.slice(11, 19);   // 'HH:MM:SS' (strips date + any tz offset)
-  const newEndTime = newEndDT.slice(11, 19);
+export function recurringSeriesTimeShift(
+  masterStartDateTime: string,
+  masterEndDateTime: string,
+  newStartTime: string,
+  newEndTime: string,
+  timeZone: string,
+): { start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } } {
+  const anchorDate = masterStartDateTime.slice(0, 10);
+  const norm = (t: string) => (t.length === 5 ? `${t}:00` : t.slice(0, 8));
+  const st = norm(newStartTime);
+
+  let endDate = anchorDate;
+  let et: string;
+  if (/^\d{2}:\d{2}/.test(newEndTime)) {
+    et = norm(newEndTime);
+    if (et <= st) endDate = nextDay(anchorDate); // end rolls past midnight
+  } else {
+    // No explicit end time → preserve the master's original duration.
+    const durMs = new Date(masterEndDateTime).getTime() - new Date(masterStartDateTime).getTime();
+    const dur = Number.isFinite(durMs) && durMs > 0 ? durMs : 3_600_000;
+    const endInstant = new Date(new Date(`${anchorDate}T${st}Z`).getTime() + dur);
+    endDate = endInstant.toISOString().slice(0, 10);
+    et = endInstant.toISOString().slice(11, 19);
+  }
+
   return {
-    startDateTime: `${masterDate}T${newTime}`,
-    endDateTime:   `${masterDate}T${newEndTime}`,
+    start: { dateTime: `${anchorDate}T${st}`, timeZone },
+    end:   { dateTime: `${endDate}T${et}`,    timeZone },
   };
 }
 

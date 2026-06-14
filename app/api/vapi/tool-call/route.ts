@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringAllTimeShift } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
@@ -564,7 +564,22 @@ Query: ${query}` }],
     const isAllDay = !!(found.event.start?.date && !found.event.start?.dateTime);
     let rb: calendar_v3.Schema$Event;
     let confirmWhen: string;
-    if (isAllDay) {
+    if (recurringScope === 'all' && found.event.recurringEventId && !isAllDay) {
+      // Path 0: move the WHOLE recurring series to a new time. Fetch the master and
+      // change only its time-of-day, keeping its anchor date so the recurrence rule
+      // stays aligned. (Patching the master with the model's absolute future date
+      // re-anchored the series and Google rejected it — the "gym to 2pm" failure.)
+      const master = await cal.events.get({ calendarId: found.calId, eventId }).then(g => g.data).catch(() => null);
+      const startTime = (newStartDateTime || found.event.start?.dateTime || '').slice(11, 19);
+      const endTime = (newEndDateTime || '').slice(11, 19);
+      if (!master?.start?.dateTime || !/^\d{2}:\d{2}/.test(startTime)) {
+        console.error(`[moveEvent] recurring-all could not read master calId=${found.calId} eventId=${eventId}`);
+        return `I couldn't retime the whole "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" series just now — I'll flag it to get sorted. Want me to move just the next occurrence instead?`;
+      }
+      const masterTz = master.start.timeZone ?? timezone;
+      rb = recurringSeriesTimeShift(master.start.dateTime, master.end?.dateTime ?? '', startTime, endTime, masterTz);
+      confirmWhen = `${startTime.slice(0, 5)} ${masterTz}`;
+    } else if (isAllDay) {
       // Path 1: all-day re-date.
       const existingStart = (found.event.start?.date ?? '').slice(0, 10);
       const startD = (newStartDate || newStartDateTime || existingStart || '').slice(0, 10);
@@ -585,23 +600,9 @@ Query: ${query}` }],
       rb = timedPatch;
       confirmWhen = `${newStartDate} (same time, ${eventTz})`;
     } else {
-      // Path 3: full datetime move.
-      if (recurringScope === 'all' && found.event.recurringEventId) {
-        // Google 400s when patching a master event's start/end with a date from a later
-        // occurrence (e.g. model passes June 18 but the series started June 16). Fetch
-        // the master to get its base date, then preserve that date and shift only the time.
-        const masterRes = await cal.events.get({ calendarId: found.calId, eventId }).catch(() => null);
-        const masterBaseDT = masterRes?.data.start?.dateTime ?? found.event.start?.dateTime ?? newStartDateTime;
-        const { startDateTime, endDateTime } = recurringAllTimeShift(masterBaseDT, newStartDateTime, newEndDateTime);
-        rb = {
-          start: { dateTime: startDateTime, timeZone: timezone },
-          end:   { dateTime: endDateTime,   timeZone: timezone },
-        };
-        confirmWhen = `${startDateTime.slice(11, 16)}–${endDateTime.slice(11, 16)} ${timezone}`;
-      } else {
-        rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
-        confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
-      }
+      // Path 3: full datetime move (non-recurring, or single occurrence with explicit datetime).
+      rb = { start: { dateTime: newStartDateTime, timeZone: timezone }, end: { dateTime: newEndDateTime, timeZone: timezone } };
+      confirmWhen = `${newStartDateTime.slice(11, 16)} ${timezone} on ${newStartDateTime.slice(0, 10)}`;
     }
     if (found.event.colorId) rb.colorId = found.event.colorId;
     const origStart = found.event.start;
