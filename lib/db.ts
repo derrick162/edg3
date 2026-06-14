@@ -260,6 +260,19 @@ function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(user_id, date)
     );
+
+    -- Sub-goals that hang off a focus area (priorities row). Powers the Focus Scoreboard:
+    -- Core reads these for progress display; user checks them off as they complete work.
+    CREATE TABLE IF NOT EXISTS focus_milestones (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id),
+      priority_id  INTEGER NOT NULL REFERENCES priorities(id),
+      title        TEXT NOT NULL,
+      done         INTEGER NOT NULL DEFAULT 0,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT
+    );
   `);
 
   // Indexes for performance
@@ -276,6 +289,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
+    CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
   `);
 
   // Migrations for existing databases
@@ -1100,4 +1114,49 @@ export const factQueries = {
   },
 };
 
-// (energyLogQueries is defined once earlier with upsert/getToday — the API the app + tests use.)
+export interface FocusMilestone {
+  id: number;
+  user_id: number;
+  priority_id: number;
+  title: string;
+  done: number;
+  sort_order: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export const focusMilestoneQueries = {
+  // All milestones for a user, grouped by focus area then sort order.
+  listForUser: (userId: number): FocusMilestone[] => {
+    return getDb().prepare(
+      'SELECT * FROM focus_milestones WHERE user_id = ? ORDER BY priority_id, sort_order, id'
+    ).all(userId) as FocusMilestone[];
+  },
+  // Milestones for a single focus area, ordered for display.
+  listForPriority: (userId: number, priorityId: number): FocusMilestone[] => {
+    return getDb().prepare(
+      'SELECT * FROM focus_milestones WHERE user_id = ? AND priority_id = ? ORDER BY sort_order, id'
+    ).all(userId, priorityId) as FocusMilestone[];
+  },
+  create: (userId: number, priorityId: number, title: string) => {
+    return getDb().prepare(
+      'INSERT INTO focus_milestones (user_id, priority_id, title) VALUES (?, ?, ?)'
+    ).run(userId, priorityId, title);
+  },
+  // Sets done=1 with completed_at=now, or done=0 with completed_at cleared.
+  setDone: (id: number, userId: number, done: boolean | 0 | 1) => {
+    if (done) {
+      return getDb().prepare(
+        "UPDATE focus_milestones SET done = 1, completed_at = datetime('now') WHERE id = ? AND user_id = ?"
+      ).run(id, userId);
+    }
+    return getDb().prepare(
+      'UPDATE focus_milestones SET done = 0, completed_at = NULL WHERE id = ? AND user_id = ?'
+    ).run(id, userId);
+  },
+  remove: (id: number, userId: number) => {
+    return getDb().prepare(
+      'DELETE FROM focus_milestones WHERE id = ? AND user_id = ?'
+    ).run(id, userId);
+  },
+};

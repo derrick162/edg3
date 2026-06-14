@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ Energy OS MVP — daily energy signal, priority cost tags, dashboard quick-set, setEnergyLevel tool. ⚠️ PM: create `setEnergyLevel` Vapi tool.)_ | `lib/energy.ts`, `lib/db.ts`, `lib/briefing.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `app/api/energy/**`, `app/api/priorities/**`, `app/dashboard/page.tsx` | 2026-06-14 |
-| 🔒 Security | `security` | _(✅ Energy OS schema (`energy_log` + `energyLogQueries`) + data export/deletion + call reliability + encryption verification + CASA. Integrated.)_ | `lib/db.ts`, `app/api/account/**`, `lib/energy-log.test.ts`, `specs/` | 2026-06-14 |
+| 🔒 Security | `security` | _(idle — ✅ **Focus Scoreboard schema** (`focus_milestones` + `focusMilestoneQueries` + `FocusMilestone` type). 555/555 green. Awaiting PM.)_ | `lib/db.ts`, `lib/focus-milestones.test.ts` | 2026-06-14 |
 | 🔧 PM | `master` | _(✅ integrated Design's Energy-OS UI reconcile (`a5bc544`, 543 green, UTF-8 clean). Vision evolved to Focus × Energy (`dc5f08e`); Focus Scoreboard is the new ★★★ Core priority. Awaiting Derrick's go to dispatch the Scoreboard build.)_ | `ROADMAP.md`, `specs/energy-os.md` | 2026-06-14 |
 | 🎨 Design | `design` | _(idle — ✅ Energy OS MVP UI reconciled onto Core's logic + integrated to master by PM. Awaiting next: Focus Scoreboard visuals (scoreboard + milestone check-off + celebration feel).)_ | — | 2026-06-14 |
 

@@ -8,6 +8,20 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-14** — **Focus Scoreboard schema — `focus_milestones` table (additive).**
+  - `lib/db.ts`: `focus_milestones (id, user_id, priority_id, title, done, sort_order,
+    created_at, completed_at)`. FK to `priorities(id)`. Index on `(user_id, priority_id)`.
+    `CREATE TABLE IF NOT EXISTS` — additive, idempotent.
+  - `focusMilestoneQueries` exported: `listForUser(userId)`, `listForPriority(userId, priorityId)`,
+    `create(userId, priorityId, title)`, `setDone(id, userId, done)` (manages `completed_at`
+    automatically), `remove(id, userId)`. All queries filter by `user_id` — security invariant.
+  - `FocusMilestone` interface exported.
+  - `focus_milestones` added to admin + self-service deletion routes (leaf-first FK order).
+  - `lib/focus-milestones.test.ts`: 12 in-memory integration tests — CRUD, done lifecycle
+    (completed_at set/cleared), user isolation (wrong userId = no-op on setDone/remove),
+    cross-priority filtering. 555/555 green, tsc clean, next build clean.
+  - **Core handoff:** `focusMilestoneQueries` is live from `@/lib/db`. Wire into
+    `GET/POST /api/priorities/[id]/milestones` + dashboard Focus Scoreboard.
 - **2026-06-14** — **Energy OS schema — `energy_log` table (additive).**
   - `lib/db.ts`: `energy_log` table — `(user_id, date, level, source, created_at)`, unique on
     `(user_id, date)` (one record per user per day). `level` CHECK `('red','yellow','green')`;
