@@ -8,6 +8,47 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-13** — **Data export + self-service account deletion (GDPR / Google CASA launch requirement).**
+  - `GET /api/account/export` — user-scoped, returns a full JSON download of all user data:
+    profile (no password_hash), priorities, memories, facts, tasks, briefings (with decrypted
+    transcript/user_response), and email draft history (recipient/subject decrypted). Sets
+    `Content-Disposition: attachment` so browsers download the file. 10000-row cap on
+    briefings/memories (ample for any real user at launch).
+  - `DELETE /api/account` — user-scoped, irreversible self-service deletion. Requires body
+    `{ "confirm": "delete my account" }` (explicit contract for Core's UI — 400 without it).
+    Deletes all 16 tables in FK-safe order (same coverage as admin route: whoop_tokens,
+    calendar_tokens, gmail_drafts_log, watched_threads, notifications, audit_log, facts,
+    briefings, preview_briefings, memories, priorities, tasks, undo_log, event_dedupe_keys,
+    delete_confirm_tokens, users). Clears the session cookie on success.
+  - `lib/db.ts`: `Briefing` interface completed (was missing `retry_attempted`,
+    `calendar_actions`, `edge_promises`, `tool_actions` fields).
+  - 15 new tests (auth guards, response shape, confirm contract, deletion coverage,
+    cookie clearing). 490/490 green, tsc clean, next build clean.
+  - **Core action items:** wire "Export my data" link → `GET /api/account/export` and
+    "Delete account" confirmation flow → `DELETE /api/account` (with the exact phrase UI).
+    Also add Google token revocation call in `lib/calendar.ts` disconnect (CASA requirement).
+- **2026-06-13** — **Call reliability: idempotency guard + error_code persistence + call-status endpoint.**
+  - `lib/db.ts`: `briefings` table gains `error_code TEXT` column (migration + `ALLOWED_FIELDS`
+    + `Briefing` interface + `briefingQueries.getTodayForUser(userId, datePrefix)` helper).
+  - `lib/scheduler.ts`:
+    - `CallError.code` extended with `'already_called'`.
+    - `getTodayCallStatus(userId)` — exported query wrapper returning today's briefing status
+      in the user's local timezone; used by the status endpoint.
+    - `triggerBriefingCallNow(userId)` — exported safe re-trigger; catches `CallError` and
+      returns `{ ok: false, code, message }` instead of throwing (Core can call this from the
+      "I didn't get my call" button without try/catch boilerplate).
+    - Idempotency guard inside `scheduleBriefingCall`: checks for an existing
+      `calling`/`completed` briefing for today before creating a new record — throws
+      `CallError('already_called')` so the on-demand path can't double-fire.
+    - Both Vapi error catch blocks now persist `error_code` alongside `status: 'failed'`
+      so the dashboard can surface WHY a call failed.
+  - `app/api/vapi/call-status/route.ts` (new): `GET` endpoint, user-scoped. Returns
+    `{ status, errorCode, briefingId, scheduledFor }` for today's call or
+    `{ status: 'none', ... }` when no briefing exists. Core reads this for the
+    "Call me now" button state and error messaging.
+  - 10 new tests (idempotency guard × 4, `triggerBriefingCallNow` × 4, error_code
+    persistence × 1, existing assertions updated to `objectContaining`). 475/475 green,
+    tsc clean, next build clean.
 - **2026-06-13** — **At-rest encryption verification + user deletion completeness + Google CASA prep.**
   - `lib/db-encryption.test.ts` (11 tests): integration proof that ciphertext is
     stored on disk for `calendar_tokens` (access+refresh), `whoop_tokens`

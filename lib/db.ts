@@ -70,6 +70,7 @@ function initSchema(db: Database.Database) {
       calendar_actions TEXT,
       edge_promises TEXT,
       tool_actions TEXT,
+      error_code TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -254,6 +255,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE briefings ADD COLUMN calendar_actions TEXT",
     "ALTER TABLE briefings ADD COLUMN edge_promises TEXT",
     "ALTER TABLE briefings ADD COLUMN tool_actions TEXT",
+    "ALTER TABLE briefings ADD COLUMN error_code TEXT",
     "ALTER TABLE users ADD COLUMN phone_number TEXT",
     "ALTER TABLE users ADD COLUMN current_timezone TEXT",
     "ALTER TABLE calendar_tokens ADD COLUMN scope TEXT",
@@ -388,7 +390,7 @@ export const briefingQueries = {
     ).run(userId, content, scheduledFor);
   },
   update: (id: number, data: Partial<Briefing>) => {
-    const ALLOWED_FIELDS = new Set(['status', 'transcript', 'user_response', 'vapi_call_id', 'retry_attempted']);
+    const ALLOWED_FIELDS = new Set(['status', 'transcript', 'user_response', 'vapi_call_id', 'retry_attempted', 'error_code']);
     const entries = Object.entries(data).filter(([k]) => ALLOWED_FIELDS.has(k));
     if (!entries.length) return;
     const fields = entries.map(([k]) => `${k} = ?`).join(', ');
@@ -413,6 +415,13 @@ export const briefingQueries = {
       'SELECT * FROM briefings WHERE id = ? AND user_id = ?'
     ).get(id, userId) as Briefing | undefined;
     return row ? decryptBriefingRow(row) : undefined;
+  },
+  // Most recent briefing for a given UTC-date prefix (YYYY-MM-DD). Used by the
+  // call-status endpoint and the idempotency guard to check today's call state.
+  getTodayForUser: (userId: number, datePrefix: string) => {
+    return getDb().prepare(
+      `SELECT id, status, error_code, scheduled_for FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? ORDER BY scheduled_for DESC LIMIT 1`
+    ).get(userId, `${datePrefix}%`) as Pick<Briefing, 'id' | 'status' | 'scheduled_for'> & { error_code: string | null } | undefined;
   },
 };
 
@@ -879,6 +888,11 @@ export interface Briefing {
   scheduled_for: string;
   transcript: string | null;
   user_response: string | null;
+  retry_attempted: number;
+  calendar_actions: string | null;
+  edge_promises: string | null;
+  tool_actions: string | null;
+  error_code: string | null;
   created_at: string;
 }
 

@@ -14,10 +14,37 @@ import { briefingQueries, userQueries, priorityQueries, factQueries, effectiveTi
 export class CallError extends Error {
   constructor(
     public readonly userMessage: string,
-    public readonly code: 'vapi_daily_limit' | 'vapi_error' | 'briefing_gen_failed',
+    public readonly code: 'vapi_daily_limit' | 'vapi_error' | 'briefing_gen_failed' | 'already_called',
   ) {
     super(userMessage);
     this.name = 'CallError';
+  }
+}
+
+// Returns today's most recent briefing row (status + error_code) for a user, in their
+// local timezone. Returns undefined when no briefing exists for today.
+export async function getTodayCallStatus(userId: number) {
+  const user = userQueries.findById(userId);
+  if (!user) return undefined;
+  const tz = effectiveTimezone(user);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  return briefingQueries.getTodayForUser(userId, today);
+}
+
+// Safe on-demand re-trigger for Core's "I didn't get my call" button. Guards against
+// double-calling (completed/calling today) and surfaces CallError details without throwing.
+export async function triggerBriefingCallNow(userId: number): Promise<
+  | { ok: true; briefingId: number }
+  | { ok: false; code: string; message: string }
+> {
+  try {
+    const briefingId = await scheduleBriefingCall(userId);
+    return { ok: true, briefingId };
+  } catch (err) {
+    if (err instanceof CallError) {
+      return { ok: false, code: err.code, message: err.userMessage };
+    }
+    return { ok: false, code: 'unknown', message: 'An unexpected error occurred.' };
   }
 }
 
@@ -161,6 +188,20 @@ export async function scheduleBriefingCall(userId: number) {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
+  // Idempotency guard: refuse to fire a second briefing call if one is already in
+  // progress or has completed today (in the user's local timezone).
+  const tz = effectiveTimezone(user);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const existing = getDb().prepare(
+    `SELECT status FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND status IN ('calling', 'completed') ORDER BY scheduled_for DESC LIMIT 1`
+  ).get(userId, `${today}%`) as { status: string } | undefined;
+  if (existing) {
+    const msg = existing.status === 'completed'
+      ? "You already had a call today — use the open call to chat with Edge now."
+      : "A call is already in progress. Check back in a moment.";
+    throw new CallError(msg, 'already_called');
+  }
+
   const now = new Date();
   const scheduledFor = now.toISOString();
 
@@ -197,8 +238,9 @@ export async function scheduleBriefingCall(userId: number) {
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
       console.error(`[scheduler] Vapi call failed for user ${userId}:`, err);
-      briefingQueries.update(briefingId, { status: 'failed' });
-      throw classifyVapiError(err);
+      const callErr = classifyVapiError(err);
+      briefingQueries.update(briefingId, { status: 'failed', error_code: callErr.code });
+      throw callErr;
     }
   } else {
     console.log(`[scheduler] Skipping call for ${user.name} — no phone or Vapi key`);
@@ -239,8 +281,9 @@ export async function scheduleOpenCall(userId: number) {
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
       console.error(`[scheduler] Vapi open call failed for user ${userId}:`, err);
-      briefingQueries.update(briefingId, { status: 'failed' });
-      throw classifyVapiError(err);
+      const callErr = classifyVapiError(err);
+      briefingQueries.update(briefingId, { status: 'failed', error_code: callErr.code });
+      throw callErr;
     }
   } else {
     console.log(`[scheduler] Skipping open call for ${user.name} — no phone or Vapi key`);

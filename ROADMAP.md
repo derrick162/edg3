@@ -102,7 +102,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(idle — ✅ `cleanupDuplicates` tool + meal-time awareness SHIPPED. ⚠️ PM: create Vapi tool + paste UUID — see changelog.)_ | `lib/eventMatch.ts`, `route.ts`, `lib/vapi.ts` | 2026-06-13 |
-| 🔒 Security | `security` | _(idle — ✅ **encryption verification** (11 at-rest tests) + **user deletion fix** (9 missing tables incl. whoop_tokens) + **Google CASA doc** (`specs/google-verification.md`). Awaiting PM.)_ | `lib/db-encryption.test.ts`, `app/api/admin/users/**`, `specs/` | 2026-06-13 |
+| 🔒 Security | `security` | _(idle — ✅ **data export + self-service deletion** (`GET /api/account/export`, `DELETE /api/account`). 490/490 green. Awaiting PM.)_ | `app/api/account/**`, `lib/db.ts` | 2026-06-13 |
 | 🔧 PM | `master` | _(✅ fixed dashboard UTF-8 corruption from a Design commit that broke Turbopack/Railway deploys; created + wired the 3 Vapi tools; whoop callback now surfaces the real OAuth error.)_ | — | 2026-06-13 |
 | 🎨 Design | `design` | _(idle — ✅ Full token pass complete across all app pages (dashboard, onboarding, admin, privacy, terms, landing). Zero inline hex/rgba remaining on user-facing pages. 467/467 green. Awaiting PM.)_ | — | 2026-06-14 |
 
