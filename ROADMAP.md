@@ -101,9 +101,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ Focus Scoreboard — milestones, focusProgress pure layer, briefing scoreboard block, 5 API routes, dashboard checklist. 558/558 green. ⚠️ PM: merge `core` → `master`; notify Design to polish milestone UI.)_ | `lib/db.ts`, `lib/focusProgress.ts`, `lib/briefing.ts`, `lib/vapi.ts`, `app/api/milestones/**`, `app/api/priorities/**`, `app/dashboard/page.tsx` | 2026-06-14 |
+| 🛠️ Core | `core` | _(idle — ✅ Focus Scoreboard COMPLETE + integrated to master by PM (reconciled onto Security's canonical schema). 570/570 green. Next decided: ★★★ Focus/Energy scoring engine, Scores-as-landing + remove Tasks, hero "weekly plan → one yes → batch execute" loop — awaiting Derrick's go.)_ | — | 2026-06-14 |
 | 🔒 Security | `security` | _(✅ Energy OS schema (`energy_log` + `energyLogQueries`) + Focus Scoreboard schema + data export/deletion + call reliability + encryption verification + CASA. Integrated.)_ | `lib/db.ts`, `app/api/account/**`, `lib/energy-log.test.ts`, `specs/` | 2026-06-14 |
-| 🔧 PM | `master` | _(✅ integrated Design's Energy-OS UI reconcile (`a5bc544`, 543 green, UTF-8 clean). Vision evolved to Focus × Energy (`dc5f08e`); Focus Scoreboard is the new ★★★ Core priority. Awaiting Derrick's go to dispatch the Scoreboard build.)_ | `ROADMAP.md`, `specs/energy-os.md` | 2026-06-14 |
+| 🔧 PM | `master` | _(✅ Focus Scoreboard fully integrated (`d5e1da4`, 570 green, UTF-8 clean) — resolved the Core/Security schema collision onto Security's canonical version. Spec'd next wave: Focus/Energy scoring engine (`specs/calendar-scores.md`), voice-energy v2 (`specs/voice-energy.md`), notifications (`specs/notifications.md`), Scores-as-landing + remove Tasks. Holding dispatch for Derrick's go + his hero-loop note.)_ | `ROADMAP*.md`, `specs/**` | 2026-06-14 |
 | 🎨 Design | `design` | _(idle — ✅ FocusScoreboard shipped: ring progress, milestone check-off + celebration, neglected state, tokens. Core: wire props + `/api/milestones`. Awaiting PM.)_ | — | 2026-06-14 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
