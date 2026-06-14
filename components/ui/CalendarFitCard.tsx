@@ -42,23 +42,24 @@ interface CalendarScore {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// score is 0–100 (a plain percentage)
 function gaugeColor(score: number): string {
-  if (score >= 9) return 'var(--gauge-peak)';
-  if (score >= 7) return 'var(--gauge-high)';
-  if (score >= 4) return 'var(--gauge-mid)';
+  if (score >= 85) return 'var(--gauge-peak)';
+  if (score >= 65) return 'var(--gauge-high)';
+  if (score >= 35) return 'var(--gauge-mid)';
   return 'var(--gauge-low)';
 }
 
 function gaugeGlow(score: number): string {
-  if (score >= 9) return 'var(--gauge-glow-peak)';
-  if (score >= 7) return 'var(--gauge-glow-high)';
+  if (score >= 85) return 'var(--gauge-glow-peak)';
+  if (score >= 65) return 'var(--gauge-glow-high)';
   return 'var(--gauge-glow-low)';
 }
 
 function scoreLabel(score: number): string {
-  if (score >= 9) return 'excellent';
-  if (score >= 7) return 'good';
-  if (score >= 4) return 'fair';
+  if (score >= 85) return 'excellent';
+  if (score >= 65) return 'good';
+  if (score >= 35) return 'fair';
   return 'low';
 }
 
@@ -99,7 +100,7 @@ function ScoreGauge({
   const { score, drivers, topFix, calibrating, callsCompleted } = data;
   const color = gaugeColor(score);
   const glow = gaugeGlow(score);
-  const pct = (score / 10) * 100;
+  const pct = score; // score is already 0–100
 
   return (
     <div>
@@ -134,9 +135,9 @@ function ScoreGauge({
         </div>
         <span
           className="text-lg font-black tabular-nums flex-shrink-0"
-          style={{ color, minWidth: 28, textAlign: 'right', textShadow: glow }}
+          style={{ color, minWidth: 36, textAlign: 'right', textShadow: glow }}
         >
-          {score}
+          {score}%
         </span>
         <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
           {expanded ? '▲' : '▼'}
@@ -206,7 +207,7 @@ export function CalendarFitCard({
   const [expandedEnergy, setExpandedEnergy] = useState(false);
 
   const combinedAvg = fit
-    ? Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
+    ? Math.round((fit.focusScore.score + fit.energyScore.score) / 2) // 0–100
     : null;
 
   const focusData: CalendarScore | null = fit
@@ -230,8 +231,8 @@ export function CalendarFitCard({
               ? 'Add focus areas and events to see your score.'
               : combinedAvg === null
               ? 'Scores appear after your first morning briefing.'
-              : combinedAvg >= 8 ? 'Your schedule is working for you.'
-              : combinedAvg >= 5 ? 'Room to improve — tap a score to see why.'
+              : combinedAvg >= 85 ? 'Your schedule is working for you.'
+              : combinedAvg >= 50 ? 'Room to improve — tap a score to see why.'
               : 'Schedule needs attention — tap a score to fix it.'}
           </p>
         </div>
@@ -241,7 +242,7 @@ export function CalendarFitCard({
             style={{ color: gaugeColor(combinedAvg), textShadow: gaugeGlow(combinedAvg) }}
           >
             {combinedAvg}
-            <span className="text-xs font-normal ml-0.5" style={{ color: 'var(--text-faint)' }}>/10</span>
+            <span className="text-xs font-normal ml-0.5" style={{ color: 'var(--text-faint)' }}>%</span>
           </div>
         )}
       </div>

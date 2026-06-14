@@ -284,7 +284,9 @@ import { FocusScoreboard } from '@/components/ui';
 
 ### Score bar
 - Thin horizontal bar (h-1.5, rounded, `--gauge-bg` track).
-- Fill color ramp: `--gauge-low` (1–3 red) → `--gauge-mid` (4–6 amber) → `--gauge-high` (7–8 indigo) → `--gauge-peak` (9–10 green). Matching glow on fill + score label.
+- Scores are **0–100 percentages** (Focus Score = % of working hours on focus areas).
+- Fill color ramp: `--gauge-low` (<35% red) → `--gauge-mid` (35–64% amber) → `--gauge-high` (65–84% indigo) → `--gauge-peak` (≥85% green). Matching glow on fill + score label.
+- Score displayed as `{score}%`. Combined avg in header also as `{avg}%`.
 - 700ms CSS width transition on load.
 
 ### Interactions
