@@ -34,6 +34,15 @@ Each entry: date · what happened · what would've made it a 10 · → resulting
 
 ## 🗒️ Call log (newest first)
 
+### 2026-06-14 (Sun) — afternoon open call: no Whoop + move/resize failed
+- **What happened:** Whoop unavailable on the open call (Edge wrongly said "comes on the briefing");
+  color-code worked but shrink CIBC + move focus block both failed.
+- **→ Fixes (`1ab50bf`, `11a1d1f`):** open call DOES pass Whoop — data came back empty (transient
+  token/fetch), so added an honest empty-Whoop message (never "comes on the briefing"). moveEvent
+  now derives a robust timezone (event's own → valid model tz → user tz); a bad/empty tz was the
+  likely cause of "color works, move fails" (color sends no tz). Added rb+error logging to confirm.
+- **Still open:** want the Railway `[moveEvent] failed` log to 100% confirm the move root cause.
+
 ### 2026-06-14 (Sun) — ★ detailed 10/10 feedback on the morning briefing
 Derrick's vision of a 10/10 morning call — the gap is **proactivity + goal-driving + memory**:
 1. **Recovery-aware encouragement tied to the actual event.** Good sleep/recovery → "you're
