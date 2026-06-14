@@ -899,6 +899,9 @@ interface Fact {
   statement: string;
   entity: string | null;
   learned_at: string;
+  // Core populates these when available
+  confidence?: 'low' | null;
+  source_briefing_id?: number | null;
 }
 
 interface Task {
@@ -1894,37 +1897,67 @@ export default function Dashboard() {
                                     </div>
                                   ) : (
                                     /* ── Default read state ── */
-                                    <div className="flex items-start gap-3">
-                                      <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-body)' }}>
-                                        {f.entity && (
-                                          <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
-                                        )}
-                                        {f.statement}
-                                      </p>
-                                      <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                                        <span className="text-xs mr-1" style={{ color: 'var(--text-faint)' }}>
-                                          {format(new Date(f.learned_at), 'MMM d')}
-                                        </span>
-                                        <button
-                                          title="Edit"
-                                          onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                          className="p-1 rounded"
-                                          style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                        >
-                                          ✎
-                                        </button>
-                                        <button
-                                          title="Remove"
-                                          onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
-                                          className="p-1 rounded"
-                                          style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
-                                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                        >
-                                          &#x2715;
-                                        </button>
+                                    <div>
+                                      <div className="flex items-start gap-3">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                            {f.entity && (
+                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{f.entity}: </span>
+                                            )}
+                                            {f.statement}
+                                            {f.confidence === 'low' && (
+                                              <button
+                                                title="Edge isn't sure it caught this right — tap to fix"
+                                                onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                                className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
+                                                style={{
+                                                  background: 'rgba(245,158,11,0.1)',
+                                                  color: 'var(--edg-warning)',
+                                                  border: '1px solid rgba(245,158,11,0.2)',
+                                                  lineHeight: 1,
+                                                }}
+                                              >
+                                                &#x26A0; verify
+                                              </button>
+                                            )}
+                                          </p>
+                                          {/* Provenance line */}
+                                          {f.source_briefing_id ? (
+                                            <a
+                                              href={`/dashboard?briefing=${f.source_briefing_id}`}
+                                              className="text-xs mt-1 block hover:underline"
+                                              style={{ color: 'var(--text-faint)' }}
+                                            >
+                                              learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
+                                            </a>
+                                          ) : (
+                                            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                                              learned {format(new Date(f.learned_at), 'MMM d')}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                                          <button
+                                            title="Edit"
+                                            onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                            className="p-1 rounded"
+                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                          >
+                                            ✎
+                                          </button>
+                                          <button
+                                            title="Remove"
+                                            onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
+                                            className="p-1 rounded"
+                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
+                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                          >
+                                            &#x2715;
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   )}
