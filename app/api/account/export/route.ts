@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, decryptBriefingRow } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
 
 // Returns a full JSON export of everything EDG3 has stored for the authenticated user.
@@ -34,6 +34,10 @@ export async function GET(_req: NextRequest) {
     subject: r.subject ? decryptField(r.subject) : null,
     createdAt: r.created_at,
   }));
+
+  const energyRows = (db.prepare(
+    'SELECT date, level, source, created_at FROM energy_log WHERE user_id = ? ORDER BY date DESC'
+  ).all(userId) as Array<{ date: string; level: string; source: string; created_at: string }>);
 
   const payload = {
     exportedAt: new Date().toISOString(),
@@ -71,6 +75,7 @@ export async function GET(_req: NextRequest) {
     })),
     briefings: briefingRows,
     emailDraftHistory: draftRows,
+    energyLog: energyRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

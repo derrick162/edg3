@@ -234,6 +234,19 @@ function initSchema(db: Database.Database) {
       scope         TEXT,
       updated_at    TEXT DEFAULT (datetime('now'))
     );
+
+    -- Daily energy state for a user — one row per user per day (UNIQUE enforces the
+    -- upsert contract). Source tracks whether the level was auto-derived from Whoop,
+    -- manually entered, or overridden by the user (override wins over whoop).
+    CREATE TABLE IF NOT EXISTS energy_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      date       TEXT NOT NULL,
+      level      TEXT NOT NULL CHECK(level IN ('red', 'yellow', 'green')),
+      source     TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('whoop', 'manual', 'override')),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, date)
+    );
   `);
 
   // Indexes for performance
@@ -249,6 +262,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
   `);
 
   // Migrations for existing databases
@@ -952,6 +966,15 @@ export interface WhoopToken {
   updated_at: string;
 }
 
+export interface EnergyLog {
+  id: number;
+  user_id: number;
+  date: string;
+  level: 'red' | 'yellow' | 'green';
+  source: 'whoop' | 'manual' | 'override';
+  created_at: string;
+}
+
 export const whoopQueries = {
   upsert: (userId: number, accessToken: string, refreshToken: string, expiresAt: number, scope?: string | null) => {
     return getDb().prepare(`
@@ -1030,5 +1053,22 @@ export const factQueries = {
 
   deleteFact: (userId: number, id: number): void => {
     getDb().prepare('DELETE FROM facts WHERE id=? AND user_id=?').run(id, userId);
+  },
+};
+
+export const energyLogQueries = {
+  // Returns the energy record for the given YYYY-MM-DD date, or undefined if none set.
+  getForDate: (userId: number, date: string): EnergyLog | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM energy_log WHERE user_id = ? AND date = ?'
+    ).get(userId, date) as EnergyLog | undefined;
+  },
+  // Upsert: inserts or replaces the daily energy record (UNIQUE on user_id+date).
+  // Callers pass the user's local YYYY-MM-DD date (not UTC) so the record aligns with
+  // what the user sees on the dashboard and what the briefing call uses.
+  setEnergy: (userId: number, date: string, level: 'red' | 'yellow' | 'green', source: 'whoop' | 'manual' | 'override') => {
+    return getDb().prepare(
+      'INSERT OR REPLACE INTO energy_log (user_id, date, level, source) VALUES (?, ?, ?, ?)'
+    ).run(userId, date, level, source);
   },
 };

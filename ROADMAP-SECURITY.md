@@ -8,6 +8,20 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-14** — **Energy OS schema — `energy_log` table (additive).**
+  - `lib/db.ts`: `energy_log` table — `(user_id, date, level, source, created_at)`, unique on
+    `(user_id, date)` (one record per user per day). `level` CHECK `('red','yellow','green')`;
+    `source` CHECK `('whoop','manual','override')`. Index on `(user_id, date)`.
+  - `energyLogQueries.getForDate(userId, date)` — returns today's energy record or `undefined`.
+  - `energyLogQueries.setEnergy(userId, date, level, source)` — upserts via `INSERT OR REPLACE`.
+    Callers pass the user's local YYYY-MM-DD date. Override source wins over Whoop tier (per spec).
+  - `EnergyLog` interface exported from `lib/db.ts`.
+  - `energy_log` rows added to both admin + self-service user-deletion routes; included in data export.
+  - 9 new in-memory integration tests covering: basic CRUD, upsert (one row per user-date after N
+    writes), cross-date isolation, cross-user isolation. 522/522 green, tsc clean, next build clean.
+  - **Core action items:** consume `energyLogQueries` from `lib/briefing.ts` (derive from Whoop
+    recovery tier + store as 'whoop'), from `vapi.ts` call handler (ask/store 'manual', store
+    override as 'override'), and from a new `GET/POST /api/energy` dashboard quick-set endpoint.
 - **2026-06-13** — **Data export + self-service account deletion (GDPR / Google CASA launch requirement).**
   - `GET /api/account/export` — user-scoped, returns a full JSON download of all user data:
     profile (no password_hash), priorities, memories, facts, tasks, briefings (with decrypted
