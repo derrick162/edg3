@@ -38,17 +38,30 @@
 
   /* Alpha tints */
   --edg-accent-glow:  rgba(99, 102, 241, 0.30);
+  --edg-accent-04:    rgba(99, 102, 241, 0.04);
+  --edg-accent-06:    rgba(99, 102, 241, 0.06);
   --edg-accent-08:    rgba(99, 102, 241, 0.08);
   --edg-accent-15:    rgba(99, 102, 241, 0.15);
   --edg-accent-20:    rgba(99, 102, 241, 0.20);
+  --edg-accent-25:    rgba(99, 102, 241, 0.25);
+  --edg-accent-60:    rgba(99, 102, 241, 0.60);
 
   --edg-hairline:      rgba(255, 255, 255, 0.06);
+  --edg-fill-04:       rgba(255, 255, 255, 0.04);
   --edg-fill-subtle:   rgba(255, 255, 255, 0.07); /* raised from 0.04 for form legibility */
   --edg-fill-hover:    rgba(255, 255, 255, 0.06);
+  --edg-border-10:     rgba(255, 255, 255, 0.10);
+  --edg-border-15:     rgba(255, 255, 255, 0.15);
 
-  --edg-success-tint: rgba(16,  185, 129, 0.15);
-  --edg-warning-tint: rgba(245, 158, 11,  0.15);
-  --edg-danger-tint:  rgba(239, 68,  68,  0.15);
+  --edg-overlay:      rgba(0, 0, 0, 0.55);
+  --edg-overlay-dark: rgba(0, 0, 0, 0.70);
+
+  --edg-success-tint:   rgba(16,  185, 129, 0.15);
+  --edg-success-border: rgba(16,  185, 129, 0.40);
+  --edg-warning-tint:   rgba(245, 158, 11,  0.15);
+  --edg-warning-border: rgba(245, 158, 11,  0.25);
+  --edg-danger-tint:    rgba(239, 68,  68,  0.15);
+  --edg-danger-border:  rgba(239, 68,  68,  0.30);
 
   /* Calendar action success — brighter green-400, distinct from edg-success */
   --edg-calendar-green:        #4ade80;
