@@ -1,0 +1,65 @@
+/* ============================================================
+   Edg3 — Color tokens
+   Deep near-black navy canvas, indigo→violet accent, glass
+   surfaces, semantic status colors. Values come straight from
+   the product codebase (app/globals.css).
+   ============================================================ */
+
+:root {
+  /* ---- Base palette ---------------------------------------- */
+  /* Canvas — near-black navy, the single source of depth */
+  --edg-bg:            #0a0a0f;   /* page background */
+  --edg-bg-elevated:   #111118;   /* card / panel surface */
+  --edg-bg-select:     #1a1a2e;   /* native select / popover fill */
+
+  /* Indigo → violet accent ramp */
+  --edg-indigo:        #6366f1;   /* primary accent */
+  --edg-indigo-bright: #818cf8;   /* accent text on dark */
+  --edg-violet:        #8b5cf6;   /* gradient partner */
+
+  /* Ink — text on the dark canvas */
+  --edg-fg:            #e8e8f0;   /* primary text */
+  --edg-fg-soft:       #c8c8d8;   /* long-form body */
+  --edg-fg-muted:      #888899;   /* secondary / captions */
+  --edg-fg-faint:      #4a4a5a;   /* disabled / hints / dividers-as-text */
+
+  /* Semantic status */
+  --edg-success:       #10b981;
+  --edg-warning:       #f59e0b;
+  --edg-danger:        #ef4444;
+
+  /* ---- Alpha tints (glass + glow) -------------------------- */
+  --edg-accent-glow:   rgba(99, 102, 241, 0.30);
+  --edg-accent-08:     rgba(99, 102, 241, 0.08);
+  --edg-accent-15:     rgba(99, 102, 241, 0.15);
+  --edg-accent-20:     rgba(99, 102, 241, 0.20);
+
+  --edg-hairline:      rgba(255, 255, 255, 0.06);  /* default card border */
+  --edg-hairline-soft: rgba(255, 255, 255, 0.05);  /* faint dividers */
+  --edg-fill-subtle:   rgba(255, 255, 255, 0.04);  /* input / inset fill */
+  --edg-fill-hover:    rgba(255, 255, 255, 0.06);  /* hovered inset fill */
+
+  --edg-success-tint:  rgba(16, 185, 129, 0.15);
+  --edg-warning-tint:  rgba(245, 158, 11, 0.15);
+  --edg-danger-tint:   rgba(239, 68, 68, 0.15);
+
+  /* ---- Semantic aliases ------------------------------------ */
+  --surface-page:      var(--edg-bg);
+  --surface-card:      var(--edg-bg-elevated);
+  --surface-input:     var(--edg-fill-subtle);
+
+  --text-strong:       var(--edg-fg);
+  --text-body:         var(--edg-fg-soft);
+  --text-muted:        var(--edg-fg-muted);
+  --text-faint:        var(--edg-fg-faint);
+  --text-accent:       var(--edg-indigo-bright);
+
+  --border-card:       var(--edg-hairline);
+  --border-accent:     rgba(99, 102, 241, 0.30);
+
+  --accent:            var(--edg-indigo);
+
+  /* Signature accent gradient (logo, primary button) */
+  --edg-gradient-accent: linear-gradient(135deg, #6366f1, #8b5cf6); /* @kind color */
+  --edg-gradient-logo:   linear-gradient(135deg, #e8e8f0 0%, #8b5cf6 50%, #6366f1 100%); /* @kind color */
+}

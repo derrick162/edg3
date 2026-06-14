@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, effectiveTimezone, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
@@ -9,6 +9,7 @@ import { linkEventsToFacts } from './facts';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
 import { computeWhoopCorrelations } from './whoopCorrelations';
+import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -398,6 +399,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Degrades silently to null when no energy preferences are stored yet.
   const preferencesFacts = structuredFacts.filter(f => f.category === 'preference');
   const energyMatchingBlock = buildEnergyMatchingBlock(preferencesFacts, whoopRecovery);
+  // Energy OS: derive today's energy signal (Whoop auto or stored manual/override).
+  const todayEnergyLog = (() => { try { return energyLogQueries.getToday(userId, today); } catch { return undefined; } })();
+  const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
+  const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
@@ -424,6 +429,8 @@ ${user.profile_summary || 'No profile summary available.'}
 
 THIS WEEK'S TOP PRIORITIES:
 ${prioritiesText}
+
+${energyBlock}
 
 TODAY'S CALENDAR:
 ${calendarText}

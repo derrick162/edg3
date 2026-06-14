@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Ink Scale" subtitle="Four steps of text emphasis on the dark canvas" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); }
+  .rows { padding: 22px; display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; align-items: baseline; gap: 14px; }
+  .demo { font-size: 17px; font-weight: 600; width: 230px; }
+  .val { font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+<div class="rows">
+  <div class="row"><span class="demo" style="color:var(--text-strong)">Primary — headings & UI</span><span class="val">--text-strong · #e8e8f0</span></div>
+  <div class="row"><span class="demo" style="color:var(--text-body)">Body — long-form reading</span><span class="val">--text-body · #c8c8d8</span></div>
+  <div class="row"><span class="demo" style="color:var(--text-muted)">Muted — secondary & captions</span><span class="val">--text-muted · #888899</span></div>
+  <div class="row"><span class="demo" style="color:var(--text-faint)">Faint — hints & disabled</span><span class="val">--text-faint · #4a4a5a</span></div>
+</div>
+</body>
+</html>

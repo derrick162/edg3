@@ -45,7 +45,20 @@ function initSchema(db: Database.Database) {
       text TEXT NOT NULL,
       week_of TEXT NOT NULL,
       rank INTEGER NOT NULL,
+      energy_cost TEXT CHECK(energy_cost IN ('high', 'medium', 'low')),
       created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Daily energy signal: one row per user per day; source determines confidence.
+    -- 'override' wins over 'whoop' (subjective felt-energy beats recovery score).
+    CREATE TABLE IF NOT EXISTS energy_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      date       TEXT NOT NULL,
+      level      TEXT NOT NULL CHECK(level IN ('red', 'yellow', 'green')),
+      source     TEXT NOT NULL CHECK(source IN ('whoop', 'manual', 'override')),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, date)
     );
 
     CREATE TABLE IF NOT EXISTS memories (
@@ -234,6 +247,19 @@ function initSchema(db: Database.Database) {
       scope         TEXT,
       updated_at    TEXT DEFAULT (datetime('now'))
     );
+
+    -- Daily energy state for a user — one row per user per day (UNIQUE enforces the
+    -- upsert contract). Source tracks whether the level was auto-derived from Whoop,
+    -- manually entered, or overridden by the user (override wins over whoop).
+    CREATE TABLE IF NOT EXISTS energy_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      date       TEXT NOT NULL,
+      level      TEXT NOT NULL CHECK(level IN ('red', 'yellow', 'green')),
+      source     TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('whoop', 'manual', 'override')),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, date)
+    );
   `);
 
   // Indexes for performance
@@ -249,6 +275,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
   `);
 
   // Migrations for existing databases
@@ -263,6 +290,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE calendar_tokens ADD COLUMN scope TEXT",
     "ALTER TABLE facts ADD COLUMN confidence TEXT NOT NULL DEFAULT 'high'",
     "ALTER TABLE facts ADD COLUMN source_briefing_id INTEGER REFERENCES briefings(id)",
+    "ALTER TABLE priorities ADD COLUMN energy_cost TEXT CHECK(energy_cost IN ('high', 'medium', 'low'))",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -317,6 +345,26 @@ export const priorityQueries = {
   },
   deleteThisWeek: (userId: number, weekOf: string) => {
     return getDb().prepare('DELETE FROM priorities WHERE user_id = ? AND week_of = ?').run(userId, weekOf);
+  },
+  setEnergyCost: (userId: number, id: number, energyCost: 'high' | 'medium' | 'low' | null) => {
+    return getDb().prepare('UPDATE priorities SET energy_cost = ? WHERE id = ? AND user_id = ?').run(energyCost, id, userId);
+  },
+};
+
+// Energy log queries — one row per user per day (UNIQUE constraint); source 'override' wins over 'whoop'.
+export const energyLogQueries = {
+  upsert: (userId: number, date: string, level: 'red' | 'yellow' | 'green', source: 'whoop' | 'manual' | 'override'): void => {
+    getDb().prepare(`
+      INSERT INTO energy_log (user_id, date, level, source)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        level = excluded.level,
+        source = excluded.source,
+        created_at = datetime('now')
+    `).run(userId, date, level, source);
+  },
+  getToday: (userId: number, date: string): EnergyLog | undefined => {
+    return getDb().prepare('SELECT * FROM energy_log WHERE user_id = ? AND date = ?').get(userId, date) as EnergyLog | undefined;
   },
 };
 
@@ -871,6 +919,16 @@ export interface Priority {
   text: string;
   week_of: string;
   rank: number;
+  energy_cost?: 'high' | 'medium' | 'low' | null;
+  created_at: string;
+}
+
+export interface EnergyLog {
+  id: number;
+  user_id: number;
+  date: string;
+  level: 'red' | 'yellow' | 'green';
+  source: 'whoop' | 'manual' | 'override';
   created_at: string;
 }
 
@@ -950,6 +1008,15 @@ export interface WhoopToken {
   expires_at: number;
   scope: string | null;
   updated_at: string;
+}
+
+export interface EnergyLog {
+  id: number;
+  user_id: number;
+  date: string;
+  level: 'red' | 'yellow' | 'green';
+  source: 'whoop' | 'manual' | 'override';
+  created_at: string;
 }
 
 export const whoopQueries = {
@@ -1032,3 +1099,5 @@ export const factQueries = {
     getDb().prepare('DELETE FROM facts WHERE id=? AND user_id=?').run(id, userId);
   },
 };
+
+// (energyLogQueries is defined once earlier with upsert/getToday — the API the app + tests use.)

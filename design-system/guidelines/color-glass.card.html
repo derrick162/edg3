@@ -1,0 +1,26 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Glass Tints" subtitle="Translucent fills & hairlines that build the frosted glass look" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 22px; }
+  .sw { border-radius: var(--radius-md); border: 1px solid var(--border-card); height: 70px; display: flex; flex-direction: column; justify-content: flex-end; padding: 10px; }
+  .name { font-size: 12px; font-weight: 600; }
+  .val { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px; }
+  /* show the checkerboard under translucency */
+  .stage { background-image: linear-gradient(45deg, #16161f 25%, transparent 25%), linear-gradient(-45deg, #16161f 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #16161f 75%), linear-gradient(-45deg, transparent 75%, #16161f 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+</style>
+</head>
+<body>
+<div class="grid stage">
+  <div class="sw" style="background:var(--edg-fill-subtle)"><span class="name">Input fill</span><span class="val">white 4%</span></div>
+  <div class="sw" style="background:var(--edg-hairline)"><span class="name">Hairline</span><span class="val">white 6%</span></div>
+  <div class="sw" style="background:var(--edg-accent-15)"><span class="name">Accent tint</span><span class="val">indigo 15%</span></div>
+  <div class="sw" style="background:var(--edg-accent-glow)"><span class="name">Accent glow</span><span class="val">indigo 30%</span></div>
+</div>
+</body>
+</html>

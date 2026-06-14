@@ -5,7 +5,7 @@ import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTim
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, factQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, factQueries, energyLogQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -1037,6 +1037,27 @@ Query: ${query}` }],
     const hasReadScope = hasGmailReadScope(tokenRow?.scope);
     const updates = hasReadScope ? await checkOutreachReplies(userId) : [];
     return formatRepliesForVoice(updates, hasReadScope);
+
+  } else if (fn === 'setEnergyLevel') {
+    const { level, source } = args as { level?: string; source?: string };
+    const validLevels = ['red', 'yellow', 'green'] as const;
+    const validSources = ['manual', 'override'] as const;
+    if (!level || !validLevels.includes(level as typeof validLevels[number])) {
+      return "Which energy level — red, yellow, or green?";
+    }
+    const src = validSources.includes(source as typeof validSources[number])
+      ? (source as 'manual' | 'override')
+      : 'manual';
+    const user = userQueries.findById(userId);
+    const tz = user ? effectiveTimezone(user) : 'America/Vancouver';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    energyLogQueries.upsert(userId, today, level as 'red' | 'yellow' | 'green', src);
+    const msgs: Record<string, string> = {
+      green: "Noted — full capacity today. I'll keep high-energy work up front.",
+      yellow: "Got it — moderate energy. I'll keep things balanced.",
+      red: "Understood — low energy today. I'll protect your time and lean on lighter work.",
+    };
+    return msgs[level] || 'Energy level saved.';
 
   } else if (fn === 'undoLastAction') {
     const last = undoQueries.getLatest(userId);

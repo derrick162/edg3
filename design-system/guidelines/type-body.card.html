@@ -1,0 +1,27 @@
+<!-- @dsCard group="Type" viewport="700x230" name="Body & Lede" subtitle="Reading text at three sizes with relaxed leading" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); }
+  .wrap { padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; max-width: 600px; }
+  .lede { font-size: var(--text-base); color: var(--text-strong); line-height: var(--leading-normal); margin: 0; }
+  .body { font-size: var(--text-sm); color: var(--text-body); line-height: var(--leading-relaxed); margin: 0; }
+  .cap { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
+  .val { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="lede">A 3-minute AI briefing that tells you exactly what deserves your attention today.</p>
+  <span class="val">Lede — 16px / 400 / 1.5 · --text-base</span>
+  <p class="body">Built on your goals, calendar, weekly priorities, and everything you've discussed before. Edge tracks the patterns you're too close to see.</p>
+  <span class="val">Body — 14px / 400 / 1.65 · --text-sm</span>
+  <p class="cap">Saved to memory · used in next briefing</p>
+  <span class="val">Caption — 12px / 400 · --text-xs</span>
+</div>
+</body>
+</html>

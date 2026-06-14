@@ -1,0 +1,28 @@
+/* ============================================================
+   Edg3 — Effects tokens
+   Glow over hard shadow. The brand's depth comes from ambient
+   indigo light and frosted blur, not from drop shadows.
+   ============================================================ */
+
+:root {
+  /* ---- Elevation / glow ------------------------------------ */
+  /* Cards rest flat; depth is implied by the hairline border.
+     Interactive surfaces gain an indigo glow on hover/focus.  */
+  --shadow-card:        none;
+  --shadow-hover-glow:  0 0 20px rgba(99, 102, 241, 0.10);
+  --shadow-btn-glow:    0 0 20px rgba(99, 102, 241, 0.30);
+  --shadow-btn-glow-lg: 0 0 30px rgba(99, 102, 241, 0.50);
+  --ring-focus:         0 0 0 3px rgba(99, 102, 241, 0.10);
+  --shadow-popover:     0 16px 40px rgba(0, 0, 0, 0.55);
+
+  /* ---- Blur (frosted card, glow orb, modal scrim) --------- */
+  --blur-glass:   blur(10px);  /* @kind other */
+  --blur-orb:     blur(80px);  /* @kind other */
+  --blur-overlay: blur(4px);   /* @kind other */
+
+  /* ---- Motion (easing + durations) ------------------------ */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);  /* @kind other */
+  --dur-fast:   0.1s;  /* @kind other */
+  --dur-base:   0.2s;  /* @kind other */
+  --dur-slow:   1.5s;  /* @kind other */
+}

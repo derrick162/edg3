@@ -1,0 +1,32 @@
+<!-- @dsCard group="Spacing" viewport="700x200" name="Glow & Elevation" subtitle="Depth comes from indigo glow, not drop shadow" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-strong); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 28px 24px; place-items: center; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .chip { width: 132px; height: 56px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+  .name { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); text-align: center; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="cell">
+    <div class="chip" style="background:var(--edg-gradient-accent);color:#fff;box-shadow:var(--shadow-btn-glow)">Button glow</div>
+    <span class="name">--shadow-btn-glow<br>indigo 30% · 20px</span>
+  </div>
+  <div class="cell">
+    <div class="chip" style="background:var(--surface-card);border:1px solid var(--border-accent);box-shadow:var(--shadow-hover-glow)">Hover lift</div>
+    <span class="name">--shadow-hover-glow<br>indigo 10% · 20px</span>
+  </div>
+  <div class="cell">
+    <div class="chip" style="background:var(--surface-input);border:1px solid rgba(99,102,241,0.5);box-shadow:var(--ring-focus)">Focus ring</div>
+    <span class="name">--ring-focus<br>indigo 10% · 3px ring</span>
+  </div>
+</div>
+</body>
+</html>

@@ -512,31 +512,17 @@ function TaskRow({ task, onToggle, onDelete }: {
   );
 }
 
-type EnergyCost = 'high' | 'med' | 'low';
-const ENERGY_COST_OPTIONS: { value: EnergyCost; label: string; color: string; tint: string; border: string }[] = [
-  { value: 'high', label: '⚡ High', color: 'var(--energy-red)', tint: 'var(--energy-red-tint)', border: 'var(--energy-red-border)' },
-  { value: 'med',  label: '◑ Med',  color: 'var(--energy-yellow)', tint: 'var(--energy-yellow-tint)', border: 'var(--energy-yellow-border)' },
-  { value: 'low',  label: '○ Low',  color: 'var(--energy-green)', tint: 'var(--energy-green-tint)', border: 'var(--energy-green-border)' },
+const ENERGY_COST_OPTIONS: { value: 'high' | 'medium' | 'low'; label: string; color: string; tint: string; border: string }[] = [
+  { value: 'high',   label: '⚡ High', color: 'var(--energy-red)',    tint: 'var(--energy-red-tint)',    border: 'var(--energy-red-border)' },
+  { value: 'medium', label: '◑ Med',  color: 'var(--energy-yellow)', tint: 'var(--energy-yellow-tint)', border: 'var(--energy-yellow-border)' },
+  { value: 'low',    label: '○ Low',  color: 'var(--energy-green)',  tint: 'var(--energy-green-tint)',  border: 'var(--energy-green-border)' },
 ];
 
-function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave: (p: string[]) => Promise<void> }) {
+function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities: Priority[]; onSave: (p: string[]) => Promise<void>; onEnergyCostChange?: (id: number, cost: 'high' | 'medium' | 'low' | null) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(['', '', '']);
   const [loading, setLoading] = useState(false);
-  const [energyCosts, setEnergyCosts] = useState<Record<number, EnergyCost>>(() => {
-    try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem('edg3-energy-costs') : null;
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
-
-  function setEnergyCost(priorityId: number, cost: EnergyCost) {
-    setEnergyCosts(prev => {
-      const next = { ...prev, [priorityId]: cost };
-      try { localStorage.setItem('edg3-energy-costs', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }
+  const [savingCost, setSavingCost] = useState<number | null>(null);
 
   function startEdit() {
     setValues([
@@ -611,15 +597,21 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
                     {i + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm pt-1 mb-2">{p.text}</p>
+                    <p className="font-medium text-sm mb-2">{p.text}</p>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Energy cost:</span>
                       {ENERGY_COST_OPTIONS.map(opt => {
-                        const active = energyCosts[p.id] === opt.value;
+                        const active = p.energy_cost === opt.value;
                         return (
                           <button
                             key={opt.value}
-                            onClick={() => setEnergyCost(p.id, opt.value)}
+                            disabled={savingCost === p.id}
+                            onClick={async () => {
+                              const next = p.energy_cost === opt.value ? null : opt.value;
+                              setSavingCost(p.id);
+                              await onEnergyCostChange?.(p.id, next);
+                              setSavingCost(null);
+                            }}
                             className="text-xs px-2 py-0.5 rounded-full transition-all"
                             style={active
                               ? { background: opt.tint, border: `1px solid ${opt.border}`, color: opt.color, fontWeight: 600 }
@@ -940,6 +932,7 @@ interface Priority {
   text: string;
   rank: number;
   week_of?: string;
+  energy_cost?: 'high' | 'medium' | 'low' | null;
 }
 
 interface Memory {
@@ -1014,8 +1007,6 @@ export default function Dashboard() {
     strain: number | null;
     history: { date: string; score: number }[];
   } | null>(null);
-  const [energyLevel, setEnergyLevelState] = useState<'green' | 'yellow' | 'red' | null>(null);
-  const [energyLogging, setEnergyLogging] = useState(false);
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
@@ -1030,6 +1021,8 @@ export default function Dashboard() {
   const [retryingCall, setRetryingCall] = useState(false);
   const [retryCalled, setRetryCalled] = useState(false);
   const [copiedTranscriptId, setCopiedTranscriptId] = useState<number | null>(null);
+  const [energySignal, setEnergySignal] = useState<{ level: 'red' | 'yellow' | 'green'; source: string } | null>(null);
+  const [settingEnergy, setSettingEnergy] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1069,6 +1062,7 @@ export default function Dashboard() {
     retryFetch('/api/tasks', d => setTasks(d.tasks || []));
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
+    fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -1077,24 +1071,10 @@ export default function Dashboard() {
         // Connected → pull recovery score + 14-day history for the dashboard card.
         fetch('/api/whoop/recovery')
           .then(r => r.ok ? r.json() : null)
-          .then(rd => {
-            if (rd && rd.connected) {
-              setWhoopData(rd);
-              // Pre-fill energy level from Whoop recovery tier (user can override)
-              if (rd.tier && !energyLevel) {
-                const tierMap: Record<string, 'green' | 'yellow' | 'red'> = { high: 'green', medium: 'yellow', low: 'red' };
-                setEnergyLevelState(tierMap[rd.tier] ?? null);
-              }
-            }
-          })
+          .then(rd => { if (rd && rd.connected) setWhoopData(rd); })
           .catch(() => {});
       }
     }).catch(() => {});
-    // Load today's manually-set energy level
-    fetch('/api/energy/today')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.level) setEnergyLevelState(d.level); })
-      .catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1321,21 +1301,6 @@ export default function Dashboard() {
     const res = await fetch('/api/whoop/disconnect', { method: 'POST' });
     setDisconnectingWhoop(false);
     if (res.ok) setWhoopConnected(false);
-  }
-
-  async function logEnergyLevel(level: 'green' | 'yellow' | 'red') {
-    setEnergyLogging(true);
-    setEnergyLevelState(level);
-    try {
-      await fetch('/api/energy/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level }),
-      });
-    } catch {
-      // API not built yet — state is set locally, Edge will get it on next briefing
-    }
-    setEnergyLogging(false);
   }
 
   if (!user) {
@@ -1585,9 +1550,20 @@ export default function Dashboard() {
                 ] as const).map(({ level, emoji, label, color, tint, border }) => (
                   <button
                     key={level}
-                    onClick={() => !energyLogging && logEnergyLevel(level)}
+                    disabled={settingEnergy}
+                    onClick={async () => {
+                      setSettingEnergy(true);
+                      const src = energySignal?.source === 'whoop' ? 'override' : 'manual';
+                      const res = await fetch('/api/energy/today', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ level, source: src }),
+                      });
+                      if (res.ok) setEnergySignal({ level, source: src });
+                      setSettingEnergy(false);
+                    }}
                     className="flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-xs font-medium transition-all"
-                    style={energyLevel === level
+                    style={energySignal?.level === level
                       ? { background: tint, border: `1px solid ${border}`, color }
                       : { background: 'transparent', border: '1px solid var(--edg-hairline)', color: 'var(--text-faint)' }
                     }
@@ -1597,20 +1573,19 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
-              {energyLevel && (
+              {energySignal ? (
                 <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>
-                  {energyLevel === 'green' ? 'Full power — Edge will schedule high-focus work today.' :
-                   energyLevel === 'yellow' ? 'Moderate day — Edge will mix focused + lighter tasks.' :
+                  {energySignal.level === 'green' ? 'Full power — Edge will schedule high-focus work today.' :
+                   energySignal.level === 'yellow' ? 'Moderate day — Edge will mix focused + lighter tasks.' :
                    'Low energy — Edge will protect your schedule and defer deep work.'}
+                  {energySignal.source === 'whoop' && <span className="ml-1 opacity-60">(from Whoop)</span>}
                 </p>
-              )}
-              {!energyLevel && (
+              ) : (
                 <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
                   Set before your call → Edge skips asking
                 </p>
               )}
             </div>
-
             {calendarConnected === false ? (
               <button
                 onClick={connectCalendar}
@@ -1963,6 +1938,13 @@ export default function Dashboard() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ priorities: newPriorities }),
+              });
+              loadData();
+            }} onEnergyCostChange={async (id, cost) => {
+              await fetch(`/api/priorities/${id}/energy`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ energy_cost: cost }),
               });
               loadData();
             }} />
