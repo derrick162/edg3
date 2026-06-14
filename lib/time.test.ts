@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -217,5 +217,44 @@ describe('timedEventDateMove — timed event + date-only input preserves wall-cl
     const r = timedEventDateMove('2026-06-15T10:00:00Z', '', '2026-06-26', 'UTC');
     expect(r.start.dateTime).toBe('2026-06-26T10:00:00');
     expect(r.end.dateTime).toBe('2026-06-26T11:00:00');
+  });
+});
+
+describe('recurringSeriesTimeShift — move a whole recurring series to a new time, keep the anchor date', () => {
+  it('shifts gym 11am→2pm on the master anchor date (the gym-move bug)', () => {
+    // Master anchored 2026-06-08 (a Monday) 11:00–12:00; move all to 2–3pm.
+    const r = recurringSeriesTimeShift(
+      '2026-06-08T11:00:00-04:00', '2026-06-08T12:00:00-04:00',
+      '14:00', '15:00', 'America/Toronto',
+    );
+    expect(r.start.dateTime).toBe('2026-06-08T14:00:00'); // anchor DATE unchanged
+    expect(r.end.dateTime).toBe('2026-06-08T15:00:00');
+    expect(r.start.timeZone).toBe('America/Toronto');
+    expect(r.start).not.toHaveProperty('date');
+  });
+
+  it('accepts "HH:MM" times and pads seconds', () => {
+    const r = recurringSeriesTimeShift(
+      '2026-06-08T09:00:00Z', '2026-06-08T09:30:00Z', '13:45', '14:15', 'UTC',
+    );
+    expect(r.start.dateTime).toBe('2026-06-08T13:45:00');
+    expect(r.end.dateTime).toBe('2026-06-08T14:15:00');
+  });
+
+  it('rolls the end date forward when the new time crosses midnight', () => {
+    const r = recurringSeriesTimeShift(
+      '2026-06-08T20:00:00Z', '2026-06-08T21:00:00Z', '23:30', '00:30', 'UTC',
+    );
+    expect(r.start.dateTime).toBe('2026-06-08T23:30:00');
+    expect(r.end.dateTime).toBe('2026-06-09T00:30:00'); // next day
+  });
+
+  it('preserves the original duration when no end time is supplied', () => {
+    // 90-minute master, move start to 14:00, no explicit end → 15:30.
+    const r = recurringSeriesTimeShift(
+      '2026-06-08T11:00:00Z', '2026-06-08T12:30:00Z', '14:00', '', 'UTC',
+    );
+    expect(r.start.dateTime).toBe('2026-06-08T14:00:00');
+    expect(r.end.dateTime).toBe('2026-06-08T15:30:00');
   });
 });
