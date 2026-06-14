@@ -193,26 +193,36 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
   }
 }
 
-export async function scheduleBriefingCall(userId: number) {
+export async function scheduleBriefingCall(userId: number, opts: { force?: boolean } = {}) {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
-  // Idempotency guard: refuse to fire a second briefing call if one is already in
-  // progress or has completed today (in the user's local timezone).
   const tz = effectiveTimezone(user);
   const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
-  // Only a COMPLETED call, or a call started in the last 15 min, blocks a new one. A stale
-  // 'calling' row (initiated but never completed — e.g. the end-webhook never arrived) must
-  // NOT permanently block the day, or "call me now" / the scheduler can never recover.
-  const callingCutoff = new Date(Date.now() - STALE_CALLING_MS).toISOString();
-  const existing = getDb().prepare(
-    `SELECT status FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (status = 'completed' OR (status = 'calling' AND scheduled_for >= ?)) ORDER BY scheduled_for DESC LIMIT 1`
-  ).get(userId, `${today}%`, callingCutoff) as { status: string } | undefined;
-  if (existing) {
-    const msg = existing.status === 'completed'
-      ? "You already had a call today — use the open call to chat with Edge now."
-      : "A call is already in progress. Check back in a moment.";
-    throw new CallError(msg, 'already_called');
+  if (opts.force) {
+    // Explicit user request ("Call me now" / report-missed-call): bypass the once-a-day
+    // guard — the user is telling us they want a call now (e.g. an earlier call was wrongly
+    // marked completed after hitting voicemail). Still block a genuine double-click: refuse
+    // only if a call actually started in the last 3 minutes.
+    const recentCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    const inFlight = getDb().prepare(
+      `SELECT 1 FROM briefings WHERE user_id = ? AND status = 'calling' AND scheduled_for >= ?`
+    ).get(userId, recentCutoff);
+    if (inFlight) throw new CallError('A call is already dialing — give it a moment.', 'already_called');
+  } else {
+    // Auto-scheduler / non-forced: a COMPLETED call always blocks; a 'calling' row blocks
+    // only if recent. A stale 'calling' (>15 min, e.g. the end-webhook never arrived) stays
+    // retryable so one dropped call doesn't suppress the whole day.
+    const callingCutoff = new Date(Date.now() - STALE_CALLING_MS).toISOString();
+    const existing = getDb().prepare(
+      `SELECT status FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (status = 'completed' OR (status = 'calling' AND scheduled_for >= ?)) ORDER BY scheduled_for DESC LIMIT 1`
+    ).get(userId, `${today}%`, callingCutoff) as { status: string } | undefined;
+    if (existing) {
+      const msg = existing.status === 'completed'
+        ? "You already had a call today — use the open call to chat with Edge now."
+        : "A call is already in progress. Check back in a moment.";
+      throw new CallError(msg, 'already_called');
+    }
   }
 
   const now = new Date();

@@ -7,7 +7,9 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const briefingId = await scheduleBriefingCall(user.id);
+    // Manual "Call me now" is an explicit user request — force past the once-a-day guard
+    // (e.g. when an earlier call was wrongly marked completed after hitting voicemail).
+    const briefingId = await scheduleBriefingCall(user.id, { force: true });
     return NextResponse.json({ success: true, briefingId });
   } catch (err) {
     console.error('Call initiation error:', err);
