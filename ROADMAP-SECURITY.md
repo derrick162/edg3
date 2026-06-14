@@ -8,6 +8,26 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-13** — **At-rest encryption verification + user deletion completeness + Google CASA prep.**
+  - `lib/db-encryption.test.ts` (11 tests): integration proof that ciphertext is
+    stored on disk for `calendar_tokens` (access+refresh), `whoop_tokens`
+    (access+refresh), and `briefings` (transcript+user_response). Each test writes
+    via the normal query helper, reads raw SQLite bytes and asserts `enc:1:` prefix,
+    then reads via the normal get path and asserts plaintext round-trip. Also verifies
+    no-key degradation (plaintext stored transparently). 452/452 green.
+  - `app/api/admin/users/[id]/route.ts`: user deletion was missing 9 tables.
+    Added `whoop_tokens` (health PII — critical), `gmail_drafts_log`,
+    `watched_threads`, `notifications`, `audit_log`, `facts`, `preview_briefings`,
+    `undo_log`, `event_dedupe_keys`, `delete_confirm_tokens`. All user data is now
+    fully purged on account deletion.
+  - `specs/google-verification.md`: Google CASA prep document — scope inventory
+    (calendar.readonly, calendar.events, gmail.compose, gmail.readonly) with
+    justifications and code pointers; data handling + storage table; security
+    controls summary; retention/deletion policy; draft Google security questionnaire
+    answers; demo video shot-list (7 scenes); CASA process notes and pre-submission
+    checklist. Two action items surfaced: (a) self-service `DELETE /api/account`
+    endpoint needed before CASA (currently admin-only); (b) Google token revocation
+    call missing from disconnect flow (Core lane).
 - **2026-06-13** — **Whoop history fetch primitive.**
   Added `getRecoveryHistory(userId, days=14)`, `getSleepHistory(userId, days=14)`,
   `getStrainHistory(userId, days=14)` to `lib/whoop.ts`. Each uses the WHOOP v2

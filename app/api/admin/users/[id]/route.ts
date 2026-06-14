@@ -19,12 +19,23 @@ export async function DELETE(
 
     const db = getDb();
 
-    // Delete all related data
+    // Delete all user-related data before removing the user row.
+    // Order: leaf tables first (no outbound FKs), users last.
+    db.prepare('DELETE FROM whoop_tokens WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM gmail_drafts_log WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM watched_threads WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM facts WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM briefings WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM preview_briefings WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM memories WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM priorities WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM tasks WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM undo_log WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM event_dedupe_keys WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM delete_confirm_tokens WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
 
     return NextResponse.json({ success: true });
