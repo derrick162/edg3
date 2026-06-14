@@ -260,6 +260,18 @@ function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(user_id, date)
     );
+
+    -- Milestones for focus areas (priorities). Lightweight check-off list per priority.
+    -- done_at captures when the milestone was completed so briefings can celebrate recent wins.
+    CREATE TABLE IF NOT EXISTS focus_milestones (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      priority_id INTEGER NOT NULL REFERENCES priorities(id) ON DELETE CASCADE,
+      text        TEXT NOT NULL,
+      done        INTEGER NOT NULL DEFAULT 0,
+      done_at     TEXT,
+      created_at  TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -276,6 +288,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
+    CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
   `);
 
   // Migrations for existing databases
@@ -365,6 +378,36 @@ export const energyLogQueries = {
   },
   getToday: (userId: number, date: string): EnergyLog | undefined => {
     return getDb().prepare('SELECT * FROM energy_log WHERE user_id = ? AND date = ?').get(userId, date) as EnergyLog | undefined;
+  },
+};
+
+// Focus milestone queries — per-priority check-off list for the Focus Scoreboard.
+export const focusMilestoneQueries = {
+  listForUser: (userId: number): FocusMilestone[] => {
+    return getDb().prepare(
+      'SELECT * FROM focus_milestones WHERE user_id = ? ORDER BY priority_id, created_at'
+    ).all(userId) as FocusMilestone[];
+  },
+  listForPriority: (userId: number, priorityId: number): FocusMilestone[] => {
+    return getDb().prepare(
+      'SELECT * FROM focus_milestones WHERE user_id = ? AND priority_id = ? ORDER BY created_at'
+    ).all(userId, priorityId) as FocusMilestone[];
+  },
+  create: (userId: number, priorityId: number, text: string) => {
+    return getDb().prepare(
+      'INSERT INTO focus_milestones (user_id, priority_id, text) VALUES (?, ?, ?)'
+    ).run(userId, priorityId, text);
+  },
+  setDone: (id: number, userId: number, done: boolean) => {
+    const doneAt = done ? new Date().toISOString() : null;
+    return getDb().prepare(
+      'UPDATE focus_milestones SET done = ?, done_at = ? WHERE id = ? AND user_id = ?'
+    ).run(done ? 1 : 0, doneAt, id, userId);
+  },
+  remove: (id: number, userId: number) => {
+    return getDb().prepare(
+      'DELETE FROM focus_milestones WHERE id = ? AND user_id = ?'
+    ).run(id, userId);
   },
 };
 
@@ -920,6 +963,16 @@ export interface Priority {
   week_of: string;
   rank: number;
   energy_cost?: 'high' | 'medium' | 'low' | null;
+  created_at: string;
+}
+
+export interface FocusMilestone {
+  id: number;
+  user_id: number;
+  priority_id: number;
+  text: string;
+  done: number; // SQLite integer: 0 or 1
+  done_at: string | null;
   created_at: string;
 }
 
