@@ -512,10 +512,11 @@ function TaskRow({ task, onToggle, onDelete }: {
   );
 }
 
-function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave: (p: string[]) => Promise<void> }) {
+function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities: Priority[]; onSave: (p: string[]) => Promise<void>; onEnergyCostChange?: (id: number, cost: 'high' | 'medium' | 'low' | null) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(['', '', '']);
   const [loading, setLoading] = useState(false);
+  const [savingCost, setSavingCost] = useState<number | null>(null);
 
   function startEdit() {
     setValues([
@@ -589,7 +590,34 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
                        style={{ background: 'var(--edg-accent-20)', color: 'var(--text-accent)' }}>
                     {i + 1}
                   </div>
-                  <p className="font-medium text-sm pt-1">{p.text}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm mb-2">{p.text}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Energy cost:</span>
+                      {(['high', 'medium', 'low'] as const).map(cost => (
+                        <button
+                          key={cost}
+                          disabled={savingCost === p.id}
+                          onClick={async () => {
+                            const next = p.energy_cost === cost ? null : cost;
+                            setSavingCost(p.id);
+                            await onEnergyCostChange?.(p.id, next);
+                            setSavingCost(null);
+                          }}
+                          className="text-xs py-0.5 px-2 rounded-full transition-all"
+                          style={{
+                            background: p.energy_cost === cost
+                              ? (cost === 'high' ? 'var(--edg-danger)' : cost === 'medium' ? 'var(--edg-warning)' : 'var(--edg-success)')
+                              : 'var(--edg-hairline)',
+                            color: p.energy_cost === cost ? '#fff' : 'var(--text-faint)',
+                            border: p.energy_cost === cost ? 'none' : '1px solid var(--edg-border-10)',
+                          }}
+                        >
+                          {cost}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -898,6 +926,7 @@ interface Priority {
   text: string;
   rank: number;
   week_of?: string;
+  energy_cost?: 'high' | 'medium' | 'low' | null;
 }
 
 interface Memory {
@@ -986,6 +1015,8 @@ export default function Dashboard() {
   const [retryingCall, setRetryingCall] = useState(false);
   const [retryCalled, setRetryCalled] = useState(false);
   const [copiedTranscriptId, setCopiedTranscriptId] = useState<number | null>(null);
+  const [energySignal, setEnergySignal] = useState<{ level: 'red' | 'yellow' | 'green'; source: string } | null>(null);
+  const [settingEnergy, setSettingEnergy] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1025,6 +1056,7 @@ export default function Dashboard() {
     retryFetch('/api/tasks', d => setTasks(d.tasks || []));
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
+    fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -1499,6 +1531,47 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+            <div className="glass-card p-3">
+              <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
+                Today&apos;s energy
+                {energySignal && (
+                  <span className="ml-1 font-semibold" style={{
+                    color: energySignal.level === 'green' ? 'var(--edg-success)' : energySignal.level === 'yellow' ? 'var(--edg-warning)' : 'var(--edg-danger)',
+                  }}>
+                    {energySignal.level}
+                  </span>
+                )}
+              </p>
+              <div className="flex gap-1">
+                {(['red', 'yellow', 'green'] as const).map(lvl => (
+                  <button
+                    key={lvl}
+                    disabled={settingEnergy}
+                    onClick={async () => {
+                      setSettingEnergy(true);
+                      const src = energySignal?.source === 'whoop' ? 'override' : 'manual';
+                      const res = await fetch('/api/energy/today', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ level: lvl, source: src }),
+                      });
+                      if (res.ok) setEnergySignal({ level: lvl, source: src });
+                      setSettingEnergy(false);
+                    }}
+                    className="flex-1 py-1 rounded text-xs font-semibold transition-all"
+                    style={{
+                      background: energySignal?.level === lvl
+                        ? (lvl === 'green' ? 'var(--edg-success)' : lvl === 'yellow' ? 'var(--edg-warning)' : 'var(--edg-danger)')
+                        : 'var(--edg-hairline)',
+                      color: energySignal?.level === lvl ? '#fff' : 'var(--text-faint)',
+                      border: energySignal?.level === lvl ? 'none' : '1px solid var(--edg-border-10)',
+                    }}
+                  >
+                    {lvl === 'red' ? 'Red' : lvl === 'yellow' ? 'Yellow' : 'Green'}
+                  </button>
+                ))}
+              </div>
+            </div>
             {calendarConnected === false ? (
               <button
                 onClick={connectCalendar}
@@ -1851,6 +1924,13 @@ export default function Dashboard() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ priorities: newPriorities }),
+              });
+              loadData();
+            }} onEnergyCostChange={async (id, cost) => {
+              await fetch(`/api/priorities/${id}/energy`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ energy_cost: cost }),
               });
               loadData();
             }} />

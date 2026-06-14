@@ -9,6 +9,34 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-14** — **Energy OS MVP — daily energy signal + priority cost tags + dashboard setter.**
+  - **`lib/energy.ts`** (pure, 0 I/O): `EnergyLevel`, `EnergySignal`, `whoopTierToLevel(score)`,
+    `deriveEnergySignal(log, whoopScore)` (precedence: stored override > stored manual > Whoop auto > null),
+    `formatEnergyForBriefing(signal, priorities, firstName)` (ENERGY STATE + FOCUS-AREA ENERGY COSTS +
+    RED DAY ACTION blocks), `formatEnergyForCall(signal, firstName)` (compact line or ask-early prompt).
+    18 new tests in `lib/energy.test.ts`.
+  - **`lib/db.ts`**: `energy_log` table (UNIQUE(user_id, date) ensures one row per day; upsert-on-conflict);
+    `energyLogQueries.upsert()` + `.getToday()`. `energy_cost` column on `priorities` (migration-safe ALTER);
+    `priorityQueries.setEnergyCost()`. `Priority.energy_cost` optional (new migration column may be absent).
+    `EnergyLog` interface.
+  - **`lib/briefing.ts`**: derives today's energy signal from stored log or Whoop recovery; calls
+    `formatEnergyForBriefing` and injects ENERGY block into `userPrompt` between priorities and calendar.
+    Fixed `{firstName}` placeholder — now passes real first name.
+  - **`lib/vapi.ts`**: 11th `energyText` param in `initiateCall`; injected after WHOOP DATA section.
+    `setEnergyLevel` tool guidance bullet (level red/yellow/green, source manual/override).
+  - **`lib/scheduler.ts`**: `currentEnergyText(userId)` — derives signal from log or Whoop recovery;
+    both `scheduleBriefingCall` and `scheduleOpenCall` pass it as the 11th arg to `initiateCall`.
+  - **`app/api/energy/today/route.ts`** (new): `GET` returns today's energy signal (log or Whoop-derived);
+    `POST` upserts a manual entry.
+  - **`app/api/priorities/[id]/energy/route.ts`** (new): `PATCH` sets `energy_cost` on a priority.
+  - **`app/api/vapi/tool-call/route.ts`**: `setEnergyLevel` handler — validates level/source, upserts to
+    `energy_log`, returns spoken confirmation.
+  - **Dashboard**: `energySignal` state; loaded via `/api/energy/today` in `loadData`. Sidebar energy
+    quick-set card (Red / Yellow / Green buttons; active level highlighted; POST to `/api/energy/today`
+    on click; source 'override' if Whoop was the prior source). Priorities tab: per-priority energy-cost
+    badges (high/medium/low); click to set or toggle off; PATCH `/api/priorities/[id]/energy`.
+  - 18 new tests. 534/534 green, tsc clean, next build clean.
+  - ⚠️ **External step (PM):** Create `setEnergyLevel` tool in Vapi dashboard. Params: `level` (string, required — red/yellow/green), `source` (string, optional — manual/override). Paste UUID into `lib/vapi.ts` toolIds.
 - **2026-06-13** — **Stronger Whoop recommendations — baseline-relative + composite signal (Priority 4).**
   - `buildBaselineContext(recovery, recoveryHistory, recentSleepMs, recentStrain)` pure helper
     added to `lib/briefing.ts`. Computes "today 45% · 7-day avg 63% · −18 pts" baseline line.

@@ -192,7 +192,7 @@ describe('preference injection into initiateCall', () => {
     // 8th arg (index 7) = preferencesText (''); 9th arg (index 8) = whoopText ('' when Whoop not connected in tests)
     expect(h.initiateCall).toHaveBeenCalledWith(
       expect.any(String), expect.any(String), expect.any(String),
-      expect.any(Boolean), expect.any(String), false, expect.any(String), '', '', expect.any(String),
+      expect.any(Boolean), expect.any(String), false, expect.any(String), '', '', expect.any(String), expect.any(String),
     );
   });
 
