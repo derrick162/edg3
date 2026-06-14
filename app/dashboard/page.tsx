@@ -227,6 +227,34 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   );
 }
 
+function SectionHint({ id, text }: { id: string; text: string }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !localStorage.getItem(`edg3-hint-${id}`)) {
+      setVisible(true);
+    }
+  }, [id]);
+  if (!visible) return null;
+  return (
+    <div
+      className="flex items-start gap-3 mb-5 px-3 py-2.5 rounded-lg"
+      style={{ background: 'rgba(255,255,255,0.03)', borderLeft: '2px solid var(--edg-hairline)' }}
+    >
+      <p className="text-xs flex-1 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+        {text}
+      </p>
+      <button
+        onClick={() => { localStorage.setItem(`edg3-hint-${id}`, '1'); setVisible(false); }}
+        className="text-xs flex-shrink-0 mt-0.5 px-1"
+        style={{ color: 'var(--text-faint)' }}
+        aria-label="Dismiss"
+      >
+        &#x2715;
+      </button>
+    </div>
+  );
+}
+
 function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
   tasks: Task[];
   onToggle: (id: number, completed: boolean) => Promise<void>;
@@ -296,33 +324,28 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
 
   return (
     <div>
-      {filterControl}
+      <SectionHint
+        id="tasks"
+        text="Things Edge is tracking for you. Complete them or let them carry over — Edge holds you accountable on your morning calls."
+      />
 
-      <div className="flex items-center justify-between mb-4">
+      {/* Heading row + filter pills on same line */}
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h2 className="text-lg font-bold">{headingByView[filterView]}</h2>
-        <div className="flex items-center gap-3">
-          {filterView === 'open' && incompleteVisible.length > 0 && (
-            <button
-              onClick={handleCompleteAll}
-              disabled={completingAll}
-              className="text-xs font-medium transition-colors"
-              style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
-            >
-              {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
-            </button>
-          )}
+        <div className="flex items-center gap-2">
           {filterView === 'open' && (
-            <span className="badge badge-info">
+            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
               {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
             </span>
           )}
+          {filterControl}
         </div>
       </div>
 
-      {/* Add task — always visible */}
-      <form onSubmit={handleAdd} className="flex gap-3 mb-6">
+      {/* Add task form */}
+      <form onSubmit={handleAdd} className="flex gap-2 mb-6">
         <input
-          className="input flex-1"
+          className="input flex-1 text-sm"
           placeholder="Add a task…"
           value={newTask}
           onChange={e => setNewTask(e.target.value)}
@@ -335,10 +358,12 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
       {/* Open view */}
       {filterView === 'open' && (
         <>
-          {todayTasks.filter(t => t.source === 'edg3').length > 0 && (
-            <div className="mb-2">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>✦ SUGGESTED BY EDG3</p>
-              <div className="space-y-2">
+          {todayTasks.filter(t => t.source === 'edg3' && !t.completed).length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--edg-indigo)' }}>
+                <span>✦</span> From Edge
+              </p>
+              <div className="space-y-1.5">
                 {todayTasks.filter(t => t.source === 'edg3' && !t.completed).map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
                 ))}
@@ -346,28 +371,41 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
             </div>
           )}
           {todayTasks.filter(t => t.source === 'manual' && !t.completed).length > 0 && (
-            <div className="mb-2 mt-4">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>YOUR TASKS</p>
-              <div className="space-y-2">
+            <div className="mb-4">
+              <div className="space-y-1.5">
                 {todayTasks.filter(t => t.source === 'manual' && !t.completed).map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
                 ))}
               </div>
             </div>
           )}
+          {incompleteVisible.length > 1 && (
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={handleCompleteAll}
+                disabled={completingAll}
+                className="text-xs font-medium"
+                style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
+              >
+                {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
+              </button>
+            </div>
+          )}
           {incompleteVisible.length === 0 && (
             <div className="glass-card p-8 text-center mb-4">
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 {todayTasks.length === 0
-                  ? 'No tasks yet today. They\'ll appear here after your morning call.'
+                  ? "No tasks yet — they'll appear after your morning call."
                   : 'All done for today.'}
               </p>
             </div>
           )}
           {pastTasks.length > 0 && (
-            <div className="mt-6">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-warning)' }}>⚠ CARRIED OVER</p>
-              <div className="space-y-2">
+            <div className="mt-5">
+              <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--edg-warning)' }}>
+                <span>⚠</span> Carried over
+              </p>
+              <div className="space-y-1.5">
                 {pastTasks.map(task => (
                   <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
                 ))}
@@ -384,7 +422,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No completed tasks in the last 30 days.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {completedTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
             ))}
@@ -399,7 +437,7 @@ function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {allTasks.map(task => (
               <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
             ))}
@@ -483,8 +521,12 @@ function PrioritiesTab({ priorities, onSave }: { priorities: Priority[]; onSave:
 
   return (
     <div>
+      <SectionHint
+        id="priorities"
+        text="Your north star. Edge anchors every briefing and scheduling suggestion to these."
+      />
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">This week's priorities</h2>
+        <h2 className="text-lg font-bold">This week&apos;s priorities</h2>
         {!editing && (
           <button onClick={startEdit} className="btn-secondary text-sm py-2 px-4">
             ✎ Edit
@@ -646,6 +688,10 @@ function ActivityTab() {
 
   return (
     <div>
+      <SectionHint
+        id="activity"
+        text="Every change Edge made to your calendar. Review or undo anything."
+      />
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-lg font-bold">Edge&apos;s actions</h2>
         <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
@@ -1531,6 +1577,10 @@ export default function Dashboard() {
           {/* Tab content */}
           {activeTab === 'briefings' && (
             <div>
+              <SectionHint
+                id="briefings"
+                text="Your call history and full transcripts."
+              />
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
               {!briefingsLoaded ? (
                 <div className="glass-card p-8 text-center">
@@ -1730,6 +1780,10 @@ export default function Dashboard() {
 
           {activeTab === 'memory' && (
             <div>
+              <SectionHint
+                id="memory"
+                text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
+              />
               <h2 className="text-lg font-bold mb-1">Here&apos;s what Edge knows about you</h2>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
                 Built up over your calls — everything here came directly from conversations with you.
