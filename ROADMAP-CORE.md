@@ -9,6 +9,30 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-14** — **Focus Scoreboard — milestone check-offs + per-area progress + briefing momentum.**
+  - **`lib/db.ts`**: `focus_milestones` table (cascades on priority delete; `done_at` tracks completion time);
+    `FocusMilestone` interface; `focusMilestoneQueries { listForUser, listForPriority, create, setDone, remove }`.
+    Index on `(user_id, priority_id)`.
+  - **`lib/focusProgress.ts`** (pure, 0 I/O): `buildFocusProgress(priorities, alignment, milestones)` →
+    `FocusProgress[]` per area: `hoursThisWeek` (from alignment), `milestonesDone/Total`, `isComplete`
+    (all milestones done + ≥1 exist), `neglected` (< 0.5h this week). `formatFocusScoreboardForBriefing`
+    builds FOCUS SCOREBOARD prompt block: momentum line per area, CELEBRATE block for milestones completed
+    in the last 26h, NEGLECTED block with free-slot offer instruction. 14 new tests.
+  - **`lib/briefing.ts`**: fetches all milestones for user; builds `focusProgress` + `recentlyDoneMilestones`
+    (26h window); injects FOCUS SCOREBOARD block into `userPrompt` after ALIGNMENT DATA.
+  - **`lib/vapi.ts`**: FOCUS SCOREBOARD live-call note — celebrate milestone wins, proactively offer to
+    block time for neglected areas (findTime + createEvent on yes).
+  - **API routes** (all user-scoped):
+    - `GET /api/milestones` — list all milestones for user (bulk dashboard fetch)
+    - `GET /api/priorities/[id]/milestones` — list milestones for one priority
+    - `POST /api/priorities/[id]/milestones` — add milestone (`text`)
+    - `PATCH /api/milestones/[id]` — toggle done (`done: boolean`)
+    - `DELETE /api/milestones/[id]` — remove milestone
+  - **Dashboard** (`app/dashboard/page.tsx`): `milestones` state; loaded via `GET /api/milestones` in
+    `loadData`. `PrioritiesTab` extended: per-priority milestone checklist (check-off, inline add with
+    Enter/Escape/blur, hover-delete ×). Handlers: `onMilestoneAdd` (POST), `onMilestoneToggle` (optimistic
+    state + PATCH), `onMilestoneDelete` (optimistic state + DELETE). Design owns visual polish.
+  - 24 new tests. 558/558 green, tsc clean, next build clean.
 - **2026-06-14** — **Energy OS MVP — daily energy signal + priority cost tags + dashboard setter.**
   - **`lib/energy.ts`** (pure, 0 I/O): `EnergyLevel`, `EnergySignal`, `whoopTierToLevel(score)`,
     `deriveEnergySignal(log, whoopScore)` (precedence: stored override > stored manual > Whoop auto > null),

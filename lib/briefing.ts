@@ -10,6 +10,8 @@ import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, g
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
 import { computeWhoopCorrelations } from './whoopCorrelations';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
+import { focusMilestoneQueries } from './db';
+import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -404,6 +406,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
   const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
+  // Focus Scoreboard: per-area progress + milestone celebrations.
+  const allMilestones = (() => { try { return focusMilestoneQueries.listForUser(userId); } catch { return []; } })();
+  const focusProgress = buildFocusProgress(priorities, alignment, allMilestones);
+  // "Recent" = done in the last 26 hours (generous window so it catches yesterday evening + this morning).
+  const recentCutoff = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
+  const recentlyDoneMilestones = allMilestones.filter(m => m.done === 1 && m.completed_at && m.completed_at >= recentCutoff);
+  const focusScoreboardBlock = formatFocusScoreboardForBriefing(focusProgress, recentlyDoneMilestones);
+
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.
@@ -446,6 +456,8 @@ ${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
+` : ''}${focusScoreboardBlock ? `
+${focusScoreboardBlock}
 ` : ''}${whoopContextBlock}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `
 ENERGY PROFILE: Not set yet. Since Whoop is connected, add ONE brief invite at the very end of the closing section (after any other nudges): "One more thing — if you tell me your high-energy windows, I can start matching your schedule to your energy. Morning peak? Afternoon dip?" Only add this if it feels natural; skip if there are already two or more other end-of-briefing nudges.
 ` : '')}${hygieneFlag ? `

@@ -518,11 +518,31 @@ const ENERGY_COST_OPTIONS: { value: 'high' | 'medium' | 'low'; label: string; co
   { value: 'low',    label: '○ Low',  color: 'var(--energy-green)',  tint: 'var(--energy-green-tint)',  border: 'var(--energy-green-border)' },
 ];
 
-function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities: Priority[]; onSave: (p: string[]) => Promise<void>; onEnergyCostChange?: (id: number, cost: 'high' | 'medium' | 'low' | null) => Promise<void> }) {
+interface Milestone {
+  id: number;
+  priority_id: number;
+  title: string;
+  done: number;
+  completed_at: string | null;
+}
+
+function PrioritiesTab({
+  priorities, milestones, onSave, onEnergyCostChange, onMilestoneAdd, onMilestoneToggle, onMilestoneDelete,
+}: {
+  priorities: Priority[];
+  milestones: Milestone[];
+  onSave: (p: string[]) => Promise<void>;
+  onEnergyCostChange?: (id: number, cost: 'high' | 'medium' | 'low' | null) => Promise<void>;
+  onMilestoneAdd?: (priorityId: number, text: string) => Promise<void>;
+  onMilestoneToggle?: (id: number, done: boolean) => Promise<void>;
+  onMilestoneDelete?: (id: number) => Promise<void>;
+}) {
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(['', '', '']);
   const [loading, setLoading] = useState(false);
   const [savingCost, setSavingCost] = useState<number | null>(null);
+  const [newMilestoneText, setNewMilestoneText] = useState<{ [priorityId: number]: string }>({});
+  const [addingMilestone, setAddingMilestone] = useState<number | null>(null);
 
   function startEdit() {
     setValues([
@@ -598,7 +618,7 @@ function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities:
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm mb-2">{p.text}</p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-3">
                       <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Energy cost:</span>
                       {ENERGY_COST_OPTIONS.map(opt => {
                         const active = p.energy_cost === opt.value;
@@ -623,6 +643,78 @@ function PrioritiesTab({ priorities, onSave, onEnergyCostChange }: { priorities:
                         );
                       })}
                     </div>
+                    {/* Milestone checklist */}
+                    {(() => {
+                      const pMilestones = milestones.filter(m => m.priority_id === p.id);
+                      const done = pMilestones.filter(m => m.done === 1).length;
+                      return (
+                        <div className="space-y-1">
+                          {pMilestones.length > 0 && (
+                            <p className="text-xs mb-1" style={{ color: 'var(--text-faint)' }}>
+                              Milestones {done}/{pMilestones.length}
+                            </p>
+                          )}
+                          {pMilestones.map(m => (
+                            <div key={m.id} className="flex items-center gap-2 group">
+                              <button
+                                onClick={() => onMilestoneToggle?.(m.id, m.done === 0)}
+                                className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all"
+                                style={{
+                                  background: m.done === 1 ? 'var(--edg-success)' : 'transparent',
+                                  borderColor: m.done === 1 ? 'var(--edg-success)' : 'var(--edg-hairline)',
+                                }}
+                              >
+                                {m.done === 1 && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                              </button>
+                              <span className="text-xs flex-1" style={{
+                                color: m.done === 1 ? 'var(--text-faint)' : 'var(--text-muted)',
+                                textDecoration: m.done === 1 ? 'line-through' : 'none',
+                              }}>
+                                {m.title}
+                              </span>
+                              <button
+                                onClick={() => onMilestoneDelete?.(m.id)}
+                                className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
+                                style={{ color: 'var(--edg-danger)' }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          {addingMilestone === p.id ? (
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                autoFocus
+                                className="input text-xs py-0.5 flex-1"
+                                placeholder="Add a milestone…"
+                                value={newMilestoneText[p.id] || ''}
+                                onChange={e => setNewMilestoneText(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                onKeyDown={async e => {
+                                  if (e.key === 'Enter') {
+                                    const text = (newMilestoneText[p.id] || '').trim();
+                                    if (text) { await onMilestoneAdd?.(p.id, text); setNewMilestoneText(prev => ({ ...prev, [p.id]: '' })); }
+                                    setAddingMilestone(null);
+                                  } else if (e.key === 'Escape') { setAddingMilestone(null); }
+                                }}
+                                onBlur={async () => {
+                                  const text = (newMilestoneText[p.id] || '').trim();
+                                  if (text) { await onMilestoneAdd?.(p.id, text); setNewMilestoneText(prev => ({ ...prev, [p.id]: '' })); }
+                                  setAddingMilestone(null);
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setAddingMilestone(p.id)}
+                              className="text-xs mt-0.5"
+                              style={{ color: 'var(--text-faint)' }}
+                            >
+                              + milestone
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
@@ -1023,6 +1115,7 @@ export default function Dashboard() {
   const [copiedTranscriptId, setCopiedTranscriptId] = useState<number | null>(null);
   const [energySignal, setEnergySignal] = useState<{ level: 'red' | 'yellow' | 'green'; source: string } | null>(null);
   const [settingEnergy, setSettingEnergy] = useState(false);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1063,6 +1156,7 @@ export default function Dashboard() {
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
+    retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -1933,21 +2027,46 @@ export default function Dashboard() {
           )}
 
           {activeTab === 'priorities' && (
-            <PrioritiesTab priorities={priorities} onSave={async (newPriorities) => {
-              await fetch('/api/onboarding/priorities', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ priorities: newPriorities }),
-              });
-              loadData();
-            }} onEnergyCostChange={async (id, cost) => {
-              await fetch(`/api/priorities/${id}/energy`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ energy_cost: cost }),
-              });
-              loadData();
-            }} />
+            <PrioritiesTab
+              priorities={priorities}
+              milestones={milestones}
+              onSave={async (newPriorities) => {
+                await fetch('/api/onboarding/priorities', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ priorities: newPriorities }),
+                });
+                loadData();
+              }}
+              onEnergyCostChange={async (id, cost) => {
+                await fetch(`/api/priorities/${id}/energy`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ energy_cost: cost }),
+                });
+                loadData();
+              }}
+              onMilestoneAdd={async (priorityId, text) => {
+                await fetch(`/api/priorities/${priorityId}/milestones`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ title: text }),
+                });
+                fetch('/api/milestones').then(r => r.ok ? r.json() : null).then(d => { if (d) setMilestones(d.milestones || []); });
+              }}
+              onMilestoneToggle={async (id, done) => {
+                setMilestones(prev => prev.map(m => m.id === id ? { ...m, done: done ? 1 : 0 } : m));
+                await fetch(`/api/milestones/${id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ done }),
+                });
+              }}
+              onMilestoneDelete={async (id) => {
+                setMilestones(prev => prev.filter(m => m.id !== id));
+                await fetch(`/api/milestones/${id}`, { method: 'DELETE' });
+              }}
+            />
           )}
 
           {activeTab === 'activity' && <ActivityTab />}

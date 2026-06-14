@@ -74,9 +74,9 @@ describe('focusMilestoneQueries — listForPriority', () => {
   });
 });
 
-// ── setDone ───────────────────────────────────────────────────────────────────
+// ── markDone / markUndone ─────────────────────────────────────────────────────
 
-describe('focusMilestoneQueries — setDone', () => {
+describe('focusMilestoneQueries — markDone / markUndone', () => {
   let db: Awaited<ReturnType<typeof loadDb>>;
   let milestoneId: number;
 
@@ -85,26 +85,25 @@ describe('focusMilestoneQueries — setDone', () => {
     milestoneId = Number(db.focusMilestoneQueries.create(db.userId, db.priorityId, 'Finish schema').lastInsertRowid);
   });
 
-  it('marks a milestone done and records completed_at', () => {
-    db.focusMilestoneQueries.setDone(milestoneId, db.userId, true);
+  it('markDone marks a milestone done and records completed_at', () => {
+    db.focusMilestoneQueries.markDone(milestoneId, db.userId);
     const m = db.focusMilestoneQueries.listForUser(db.userId)[0];
     expect(m.done).toBe(1);
     expect(m.completed_at).toBeTruthy();
   });
 
-  it('un-marks a milestone and clears completed_at', () => {
-    db.focusMilestoneQueries.setDone(milestoneId, db.userId, true);
-    db.focusMilestoneQueries.setDone(milestoneId, db.userId, false);
+  it('markUndone clears done and completed_at', () => {
+    db.focusMilestoneQueries.markDone(milestoneId, db.userId);
+    db.focusMilestoneQueries.markUndone(milestoneId, db.userId);
     const m = db.focusMilestoneQueries.listForUser(db.userId)[0];
     expect(m.done).toBe(0);
     expect(m.completed_at).toBeNull();
   });
 
-  it('accepts numeric 1/0 as done values', () => {
-    db.focusMilestoneQueries.setDone(milestoneId, db.userId, 1);
+  it('markDone then markDone again is idempotent', () => {
+    db.focusMilestoneQueries.markDone(milestoneId, db.userId);
+    db.focusMilestoneQueries.markDone(milestoneId, db.userId);
     expect(db.focusMilestoneQueries.listForUser(db.userId)[0].done).toBe(1);
-    db.focusMilestoneQueries.setDone(milestoneId, db.userId, 0);
-    expect(db.focusMilestoneQueries.listForUser(db.userId)[0].done).toBe(0);
   });
 });
 
@@ -152,9 +151,9 @@ describe('focusMilestoneQueries — user isolation', () => {
     expect(db.focusMilestoneQueries.listForUser(userId2)).toHaveLength(1);
   });
 
-  it('setDone does not affect another user\'s milestone', () => {
+  it('markDone does not affect another user\'s milestone', () => {
     const id = Number(db.focusMilestoneQueries.create(db.userId, db.priorityId, 'Mine').lastInsertRowid);
-    db.focusMilestoneQueries.setDone(id, userId2, true); // wrong userId
+    db.focusMilestoneQueries.markDone(id, userId2); // wrong userId
     const m = db.focusMilestoneQueries.listForUser(db.userId)[0];
     expect(m.done).toBe(0); // unchanged
   });
