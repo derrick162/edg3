@@ -37,3 +37,17 @@
   higher-fidelity, zero-build training loop. Build the UI when there are real users who can't
   give feedback in chat. Until then, feedback flows via CALL-FEEDBACK.md and "tell Edge on the
   call" (rememberPreference).
+
+## Growth / monetization
+
+### Trial extension via daily call ("do your morning call → +1 free day") — _parked 2026-06-14_
+- **Idea:** during the trial, each day the user completes their morning briefing call, their free
+  trial extends by a day (mirrors Wispr Flow's "dictate 100 words → +1 day of Pro"). Ties the
+  reward directly to the core habit.
+- **Trigger already exists:** we track completed calls per day (`computeCallStreak`, status
+  'completed'), so the hook is trivial once there's a trial to extend.
+- **⚠️ Hard prerequisite — there is NO trial/billing system yet** (no subscription, Stripe,
+  paywall, Basic/Pro tiers, or `trial_ends`). This feature can't exist until that's built.
+- **Bigger decision:** billing + a trial model is itself a launch/monetization prerequisite and a
+  strategy call — loop in the Chief of Staff. Build this extension mechanic as a fast-follow once
+  the trial system lands (cheap then).
