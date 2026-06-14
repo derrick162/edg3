@@ -9,6 +9,37 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-13** — **Voice polish + call status + copy-transcript (Priorities 7, 3, 8).**
+  - **P7 — Voice pronunciation avoid-list (prompt-only):** Added WORD CHOICE line to `lib/vapi.ts`
+    system prompt. Instructs Edge to say "wrap up" not "wind up", "finish" not "wind down", and to
+    avoid homographs ElevenLabs mispronounces. ~1 line addition to the NATURAL LANGUAGE cluster.
+  - **P3 — Call status + report-missed-call:**
+    - `GET /api/briefing/today-status` — queries today's briefings for the logged-in user (by
+      `scheduled_for LIKE <today>%`), returns `{ status, scheduledFor }` or `{ status: 'none' }`.
+    - `POST /api/briefing/retry-call` — guards against double-calling (409 if already completed
+      or calling); calls `scheduleBriefingCall(userId)` which generates a fresh briefing + initiates
+      Vapi call; returns `{ success, briefingId }`.
+    - Dashboard sidebar: fetches today's status on load. Shows "✓ Call done for today" (green),
+      "● In progress…" (accent), or "Missed today / Call failed" + "Call me now" button when
+      status is missed/failed. Button fires retry endpoint; sidebar optimistically shows "Calling
+      you now…" on success.
+  - **P8 — Copy-transcript button:** In the expanded briefing detail (Briefings tab), the CALL
+    TRANSCRIPT header row now has a "Copy" button. On click → `navigator.clipboard.writeText`
+    with the full transcript text → "Copied ✓" for 2s then reverts. `copiedTranscriptId` state
+    tracks which card has the active confirmation so multiple cards don't interfere.
+  - 482/482 green, tsc clean, next build clean.
+- **2026-06-13** — **Fact trustworthiness + profile-name fix (Priorities 1, 2).**
+  - **P1 — Profile-name fix:** `extractFactsFromTranscript(transcript, userName?)` now injects the
+    correct user name into the Haiku prompt so STT mis-spellings ("Derek" for "Derrick") are
+    corrected at extraction time. `isSelfEntity(entity, userName)` secondary guard skips `person`
+    facts about the user themselves. `extractAndUpsertFacts` updated to pass `user.name` from the
+    webhook caller.
+  - **P2 — Fact trustworthiness:** `confidence TEXT ('high'|'low')` and `source_briefing_id`
+    columns added to `facts` table (migration-safe ALTERs). `upsertFact` accepts both; Haiku
+    returns `"confidence":"low"` for STT-risky entities (unusual names, street addresses). Dashboard
+    shows "⚠ verify" badge on low-confidence facts; "learned from your <date> call ↗" provenance
+    link on facts with a source briefing.
+  - 9 new tests. 482/482 green, tsc clean, next build clean.
 - **2026-06-13** — **Call-time in prompt + location awareness + edit/delete facts.** (`75589c4`)
   - **Call-time in system prompt (addendum 1):** `initiateCall` gains a `callTime` 10th arg (default `''`).
     Injects `SCHEDULED CALL TIME: <HH:MM tz>` into the live-call prompt so Edge can answer "when do

@@ -967,6 +967,10 @@ export default function Dashboard() {
   const [bookFor, setBookFor] = useState<{ id: number } | null>(null);
   const [bookForm, setBookForm] = useState({ title: '', date: '', time: '14:00', duration: 30 });
   const [booking, setBooking] = useState(false);
+  const [todayCallStatus, setTodayCallStatus] = useState<{ status: string } | null>(null);
+  const [retryingCall, setRetryingCall] = useState(false);
+  const [retryCalled, setRetryCalled] = useState(false);
+  const [copiedTranscriptId, setCopiedTranscriptId] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1005,6 +1009,7 @@ export default function Dashboard() {
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
     retryFetch('/api/tasks', d => setTasks(d.tasks || []));
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
+    fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -1047,6 +1052,19 @@ export default function Dashboard() {
     setFacts(prev => prev.filter(f => f.id !== id));
     setDeletingFactId(null);
     await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
+  async function retryBriefingCall() {
+    setRetryingCall(true);
+    const res = await fetch('/api/briefing/retry-call', { method: 'POST' });
+    setRetryingCall(false);
+    if (res.ok) {
+      setRetryCalled(true);
+      setTodayCallStatus({ status: 'calling' });
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || 'Could not place the call — please try again shortly.');
+    }
   }
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -1394,6 +1412,34 @@ export default function Dashboard() {
                   🔥 {callStreak}-day streak
                 </p>
               )}
+              {todayCallStatus && todayCallStatus.status !== 'none' && (
+                <div className="mt-1.5">
+                  {todayCallStatus.status === 'completed' && (
+                    <p className="text-xs" style={{ color: 'var(--edg-success)' }}>✓ Call done for today</p>
+                  )}
+                  {todayCallStatus.status === 'calling' && (
+                    <p className="text-xs" style={{ color: 'var(--text-accent)' }}>● In progress…</p>
+                  )}
+                  {(todayCallStatus.status === 'missed' || todayCallStatus.status === 'failed') && !retryCalled && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
+                        {todayCallStatus.status === 'missed' ? 'Missed today' : 'Call failed'}
+                      </p>
+                      <button
+                        onClick={retryBriefingCall}
+                        disabled={retryingCall}
+                        className="text-xs py-0.5 px-2 rounded"
+                        style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
+                      >
+                        {retryingCall ? 'Calling…' : 'Call me now'}
+                      </button>
+                    </div>
+                  )}
+                  {retryCalled && (
+                    <p className="text-xs" style={{ color: 'var(--text-accent)' }}>Calling you now…</p>
+                  )}
+                </div>
+              )}
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 {reminderInCalendar === true ? (
                   <>
@@ -1651,7 +1697,22 @@ export default function Dashboard() {
 
                           {b.transcript && (
                             <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
-                              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>CALL TRANSCRIPT</p>
+                              <div className="flex items-center justify-between mb-3">
+                                <p className="text-xs font-semibold" style={{ color: 'var(--edg-indigo)' }}>CALL TRANSCRIPT</p>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(b.transcript!).then(() => {
+                                      setCopiedTranscriptId(b.id);
+                                      setTimeout(() => setCopiedTranscriptId(null), 2000);
+                                    }).catch(() => {});
+                                  }}
+                                  className="text-xs px-2 py-0.5 rounded"
+                                  style={{ color: copiedTranscriptId === b.id ? 'var(--edg-success)' : 'var(--text-faint)', border: '1px solid var(--card-border)' }}
+                                >
+                                  {copiedTranscriptId === b.id ? 'Copied ✓' : 'Copy'}
+                                </button>
+                              </div>
                               <div className="space-y-2">
                                 {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
                                   const isUser = line.startsWith('User:') || line.startsWith('Customer:');
