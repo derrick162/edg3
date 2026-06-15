@@ -70,8 +70,8 @@ N days, up to 50 threads).
 - User-scoped: `user_id` required at every call layer.
 
 **Action items before CASA submission:**
-- [ ] Update Privacy Policy to disclose inbox reading for AI focus recommendation.
-- [ ] Update the Google OAuth verification questionnaire answers (§5 below).
+- [x] Update Privacy Policy to disclose inbox reading for AI focus recommendation. *(Done 2026-06-14)*
+- [x] Update the Google OAuth verification questionnaire answers (§5 below). *(Done 2026-06-14)*
 - [ ] Add focus recommendation scene to demo video (§6 below).
 - [ ] PM decision: should this be a separate consent step (user explicitly opts in
       to inbox reading for prioritization, beyond the base re-consent)? Flagged —
@@ -186,27 +186,33 @@ timestamp, user_id). Used for activity feed + incident diagnosis.
 
 ### Account deletion
 
-When an admin deletes a user (`DELETE /api/admin/users/:id`), all user data is
-permanently deleted in this order:
+User data is permanently deleted via two paths — both clear the same tables in
+leaf-first order:
 
-1. `whoop_tokens` (health PII)
-2. `calendar_tokens` (OAuth tokens)
-3. `gmail_drafts_log`
-4. `watched_threads`
-5. `notifications`
-6. `audit_log`
-7. `facts`
-8. `briefings` + `preview_briefings`
-9. `memories`
-10. `priorities`, `tasks`
-11. `undo_log`, `event_dedupe_keys`, `delete_confirm_tokens`
-12. `users`
+- **Admin-initiated:** `DELETE /api/admin/users/:id`
+- **Self-service:** `DELETE /api/account` — requires `{ "confirm": "delete my account" }`
+  in the request body. *(Shipped — satisfies Google's self-service deletion requirement.)*
 
-**Gap to address before launch:** There is no self-service user deletion flow yet.
-Users must contact the owner to request deletion. A `DELETE /api/account` endpoint
-(user-initiated, confirmed via `delete_confirm_tokens`) should be added before
-public launch to satisfy Google's deletion requirement and good-faith privacy
-commitment.
+Deletion order (leaf tables first, users row last):
+
+1. `calendar_plan_executions` (idempotency log)
+2. `event_energy_tags` (LLM classification cache)
+3. `calendar_scores` (daily focus/energy scores)
+4. `energy_profile` (peak/trough hours)
+5. `focus_milestones`
+6. `energy_log`
+7. `whoop_tokens` (health PII)
+8. `calendar_tokens` (OAuth tokens)
+9. `gmail_drafts_log`
+10. `watched_threads`
+11. `notifications`
+12. `audit_log`
+13. `facts`
+14. `briefings` + `preview_briefings`
+15. `memories`
+16. `priorities`, `tasks`
+17. `undo_log`, `event_dedupe_keys`, `delete_confirm_tokens`
+18. `users`
 
 ### Google token revocation
 
@@ -284,8 +290,10 @@ It is not shared with, sold to, or accessible by any third parties.
 - **Authentication:** Sessions use signed HttpOnly JWT cookies. Admin routes
   require a separate credential. Vapi webhook endpoints are HMAC-verified.
 - **Least privilege:** We only call the Google APIs and endpoints necessary for the
-  described features. We never call `messages.send`; we never perform an inbox-wide
-  scan.
+  described features. We never call `messages.send`. Inbox access is limited to
+  INBOX-label metadata only (`format:'metadata'` — headers + snippet, no bodies),
+  capped at 50 threads per call. No other mailbox labels, attachments, or message
+  bodies are ever requested.
 
 ---
 
@@ -319,7 +327,8 @@ Google requires a video demonstrating how the restricted scopes are used.
 | 4 | User says "move my 3pm to 4pm". Edge confirms and calendar updates. | `calendar.events` |
 | 5 | User says "draft an email to Sarah about the project". Edge creates a draft — show it in Gmail Drafts, not Sent. | `gmail.compose` |
 | 6 | User says "did Sarah reply?". Edge answers based on thread content. | `gmail.readonly` |
-| 7 | Dashboard → Disconnect Google → account settings. Show Google's own revoke page. | (data deletion) |
+| 7 | Focus Score shown on dashboard — show that Edge reads inbox metadata (no bodies) to compute it. Narrate: "only From/Subject/snippet, never body content." | `gmail.readonly` |
+| 8 | Dashboard → Disconnect Google → account settings. Show Google's own revoke page. | (data deletion) |
 
 Video should be < 5 minutes, narrated, showing the actual app (not a mock).
 
@@ -342,10 +351,10 @@ assessor.
 - No overly broad data access
 
 **What to prepare before submitting:**
-- [ ] Self-service user deletion endpoint (`DELETE /api/account`) — currently
-      admin-only deletion; CASA assessors will check this.
-- [ ] Google token revocation call in disconnect flow (see §4 above).
-- [ ] Privacy policy accurately describes all scopes and data use (see `app/privacy/page.tsx`).
+- [x] Self-service user deletion endpoint (`DELETE /api/account`) — shipped; requires
+      `{ "confirm": "delete my account" }` body. *(Done 2026-06-13)*
+- [ ] Google token revocation call in disconnect flow (see §4 above). *(PM → Core)*
+- [x] Privacy policy accurately describes all scopes and data use (see `app/privacy/page.tsx`). *(Done 2026-06-14)*
 - [ ] Demo video (§6 above) recorded and uploaded.
 - [ ] This document reviewed by the user for accuracy before submission.
 
@@ -353,4 +362,4 @@ assessor.
 
 ---
 
-*Last updated: 2026-06-13. Owner: PM/CTO. Route accuracy questions to Security lane.*
+*Last updated: 2026-06-14. Owner: PM/CTO. Route accuracy questions to Security lane.*
