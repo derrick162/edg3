@@ -51,6 +51,9 @@ vi.mock('@/lib/db', () => ({
     getRecent: (_id: number, _lim: number) => h.briefings,
   },
   decryptBriefingRow: (r: unknown) => r,
+  energyProfileQueries: {
+    get: (_id: number) => undefined,
+  },
 }));
 
 vi.mock('@/lib/crypto', () => ({
@@ -142,6 +145,9 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('tasks');
     expect(data).toHaveProperty('briefings');
     expect(data).toHaveProperty('emailDraftHistory');
+    expect(data).toHaveProperty('calendarScores');
+    expect(data).toHaveProperty('energyProfile');
+    expect(data).toHaveProperty('eventEnergyTags');
   });
 
   it('omits password_hash from profile', async () => {

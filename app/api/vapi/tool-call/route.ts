@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots } from '@/lib/calendar';
+import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
+import { computeCalendarFit, classifyEventsEnergy, parseEnergyProfile } from '@/lib/calendarScore';
+import { computeAlignment } from '@/lib/alignment';
+import { deriveEnergySignal } from '@/lib/energy';
+import { getLatestRecovery } from '@/lib/whoop';
+import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, energyProfileQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -1091,6 +1096,152 @@ Query: ${query}` }],
 
     const listed = cleaned.map((a, i) => `${i + 1}. ${a.title}`).join(', ');
     return `Locked in — your focus today: ${listed}. I'll score your calendar against these and keep you on track.`;
+
+  } else if (fn === 'applyCalendarPlan') {
+    // Two-step hero loop: step 1 (no token) builds the plan and previews it;
+    // step 2 (with token) executes and re-scores.
+    const { confirmToken } = args as { confirmToken?: string };
+    const user = userQueries.findById(userId);
+    const userTz = user ? effectiveTimezone(user) : 'UTC';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: userTz });
+
+    // Gather today's context — mirrors /api/scores/route.ts so the plan uses the
+    // same data the CalendarFitCard already shows the user.
+    const priorities = priorityQueries.getMostRecent(userId);
+    const [planTodayEvents, planWeekEvents, planWhoopRec] = await Promise.all([
+      getCalendarEvents(userId).catch(() => [] as calendar_v3.Schema$Event[]),
+      getWeekEvents(userId).catch(() => [] as calendar_v3.Schema$Event[]),
+      getLatestRecovery(userId).catch(() => null),
+    ]);
+    const todayEnergyLog = (() => { try { return energyLogQueries.getToday(userId, today); } catch { return undefined; } })();
+    const energySignal   = deriveEnergySignal(todayEnergyLog, planWhoopRec?.recoveryScore ?? null);
+    const [alignment, planTagged] = await Promise.all([
+      computeAlignment(priorities, planWeekEvents, userTz).catch(() => null),
+      classifyEventsEnergy(planTodayEvents).catch(() => []),
+    ]);
+    const dbProfile = (() => { try { return energyProfileQueries.get(userId); } catch { return undefined; } })();
+    const energyProfile = dbProfile
+      ? { peakStart: dbProfile.peak_start, peakEnd: dbProfile.peak_end, troughStart: dbProfile.trough_start, troughEnd: dbProfile.trough_end }
+      : (() => {
+          try {
+            const stmts = factQueries.getAll(userId).filter(f => f.category === 'preference').map(f => f.statement);
+            return parseEnergyProfile(stmts);
+          } catch { return null; }
+        })();
+
+    const fit = computeCalendarFit(planTagged, alignment, priorities, energySignal, energyProfile);
+    const plan = buildCalendarPlan(planTodayEvents, fit, priorities, today, userTz);
+
+    if (plan.actions.length === 0) {
+      return `Your Edge Score is ${fit.edgeScore} — calendar looks solid. Nothing to reshape right now.`;
+    }
+
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      return `${plan.summary} ONLY if ${user?.name?.split(' ')[0] ?? 'they'} says yes, call applyCalendarPlan again with confirmToken: "${token}". Token expires in 2 minutes.`;
+    }
+
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      const token = issueDeleteToken(userId);
+      return `That confirmation code was invalid or expired. Call applyCalendarPlan again with the new confirmToken: "${token}". Token expires in 2 minutes.`;
+    }
+
+    // Execute each plan action
+    const previousScore = fit.edgeScore;
+    const doneDescs: string[] = [];
+    const undoOps: UndoOp[] = [];
+
+    for (const action of plan.actions) {
+      if (action.type === 'create' && action.title && action.startDateTime && action.endDateTime) {
+        try {
+          const startUtc = wallTimeToUtc(action.startDateTime, userTz);
+          const endUtc   = wallTimeToUtc(action.endDateTime,   userTz);
+          const res = await cal.events.insert({
+            calendarId: 'primary',
+            requestBody: {
+              summary:  `⚡ ${action.title}`,
+              start: { dateTime: startUtc.toISOString(), timeZone: userTz },
+              end:   { dateTime: endUtc.toISOString(),   timeZone: userTz },
+              colorId: '9', // blueberry — visual focus-block marker
+            },
+          });
+          if (res.data.id) {
+            undoOps.push({ type: 'delete', calId: 'primary', eventId: res.data.id });
+            doneDescs.push(action.description);
+          }
+        } catch (planErr) {
+          console.error('[applyCalendarPlan] create failed:', planErr);
+        }
+      } else if (action.type === 'move' && action.eventId && action.newDate) {
+        // Find the event's calendar; try primary first then fall through to calIds.
+        let moveCalId = 'primary';
+        let moveEv: calendar_v3.Schema$Event | null = null;
+        const calIdsToSearch = ['primary', ...calIds.filter(id => id !== 'primary')];
+        for (const cId of calIdsToSearch) {
+          try {
+            const res = await cal.events.get({ calendarId: cId, eventId: action.eventId });
+            if (res.data?.id) { moveCalId = cId; moveEv = res.data; break; }
+          } catch { /* not in this calendar */ }
+        }
+        if (moveEv?.start?.dateTime) {
+          try {
+            const eventTz = moveEv.start.timeZone ?? userTz;
+            const patch   = timedEventDateMove(moveEv.start.dateTime, moveEv.end?.dateTime ?? '', action.newDate, eventTz);
+            await cal.events.patch({
+              calendarId: moveCalId,
+              eventId: action.eventId,
+              requestBody: { start: patch.start, end: patch.end },
+            });
+            // Undo a move = patch back to the original start/end datetimes
+            undoOps.push({ type: 'patch', calId: moveCalId, eventId: action.eventId, requestBody: {
+              start: { dateTime: moveEv.start.dateTime, timeZone: moveEv.start.timeZone ?? userTz },
+              end:   moveEv.end?.dateTime ? { dateTime: moveEv.end.dateTime, timeZone: moveEv.end.timeZone ?? userTz } : undefined,
+            } });
+            doneDescs.push(action.description);
+          } catch (planMoveErr) {
+            console.error('[applyCalendarPlan] move failed:', planMoveErr);
+          }
+        }
+      }
+    }
+
+    if (undoOps.length) {
+      recordUndo(userId, `calendar plan — ${doneDescs.length} action${doneDescs.length !== 1 ? 's' : ''}`, undoOps);
+    }
+
+    if (doneDescs.length === 0) {
+      return "I tried to reshape your calendar but couldn't get it done — want me to try a different approach?";
+    }
+
+    // Re-score to show improvement
+    let newEdgeScore: number | null = null;
+    try {
+      const [newTodayEvts, newWeekEvts] = await Promise.all([
+        getCalendarEvents(userId).catch(() => planTodayEvents),
+        getWeekEvents(userId).catch(() => planWeekEvents),
+      ]);
+      const [newAlignment, newTagged] = await Promise.all([
+        computeAlignment(priorities, newWeekEvts, userTz).catch(() => alignment),
+        classifyEventsEnergy(newTodayEvts).catch(() => planTagged),
+      ]);
+      const newFit = computeCalendarFit(newTagged, newAlignment, priorities, energySignal, energyProfile);
+      newEdgeScore = newFit.edgeScore;
+      try {
+        calendarScoreQueries.upsert(userId, today, {
+          edgeScore:    newFit.edgeScore,
+          focusScore:   newFit.focusScore.score,
+          energyScore:  newFit.energyScore.score,
+          focusDrivers: newFit.focusScore.drivers,
+          energyDrivers: newFit.energyScore.drivers,
+        });
+      } catch { /* non-fatal */ }
+    } catch { /* non-fatal — use original score in message */ }
+
+    const delta = newEdgeScore !== null ? newEdgeScore - previousScore : null;
+    const scoreNote = delta !== null && delta > 0
+      ? ` Edge Score moved from ${previousScore} → ${newEdgeScore} (+${delta}). Your day just got better.`
+      : ` Edge Score is ${newEdgeScore ?? previousScore}.`;
+    return `Done — ${doneDescs.join('; ')}.${scoreNote} Say "undo that" if you change your mind.`;
 
   } else if (fn === 'undoLastAction') {
     const last = undoQueries.getLatest(userId);

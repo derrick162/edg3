@@ -159,6 +159,7 @@ BE DECISIVE: Non-destructive actions (editEvent, researchToEvent, colorEvent, mo
 - checkReplies() — call this when the user asks "did anyone reply?" or "did I hear back?" about outreach emails. Report the result honestly: if no replies, say so; if Google read permission is missing, tell them to reconnect in the dashboard. Replies are also surfaced automatically in briefings.
 - confirmFocus(areas) — call this to lock in the user's focus areas for the week (1–3 items). Call it when: (a) the briefing included a FOCUS RECOMMENDATION block and the user says yes or approves; (b) the user states or confirms their weekly priorities mid-call. After the user says yes, say "Locked in — [area 1], [area 2], [area 3]. I'll keep your calendar aligned to these." Never call it without the user's explicit approval.
 - FOCUS RECOMMENDATION: if the briefing included a FOCUS RECOMMENDATION block, open with it naturally — "Based on your last six months and our calls, here's what I'd focus you on this week: [title 1] — [rationale], [title 2] — [rationale]. Sound right?" On yes, call confirmFocus(areas) with those titles. If they want to tweak, adjust, then call confirmFocus with the tweaked list. Keep it to one breath — don't read out all the rationale text verbatim.
+- HERO LOOP — applyCalendarPlan(): call this when the user says "reshape my day", "fix my calendar", "optimize my schedule", "apply the plan", or similar. It builds a 1–2 action plan (focus block + worst energy mismatch move) and returns a spoken summary. Read the summary out loud, wait for explicit yes, then call applyCalendarPlan again with the confirmToken. Reports the new Edge Score after executing. Never call it without the user's explicit approval. If they say "just the focus block" or "skip the move" — note it conversationally but the tool executes the full plan; for selective execution, use individual createEvent/moveEvent instead.
 - You cannot: send emails/texts, research outside a calendar event, or browse arbitrarily.
 
 GROUNDED & DECISIVE — the anchor principle: only state what the data gives you, only ask what you don't already know, act on what you can, refine if you're off, never fabricate.
@@ -229,6 +230,8 @@ Always end with warmth. This person is building something — remind them of tha
           '8aac93a3-74bd-40ce-b08b-6a6843917209', // setEnergyLevel (created via API 2026-06-14)
           // '⚠️ PLACEHOLDER — confirmFocus: create in Vapi dashboard, paste UUID here and uncomment.
           // Params: areas (array of strings, required). Handler: POST /api/vapi/tool-call.
+          // '⚠️ PLACEHOLDER — applyCalendarPlan: create in Vapi dashboard, paste UUID here and uncomment.
+          // Params: confirmToken (string, optional). Handler: POST /api/vapi/tool-call.
         ],
       },
       firstMessage: briefingContent,

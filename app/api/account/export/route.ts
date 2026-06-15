@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
 
 // Returns a full JSON export of everything EDG3 has stored for the authenticated user.
@@ -39,6 +39,25 @@ export async function GET(_req: NextRequest) {
     'SELECT date, level, source, created_at FROM energy_log WHERE user_id = ? ORDER BY date DESC'
   ).all(userId) as Array<{ date: string; level: string; source: string; created_at: string }>);
 
+  const calendarScoreRows = (db.prepare(
+    'SELECT date, focus_score, energy_score, focus_drivers, energy_drivers, created_at FROM calendar_scores WHERE user_id = ? ORDER BY date ASC'
+  ).all(userId) as Array<{ date: string; focus_score: number; energy_score: number; focus_drivers: string | null; energy_drivers: string | null; created_at: string }>)
+    .map(r => ({
+      date: r.date,
+      focusScore: r.focus_score,
+      energyScore: r.energy_score,
+      focusDrivers: r.focus_drivers ? JSON.parse(r.focus_drivers) as string[] : [],
+      energyDrivers: r.energy_drivers ? JSON.parse(r.energy_drivers) as string[] : [],
+      createdAt: r.created_at,
+    }));
+
+  const energyProfile = energyProfileQueries.get(userId);
+
+  const eventEnergyTagRows = (db.prepare(
+    'SELECT google_event_id, type, demand, tagged_at FROM event_energy_tags WHERE user_id = ? ORDER BY tagged_at DESC'
+  ).all(userId) as Array<{ google_event_id: string; type: string; demand: string; tagged_at: string }>)
+    .map(r => ({ eventId: r.google_event_id, type: r.type, demand: r.demand, taggedAt: r.tagged_at }));
+
   const payload = {
     exportedAt: new Date().toISOString(),
     version: '1',
@@ -76,6 +95,17 @@ export async function GET(_req: NextRequest) {
     briefings: briefingRows,
     emailDraftHistory: draftRows,
     energyLog: energyRows,
+    calendarScores: calendarScoreRows,
+    energyProfile: energyProfile
+      ? {
+          peakStart: energyProfile.peak_start,
+          peakEnd: energyProfile.peak_end,
+          troughStart: energyProfile.trough_start,
+          troughEnd: energyProfile.trough_end,
+          updatedAt: energyProfile.updated_at,
+        }
+      : null,
+    eventEnergyTags: eventEnergyTagRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

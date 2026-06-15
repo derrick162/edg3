@@ -16,6 +16,8 @@ export interface ScoreResult {
   calibrating?: boolean;   // true = not enough data for a real score; UI shows "calibrating" not a number
   drivers: string[];       // plain-English reasons (no black box)
   topFix: { description: string; op?: 'create' | 'move' | 'delete' | 'recolor' } | null;
+  worstMismatchEventId?: string | null;     // event ID of the highest-penalty mismatch (for hero loop)
+  worstMismatchEventTitle?: string | null;  // display title of that event
 }
 
 export interface CalendarFit {
@@ -412,7 +414,13 @@ export function computeEnergyScore(
     };
   }
 
-  return { score, drivers, topFix };
+  return {
+    score,
+    drivers,
+    topFix,
+    worstMismatchEventId:    worstMismatch?.event.id    ?? null,
+    worstMismatchEventTitle: worstMismatch?.event.summary ?? null,
+  };
 }
 
 // ─── computeCalendarFit ───────────────────────────────────────────────────────

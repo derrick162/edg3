@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         <div className="space-y-10">
           <div>
             <h1 className="text-4xl font-black mb-3">Privacy Policy</h1>
-            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Last updated: June 10, 2026</p>
+            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Last updated: June 14, 2026</p>
             <p className="text-sm mt-4 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               Edg3 (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) operates the Edg3 AI Chief of Staff service accessible at edg3.ai.
               This Privacy Policy explains how we collect, use, and protect your information.
@@ -46,7 +46,12 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Google Gmail Data</p>
-                <p>If you grant Gmail access, we request permission to (a) <strong style={{ color: 'var(--text-strong)' }}>create email drafts</strong> on your behalf and (b) <strong style={{ color: 'var(--text-strong)' }}>read messages only within the specific email threads Edge started for you</strong>. Edge uses draft access to write outreach emails you asked for (e.g. contacting a service provider), and read access to recognize replies to those emails and surface them in your briefing. <strong style={{ color: 'var(--text-strong)' }}>Edge never sends email</strong> — it only creates drafts for you to review and send yourself. Edge only reads the threads it created for you; it does not read the rest of your mailbox. You can disconnect at any time from your dashboard.</p>
+                <p>If you grant Gmail access, we use it in two ways:</p>
+                <ul className="mt-2 space-y-2 pl-1">
+                  <li><strong style={{ color: 'var(--text-strong)' }}>Draft creation:</strong> Edge creates email drafts on your behalf for outreach you asked for. <strong style={{ color: 'var(--text-strong)' }}>Edge never sends email</strong> — it only creates drafts for you to review and send yourself.</li>
+                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox signal (metadata only):</strong> Edge reads <em>metadata</em> from recent inbox threads — sender name, subject line, and the auto-generated snippet Google provides. <strong style={{ color: 'var(--text-strong)' }}>Edge never reads email body content.</strong> This metadata is used to compute your daily Focus score and to recognize replies to outreach Edge drafted for you. No inbox metadata is stored; it is used in-memory for your briefing session only, and we log a count (not content) for audit purposes.</li>
+                </ul>
+                <p className="mt-2">You can disconnect Gmail at any time from your dashboard, which immediately revokes both draft and read access.</p>
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Whoop Health Data</p>
@@ -68,7 +73,8 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-sm" style={{ color: 'var(--text-body)' }}>
               {[
                 'To deliver your daily AI briefing call and reminder texts',
-                'To personalize briefings based on your profile, priorities, and calendar',
+                'To personalize briefings based on your profile, priorities, calendar, and (optionally) Whoop recovery data',
+                'To compute your daily Focus and Energy scores using calendar event patterns and inbox metadata (sender/subject/snippet — no message bodies)',
                 'To remember context from previous calls and improve over time',
                 'To authenticate your account and keep it secure',
                 'To communicate service updates or account-related notices',
@@ -101,7 +107,7 @@ export default function PrivacyPage() {
                 'We do not allow humans to read your Google Calendar or Gmail data except for security, to comply with the law, or with your explicit consent',
                 'We do not transfer Google user data to third parties except as necessary to provide the service or as required by law',
                 'We do not use Google user data for any purpose unrelated to the features you requested',
-                'For Gmail specifically: Edge creates drafts only (it never sends email) and reads only the email threads it created for you — never the rest of your mailbox',
+                'For Gmail specifically: Edge creates drafts only (it never sends email); it reads inbox thread metadata (sender, subject, auto-snippet — never message bodies) in-memory to compute your Focus score and recognize replies. No email content is stored.',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>
