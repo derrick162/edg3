@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard } from '@/components/ui';
+import { RecoveryCard, CalendarFitCard } from '@/components/ui';
+import type { CalendarFit } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -1116,6 +1117,8 @@ export default function Dashboard() {
   const [energySignal, setEnergySignal] = useState<{ level: 'red' | 'yellow' | 'green'; source: string } | null>(null);
   const [settingEnergy, setSettingEnergy] = useState(false);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
+  const [calendarFitLoading, setCalendarFitLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1156,6 +1159,8 @@ export default function Dashboard() {
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
+    setCalendarFitLoading(true);
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1818,6 +1823,15 @@ export default function Dashboard() {
               </p>
             </div>
           )}
+
+          {/* Calendar Fit — landing view: always visible above tab content */}
+          <div className="mb-6">
+            <CalendarFitCard
+              fit={calendarFit}
+              loading={calendarFitLoading}
+              sparse={priorities.length === 0 || calendarConnected === false}
+            />
+          </div>
 
           {/* Tab content */}
           {activeTab === 'briefings' && (

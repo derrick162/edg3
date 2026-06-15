@@ -9,6 +9,11 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-14** — **CalendarFitCard wired as dashboard landing view.**
+  - `app/dashboard/page.tsx`: added `calendarFit: CalendarFit | null` + `calendarFitLoading: boolean` state. Background-fetches `GET /api/scores` in `loadData` (non-blocking, alongside energy/milestones fetches). `sparse` = `priorities.length === 0 || calendarConnected === false`.
+  - `<CalendarFitCard>` rendered at the top of `<main>` in a `mb-6` wrapper, above the tab content — always visible regardless of which tab is active.
+  - Imports: `CalendarFitCard` + `CalendarFit` from `@/components/ui` (already exported via index).
+  - 641/641 green, tsc clean, next build clean.
 - **2026-06-14** — **Scoring engine MVP simplification — pure-quant Focus % + LLM-tagged Energy %.**
   - **Stripped** the two-component judgment layer (deferred — see `specs/calendar-scores.md`). No more `quantScore`, `judgmentScore`, `weights`, `ScoreFeedback`, `JudgmentRule`, or the four deterministic rules.
   - **`ScoreResult` (MVP):** `{ score /*0–100*/, drivers[], topFix }`.
