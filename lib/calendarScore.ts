@@ -147,12 +147,16 @@ export async function classifyEventsEnergy(
   const timedEvents = events.filter(e => !!e.start?.dateTime);
   if (timedEvents.length === 0) return [];
 
-  const eventList = timedEvents.map((e, i) => ({
-    i,
-    title: e.summary ?? 'Untitled',
-    durationMin: Math.round(eventDurationHours(e) * 60),
-    startHour: eventStartHour(e) ?? 0,
-  }));
+  const eventList = timedEvents.map((e, i) => {
+    const desc = (e.description || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    return {
+      i,
+      title: e.summary ?? 'Untitled',
+      ...(desc ? { notes: desc } : {}),
+      durationMin: Math.round(eventDurationHours(e) * 60),
+      startHour: eventStartHour(e) ?? 0,
+    };
+  });
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -165,7 +169,7 @@ export async function classifyEventsEnergy(
         {
           role: 'user',
           content:
-            'Classify each calendar event. Return ONLY a JSON array, no extra text.\n' +
+            'Classify each calendar event by type and energy demand. Consider both the title and any "notes" field. Return ONLY a JSON array, no extra text.\n' +
             'type options: meeting meal workout deep_work admin social travel personal other\n' +
             'demand options: high medium low\n\n' +
             `Events:\n${JSON.stringify(eventList)}\n\n` +
