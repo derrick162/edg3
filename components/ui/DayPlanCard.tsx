@@ -170,7 +170,14 @@ export function DayPlanCard({
 
   // ── Proposed plan
   return (
-    <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)', background: 'var(--plan-bg)' }}>
+    <div
+      className="glass-card p-5"
+      style={{
+        borderColor: 'var(--plan-border)',
+        background: 'var(--plan-bg)',
+        animation: 'score-rise 0.5s 0.2s ease both',
+      }}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
@@ -252,6 +259,7 @@ export function DayPlanCard({
           onClick={handleConfirm}
           disabled={confirming}
           className="btn-primary flex-1 text-sm py-2.5"
+          style={{ boxShadow: confirming ? 'none' : 'var(--shadow-btn-glow)' }}
         >
           {confirming ? 'Applying…' : '✓ Make it happen'}
         </button>
