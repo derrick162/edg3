@@ -49,7 +49,13 @@ export async function computeAlignment(
 
     const events = weekEvents
       .slice(0, 40) // cap to avoid oversized prompts
-      .map(e => ({ title: (e.summary || 'Untitled').trim(), hours: eventDurationHours(e) }))
+      .map(e => ({
+        title: (e.summary || 'Untitled').trim(),
+        // Include the event description so user-added context ("- Edg3 MVP", agendas, notes)
+        // is visible to the classifier — generic titles alone often don't reveal the focus area.
+        description: (e.description || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+        hours: eventDurationHours(e),
+      }))
       .filter(e => e.hours > 0);
 
     // No time-bearing events → all priorities at 0h, nothing unaligned
@@ -62,7 +68,9 @@ export async function computeAlignment(
     }
 
     const priorityList = priorities.map((p, i) => `${i + 1}. ${p.text}`).join('\n');
-    const eventList = events.map(e => `- "${e.title}" (${e.hours.toFixed(1)}h)`).join('\n');
+    const eventList = events.map(e =>
+      `- "${e.title}"${e.description ? ` [notes: ${e.description}]` : ''} (${e.hours.toFixed(1)}h)`
+    ).join('\n');
 
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -80,7 +88,7 @@ ${priorityList}
 Events this week:
 ${eventList}
 
-For each event assign a priority number (1–${priorities.length}) if it contributes to that priority, or "none" if it doesn't relate to any priority.
+For each event assign a priority number (1–${priorities.length}) if it contributes to that priority — consider the title AND any [notes] — or "none" if it doesn't relate to any priority.
 Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","priority":"none"},...]`,
       }],
     });
@@ -99,8 +107,12 @@ Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","p
     const hoursMap = new Map<number, number>(priorities.map((_, i) => [i + 1, 0]));
     const unalignedList: { title: string; hours: number }[] = [];
 
+    // Match the model's echoed title back to our event robustly — exact-string match was
+    // fragile (any case/whitespace drift dropped the event and silently zeroed its hours).
+    const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
     for (const c of classifications) {
-      const ev = events.find(e => e.title === c.event);
+      const target = norm(c.event);
+      const ev = events.find(e => norm(e.title) === target);
       if (!ev) continue;
       const idx = parseInt(c.priority, 10);
       if (!isNaN(idx) && idx >= 1 && idx <= priorities.length) {
