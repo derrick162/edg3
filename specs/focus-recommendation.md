@@ -2,6 +2,18 @@
 
 _Derrick "aha" 2026-06-15. Potentially the most differentiating piece of the whole product._
 
+## ★★ UNIT = TODAY, not the week (Derrick 2026-06-15) — overrides "week" everywhere below
+**Maniacally focus on the DAY at hand — forget the week.** A real chief of staff dissects *today*. Each
+morning (call moving EARLIER, ~9:00 AM) Edge:
+1. Reads **today's energy** — Whoop recovery + **how you sound on the call** (transcript/voice read).
+2. Names your **3 focus areas for TODAY** (not the week), shaped by that energy.
+3. **Reshapes today's calendar in real time** during the call — you give feedback, it acts.
+- **Target: within ~5 minutes you think "wow, my day just got a lot better because of Edge."**
+- History (calendar / memory / email) feeds WHAT matters; **today's energy + today's calendar** decide
+  HOW today should go. No weekly-priority upkeep — recompute fresh every morning.
+- (Read "week" below as "today"; the engine still mines long-range history for context, but the OUTPUT
+  and the action are day-scoped.)
+
 ## The flip
 Today the user DECLARES their 3 areas of focus and Edge measures against them. **Flip it: Edge analyzes
 your data and TELLS you what your focus should be.** A real chief of staff doesn't ask an overwhelmed
