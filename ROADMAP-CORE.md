@@ -9,6 +9,11 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Hero Loop briefing fix — `recommendFocusAreas` always fires; 4-step INSTRUCTION; `energy_cost` ref cleanup**.
+  - **[FIX] `recommendFocusAreas` now fires on EVERY briefing call** — removed the `priorities.length === 0` guard in `lib/briefing.ts`. When priorities are set, they're passed as `anchors` so each recommendation ladders to a real goal. Previously the engine only ran when no priorities existed, meaning Derrick (who has priorities) never got a focus proposal.
+  - **[FEATURE] 4-step HERO LOOP INSTRUCTION** in the `FOCUS RECOMMENDATION` briefing block — guides Edge through: STEP 1 Edge Score → STEP 2 Energy → STEP 3 Focus Proposal (propose → `confirmFocus`) → STEP 4 Reshape Offer (`applyCalendarPlan`). Rationale text is shown alongside each area's anchor priority. Step 3–4 explicitly marked as "the product's magic moment — do not skip."
+  - **[CLEANUP] `energy_cost` ref removed from dashboard `Priority` interface** — local `interface Priority` in `app/dashboard/page.tsx` no longer has `energy_cost` field (was unused after UI removal).
+  - 739/739 green, tsc clean, next build clean.
 - **2026-06-15** — **Score correctness fixes + priorities → Memory sync + remove energy-cost UI**.
   - **[FIX] Focus Score now reads confirmed daily_focus** — `/api/scores` prefers today's confirmed
     `daily_focus` (from `FocusRecommendationCard`) over `getThisWeek`; falls back to `getMostRecent`
