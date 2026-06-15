@@ -14,9 +14,9 @@ vi.mock('./db', () => ({
   memoryQueries: { getWeighted: vi.fn() },
 }));
 
-import { recommendFocusAreas, aggregateEventThemes } from './focusRecommendation';
+import { recommendFocusAreas, aggregateEventThemes, type EnergySignal } from './focusRecommendation';
 import { getPastCalendarEvents } from './calendar';
-import { factQueries, memoryQueries } from './db';
+import { factQueries, memoryQueries, type Priority } from './db';
 import type { calendar_v3 } from 'googleapis';
 
 const mockCalendar = getPastCalendarEvents as ReturnType<typeof vi.fn>;
@@ -38,6 +38,13 @@ function fact(category: string, statement: string) {
 function memory(content: string) {
   return { id: 1, user_id: 1, type: 'insight', content, metadata: null, created_at: '2026-01-01' };
 }
+
+function anchor(rank: number, text: string): Priority {
+  return { id: rank, user_id: 1, text, week_of: '2026-01-01', rank, energy_cost: null, created_at: '2026-01-01' };
+}
+
+const GREEN_ENERGY: EnergySignal = { tier: 'green', recoveryScore: 80, source: 'whoop' };
+const RED_ENERGY: EnergySignal = { tier: 'red', recoveryScore: 20, source: 'whoop' };
 
 function sonnetOk(areas: { title: string; rationale: string; confidence: string }[]) {
   return { content: [{ type: 'text', text: JSON.stringify({ areas }) }] };
@@ -224,6 +231,63 @@ describe('recommendFocusAreas', () => {
   it('includes generatedAt ISO timestamp', async () => {
     const result = await recommendFocusAreas(1);
     expect(result.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('includes date field — defaults to today if not passed', async () => {
+    const result = await recommendFocusAreas(1);
+    expect(result.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('uses opts.date when provided', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([{ title: 'Focus', rationale: 'r', confidence: 'high' }]));
+    const result = await recommendFocusAreas(1, { date: '2026-06-14' });
+    expect(result.date).toBe('2026-06-14');
+  });
+
+  it('includes anchor in output when Sonnet returns it', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue({
+      content: [{ type: 'text', text: JSON.stringify({
+        areas: [{ title: 'Fundraise', rationale: 'Core goal.', confidence: 'high', anchor: 'Raise seed round' }],
+      })}],
+    });
+    const result = await recommendFocusAreas(1, { anchors: [anchor(1, 'Raise seed round')] });
+    expect(result.areas[0].anchor).toBe('Raise seed round');
+  });
+
+  it('adds energy signal to basedOn when provided', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    const result = await recommendFocusAreas(1, { energySignal: GREEN_ENERGY });
+    expect(result.basedOn.some(s => s.includes('Whoop'))).toBe(true);
+  });
+
+  it('includes energy tier context in Sonnet prompt for red energy', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    await recommendFocusAreas(1, { energySignal: RED_ENERGY });
+    const promptArg = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptArg).toContain('Low energy today');
+  });
+
+  it('adds anchors section to Sonnet prompt', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    await recommendFocusAreas(1, { anchors: [anchor(1, 'Ship the product'), anchor(2, 'Raise seed')] });
+    const promptArg = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptArg).toContain('Ship the product');
+    expect(promptArg).toContain('Raise seed');
   });
 
   it('filters out Sonnet areas with empty title or rationale', async () => {

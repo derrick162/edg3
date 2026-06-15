@@ -5,7 +5,7 @@ import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTim
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, factQueries, energyLogQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -1060,25 +1060,37 @@ Query: ${query}` }],
     return msgs[level] || 'Energy level saved.';
 
   } else if (fn === 'confirmFocus') {
-    // Write the user's confirmed focus areas to the priorities store for the current week.
-    // Called when the user says yes to Edge's weekly focus recommendation.
+    // Write confirmed daily focus areas to the daily_focus store (day-scoped — fresh each morning).
+    // Called when the user says yes to Edge's morning focus recommendation.
     const { areas } = args as { areas?: unknown };
     if (!Array.isArray(areas) || areas.length === 0) {
-      return "Which focus areas should I lock in? Tell me the 1–3 things you want to concentrate on this week.";
+      return "Which focus areas should I lock in? Tell me the 1–3 things you want to concentrate on today.";
     }
+
+    // Accept string titles or full FocusArea objects from Sonnet
     const cleaned = (areas as unknown[])
-      .map(a => String(a).trim())
-      .filter(a => a.length > 0)
+      .map(a => {
+        if (typeof a === 'string') return { title: a.trim(), rationale: '', confidence: 'medium' as const };
+        if (typeof a === 'object' && a !== null) {
+          const o = a as Record<string, unknown>;
+          return { title: String(o.title ?? '').trim(), rationale: String(o.rationale ?? '').trim(), confidence: 'medium' as const };
+        }
+        return null;
+      })
+      .filter((a): a is { title: string; rationale: string; confidence: 'medium' } => a !== null && a.title.length > 0)
       .slice(0, 3);
-    if (cleaned.length === 0) return "I didn't catch those — what are your top 1–3 focus areas?";
+    if (cleaned.length === 0) return "I didn't catch those — what are your top 1–3 focus areas for today?";
 
-    const { format, startOfWeek } = await import('date-fns');
-    const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
-    priorityQueries.deleteThisWeek(userId, weekOf);
-    cleaned.forEach((text, i) => priorityQueries.create(userId, text, weekOf, i + 1));
+    // Derive today's date in the user's local timezone
+    const profile = userQueries.findById(userId);
+    const tz = profile?.timezone ?? 'UTC';
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
-    const listed = cleaned.map((a, i) => `${i + 1}. ${a}`).join(', ');
-    return `Locked in — your focus this week: ${listed}. I'll score your calendar against these and keep you on track.`;
+    dailyFocusQueries.upsert(userId, date, JSON.stringify(cleaned), new Date().toISOString());
+    dailyFocusQueries.confirm(userId, date);
+
+    const listed = cleaned.map((a, i) => `${i + 1}. ${a.title}`).join(', ');
+    return `Locked in — your focus today: ${listed}. I'll score your calendar against these and keep you on track.`;
 
   } else if (fn === 'undoLastAction') {
     const last = undoQueries.getLatest(userId);

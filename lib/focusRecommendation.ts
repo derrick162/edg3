@@ -1,26 +1,44 @@
-// Focus recommendation engine — Edge TELLS the user what to focus on.
-// Analyzes past calendar behavior + call memory and proposes top 3 focus areas for the week.
-// Pluggable: Whoop and email sources fold in via assembleSources without touching the core contract.
+// Focus recommendation engine — Edge TELLS the user what to focus on TODAY.
+// Unit = day. Recomputed fresh each morning on the briefing call.
+// Each focus area ladders up to a stable overarching priority (anchor).
 //
 // Spec: specs/focus-recommendation.md
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { calendar_v3 } from 'googleapis';
-import { factQueries, memoryQueries } from './db';
+import { factQueries, memoryQueries, type Priority } from './db';
 import { getPastCalendarEvents } from './calendar';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
 export interface FocusArea {
-  title: string;        // 2–5 words, action-oriented
-  rationale: string;    // one honest sentence citing evidence
+  title: string;         // 2–5 words, action-oriented
+  rationale: string;     // one honest sentence citing evidence
   confidence: 'high' | 'medium' | 'low';
+  anchor?: string;       // which stable overarching priority this serves
 }
 
 export interface FocusRecommendation {
-  areas: FocusArea[];       // 0–3 proposed focus areas for the week
-  basedOn: string[];        // human-readable source descriptions (shown on dashboard)
-  generatedAt: string;      // ISO timestamp
+  areas: FocusArea[];    // 0–3 focus areas for TODAY
+  basedOn: string[];     // human-readable source descriptions (shown on dashboard)
+  generatedAt: string;   // ISO timestamp
+  date: string;          // YYYY-MM-DD the recommendation is for (user's local date)
+}
+
+export type EnergyTier = 'green' | 'yellow' | 'red';
+
+export interface EnergySignal {
+  tier: EnergyTier;
+  recoveryScore?: number;   // 0–100 from Whoop
+  source: 'whoop' | 'default';
+}
+
+export interface RecommendOpts {
+  energySignal?: EnergySignal | null;
+  todayEvents?: calendar_v3.Schema$Event[];
+  anchors?: Priority[];
+  /** YYYY-MM-DD representing today in the user's local timezone */
+  date?: string;
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
@@ -71,18 +89,27 @@ export function aggregateEventThemes(
     .slice(0, topN);
 }
 
+function describeEnergyTier(tier: EnergyTier): string {
+  if (tier === 'green') return 'High energy today (recovery ≥67%). Full capacity — schedule demanding deep work.';
+  if (tier === 'yellow') return 'Moderate energy today (recovery 34–66%). Normal capacity — balance focus with admin.';
+  return 'Low energy today (recovery ≤33%). Protect capacity — favour low-demand tasks and one meaningful output.';
+}
+
 // ── Core function ─────────────────────────────────────────────────────────────
 
 /**
- * Recommend the user's top focus areas for the week based on calendar history + call memory.
- * One Sonnet call synthesizes all sources → FocusRecommendation.
+ * Recommend today's top focus areas, anchored to stable overarching priorities.
+ * Factors energy signal (Whoop recovery) + today's calendar load.
  * Degrades gracefully: returns { areas: [] } on thin data or any failure.
  */
-export async function recommendFocusAreas(userId: number): Promise<FocusRecommendation> {
+export async function recommendFocusAreas(
+  userId: number,
+  opts: RecommendOpts = {},
+): Promise<FocusRecommendation> {
   const generatedAt = new Date().toISOString();
+  const date = opts.date ?? new Date().toISOString().slice(0, 10);
 
   // ── Assemble sources in parallel ─────────────────────────────────────────────
-  // Pluggable: add Whoop/email sources here when ready; they show up in basedOn automatically.
   const [rawEvents, allFacts, recentMemories] = await Promise.all([
     getPastCalendarEvents(userId, 180).catch(() => [] as calendar_v3.Schema$Event[]),
     Promise.resolve(factQueries.getAll(userId)).catch(() => []),
@@ -99,21 +126,46 @@ export async function recommendFocusAreas(userId: number): Promise<FocusRecommen
   }
   if (facts.length > 0) basedOn.push(`${facts.length} facts from calls (goals, projects, preferences)`);
   if (memories.length > 0) basedOn.push(`${memories.length} recent call notes`);
+  if (opts.energySignal) basedOn.push(`Whoop recovery: ${opts.energySignal.tier} (${opts.energySignal.recoveryScore ?? '?'}%)`);
+  if (opts.todayEvents && opts.todayEvents.length > 0) basedOn.push(`today's calendar (${opts.todayEvents.length} events)`);
+  if (opts.anchors && opts.anchors.length > 0) basedOn.push(`${opts.anchors.length} overarching priorities`);
 
-  // Degrade on thin data — not enough signal to make a confident recommendation
+  // Degrade on thin data
   const hasSomething = calendarThemes.length >= 3 || facts.length >= 2 || memories.length >= 2;
   if (!hasSomething) {
-    return { areas: [], basedOn, generatedAt };
+    return { areas: [], basedOn, generatedAt, date };
   }
 
   // ── Build Sonnet prompt ───────────────────────────────────────────────────────
   const sections: string[] = [
-    'You are Edge, a personal chief-of-staff AI. Analyze the data below and recommend the top 1–3 focus areas for this person this week — the highest-leverage things most worth their time.',
+    `You are Edge, a personal chief-of-staff AI. Today is ${date}.`,
+    'Recommend the top 1–3 focus areas for TODAY — not the week, just today. Each focus area should ladder up to one of the user\'s stable overarching priorities.',
     '',
   ];
 
+  // Energy context
+  if (opts.energySignal) {
+    sections.push(`ENERGY TODAY: ${describeEnergyTier(opts.energySignal.tier)}`);
+    sections.push('');
+  }
+
+  // Stable anchors
+  if (opts.anchors && opts.anchors.length > 0) {
+    sections.push('OVERARCHING PRIORITIES (stable anchors — each focus area must ladder to one of these):');
+    sections.push(opts.anchors.map(p => `  ${p.rank}. "${p.text}"`).join('\n'));
+    sections.push('');
+  }
+
+  // Today's calendar
+  if (opts.todayEvents && opts.todayEvents.length > 0) {
+    const todayThemes = aggregateEventThemes(opts.todayEvents, 10);
+    sections.push('TODAY\'S CALENDAR LOAD:');
+    sections.push(todayThemes.map(t => `  • "${t.title}" — ${t.totalHours}h`).join('\n'));
+    sections.push('');
+  }
+
   if (calendarThemes.length > 0) {
-    sections.push('CALENDAR — time actually spent (past ~180 days, sorted by total hours):');
+    sections.push('HISTORICAL CALENDAR — where time actually went (past ~180 days, sorted by total hours):');
     sections.push(calendarThemes.map(t => `  • "${t.title}" — ${t.totalHours}h total, ${t.occurrences}×`).join('\n'));
     sections.push('');
   }
@@ -132,12 +184,14 @@ export async function recommendFocusAreas(userId: number): Promise<FocusRecommen
 
   sections.push(
     'Return ONLY valid JSON — no preamble, no markdown fences:',
-    '{"areas":[{"title":"...","rationale":"...","confidence":"high|medium|low"}]}',
+    '{"areas":[{"title":"...","rationale":"...","confidence":"high|medium|low","anchor":"matching overarching priority text or omit if none"}]}',
     '',
     'Rules:',
-    '- title: 2–5 words, action-oriented (e.g. "fundraising outreach", "product build", "team hiring") — not generic ("meetings", "work", "email")',
-    '- rationale: one honest sentence citing evidence from the data (e.g. "You\'ve logged 18h on product work in the last month and your stated goal is launching by September.")',
+    '- title: 2–5 words, action-oriented for TODAY (e.g. "fundraising outreach", "product build", "team hiring") — not generic ("meetings", "work", "email")',
+    '- rationale: one honest sentence citing evidence + connection to the anchor priority',
     '- confidence: high = clear signal from 2+ sources; medium = one source or ambiguous; low = thin data',
+    '- anchor: the exact text of the overarching priority this serves (omit if anchors list is empty)',
+    '- Modulate scope by energy: green=ambitious target, yellow=realistic target, red=one meaningful output',
     '- Return fewer than 3 if fewer than 3 clear priorities emerge — never invent',
     '- Sort by importance, highest first',
   );
@@ -155,7 +209,7 @@ export async function recommendFocusAreas(userId: number): Promise<FocusRecommen
 
     const text = res.content[0]?.type === 'text' ? res.content[0].text.trim() : '';
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return { areas: [], basedOn, generatedAt };
+    if (!match) return { areas: [], basedOn, generatedAt, date };
 
     const parsed = JSON.parse(match[0]);
     const rawAreas: unknown[] = Array.isArray(parsed.areas) ? parsed.areas : [];
@@ -163,7 +217,7 @@ export async function recommendFocusAreas(userId: number): Promise<FocusRecommen
     const VALID_CONFIDENCE = ['high', 'medium', 'low'] as const;
 
     const areas: FocusArea[] = rawAreas
-      .filter((a): a is { title: string; rationale: string; confidence?: string } =>
+      .filter((a): a is { title: string; rationale: string; confidence?: string; anchor?: string } =>
         typeof a === 'object' && a !== null &&
         typeof (a as Record<string, unknown>).title === 'string' &&
         typeof (a as Record<string, unknown>).rationale === 'string'
@@ -175,11 +229,12 @@ export async function recommendFocusAreas(userId: number): Promise<FocusRecommen
         confidence: VALID_CONFIDENCE.includes(a.confidence as typeof VALID_CONFIDENCE[number])
           ? (a.confidence as 'high' | 'medium' | 'low')
           : 'medium',
+        ...(a.anchor ? { anchor: String(a.anchor).trim() } : {}),
       }))
       .filter(a => a.title.length > 0 && a.rationale.length > 0);
 
-    return { areas, basedOn, generatedAt };
+    return { areas, basedOn, generatedAt, date };
   } catch {
-    return { areas: [], basedOn, generatedAt };
+    return { areas: [], basedOn, generatedAt, date };
   }
 }

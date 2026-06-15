@@ -249,12 +249,6 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
 
-  // Start recommendation fetch early so it runs in parallel with the main Promise.all below.
-  // Only fires when there are no current-week priorities — the chief-of-staff proposal moment.
-  const focusRecP: Promise<FocusRecommendation | null> = priorities.length === 0
-    ? recommendFocusAreas(userId).catch(() => null)
-    : Promise.resolve(null);
-
   const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
@@ -266,7 +260,25 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getStrainHistory(userId).catch(() => []),
     getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
   ]);
-  const focusRec = await focusRecP;
+  // Build energy signal from Whoop recovery for focus recommendation modulation.
+  const focusEnergySignal = whoopRecovery
+    ? {
+        tier: (whoopRecovery.recoveryScore >= 67 ? 'green' : whoopRecovery.recoveryScore >= 34 ? 'yellow' : 'red') as 'green' | 'yellow' | 'red',
+        recoveryScore: whoopRecovery.recoveryScore,
+        source: 'whoop' as const,
+      }
+    : null;
+  const focusDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(new Date());
+  const focusRec: FocusRecommendation | null = await (
+    priorities.length === 0
+      ? recommendFocusAreas(userId, {
+          energySignal: focusEnergySignal,
+          todayEvents: calendarEvents,
+          anchors: undefined,
+          date: focusDate,
+        }).catch(() => null)
+      : Promise.resolve(null)
+  );
   const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(
     recoveryHistoryPoints,

@@ -316,6 +316,19 @@ function initSchema(db: Database.Database) {
       tagged_at       TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, google_event_id)
     );
+
+    -- Daily focus areas recommended by Edge each morning.
+    -- Day-scoped: recomputed fresh each morning, anchored to stable overarching priorities.
+    -- focus_areas: JSON array of {title, rationale, confidence, anchor?}.
+    CREATE TABLE IF NOT EXISTS daily_focus (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      date         TEXT NOT NULL,
+      focus_areas  TEXT NOT NULL DEFAULT '[]',
+      generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      confirmed    INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(user_id, date)
+    );
   `);
 
   // Indexes for performance
@@ -335,6 +348,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
     CREATE INDEX IF NOT EXISTS idx_calendar_scores_user_date ON calendar_scores(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_event_energy_tags_user ON event_energy_tags(user_id, google_event_id);
+    CREATE INDEX IF NOT EXISTS idx_daily_focus_user_date ON daily_focus(user_id, date);
   `);
 
   // Migrations for existing databases
@@ -1321,5 +1335,40 @@ export const eventEnergyTagQueries = {
     return getDb().prepare(
       `SELECT * FROM event_energy_tags WHERE user_id = ? AND google_event_id IN (${placeholders})`
     ).all(userId, ...eventIds) as EventEnergyTag[];
+  },
+};
+
+// ── Daily focus ───────────────────────────────────────────────────────────────
+export interface DailyFocusRecord {
+  id: number;
+  user_id: number;
+  date: string;          // YYYY-MM-DD in user's local timezone
+  focus_areas: string;   // JSON: FocusArea[]
+  generated_at: string;
+  confirmed: number;     // 0 | 1
+}
+
+export const dailyFocusQueries = {
+  upsert: (userId: number, date: string, areasJson: string, generatedAt: string): void => {
+    getDb().prepare(`
+      INSERT INTO daily_focus (user_id, date, focus_areas, generated_at, confirmed)
+      VALUES (?, ?, ?, ?, 0)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        focus_areas  = excluded.focus_areas,
+        generated_at = excluded.generated_at,
+        confirmed    = 0
+    `).run(userId, date, areasJson, generatedAt);
+  },
+
+  getToday: (userId: number, date: string): DailyFocusRecord | null => {
+    return (getDb().prepare(
+      `SELECT * FROM daily_focus WHERE user_id = ? AND date = ?`
+    ).get(userId, date) ?? null) as DailyFocusRecord | null;
+  },
+
+  confirm: (userId: number, date: string): void => {
+    getDb().prepare(
+      `UPDATE daily_focus SET confirmed = 1 WHERE user_id = ? AND date = ?`
+    ).run(userId, date);
   },
 };
