@@ -9,6 +9,17 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Dashboard wiring — EdgeScoreCard + FocusRecommendationCard + DayPlanCard + NotificationCenter**.
+  - **`app/api/day-plan/route.ts`** (new GET): builds today's plan via `buildCalendarPlan`, converts Core's `PlanAction[]` to Design's `PlanChange[]` format (wall-clock slot formatting, detail strings), estimates `scoreAfter`, issues a `planId` via `issueDeleteToken`. Returns null when no actions needed (card shows "Your day looks good").
+  - **`app/api/day-plan/confirm/route.ts`** (new POST): consumes `planId` via `consumeDeleteToken` (idempotency guard), re-builds plan deterministically, executes creates + moves via Google Calendar API (same logic as Vapi `applyCalendarPlan` handler), records undo group, re-scores + persists. Returns `{ ok, newScore, count }`.
+  - **`app/dashboard/page.tsx`** wiring:
+    - Imports: `CalendarFitCard` → `EdgeScoreCard`; added `FocusRecommendationCard`, `DayPlanCard`, `NotificationBell`, `NotificationCenter` + types `FocusRecommendation`, `FocusRecommendationArea`, `CalendarPlan as DayPlanType`.
+    - State: `focusRec`, `focusRecLoading`, `focusRecDismissed`, `dayPlan`, `dayPlanLoading`, `dayPlanApplied`, `dayPlanAppliedScore`.
+    - Fetches in `loadData`: `/api/focus/recommend` → `focusRec`; `/api/day-plan` → `dayPlan`.
+    - Handlers: `handleConfirmFocus` (POST `/api/focus/confirm`, dismisses card); `handleConfirmDayPlan` (POST `/api/day-plan/confirm`, sets applied + refreshes score).
+    - Landing area: `EdgeScoreCard` replaces `CalendarFitCard`; `FocusRecommendationCard` shown below (dismissible); `DayPlanCard` shown when calendar connected (loading/plan/applied states).
+    - Notification bell: inline bespoke `🔔` + dropdown replaced with `NotificationBell` + `NotificationCenter`; preserves "Book a time" via `NotifAction` closure; "Check for replies" button kept as footer.
+  - 724/724 green, tsc clean, next build clean.
 - **2026-06-15** — **Hero Loop — `applyCalendarPlan` tool + `buildCalendarPlan` pure engine** (`0b6c5af`).
   - **`lib/calendarPlan.ts`** (pure, no I/O):
     - `findFreeSlot(events, date, durationHours, tz, workStart?, workEnd?)` — scans today's events in the user's timezone (decimal wall-clock hours), finds the first contiguous free slot ≥ `durationHours` within working hours, returns wall-clock datetimes ("YYYY-MM-DDTHH:MM:00"). Handles all-day events (filtered out), overlapping blocks, trailing gaps.

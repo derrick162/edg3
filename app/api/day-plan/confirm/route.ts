@@ -1,0 +1,153 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { userQueries, priorityQueries, energyLogQueries, energyProfileQueries, factQueries, calendarScoreQueries, effectiveTimezone, calendarQueries } from '@/lib/db';
+import { getOAuthClient, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
+import { getLatestRecovery } from '@/lib/whoop';
+import { deriveEnergySignal } from '@/lib/energy';
+import { classifyEventsEnergy, computeCalendarFit, parseEnergyProfile } from '@/lib/calendarScore';
+import { computeAlignment } from '@/lib/alignment';
+import { buildCalendarPlan } from '@/lib/calendarPlan';
+import { consumeDeleteToken } from '@/lib/idempotency';
+import { recordUndo, type UndoOp } from '@/lib/undo';
+import { wallTimeToUtc, timedEventDateMove } from '@/lib/time';
+import { google } from 'googleapis';
+
+export async function POST(req: NextRequest) {
+  const user = await getSession();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const { planId } = body as { planId?: string };
+
+  if (!planId || !consumeDeleteToken(user.id, planId)) {
+    return NextResponse.json({ error: 'Invalid or expired plan ID' }, { status: 400 });
+  }
+
+  const profile = userQueries.findById(user.id);
+  const userTz = profile ? effectiveTimezone(profile) : 'UTC';
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: userTz }).format(new Date());
+
+  const priorities = priorityQueries.getMostRecent(user.id);
+
+  const [todayEvents, weekEvents, whoopRec] = await Promise.all([
+    getCalendarEvents(user.id).catch(() => []),
+    getWeekEvents(user.id).catch(() => []),
+    getLatestRecovery(user.id).catch(() => null),
+  ]);
+
+  const todayEnergyLog = (() => { try { return energyLogQueries.getToday(user.id, today); } catch { return undefined; } })();
+  const energySignal = deriveEnergySignal(todayEnergyLog, whoopRec?.recoveryScore ?? null);
+
+  const [alignment, tagged] = await Promise.all([
+    computeAlignment(priorities, weekEvents, userTz).catch(() => null),
+    classifyEventsEnergy(todayEvents).catch(() => []),
+  ]);
+
+  const dbProfile = (() => { try { return energyProfileQueries.get(user.id); } catch { return undefined; } })();
+  const energyProfile = dbProfile
+    ? { peakStart: dbProfile.peak_start, peakEnd: dbProfile.peak_end, troughStart: dbProfile.trough_start, troughEnd: dbProfile.trough_end }
+    : (() => {
+        try {
+          const stmts = factQueries.getAll(user.id).filter(f => f.category === 'preference').map(f => f.statement);
+          return parseEnergyProfile(stmts);
+        } catch { return null; }
+      })();
+
+  const fit = computeCalendarFit(tagged, alignment, priorities, energySignal, energyProfile);
+  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz);
+
+  // Build calendar client
+  const tokenRow = calendarQueries.get(user.id);
+  if (!tokenRow) return NextResponse.json({ error: 'Calendar not connected' }, { status: 400 });
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token ?? undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+  const cal = google.calendar({ version: 'v3', auth: oauth2Client });
+
+  const undoOps: UndoOp[] = [];
+  const doneDescs: string[] = [];
+
+  for (const action of plan.actions) {
+    if (action.type === 'create' && action.title && action.startDateTime && action.endDateTime) {
+      try {
+        const startUtc = wallTimeToUtc(action.startDateTime, userTz);
+        const endUtc   = wallTimeToUtc(action.endDateTime,   userTz);
+        const res = await cal.events.insert({
+          calendarId: 'primary',
+          requestBody: {
+            summary: `⚡ ${action.title}`,
+            start: { dateTime: startUtc.toISOString(), timeZone: userTz },
+            end:   { dateTime: endUtc.toISOString(),   timeZone: userTz },
+            colorId: '9',
+          },
+        });
+        if (res.data.id) {
+          undoOps.push({ type: 'delete', calId: 'primary', eventId: res.data.id });
+          doneDescs.push(action.description);
+        }
+      } catch (err) {
+        console.error('[day-plan/confirm] create failed:', err);
+      }
+    } else if (action.type === 'move' && action.eventId && action.newDate) {
+      try {
+        const evRes = await cal.events.get({ calendarId: 'primary', eventId: action.eventId });
+        const moveEv = evRes.data;
+        if (moveEv?.start?.dateTime) {
+          const eventTz = moveEv.start.timeZone ?? userTz;
+          const patch = timedEventDateMove(moveEv.start.dateTime, moveEv.end?.dateTime ?? '', action.newDate, eventTz);
+          await cal.events.patch({
+            calendarId: 'primary',
+            eventId: action.eventId,
+            requestBody: { start: patch.start, end: patch.end },
+          });
+          undoOps.push({ type: 'patch', calId: 'primary', eventId: action.eventId, requestBody: {
+            start: { dateTime: moveEv.start.dateTime, timeZone: moveEv.start.timeZone ?? userTz },
+            end: moveEv.end?.dateTime
+              ? { dateTime: moveEv.end.dateTime, timeZone: moveEv.end.timeZone ?? userTz }
+              : undefined,
+          } });
+          doneDescs.push(action.description);
+        }
+      } catch (err) {
+        console.error('[day-plan/confirm] move failed:', err);
+      }
+    }
+  }
+
+  if (undoOps.length) {
+    recordUndo(user.id, `day plan — ${doneDescs.length} action${doneDescs.length !== 1 ? 's' : ''}`, undoOps);
+  }
+
+  if (doneDescs.length === 0) {
+    return NextResponse.json({ ok: false, error: 'No actions could be executed' }, { status: 422 });
+  }
+
+  // Re-score and persist
+  let newEdgeScore: number | null = null;
+  try {
+    const [newTodayEvts, newWeekEvts] = await Promise.all([
+      getCalendarEvents(user.id).catch(() => todayEvents),
+      getWeekEvents(user.id).catch(() => weekEvents),
+    ]);
+    const [newAlignment, newTagged] = await Promise.all([
+      computeAlignment(priorities, newWeekEvts, userTz).catch(() => alignment),
+      classifyEventsEnergy(newTodayEvts).catch(() => tagged),
+    ]);
+    const newFit = computeCalendarFit(newTagged, newAlignment, priorities, energySignal, energyProfile);
+    newEdgeScore = newFit.edgeScore;
+    try {
+      calendarScoreQueries.upsert(user.id, today, {
+        edgeScore:     newFit.edgeScore,
+        focusScore:    newFit.focusScore.score,
+        energyScore:   newFit.energyScore.score,
+        focusDrivers:  newFit.focusScore.drivers,
+        energyDrivers: newFit.energyScore.drivers,
+      });
+    } catch { /* non-fatal */ }
+  } catch { /* non-fatal */ }
+
+  return NextResponse.json({ ok: true, newScore: newEdgeScore, count: doneDescs.length });
+}

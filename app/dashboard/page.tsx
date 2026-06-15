@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, CalendarFitCard } from '@/components/ui';
-import type { CalendarFit } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -1119,6 +1119,13 @@ export default function Dashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
   const [calendarFitLoading, setCalendarFitLoading] = useState(false);
+  const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
+  const [focusRecLoading, setFocusRecLoading] = useState(false);
+  const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
+  const [dayPlanLoading, setDayPlanLoading] = useState(false);
+  const [dayPlanApplied, setDayPlanApplied] = useState(false);
+  const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1161,6 +1168,10 @@ export default function Dashboard() {
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
+    setFocusRecLoading(true);
+    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
+    setDayPlanLoading(true);
+    fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1204,6 +1215,29 @@ export default function Dashboard() {
     setFacts(prev => prev.filter(f => f.id !== id));
     setDeletingFactId(null);
     await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
+  async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    await fetch('/api/focus/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ areas }),
+    });
+    setFocusRecDismissed(true);
+  }
+
+  async function handleConfirmDayPlan(planId: string) {
+    const res = await fetch('/api/day-plan/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setDayPlanApplied(true);
+    if (d.newScore != null) {
+      setDayPlanAppliedScore(d.newScore);
+      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    }
   }
 
   async function retryBriefingCall() {
@@ -1432,40 +1466,33 @@ export default function Dashboard() {
 
       {/* Notification center */}
       <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 60 }}>
-        <button
-          onClick={() => { const next = !notifOpen; setNotifOpen(next); if (next && notifUnread > 0) notifAction('markAllRead'); }}
-          title="Notifications"
-          style={{ position: 'relative', width: 40, height: 40, borderRadius: 9999, background: 'var(--edg-fill-hover)', border: '1px solid var(--edg-border-10)', fontSize: 18, cursor: 'pointer' }}
-        >
-          🔔
-          {notifUnread > 0 && (
-            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9999, background: 'var(--edg-danger)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {notifUnread}
-            </span>
-          )}
-        </button>
+        <NotificationBell
+          unreadCount={notifUnread}
+          onClick={() => {
+            const next = !notifOpen;
+            setNotifOpen(next);
+            if (next && notifUnread > 0) notifAction('markAllRead');
+          }}
+        />
         {notifOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto', padding: 12 }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Notifications</span>
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto' }}>
+            <NotificationCenter
+              notifications={notifs.map(n => ({
+                id: n.id,
+                type: 'general' as const,
+                title: n.title,
+                body: n.body,
+                read: !!n.read,
+                createdAt: n.created_at,
+                actions: [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }],
+              }))}
+              onDismiss={() => {}}
+            />
+            <div className="px-3 pb-3 pt-1 flex justify-end" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
               <button onClick={() => notifAction('check')} disabled={notifChecking} className="text-xs" style={{ color: 'var(--text-accent)' }}>
                 {notifChecking ? 'Checking…' : '↻ Check for replies'}
               </button>
             </div>
-            {notifs.length === 0 ? (
-              <p className="text-xs py-6 text-center" style={{ color: 'var(--text-faint)' }}>No notifications yet. When someone replies to an email Edge drafted, it&apos;ll show up here.</p>
-            ) : (
-              notifs.map((n) => (
-                <div key={n.id} className="py-2" style={{ borderTop: '1px solid var(--edg-hairline)', opacity: n.read ? 0.6 : 1 }}>
-                  <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>{n.title}</p>
-                  {n.body && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.body}</p>}
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{new Date(n.created_at).toLocaleString()}</p>
-                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: 'var(--text-accent)' }}>📅 Book a time</button>
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         )}
       </div>
@@ -1824,14 +1851,37 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Calendar Fit — landing view: always visible above tab content */}
+          {/* Score + plan cards — always visible above tab content */}
           <div className="mb-6">
-            <CalendarFitCard
+            <EdgeScoreCard
               fit={calendarFit}
               loading={calendarFitLoading}
               sparse={priorities.length === 0 || calendarConnected === false}
+              onRequestFix={() => {/* DayPlanCard below handles fixes */}}
             />
           </div>
+          {!focusRecDismissed && (
+            <div className="mb-6">
+              <FocusRecommendationCard
+                recommendation={focusRec}
+                loading={focusRecLoading}
+                onConfirm={handleConfirmFocus}
+                onDismiss={() => setFocusRecDismissed(true)}
+              />
+            </div>
+          )}
+          {calendarConnected !== false && (
+            <div className="mb-6">
+              <DayPlanCard
+                plan={dayPlan}
+                loading={dayPlanLoading}
+                onConfirm={handleConfirmDayPlan}
+                onDismiss={() => setDayPlan(null)}
+                applied={dayPlanApplied}
+                appliedScore={dayPlanAppliedScore}
+              />
+            </div>
+          )}
 
           {/* Tab content */}
           {activeTab === 'briefings' && (
