@@ -13,6 +13,7 @@ import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
 import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from './calendarScore';
+import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -247,6 +248,13 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const priorities = priorityQueries.getThisWeek(userId, weekOf);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
+
+  // Start recommendation fetch early so it runs in parallel with the main Promise.all below.
+  // Only fires when there are no current-week priorities — the chief-of-staff proposal moment.
+  const focusRecP: Promise<FocusRecommendation | null> = priorities.length === 0
+    ? recommendFocusAreas(userId).catch(() => null)
+    : Promise.resolve(null);
+
   const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
@@ -258,6 +266,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getStrainHistory(userId).catch(() => []),
     getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
   ]);
+  const focusRec = await focusRecP;
   const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(
     recoveryHistoryPoints,
@@ -452,7 +461,11 @@ ${user.profile_summary || 'No profile summary available.'}
 
 THIS WEEK'S TOP PRIORITIES:
 ${prioritiesText}
-
+${focusRec && focusRec.areas.length > 0 ? `
+FOCUS RECOMMENDATION — no priorities set this week. Edge analyzed ${focusRec.basedOn.join(', ')} and proposes:
+${focusRec.areas.map((a, i) => `${i + 1}. "${a.title}" [${a.confidence}] — ${a.rationale}`).join('\n')}
+INSTRUCTION: Open the call with this recommendation naturally — "Based on your last six months and our calls, here's what I'd focus you on this week: [area 1] and [area 2]. Sound right?" On yes, call confirmFocus with those area titles. On tweak, adjust then confirmFocus. Skip the normal calendar-hook opener and lead with this instead.
+` : ''}
 CALENDAR FIT — HEADLINE SCORES (open with: "Focus is at ${calendarFit.focusScore.score}%, Energy's at ${calendarFit.energyScore.score}% — here's why and here's the one move that helps most"):
 Focus Score: ${calendarFit.focusScore.score}% — ${calendarFit.focusScore.drivers.join(' ')}${calendarFit.focusScore.topFix ? ` → ${calendarFit.focusScore.topFix.description}` : ''}
 Energy Score: ${calendarFit.energyScore.score}% — ${calendarFit.energyScore.drivers.join(' ')}${calendarFit.energyScore.topFix ? ` → ${calendarFit.energyScore.topFix.description}` : ''}

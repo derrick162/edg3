@@ -331,6 +331,61 @@ export async function getPastCalendarDays(
   return result;
 }
 
+/**
+ * Fetch raw calendar events from the past `days` days across all non-hidden calendars.
+ * Intended for analysis workloads (e.g. focus recommendation). Returns unsorted raw events,
+ * capped at 250 per calendar to stay within Google API limits.
+ */
+export async function getPastCalendarEvents(
+  userId: number,
+  days: number,
+): Promise<calendar_v3.Schema$Event[]> {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return [];
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+  oauth2Client.on('tokens', (tokens) => {
+    if (tokens.access_token) {
+      calendarQueries.upsert(
+        userId,
+        tokens.access_token,
+        tokens.refresh_token || tokenRow.refresh_token || '',
+        tokens.expiry_date?.toString() || ''
+      );
+    }
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const now = new Date();
+  const timeMax = now.toISOString();
+  const timeMin = new Date(now.getTime() - days * 86400000).toISOString();
+
+  const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calendarIds = (calendarList.data.items || [])
+    .filter(c => !c.hidden)
+    .map(c => c.id!)
+    .filter(Boolean);
+
+  const allEvents = await Promise.all(
+    calendarIds.map(calId =>
+      calendar.events.list({
+        calendarId: calId,
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        maxResults: 250,
+      }).then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  return allEvents.flat();
+}
+
 export async function createCalendarEvent(
   userId: number,
   title: string,

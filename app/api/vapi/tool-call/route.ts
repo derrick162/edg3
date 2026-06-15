@@ -1059,6 +1059,27 @@ Query: ${query}` }],
     };
     return msgs[level] || 'Energy level saved.';
 
+  } else if (fn === 'confirmFocus') {
+    // Write the user's confirmed focus areas to the priorities store for the current week.
+    // Called when the user says yes to Edge's weekly focus recommendation.
+    const { areas } = args as { areas?: unknown };
+    if (!Array.isArray(areas) || areas.length === 0) {
+      return "Which focus areas should I lock in? Tell me the 1–3 things you want to concentrate on this week.";
+    }
+    const cleaned = (areas as unknown[])
+      .map(a => String(a).trim())
+      .filter(a => a.length > 0)
+      .slice(0, 3);
+    if (cleaned.length === 0) return "I didn't catch those — what are your top 1–3 focus areas?";
+
+    const { format, startOfWeek } = await import('date-fns');
+    const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
+    priorityQueries.deleteThisWeek(userId, weekOf);
+    cleaned.forEach((text, i) => priorityQueries.create(userId, text, weekOf, i + 1));
+
+    const listed = cleaned.map((a, i) => `${i + 1}. ${a}`).join(', ');
+    return `Locked in — your focus this week: ${listed}. I'll score your calendar against these and keep you on track.`;
+
   } else if (fn === 'undoLastAction') {
     const last = undoQueries.getLatest(userId);
     if (!last) return "There's nothing for me to undo.";
