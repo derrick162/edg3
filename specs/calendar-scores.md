@@ -83,6 +83,24 @@ power **energy color-coding** later. Then Energy Score = fit of the calendar's t
 user's energy level/capacity (red day overloaded with high-demand → low; high-demand in peak window →
 good). `drivers` + `topFix` ("your hardest block is in your low-energy window — move it?").
 
+## ★★★ EVOLUTION → ONE "Edg3 Score" with Focus + Energy as drivers (PROPOSED 2026-06-15, Derrick)
+Two co-equal scores confused the user in practice (Focus read 0% while Energy read a meaningless 100%
+side-by-side). Direction: collapse to a SINGLE headline number, with the dimensions as its breakdown.
+- **Edg3 Score (0–100)** — the ONE number: "how set up for a focused, energized, sustainable day/week
+  is my calendar?" Something to track and feel.
+- **Breakdown (drivers, shown on expand):** Focus + Energy still computed, plus the single biggest fix.
+  This PRESERVES the hero loop — Edge must still say WHY it's low + WHAT to change. Mental model:
+  WHOOP recovery / credit score — one number, factors underneath. (Do NOT throw the dimensions away.)
+- **Blend:** start simple (average or a light Focus/Energy weighting), tunable later. NOT a return of
+  the deferred human-judgment layer.
+- **★ Redefine the ENERGY component** (today it defaults to a meaningless 100): Energy =
+  *(how much energy you have — recovery/sleep availability)* × *(how well the calendar matches it —
+  demanding work in high-energy windows, not overloading low-recovery days)*. When inputs are thin
+  (no recovery, no energy profile, sparse calendar) → show **"calibrating"/low-confidence, NEVER a
+  fake 100.** This energy-definition fix is needed REGARDLESS of the one-vs-two structure.
+- **Status:** PROPOSED — recommended structure = "one Edg3 Score + Focus/Energy breakdown." Confirm
+  with Derrick before the rework (scoring has iterated several times today; lock it to avoid churn).
+
 ## Two-component scoring (FUTURE — DEFERRED until multi-user feedback exists)
 _Not MVP — see the simplification above. Kept for when real users can train the judgment half._
 Pure hours are the easy ~20% of the truth; the valuable part is **judgment** — "more hours isn't
