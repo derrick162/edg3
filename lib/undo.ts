@@ -1,5 +1,5 @@
 import { calendar_v3 } from 'googleapis';
-import { undoQueries } from '@/lib/db';
+import { undoQueries, calendarPlanQueries } from '@/lib/db';
 import { deleteDraft } from './gmail';
 
 // A reversible operation. Each mutation Edge performs records the inverse op(s)
@@ -15,9 +15,18 @@ export type UndoOp =
   | { type: 'recreate'; calId: string; event: calendar_v3.Schema$Event }
   | { type: 'deleteDraft'; userId: number; draftId: string };
 
-export function recordUndo(userId: number, label: string, ops: UndoOp[]) {
+// Record the inverse of a single mutation. Pass planId when the mutation is part
+// of an applyCalendarPlan batch — all ops sharing a planId can be undone together
+// via undoPlan(). Without planId, the entry is standalone (individual "undo that").
+export function recordUndo(userId: number, label: string, ops: UndoOp[], planId?: string) {
   if (!ops.length) return;
-  try { undoQueries.record(userId, label, { ops }); } catch { /* non-critical */ }
+  try {
+    if (planId) {
+      undoQueries.recordForPlan(userId, label, { ops }, planId);
+    } else {
+      undoQueries.record(userId, label, { ops });
+    }
+  } catch { /* non-critical */ }
 }
 
 export async function executeUndo(cal: calendar_v3.Calendar, ops: UndoOp[]): Promise<boolean> {
@@ -32,6 +41,30 @@ export async function executeUndo(cal: calendar_v3.Calendar, ops: UndoOp[]): Pro
     } catch { /* skip individual failures */ }
   }
   return any;
+}
+
+// Undo all mutations recorded under a planId (hero loop "undo my whole day").
+// Executes ops in reverse insertion order (most recent mutation reverted first).
+// Marks the plan as reverted in calendar_plan_executions; no-op if plan not found.
+export async function undoPlan(
+  userId: number,
+  planId: string,
+  cal: calendar_v3.Calendar,
+): Promise<{ reverted: number }> {
+  const entries = undoQueries.getByPlanId(userId, planId);
+  if (!entries.length) return { reverted: 0 };
+
+  // getByPlanId orders by id DESC — most recent mutation first — correct undo order.
+  let reverted = 0;
+  for (const entry of entries) {
+    const ops = parseUndoOps(entry.payload);
+    const ok = await executeUndo(cal, ops);
+    if (ok) reverted++;
+  }
+
+  undoQueries.markPlanUndone(userId, planId);
+  calendarPlanQueries.markReverted(userId, planId);
+  return { reverted };
 }
 
 // Strip read-only fields so a deleted event can be re-inserted on undo.
