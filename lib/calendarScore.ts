@@ -293,10 +293,9 @@ export function computeEnergyScore(
 
   if (taggedEvents.length === 0) {
     return {
-      score: energySignal.level === 'red' ? 100 : 70,
-      drivers: energySignal.level === 'red'
-        ? ['Light/empty schedule on a red day — excellent recovery protection.']
-        : ['No timed events to score yet.'],
+      score: 50,
+      calibrating: true,
+      drivers: ['No timed events to classify yet — Energy Score appears once your calendar has events.'],
       topFix: null,
     };
   }

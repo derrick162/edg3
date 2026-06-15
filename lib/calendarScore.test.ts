@@ -287,20 +287,21 @@ describe('computeEnergyScore — no signal', () => {
 // ─── computeEnergyScore — empty events ───────────────────────────────────────
 
 describe('computeEnergyScore — empty events', () => {
-  it('empty events on red day → score 100 (protected)', () => {
+  it('empty events → calibrating (not a fake score)', () => {
     const r = computeEnergyScore([], sigRed, null);
-    expect(r.score).toBe(100);
-    expect(r.drivers.some(d => d.includes('recovery'))).toBe(true);
+    expect(r.calibrating).toBe(true);
+    expect(r.score).toBe(50);
   });
 
-  it('empty events on green day → score 70 (neutral)', () => {
+  it('empty events on green day → calibrating', () => {
     const r = computeEnergyScore([], sigGreen, null);
-    expect(r.score).toBe(70);
+    expect(r.calibrating).toBe(true);
+    expect(r.score).toBe(50);
   });
 
-  it('empty events on yellow day → score 70 (neutral)', () => {
+  it('empty events on yellow day → calibrating', () => {
     const r = computeEnergyScore([], sigYellow, null);
-    expect(r.score).toBe(70);
+    expect(r.calibrating).toBe(true);
   });
 });
 
@@ -503,14 +504,14 @@ describe('computeEnergyScore — calibrating state', () => {
     expect(r.drivers.some(d => d.includes('No energy signal'))).toBe(true);
   });
 
-  it('does NOT set calibrating when signal is present (green)', () => {
+  it('sets calibrating when signal present but events empty (green)', () => {
     const r = computeEnergyScore([], sigGreen, null);
-    expect(r.calibrating).toBeFalsy();
+    expect(r.calibrating).toBe(true);
   });
 
-  it('does NOT set calibrating when signal is present (red)', () => {
+  it('sets calibrating when signal present but events empty (red)', () => {
     const r = computeEnergyScore([], sigRed, null);
-    expect(r.calibrating).toBeFalsy();
+    expect(r.calibrating).toBe(true);
   });
 });
 
@@ -534,19 +535,19 @@ describe('computeCalendarFit — edgeScore', () => {
     expect(fit.edgeScore).toBe(fit.focusScore.score); // energy doesn't contribute
   });
 
-  it('calibrating:false when signal present — edgeScore is average of focus + energy', () => {
+  it('calibrating:true when events empty — edgeScore falls back to focusScore only', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
     const fit = computeCalendarFit([], alignment, priorities, sigGreen, null, 45);
-    expect(fit.calibrating).toBe(false);
-    // focusScore=50, energyScore=70 (green + empty) → edgeScore=60
-    expect(fit.edgeScore).toBe(Math.round((fit.focusScore.score + fit.energyScore.score) / 2));
+    expect(fit.calibrating).toBe(true);
+    // energy calibrating → edgeScore = focusScore only (= 50)
+    expect(fit.edgeScore).toBe(fit.focusScore.score);
   });
 
   it('edgeScore rounds to integer', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 20 }], 25);
-    // focusScore = round(20/45*100)=44, energyScore=70 → avg=57
+    // both scores are present (timed event included) → avg; here energy calibrating → focus only
     const fit = computeCalendarFit([], alignment, priorities, sigGreen, null, 45);
     expect(Number.isInteger(fit.edgeScore)).toBe(true);
   });
