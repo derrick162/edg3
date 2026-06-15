@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Notification types understood by this component. 'general' = legacy fallback. */
@@ -99,6 +101,13 @@ function typeBorder(type: NotifType | undefined, read: boolean): string {
   }
 }
 
+// Energy level → active style
+const ENERGY_ACTIVE: Record<string, { bg: string; border: string; color: string }> = {
+  green:  { bg: 'rgba(34,197,94,0.15)',   border: 'rgba(34,197,94,0.40)',   color: 'var(--whoop-high)' },
+  yellow: { bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.40)',  color: 'var(--whoop-medium)' },
+  red:    { bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.40)',   color: 'var(--whoop-low)' },
+};
+
 // ── Single notification row ───────────────────────────────────────────────────
 
 function NotifRow({
@@ -114,6 +123,13 @@ function NotifRow({
 }) {
   const type = n.type ?? 'general';
   const icon = typeIcon(type);
+  const isCelebration = type === 'celebration';
+  const [selectedEnergy, setSelectedEnergy] = useState<'green' | 'yellow' | 'red' | null>(null);
+
+  function handleSetEnergy(level: 'green' | 'yellow' | 'red') {
+    setSelectedEnergy(level);
+    onSetEnergy?.(level);
+  }
 
   return (
     <div
@@ -122,6 +138,8 @@ function NotifRow({
         background: typeBg(type, n.read),
         border: `1px solid ${typeBorder(type, n.read)}`,
         opacity: n.read && type === 'general' ? 0.55 : 1,
+        animation: isCelebration && !n.read ? 'score-rise 0.4s ease both' : undefined,
+        boxShadow: isCelebration && !n.read ? '0 0 20px rgba(99,102,241,0.12)' : undefined,
       }}
     >
       <div className="flex items-start gap-2.5">
@@ -129,9 +147,9 @@ function NotifRow({
         <span
           className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
           style={{
-            background: n.read ? 'var(--edg-fill-04)' : typeBorder(type, false) !== 'transparent'
-              ? typeBorder(type, false).replace('border', 'bg').replace('var(--notif-', 'var(--notif-').replace('-border)', '-bg)')
-              : 'var(--edg-accent-08)',
+            background: n.read ? 'var(--edg-fill-04)' : typeBg(type, false),
+            boxShadow: isCelebration && !n.read ? '0 0 12px rgba(99,102,241,0.30)' : undefined,
+            animation: isCelebration && !n.read ? 'pop-in 0.45s ease both' : undefined,
           }}
         >
           {icon}
@@ -151,33 +169,37 @@ function NotifRow({
             </p>
           )}
 
-          {/* Type-specific actions */}
-
-          {/* Energy one-tap */}
+          {/* Energy one-tap — shows confirmation after selection */}
           {type === 'energy_prompt' && onSetEnergy && (
-            <div className="flex items-center gap-1.5 mb-1">
-              {ENERGY_OPTIONS.map(opt => (
-                <button
-                  key={opt.level}
-                  onClick={() => onSetEnergy(opt.level)}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full transition-all"
-                  style={{
-                    background: 'var(--edg-fill-04)',
-                    border: '1px solid var(--edg-hairline)',
-                    color: 'var(--text-muted)',
-                  }}
-                >
-                  {opt.emoji} {opt.label}
-                </button>
-              ))}
-            </div>
+            selectedEnergy ? (
+              <p className="text-xs font-medium mb-1" style={{ color: ENERGY_ACTIVE[selectedEnergy].color }}>
+                {selectedEnergy === 'green' ? '🟢' : selectedEnergy === 'yellow' ? '🟡' : '🔴'} Logged — Edge has you.
+              </p>
+            ) : (
+              <div className="flex items-center gap-1.5 mb-1">
+                {ENERGY_OPTIONS.map(opt => (
+                  <button
+                    key={opt.level}
+                    onClick={() => handleSetEnergy(opt.level)}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full transition-all hover:opacity-90"
+                    style={{
+                      background: 'var(--edg-fill-04)',
+                      border: '1px solid var(--edg-hairline)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {opt.emoji} {opt.label}
+                  </button>
+                ))}
+              </div>
+            )
           )}
 
           {/* Edge action — undo */}
           {type === 'edge_action' && onUndo && (
             <button
               onClick={onUndo}
-              className="text-xs px-2.5 py-1 rounded-full transition-all"
+              className="text-xs px-2.5 py-1 rounded-full transition-all hover:opacity-90"
               style={{
                 background: 'var(--edg-fill-04)',
                 border: '1px solid var(--edg-hairline)',
@@ -195,7 +217,7 @@ function NotifRow({
                 <button
                   key={i}
                   onClick={a.onClick}
-                  className="text-xs px-2.5 py-1 rounded-full transition-all"
+                  className="text-xs px-2.5 py-1 rounded-full transition-all hover:opacity-90"
                   style={
                     a.variant === 'primary'
                       ? { background: 'var(--edg-accent-15)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-accent)' }

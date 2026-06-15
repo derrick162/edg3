@@ -19,6 +19,8 @@ export interface FocusRecommendation {
 export interface FocusRecommendationCardProps {
   recommendation: FocusRecommendation | null;
   loading?: boolean;
+  /** How many briefing calls the user has completed — informs empty-state copy */
+  callsCompleted?: number;
   onConfirm: (areas: FocusRecommendationArea[]) => Promise<void>;
   onDismiss?: () => void;
 }
@@ -152,6 +154,7 @@ function AreaRow({
 export function FocusRecommendationCard({
   recommendation,
   loading = false,
+  callsCompleted = 0,
   onConfirm,
   onDismiss,
 }: FocusRecommendationCardProps) {
@@ -202,18 +205,44 @@ export function FocusRecommendationCard({
 
   // ── No recommendation yet
   if (!recommendation) {
+    const hasStarted = callsCompleted > 0;
     return (
       <div
-        className="glass-card p-5 text-center"
+        className="glass-card p-5"
         style={{ background: 'var(--rec-card-bg)', borderColor: 'var(--rec-card-border)' }}
       >
-        <p className="text-2xl mb-2">✦</p>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-          Edge will recommend your focus
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          After a few briefing calls, Edge will analyze your calendar and memories to tell you exactly what to focus on today.
-        </p>
+        <div className="flex items-start gap-3">
+          <span
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base"
+            style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}
+          >
+            ✦
+          </span>
+          <div>
+            <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>
+              {hasStarted ? 'Building your focus picture' : 'Your daily focus read'}
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              {hasStarted
+                ? `Edge is learning from your ${callsCompleted} call${callsCompleted !== 1 ? 's' : ''} so far — a full recommendation appears after a few more briefings.`
+                : 'After your first morning briefing, Edge will tell you exactly what to focus on today — based on your calendar, goals, and energy.'}
+            </p>
+            {hasStarted && (
+              <div className="flex gap-1 mt-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-1 flex-1 rounded-full"
+                    style={{
+                      background: i < callsCompleted ? 'var(--edg-indigo)' : 'var(--edg-hairline)',
+                      opacity: i < callsCompleted ? 1 : 0.4,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -222,16 +251,45 @@ export function FocusRecommendationCard({
   if (confirmed) {
     return (
       <div
-        className="glass-card p-5 text-center"
-        style={{ background: 'var(--rec-card-bg)', borderColor: 'var(--rec-card-border)' }}
+        className="glass-card p-5"
+        style={{
+          background: 'var(--rec-card-bg)',
+          borderColor: 'var(--rec-card-border)',
+          animation: 'score-rise 0.4s ease both',
+        }}
       >
-        <p className="text-2xl mb-2">✓</p>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-          Focus set for today
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Edge will score your calendar against these areas this morning.
-        </p>
+        <div className="flex items-center gap-3 mb-3">
+          <span
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base"
+            style={{
+              background: 'var(--edg-accent-08)',
+              border: '1px solid var(--edg-accent-20)',
+              boxShadow: 'var(--shadow-btn-glow)',
+              animation: 'pop-in 0.45s ease both',
+            }}
+          >
+            ✓
+          </span>
+          <div>
+            <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+              Focus set for today
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Edge will score your calendar against these.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-1">
+          {areas.map((a, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ background: confidenceColor(a.confidence) }}
+              />
+              <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{a.title}</p>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -249,14 +307,18 @@ export function FocusRecommendationCard({
           </p>
           <h3 className="text-base font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {allLow
-              ? 'Still getting to know you — here\'s my first read on today'
-              : 'Here\'s what I\'d focus you on today'}
+              ? "Early read — I'm still learning you"
+              : "Here's what I'd focus you on today"}
           </h3>
-          {thinData && (
-            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-              More calls will sharpen these recommendations.
+          {allLow ? (
+            <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+              These are my best guesses from what I know so far. Confirm them as-is or tweak any that feel off — that feedback sharpens my read.
             </p>
-          )}
+          ) : thinData ? (
+            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+              A few areas are still early reads — more calls will sharpen them.
+            </p>
+          ) : null}
         </div>
         {onDismiss && (
           <button

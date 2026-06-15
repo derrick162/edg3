@@ -111,43 +111,57 @@ export function DayPlanCard({
   const delta = plan.scoreAfter - plan.scoreBefore;
   const finalScore = applied ? (appliedScore ?? plan.scoreAfter) : plan.scoreAfter;
 
-  // ── Applied / success state
+  // ── Applied / celebration state
   if (applied) {
     return (
       <div
         className="glass-card p-5"
-        style={{ borderColor: 'var(--plan-success-border)', background: 'var(--plan-success-bg)' }}
+        style={{
+          borderColor: 'var(--plan-success-border)',
+          background: 'var(--plan-success-bg)',
+          animation: 'score-rise 0.4s ease both',
+        }}
       >
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-2xl">✓</span>
-          <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+          <span
+            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
+            style={{
+              background: 'rgba(34,197,94,0.15)',
+              border: '1.5px solid var(--plan-success-border)',
+              boxShadow: '0 0 14px rgba(34,197,94,0.20)',
+              animation: 'pop-in 0.45s ease both',
+            }}
+          >
+            ✓
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
               Your day just got better
             </p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {plan.changes.length} change{plan.changes.length !== 1 ? 's' : ''} applied
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {plan.changes.length} change{plan.changes.length !== 1 ? 's' : ''} applied to your calendar
             </p>
           </div>
-          <div className="ml-auto text-right">
+          <div className="flex-shrink-0 text-right">
             <p
-              className="text-2xl font-black tabular-nums"
+              className="text-2xl font-black tabular-nums leading-none"
               style={{ color: scoreDeltaColor(delta) }}
             >
               {finalScore}
             </p>
-            <p className="text-xs" style={{ color: 'var(--text-faint)' }}>EDGE SCORE</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>EDGE SCORE</p>
           </div>
         </div>
         {delta > 0 && (
           <div
             className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold"
             style={{
-              background: 'var(--plan-success-bg)',
+              background: 'rgba(34,197,94,0.08)',
               color: scoreDeltaColor(delta),
-              border: `1px solid ${scoreDeltaColor(delta)}33`,
+              border: '1px solid rgba(34,197,94,0.22)',
             }}
           >
-            +{delta} points — {delta >= 10 ? 'big improvement' : 'solid gain'}
+            +{delta} points{delta >= 15 ? ' 🚀' : delta >= 10 ? ' — big improvement' : ' — solid gain'}
           </div>
         )}
       </div>

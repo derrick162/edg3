@@ -9,7 +9,9 @@ export type { CalendarFit };
 export interface EdgeScoreCardProps {
   fit: CalendarFit | null;
   loading?: boolean;
-  sparse?: boolean;       // true = no focus areas or no calendar connected
+  sparse?: boolean;         // true = no focus areas or no calendar connected
+  calibrating?: boolean;    // energy score still learning (< 10 calls)
+  calibratingHalf?: 'focus' | 'energy' | 'both';  // which half is still calibrating
   onRequestFix?: () => void;
 }
 
@@ -33,6 +35,49 @@ function scoreSummary(s: number): string {
   if (s >= 65) return 'Good shape — a few things to tighten.';
   if (s >= 35) return 'Room to improve — tap to see why.';
   return 'Day needs attention — tap to fix it.';
+}
+
+// ── Calibrating arc (dashed pulse, no score label) ────────────────────────────
+
+function CalibratingArc() {
+  return (
+    <svg width={128} height={128} viewBox="0 0 128 128" aria-hidden>
+      <path
+        d="M 14.7 96 A 52 52 0 1 1 113.3 96"
+        fill="none"
+        stroke="var(--gauge-bg)"
+        strokeWidth={8}
+        strokeLinecap="round"
+      />
+      <path
+        d="M 14.7 96 A 52 52 0 1 1 113.3 96"
+        fill="none"
+        stroke="var(--gauge-mid)"
+        strokeWidth={8}
+        strokeLinecap="round"
+        strokeDasharray="20 12"
+        style={{ opacity: 0.5, animation: 'gauge-pulse 2s ease-in-out infinite' }}
+      />
+      <text
+        x={64} y={60}
+        textAnchor="middle" dominantBaseline="middle"
+        fontSize={20} fontWeight={700}
+        fill="var(--text-faint)"
+        style={{ fontFamily: 'inherit' }}
+      >
+        ···
+      </text>
+      <text
+        x={64} y={84}
+        textAnchor="middle"
+        fontSize={10} fontWeight={600}
+        fill="var(--text-faint)"
+        style={{ fontFamily: 'inherit' }}
+      >
+        CALIBRATING
+      </text>
+    </svg>
+  );
 }
 
 // ── SVG arc gauge ─────────────────────────────────────────────────────────────
@@ -107,11 +152,21 @@ function ArcGauge({ score, color, glow }: { score: number; color: string; glow: 
 
 // ── EdgeScoreCard ─────────────────────────────────────────────────────────────
 
-export function EdgeScoreCard({ fit, loading = false, sparse = false, onRequestFix }: EdgeScoreCardProps) {
+export function EdgeScoreCard({
+  fit,
+  loading = false,
+  sparse = false,
+  calibrating = false,
+  calibratingHalf,
+  onRequestFix,
+}: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
 
+  // When energy half is calibrating, only average the focus score
   const edgeScore = fit
-    ? Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
+    ? calibrating && calibratingHalf !== 'focus'
+      ? fit.focusScore.score  // energy still learning — show focus score only
+      : Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
     : null;
 
   // ── Loading
@@ -148,6 +203,26 @@ export function EdgeScoreCard({ fit, loading = false, sparse = false, onRequestF
             </p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               Edge scores how well your day is set up against your focus areas and energy.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Fully calibrating — nothing to score yet
+  if (calibrating && calibratingHalf === 'both') {
+    return (
+      <div className="glass-card p-5">
+        <div className="flex items-center gap-5">
+          <div className="flex-shrink-0"><CalibratingArc /></div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Today</p>
+            <p className="text-sm font-bold mb-1 leading-snug" style={{ color: 'var(--text-strong)' }}>
+              Learning your patterns
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Your Edge Score will appear after a few morning briefings — Edge is building your baseline.
             </p>
           </div>
         </div>
@@ -205,25 +280,45 @@ export function EdgeScoreCard({ fit, loading = false, sparse = false, onRequestF
                 )}
               </div>
 
-              {/* Energy sub-score */}
+              {/* Energy sub-score — may be calibrating */}
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ Energy</span>
-                  <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor(fit.energyScore.score) }}>
-                    {fit.energyScore.score}%
-                  </span>
+                  {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
+                    <span className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>calibrating…</span>
+                  ) : (
+                    <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor(fit.energyScore.score) }}>
+                      {fit.energyScore.score}%
+                    </span>
+                  )}
                 </div>
                 <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--gauge-bg)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${fit.energyScore.score}%`, background: scoreColor(fit.energyScore.score) }}
-                  />
+                  {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: '40%',
+                        background: 'var(--gauge-mid)',
+                        opacity: 0.4,
+                        animation: 'gauge-pulse 2s ease-in-out infinite',
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${fit.energyScore.score}%`, background: scoreColor(fit.energyScore.score) }}
+                    />
+                  )}
                 </div>
-                {fit.energyScore.topFix && (
+                {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                    Edge learns your energy after a few calls — check back tomorrow.
+                  </p>
+                ) : fit.energyScore.topFix ? (
                   <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
                     ✦ {fit.energyScore.topFix.description}
                   </p>
-                )}
+                ) : null}
               </div>
 
               {/* Fix it CTA */}
