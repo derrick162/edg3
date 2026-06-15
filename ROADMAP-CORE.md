@@ -9,6 +9,15 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Focus Recommendation engine — Edge TELLS the user their weekly focus areas** (`a516ee1`).
+  - **`lib/calendar.ts`**: `getPastCalendarEvents(userId, days)` — raw event fetch for analysis workloads, capped at 250/calendar. Used by the recommendation engine.
+  - **`lib/focusRecommendation.ts`** (new, pluggable): `FocusRecommendation / FocusArea` contract; `aggregateEventThemes()` pure helper; `recommendFocusAreas(userId)` — parallel source assembly (calendar 180d + call facts + notes) + one Sonnet call → top 1–3 focus areas + rationale + confidence. Degrades gracefully on thin data or LLM failure.
+  - **`app/api/focus/recommend/route.ts`**: `GET /api/focus/recommend` → `FocusRecommendation` (dashboard consumption).
+  - **`app/api/focus/confirm/route.ts`**: `POST /api/focus/confirm` — accepts `{ areas: string[] }`, replaces this week's priorities store; scores + scoreboard keep working unchanged.
+  - **`app/api/vapi/tool-call/route.ts`**: `confirmFocus` handler — validates areas, deletes + re-creates priorities, returns spoken confirmation.
+  - **`lib/vapi.ts`**: `confirmFocus()` tool doc + FOCUS RECOMMENDATION prompt block. `confirmFocus` toolId placeholder added (⚠️ **External step**: create `confirmFocus` in Vapi dashboard → `areas` param (array of strings, required) → paste UUID here and uncomment).
+  - **`lib/briefing.ts`**: when no current-week priorities → `recommendFocusAreas` runs in parallel with the main data fetches; FOCUS RECOMMENDATION block injected into the briefing prompt so Edge proposes verbally on the morning call.
+  - **20 new tests** (`lib/focusRecommendation.test.ts`). 662/662 green, tsc clean, next build clean.
 - **2026-06-14** — **CalendarFitCard wired as dashboard landing view.**
   - `app/dashboard/page.tsx`: added `calendarFit: CalendarFit | null` + `calendarFitLoading: boolean` state. Background-fetches `GET /api/scores` in `loadData` (non-blocking, alongside energy/milestones fetches). `sparse` = `priorities.length === 0 || calendarConnected === false`.
   - `<CalendarFitCard>` rendered at the top of `<main>` in a `mb-6` wrapper, above the tab content — always visible regardless of which tab is active.
