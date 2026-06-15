@@ -17,7 +17,7 @@ verification review and CASA assessment before unrestricted production use.
 | `https://www.googleapis.com/auth/calendar.readonly` | Sensitive | Read the user's calendar events to build the daily briefing and detect conflicts | `lib/calendar.ts` — `listEvents()` |
 | `https://www.googleapis.com/auth/calendar.events` | **Restricted** | Create, move, delete, and edit events on the user's behalf via voice commands | `lib/calendar.ts` — `createEvent()`, `deleteEvent()`, `patchEvent()` |
 | `https://www.googleapis.com/auth/gmail.compose` | **Restricted** | Create email drafts only — user reviews and sends manually. We never call `messages.send`. | `lib/gmail.ts` — `createDraft()` only |
-| `https://www.googleapis.com/auth/gmail.readonly` | **Restricted** | Check for replies to outreach emails Edge drafted (reply-tracking feature) | `lib/replies.ts` — reads thread messages, no write |
+| `https://www.googleapis.com/auth/gmail.readonly` | **Restricted** | (1) Check for replies to outreach emails Edge drafted (reply-tracking). (2) Read recent inbox thread metadata as a prioritization signal for the AI focus recommendation engine. ⚠️ **Use-case expanded — see CASA flag below.** | `lib/replies.ts` (reply tracking); `lib/gmail.ts getRecentEmailSignal` (prioritization) |
 
 ### Why we need each scope
 
@@ -32,9 +32,50 @@ do this with `calendar.readonly` alone.
 ("draft a meeting request to Sarah"). We create the draft in Gmail so the user
 can review, edit, and send it manually. We never send without explicit user action.
 
-**`gmail.readonly`** — After drafting an outreach email, users ask "did Sarah
-reply?" Edge needs to read the thread to answer. We read only threads we started
-(tracked by `watched_threads` table); we do not do a broad inbox scan.
+**`gmail.readonly`** — Two uses:
+1. **Reply tracking:** After drafting an outreach email, users ask "did Sarah reply?"
+   Edge reads the specific Gmail thread it created to answer. Scope-limited to
+   `watched_threads` (only threads Edge originated).
+2. **Focus prioritization (NEW):** The AI Focus Recommendation engine analyzes the
+   user's recent inbox to identify what matters to them (financial/legal/life admin
+   threads factor into suggested focus areas). Only metadata is read
+   (`format:'metadata'` — no message bodies); only INBOX label. The signal is used
+   in-memory for LLM prioritization; **no email content is stored.** An audit entry
+   (thread count only) is written to `audit_log` for transparency.
+
+### ⚠️ CASA FLAG — `gmail.readonly` use-case expansion
+
+**What changed:** The prior CASA submission described `gmail.readonly` as reading
+*only specific threads Edge started*. The focus recommendation feature changes
+this to also reading *recent inbox thread metadata broadly* (INBOX label, recent
+N days, up to 50 threads).
+
+**Why this matters for CASA/verification:**
+- Google's verification review will compare our declared use against the actual
+  code. The prior answer ("we do not do a broad inbox scan") is now FALSE.
+- The CASA questionnaire answer for `gmail.readonly` **must be updated** before
+  the next submission to accurately describe both use cases.
+- The Privacy Policy (`app/privacy/page.tsx`) must be updated to disclose inbox
+  reading for AI prioritization — currently it only mentions reply tracking.
+- The demo video (§6 below) needs a scene showing the focus recommendation feature.
+
+**Privacy mitigations we've built (document to assessors):**
+- `format:'metadata'` API parameter — only headers (From, Subject, Date) and
+  Gmail's own snippet (~100 chars) are fetched. Message bodies are never
+  requested or transmitted to our server.
+- No storage of email content — the signal is derived and discarded.
+- Audit log records the fetch action (thread count only) so users see it in
+  their Activity feed. Zero email content in the log.
+- Hard cap: maximum 50 threads per fetch, INBOX only.
+- User-scoped: `user_id` required at every call layer.
+
+**Action items before CASA submission:**
+- [ ] Update Privacy Policy to disclose inbox reading for AI focus recommendation.
+- [ ] Update the Google OAuth verification questionnaire answers (§5 below).
+- [ ] Add focus recommendation scene to demo video (§6 below).
+- [ ] PM decision: should this be a separate consent step (user explicitly opts in
+      to inbox reading for prioritization, beyond the base re-consent)? Flagged —
+      lean yes for trust, but PM call.
 
 ### `gmail.compose` — the "could-technically-send" caveat
 
@@ -64,13 +105,16 @@ this honestly to Google and commit to it in the questionnaire.
 | Recipient name + email | Yes — `gmail_drafts_log.recipient` | Until account deleted | AES-256-GCM at rest (`encryptNullable`) |
 | Draft subject | Yes — `gmail_drafts_log.subject` | Until account deleted | AES-256-GCM at rest |
 | Thread IDs we watch for replies | Yes — `watched_threads.thread_id` | Until handled/dismissed or account deleted | Thread ID not encrypted; recipient/context encrypted |
-| Message bodies/content | **No** — we read message snippets to detect replies only; bodies are never stored | Never persisted | N/A |
-| Full inbox contents | **Never accessed** — only threads we originally started | — | — |
+| Message bodies/content | **No** — reply tracking reads snippets; focus signal uses `format:'metadata'` (headers + Gmail's own snippet only). Bodies never fetched or stored. | Never persisted | N/A |
+| Recent inbox thread metadata (From, Subject, Date headers + snippet) | **No** — fetched in-memory for AI focus recommendation; discarded after LLM call | Never stored | N/A |
+| Inbox access action | Yes — `audit_log` records the fetch (thread count + days window, no content) | Audit retention policy (~90 days) | Action string not encrypted; no PII in this log entry |
+| Full inbox contents (bodies, attachments) | **Never accessed** — `format:'metadata'` parameter ensures this at the API level | — | — |
 
 ### What we explicitly do NOT do
 
-- We do not read the full inbox.
-- We do not store email body content.
+- We do not read or store message bodies (enforced via `format:'metadata'` API param).
+- We do not read attachments, drafts, sent mail, spam, or trash — only INBOX metadata.
+- We do not store email header content, subjects, or sender addresses from inbox reads.
 - We do not send emails — only create drafts for user review.
 - We do not share any Google data with third parties.
 - We do not use Google data for advertising, profiling, or model training.
@@ -122,7 +166,7 @@ timestamp, user_id). Used for activity feed + incident diagnosis.
 ### Principle of least privilege
 
 - `gmail.compose` scope only creates drafts — `messages.send` is never called.
-- `gmail.readonly` only reads threads in `watched_threads` — no inbox-wide scan.
+- `gmail.readonly` reads (1) specific `watched_threads` for reply tracking, and (2) recent INBOX thread metadata (headers + snippet only, via `format:'metadata'`) for AI focus prioritization. Bodies are never fetched. Inbox access is capped at 50 threads per call.
 - Calendar event content is not stored — only processed in memory for briefings.
 
 ---
@@ -197,9 +241,15 @@ meeting to 4pm"). We create, update, and delete events on their behalf in real t
 draft. The user reviews and sends the email manually from their Gmail inbox. We
 never call `messages.send`.
 
-`gmail.readonly`: After drafting outreach emails, users ask if they've received a
-reply. We read only the specific Gmail threads we originated to detect replies.
-We do not access the general inbox or read any other messages.
+`gmail.readonly`: Two uses. (1) Reply tracking: after drafting an outreach email,
+users ask "did Sarah reply?" We read only the specific Gmail threads we originated.
+(2) Focus prioritization: our AI analyzes the user's recent inbox metadata to
+identify priority areas (financial, legal, life-admin threads). We use Gmail's
+`format:'metadata'` API parameter, which returns only email headers (From, Subject,
+Date) and Gmail's own auto-generated snippet — no message bodies are fetched or
+stored. Only INBOX threads from the past N days (≤50) are accessed. The derived
+signal is used in-memory for AI analysis and immediately discarded. We record the
+fetch action (thread count only) in our audit log for user transparency.
 
 ---
 

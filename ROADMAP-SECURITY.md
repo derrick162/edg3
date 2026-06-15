@@ -8,6 +8,34 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-14** — **Email signal primitive — `getRecentEmailSignal` for Focus Recommendation.**
+  - `lib/gmail.ts`: `getRecentEmailSignal(userId, { days?, max? }) → EmailSignal` — fetches a
+    compact digest of recent INBOX threads for Core's `recommendFocusAreas()`. Privacy-first:
+    - `format:'metadata'` enforced at the API call — only headers (From, Subject, Date) and
+      Gmail's own auto-truncated snippet (~100 chars) are fetched. Message bodies never requested.
+    - No storage of email content — derive signal in-memory, return to caller, discard.
+    - Audit log: thread count + days window only. Zero email content in the log.
+    - INBOX label only; hard cap of 50 threads per call regardless of `opts.max`.
+    - Scope gate: returns `{ items: [], scopeMissing: true }` gracefully when `gmail.readonly`
+      not granted — caller degrades without throwing.
+    - Individual thread-fetch failures swallowed via `Promise.allSettled` — partial result
+      always returned instead of aborting.
+  - `EmailSignalItem` interface: `{ threadId, sender, subject, snippet, date, isUnread, isImportant }`.
+  - `EmailSignal` interface: `{ items, fetchedAt, scopeMissing }`. Exported from `lib/gmail.ts`.
+  - `lib/gmail.test.ts`: 10 new tests (25 total) — scope gates, empty inbox, metadata mapping,
+    snippet-from-list (not body), partial-failure resilience, audit entry contents, inbox-only
+    filter, max-cap enforcement. All verify no body content is ever fetched/stored.
+  - **⚠️ CASA FLAG documented in `specs/google-verification.md`:** `gmail.readonly` use-case
+    expands from "read only watched_threads" to also "read recent INBOX metadata for AI
+    prioritization." Scope itself unchanged (already in `GOOGLE_SCOPES`). Required actions before
+    CASA re-submission: (1) update Privacy Policy to disclose inbox reading; (2) update §5
+    questionnaire answers; (3) add focus recommendation demo scene; (4) PM decision on separate
+    consent step for inbox reading.
+  - 651/651 green, tsc clean, next build clean.
+  - **Core handoff:** `getRecentEmailSignal(userId, { days: 14, max: 20 })` from `@/lib/gmail`.
+    Returns `EmailSignal`. Pass `items` as context into the `recommendFocusAreas` LLM call.
+    When `scopeMissing: true`, prompt re-consent or degrade gracefully. Nothing to store —
+    the signal is ephemeral input to the LLM, same as calendar events.
 - **2026-06-14** — **Event energy tag cache — `event_energy_tags` table (additive).**
   - `lib/db.ts`: `event_energy_tags (id, user_id, google_event_id, type, demand CHECK('high','med','low'),
     title_hash, tagged_at)`. UNIQUE(user_id, google_event_id) + upsert-on-conflict. Index on

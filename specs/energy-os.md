@@ -23,6 +23,11 @@ _Crystallized with Derrick 2026-06-14._
 > **as little as possible** (one "yes," maybe one tweak), and **your week is reshaped.** You hang up
 > feeling lighter and more productive: *"whoa, that improved my week."*
 
+**★ UNIT = TODAY, not the week (Derrick 2026-06-15).** Maniacally focus on the day at hand — a chief of
+staff dissects *today*. The ~9am call reads today's energy (Whoop + how you sound), names your **3 focus
+areas for TODAY**, and reshapes **today's** calendar in real time — "wow, my day just got better" within
+~5 minutes. Forget weekly planning; recompute fresh each morning.
+
 The whole product exists to deliver this feeling. Design principle: **minimum user effort, maximum
 calendar improvement, felt as relief.** Edge LEADS with specific proposals (not open questions),
 executes on a single lightweight approval, and proves it worked by re-scoring ("focus went 6 → 8").
