@@ -9,6 +9,21 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Hero Loop — `applyCalendarPlan` tool + `buildCalendarPlan` pure engine** (`0b6c5af`).
+  - **`lib/calendarPlan.ts`** (pure, no I/O):
+    - `findFreeSlot(events, date, durationHours, tz, workStart?, workEnd?)` — scans today's events in the user's timezone (decimal wall-clock hours), finds the first contiguous free slot ≥ `durationHours` within working hours, returns wall-clock datetimes ("YYYY-MM-DDTHH:MM:00"). Handles all-day events (filtered out), overlapping blocks, trailing gaps.
+    - `buildCalendarPlan(todayEvents, fit, priorities, date, tz)` — composes a 1–2 action plan:
+      - **Focus action:** if `focusScore.topFix.op === 'create'`, finds the first free 90-minute slot and plans a `⚡ Focus — <priority>` block. Extracts priority name from topFix description regex; falls back to `priorities[0].text`.
+      - **Energy action:** if `energyScore.topFix.op === 'move'` AND `worstMismatchEventId` is set, plans to move the mismatch event to tomorrow (same wall-clock time, via `newDate = date + 1 day`).
+      - Returns `CalendarPlan { actions[], summary (Edge speaks this), generatedAt }`.
+    - Deterministic: same inputs → same plan between step-1 preview and step-2 execute.
+  - **`lib/calendarScore.ts`**: `worstMismatchEventId?: string | null` + `worstMismatchEventTitle?: string | null` added to `ScoreResult`. `computeEnergyScore` populates them from the internal `worstMismatch` tracker.
+  - **`applyCalendarPlan` tool handler** in `app/api/vapi/tool-call/route.ts` (two-step confirmToken pattern, same as `cleanupDuplicates`):
+    - Step 1 (no token): gathers full context (`getCalendarEvents`, `getWeekEvents`, Whoop, `computeAlignment`, `classifyEventsEnergy`, `computeCalendarFit`), builds plan, returns spoken summary + `issueDeleteToken`.
+    - Step 2 (with token): executes creates (`cal.events.insert`, `colorId:'9'`), executes moves (searches `calIds` for correct calendar, `timedEventDateMove`, `cal.events.patch`). Move undo = `type:'patch'` back to original start/end. Records plan-level undo group. Re-fetches + re-classifies + re-scores after; persists new `calendarScoreQueries.upsert`; reports edge score delta ("Your day just got better").
+  - **`lib/vapi.ts`**: HERO LOOP prompt block — when user says "reshape my day" / "fix my calendar" / "optimize my schedule" / "apply the plan" → call `applyCalendarPlan`. Read summary, wait for yes, call again with confirmToken. Placeholder tool ID comment added.
+  - 17 new tests (8 × `findFreeSlot`, 9 × `buildCalendarPlan`). 724/724 green, tsc clean, next build clean.
+  - ⚠️ External step: create `applyCalendarPlan` tool in Vapi dashboard. Params: `confirmToken` (string, optional). Paste UUID into `lib/vapi.ts` toolIds placeholder and uncomment.
 - **2026-06-15** — **ONE Edge Score (0–100) + Energy fix** (`4ab5aaa`).
   - **`CalendarFit`** extended: `edgeScore: number` (the ONE headline number) + `calibrating: boolean`. Sub-scores `focusScore` + `energyScore` kept as breakdown.
   - **`computeCalendarFit`**: `edgeScore = avg(focus, energy)` when both real; falls back to `focusScore` alone when energy is calibrating.
