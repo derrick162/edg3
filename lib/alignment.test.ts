@@ -17,10 +17,10 @@ function priority(text: string, rank: number): Priority {
   return { id: rank, user_id: 1, text, rank, week_of: '2026-06-09', created_at: '2026-06-09' };
 }
 
-function timedEvent(title: string, durationHours: number) {
+function timedEvent(title: string, durationHours: number, description?: string) {
   const start = new Date('2026-06-10T10:00:00Z');
   const end = new Date(start.getTime() + durationHours * 3600_000);
-  return { summary: title, start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() } };
+  return { summary: title, description, start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() } };
 }
 
 function classifyResponse(pairs: { event: string; priority: string }[]) {
@@ -148,6 +148,29 @@ describe('computeAlignment', () => {
     h.create.mockResolvedValue(classifyResponse([{ event: 'Conference', priority: '1' }]));
     const result = await computeAlignment([priority('fundraising', 1)], [oneDay], 'America/Vancouver');
     expect(result!.perPriority[0].hours).toBe(8);
+  });
+
+  it('classifies a generically-titled event correctly when its description names the priority', async () => {
+    // Regression: before the fix, only title was sent to the classifier — a block titled
+    // "Work block" with description "Edg3 MVP / 30-60-90 plan" would be missed entirely.
+    // Now [notes: ...] is included so the model can read context the user added.
+    h.create.mockImplementation(({ messages }: { messages: { role: string; content: string }[] }) => {
+      const prompt = messages[0].content;
+      // Verify the description is included in the prompt sent to the LLM
+      expect(prompt).toContain('Edg3 MVP');
+      return Promise.resolve(classifyResponse([{ event: 'Work block', priority: '1' }]));
+    });
+
+    const result = await computeAlignment(
+      [priority('Edg3 / product', 1)],
+      [timedEvent('Work block', 2, 'Edg3 MVP / 30-60-90 plan')],
+      'America/Vancouver',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.perPriority[0].hours).toBe(2);
+    expect(result!.perPriority[0].blocked).toBe(true);
+    expect(result!.unalignedHours).toBe(0);
   });
 
   it('caps event input at 40 and still returns a result', async () => {
