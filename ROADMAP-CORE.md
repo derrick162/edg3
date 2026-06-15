@@ -9,6 +9,16 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Focus Recommendation engine v1 — day-scoped, energy-aware, anchor-referencing** (`7264397`).
+  - **UNIT = TODAY.** `recommendFocusAreas(userId, opts)` now outputs 3 focus areas **for TODAY** (not the week).
+  - **`lib/db.ts`**: `daily_focus` table + `idx_daily_focus_user_date` + `dailyFocusQueries` (upsert, getToday, confirm). `DailyFocusRecord` interface.
+  - **`lib/focusRecommendation.ts`**: `FocusArea.anchor` (ladders to stable priority), `FocusRecommendation.date`, `EnergySignal`, `RecommendOpts`. LLM prompt updated: TODAY scope, energy tier context (green/yellow/red capacity), anchor ladder-up instructions, today's calendar load section.
+  - **`GET /api/focus/recommend`**: assembles Whoop recovery → energySignal, today's calendar, stable anchors (getMostRecent) in parallel before calling recommendFocusAreas.
+  - **`POST /api/focus/confirm`**: writes to `daily_focus` (upsert+confirm) — no longer touches `priorities`. Accepts FocusArea objects or plain strings. Timezone-aware date derivation.
+  - **`confirmFocus` tool handler**: writes to `daily_focus`, derives today's date from user timezone. Speaks "your focus today" framing.
+  - **`lib/briefing.ts`**: recommendFocusAreas receives energySignal + todayEvents + date after main Promise.all resolves.
+  - 15 new tests (26 total in focusRecommendation.test.ts). 677/677 green, tsc clean, next build clean.
+  - ⚠️ External step: create `confirmFocus` in Vapi dashboard → `areas` param (array of strings, required) → paste UUID into `lib/vapi.ts` toolIds placeholder and uncomment.
 - **2026-06-15** — **Focus Recommendation engine — Edge TELLS the user their weekly focus areas** (`a516ee1`).
   - **`lib/calendar.ts`**: `getPastCalendarEvents(userId, days)` — raw event fetch for analysis workloads, capped at 250/calendar. Used by the recommendation engine.
   - **`lib/focusRecommendation.ts`** (new, pluggable): `FocusRecommendation / FocusArea` contract; `aggregateEventThemes()` pure helper; `recommendFocusAreas(userId)` — parallel source assembly (calendar 180d + call facts + notes) + one Sonnet call → top 1–3 focus areas + rationale + confidence. Degrades gracefully on thin data or LLM failure.
