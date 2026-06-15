@@ -382,6 +382,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE priorities ADD COLUMN energy_cost TEXT CHECK(energy_cost IN ('high', 'medium', 'low'))",
     "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
     "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
+    "ALTER TABLE facts ADD COLUMN source TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1106,6 +1107,7 @@ export interface Fact {
   learned_at: string;
   confidence: 'high' | 'low';
   source_briefing_id: number | null;
+  source?: string | null;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -1206,6 +1208,17 @@ export const factQueries = {
 
   deleteFact: (userId: number, id: number): void => {
     getDb().prepare('DELETE FROM facts WHERE id=? AND user_id=?').run(id, userId);
+  },
+
+  // Replace all source='priority-sync' facts for a user with the current priority texts.
+  syncPriorityFacts: (userId: number, priorityTexts: string[]): void => {
+    const db = getDb();
+    db.prepare("DELETE FROM facts WHERE user_id=? AND source='priority-sync'").run(userId);
+    for (const text of priorityTexts) {
+      db.prepare(
+        "INSERT INTO facts (user_id, category, statement, entity, confidence, source) VALUES (?,?,?,?,?,?)"
+      ).run(userId, 'goal', text, null, 'high', 'priority-sync');
+    }
   },
 };
 
