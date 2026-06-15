@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { format, startOfWeek } from 'date-fns';
 import { getSession } from '@/lib/auth';
-import { priorityQueries, factQueries, energyLogQueries, effectiveTimezone, energyProfileQueries, calendarScoreQueries } from '@/lib/db';
+import { priorityQueries, factQueries, energyLogQueries, effectiveTimezone, energyProfileQueries, calendarScoreQueries, dailyFocusQueries, type Priority } from '@/lib/db';
 import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getLatestRecovery } from '@/lib/whoop';
 import { deriveEnergySignal } from '@/lib/energy';
@@ -16,7 +16,29 @@ export async function GET() {
   const today  = new Date().toLocaleDateString('en-CA', { timeZone: userTimezone });
   const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
 
-  const priorities = priorityQueries.getThisWeek(user.id, weekOf);
+  // Source the focus areas the Focus Score measures against. The recommendation engine
+  // writes confirmed focus to `daily_focus`, while manual priorities live in `priorities` —
+  // read the right one so the score reflects the user's ACTUAL current focus:
+  //   1) today's CONFIRMED daily_focus (what Edge recommended + the user accepted), else
+  //   2) the user's MOST-RECENT priorities (any week — not strict this-week, which is often empty).
+  let priorities: Priority[] = priorityQueries.getMostRecent(user.id);
+  try {
+    const df = dailyFocusQueries.getToday(user.id, today);
+    if (df && df.confirmed) {
+      const areas = JSON.parse(df.focus_areas) as { title?: string }[];
+      const titles = Array.isArray(areas)
+        ? areas.map(a => (a?.title || '').trim()).filter(Boolean)
+        : [];
+      if (titles.length) {
+        priorities = titles.map((t, i) => ({
+          id: -1 - i, user_id: user.id, text: t, week_of: weekOf,
+          rank: i + 1, energy_cost: null, created_at: '',
+        }));
+      }
+    }
+  } catch {
+    // Malformed daily_focus → fall back to most-recent priorities (already set above).
+  }
 
   const [todayEvents, weekEvents, whoopRecovery] = await Promise.all([
     getCalendarEvents(user.id).catch(() => []),
