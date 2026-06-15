@@ -16,29 +16,26 @@ export async function GET() {
   const today  = new Date().toLocaleDateString('en-CA', { timeZone: userTimezone });
   const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
 
-  // Prefer confirmed daily_focus (from FocusRecommendationCard) → fall back to most-recent
-  // priorities (any week, not strict this-week). This closes the loop: confirming a
-  // focus recommendation now drives the Focus Score immediately.
-  let priorities: Priority[];
-  const dailyFocus = (() => { try { return dailyFocusQueries.getToday(user.id, today); } catch { return null; } })();
-  if (dailyFocus?.confirmed) {
-    try {
-      const areas: { title: string }[] = JSON.parse(dailyFocus.focus_areas);
-      const synth = areas.filter(a => a.title).map((a, i) => ({
-        id: -(i + 1),
-        user_id: user.id,
-        text: a.title,
-        week_of: weekOf,
-        rank: i + 1,
-        energy_cost: null as null,
-        created_at: today,
-      }));
-      priorities = synth.length > 0 ? synth : priorityQueries.getMostRecent(user.id);
-    } catch {
-      priorities = priorityQueries.getMostRecent(user.id);
+  // Source the focus areas the Focus Score measures against:
+  //   1) today's CONFIRMED daily_focus (what Edge recommended + the user accepted), else
+  //   2) the user's MOST-RECENT priorities (any week — not strict this-week, which is often empty).
+  let priorities: Priority[] = priorityQueries.getMostRecent(user.id);
+  try {
+    const df = dailyFocusQueries.getToday(user.id, today);
+    if (df && df.confirmed) {
+      const areas = JSON.parse(df.focus_areas) as { title?: string }[];
+      const titles = Array.isArray(areas)
+        ? areas.map(a => (a?.title || '').trim()).filter(Boolean)
+        : [];
+      if (titles.length) {
+        priorities = titles.map((t, i) => ({
+          id: -1 - i, user_id: user.id, text: t, week_of: weekOf,
+          rank: i + 1, energy_cost: null, created_at: '',
+        }));
+      }
     }
-  } else {
-    priorities = priorityQueries.getMostRecent(user.id);
+  } catch {
+    // Malformed daily_focus → fall back to most-recent priorities (already set above).
   }
 
   const [todayEvents, weekEvents, whoopRecovery] = await Promise.all([
