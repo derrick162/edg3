@@ -445,3 +445,36 @@ export function computeCalendarFit(
 
   return { edgeScore, calibrating, focusScore, energyScore, computedAt: new Date().toISOString() };
 }
+
+// ─── Energy color-coding ─────────────────────────────────────────────────────
+
+// Maps event demand + daily energy level to a Google Calendar colorId.
+// Visual logic: low demand = always sage (calm); medium = banana unless red day;
+// high demand = blueberry on green days (aligned), tangerine on yellow (caution),
+// tomato on red (warning — consider deferring), peacock when signal unknown.
+function demandToColorId(demand: EventDemand, level: 'green' | 'yellow' | 'red' | null): string {
+  if (demand === 'low') return '2';   // sage
+  if (demand === 'medium') return level === 'red' ? '6' : '5'; // tangerine or banana
+  // high demand:
+  if (level === 'green')  return '9';  // blueberry — full capacity, go
+  if (level === 'yellow') return '6';  // tangerine — proceed with care
+  if (level === 'red')    return '11'; // tomato — warning, flag for deferral
+  return '8'; // peacock — no signal, neutral blue
+}
+
+export interface EnergyColorAssignment {
+  eventId: string;
+  colorId: string;
+}
+
+/** Pure: maps a list of tagged events to Google Calendar colorId assignments. */
+export function colorByEnergy(
+  tags: { eventId: string; demand: EventDemand }[],
+  signal: EnergySignal | null,
+): EnergyColorAssignment[] {
+  const level = signal?.level ?? null;
+  return tags.map(({ eventId, demand }) => ({
+    eventId,
+    colorId: demandToColorId(demand, level),
+  }));
+}

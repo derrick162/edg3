@@ -8,6 +8,7 @@ import {
   computeFocusScore,
   computeEnergyScore,
   computeCalendarFit,
+  colorByEnergy,
   type EnergyProfile,
   type TaggedEvent,
   type EventType,
@@ -563,5 +564,58 @@ describe('computeCalendarFit — edgeScore', () => {
     expect(fit.energyScore.score).toBe(0);
     expect(fit.edgeScore).toBe(25);
     expect(fit.calibrating).toBe(false);
+  });
+});
+
+// ─── colorByEnergy ───────────────────────────────────────────────────────────
+
+describe('colorByEnergy', () => {
+  const green: EnergySignal = { level: 'green', source: 'manual' };
+  const yellow: EnergySignal = { level: 'yellow', source: 'manual' };
+  const red: EnergySignal = { level: 'red', source: 'manual' };
+
+  it('returns empty array for empty input', () => {
+    expect(colorByEnergy([], green)).toEqual([]);
+  });
+
+  it('low demand → sage (2) regardless of energy level', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'low' }], red)).toEqual([{ eventId: 'e1', colorId: '2' }]);
+  });
+
+  it('medium demand → banana (5) on green day', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'medium' }], green)).toEqual([{ eventId: 'e1', colorId: '5' }]);
+  });
+
+  it('medium demand → tangerine (6) on red day', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'medium' }], red)).toEqual([{ eventId: 'e1', colorId: '6' }]);
+  });
+
+  it('high demand → blueberry (9) on green day', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'high' }], green)).toEqual([{ eventId: 'e1', colorId: '9' }]);
+  });
+
+  it('high demand → tangerine (6) on yellow day', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'high' }], yellow)).toEqual([{ eventId: 'e1', colorId: '6' }]);
+  });
+
+  it('high demand → tomato (11) on red day', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'high' }], red)).toEqual([{ eventId: 'e1', colorId: '11' }]);
+  });
+
+  it('high demand → peacock (8) when signal is null', () => {
+    expect(colorByEnergy([{ eventId: 'e1', demand: 'high' }], null)).toEqual([{ eventId: 'e1', colorId: '8' }]);
+  });
+
+  it('maps multiple events preserving event IDs', () => {
+    const tags: { eventId: string; demand: EventDemand }[] = [
+      { eventId: 'a', demand: 'high' },
+      { eventId: 'b', demand: 'medium' },
+      { eventId: 'c', demand: 'low' },
+    ];
+    const result = colorByEnergy(tags, green);
+    expect(result.map(r => r.eventId)).toEqual(['a', 'b', 'c']);
+    expect(result[0].colorId).toBe('9');
+    expect(result[1].colorId).toBe('5');
+    expect(result[2].colorId).toBe('2');
   });
 });

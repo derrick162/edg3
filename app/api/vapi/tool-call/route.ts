@@ -4,7 +4,7 @@ import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalen
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
-import { computeCalendarFit, classifyEventsEnergy, parseEnergyProfile } from '@/lib/calendarScore';
+import { computeCalendarFit, classifyEventsEnergy, parseEnergyProfile, colorByEnergy } from '@/lib/calendarScore';
 import { computeAlignment } from '@/lib/alignment';
 import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery } from '@/lib/whoop';
@@ -672,6 +672,58 @@ Query: ${query}` }],
     if (!allMatched.length) return `No events matching "${title}" found.`;
     if (!toColor.length) return `All "${title}" events are on calendars you can only view — no color changes made.`;
     return `Changed ${toColor.length} "${title}" event(s) to ${color}${skippedNote}.`;
+
+  } else if (fn === 'colorEventsByEnergy') {
+    // Classify today's events by energy demand, then apply Google Calendar colorId per event.
+    // Green day: high = blueberry, med = banana, low = sage.
+    // Yellow day: high = tangerine, med = banana, low = sage.
+    // Red day: high = tomato, med = tangerine, low = sage.
+    const colorUser = userQueries.findById(userId);
+    const colorTz = colorUser ? effectiveTimezone(colorUser) : tz;
+    const colorToday = new Date().toLocaleDateString('en-CA', { timeZone: colorTz });
+
+    const [colorTodayEvts, colorWhoopRec] = await Promise.all([
+      getCalendarEvents(userId).catch(() => [] as calendar_v3.Schema$Event[]),
+      getLatestRecovery(userId).catch(() => null),
+    ]);
+    const colorEnergyLog = (() => { try { return energyLogQueries.getToday(userId, colorToday); } catch { return undefined; } })();
+    const colorSignal = deriveEnergySignal(colorEnergyLog, colorWhoopRec?.recoveryScore ?? null);
+
+    const tagged = await classifyEventsEnergy(colorTodayEvts).catch(() => []);
+    if (tagged.length === 0) {
+      return "No timed events on your calendar today — nothing to color.";
+    }
+
+    const assignments = colorByEnergy(
+      tagged.filter(t => t.event.id).map(t => ({ eventId: t.event.id!, demand: t.tag.demand })),
+      colorSignal,
+    );
+
+    const undoOps: UndoOp[] = [];
+    let colored = 0;
+    await Promise.all(assignments.map(async ({ eventId, colorId }) => {
+      // Look up which calendar owns this event
+      for (const cId of calIds) {
+        try {
+          const evRes = await cal.events.get({ calendarId: cId, eventId });
+          if (!evRes.data?.id) continue;
+          const prev = evRes.data.colorId ?? '9';
+          if (prev === colorId) break; // already this color
+          const entry = calMeta.get(cId);
+          if (entry && !isWritable(entry.accessRole)) break; // read-only
+          await cal.events.patch({ calendarId: cId, eventId, requestBody: { colorId } });
+          undoOps.push({ type: 'patch', calId: cId, eventId, requestBody: { colorId: prev } });
+          colored++;
+          break;
+        } catch { /* not in this cal or failed — try next */ }
+      }
+    }));
+
+    if (colored === 0) return "Couldn't apply colors — calendar may be read-only or no events have IDs.";
+    if (undoOps.length) recordUndo(userId, `energy color-coding — ${colored} event(s)`, undoOps);
+
+    const colorTier = colorSignal?.level ?? 'unknown';
+    return `Done — colored ${colored} event${colored !== 1 ? 's' : ''} based on energy demand. High-demand events are ${colorTier === 'green' ? 'blue' : colorTier === 'yellow' ? 'orange' : colorTier === 'red' ? 'red' : 'marked'}, medium are ${colorTier === 'red' ? 'orange' : 'yellow'}, and low-demand events are green.`;
 
   } else if (fn === 'planWeek') {
     const { weekStartDate, focusHoursPerDay, preferences } = args as { weekStartDate: string; focusHoursPerDay?: number; preferences?: string };

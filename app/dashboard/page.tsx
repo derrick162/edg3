@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, CalendarFitCard } from '@/components/ui';
-import type { CalendarFit } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -266,248 +266,6 @@ function SectionHint({ id, text }: { id: string; text: string }) {
         aria-label="Dismiss"
       >
         &#x2715;
-      </button>
-    </div>
-  );
-}
-
-function TasksTab({ tasks, onToggle, onAdd, onDelete, onCompleteAll }: {
-  tasks: Task[];
-  onToggle: (id: number, completed: boolean) => Promise<void>;
-  onAdd: (text: string) => Promise<void>;
-  onDelete: (id: number) => Promise<void>;
-  onCompleteAll: (ids: number[]) => Promise<void>;
-}) {
-  const [newTask, setNewTask] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [completingAll, setCompletingAll] = useState(false);
-  const [filterView, setFilterView] = useState<'open' | 'completed' | 'all'>('open');
-
-  const today = new Date().toLocaleDateString('en-CA');
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
-
-  // Open view: today/tomorrow tasks + past incomplete (carried over)
-  const todayTasks = tasks.filter(t => t.date === today || t.date === tomorrowStr).sort((a, b) => b.id - a.id);
-  const pastTasks = tasks.filter(t => t.date < today && !t.completed);
-  const incompleteVisible = [...todayTasks, ...pastTasks].filter(t => !t.completed);
-
-  // Completed view: all completed tasks newest-completed first
-  const completedTasks = tasks
-    .filter(t => !!t.completed)
-    .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? '') || b.id - a.id);
-
-  // All view: everything by date DESC, then id DESC
-  const allTasks = [...tasks].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newTask.trim()) return;
-    setAdding(true);
-    await onAdd(newTask.trim());
-    setNewTask('');
-    setAdding(false);
-  }
-
-  async function handleCompleteAll() {
-    if (!incompleteVisible.length || completingAll) return;
-    setCompletingAll(true);
-    await onCompleteAll(incompleteVisible.map(t => t.id));
-    setCompletingAll(false);
-  }
-
-  const isTomorrow = todayTasks.some(t => t.date === tomorrowStr) && !todayTasks.some(t => t.date === today);
-  const headingByView = { open: isTomorrow ? "Tomorrow's tasks" : "Today's tasks", completed: 'Completed', all: 'All tasks' };
-
-  const filterControl = (
-    <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--edg-fill-04)', width: 'fit-content' }}>
-      {(['open', 'completed', 'all'] as const).map(v => (
-        <button
-          key={v}
-          onClick={() => setFilterView(v)}
-          className="text-xs py-1 px-3 rounded-md transition-all capitalize"
-          style={{
-            background: filterView === v ? 'var(--edg-accent-20)' : 'transparent',
-            color: filterView === v ? 'var(--text-accent)' : 'var(--text-muted)',
-            fontWeight: filterView === v ? 600 : 400,
-          }}
-        >
-          {v.charAt(0).toUpperCase() + v.slice(1)}
-        </button>
-      ))}
-    </div>
-  );
-
-  return (
-    <div>
-      <SectionHint
-        id="tasks"
-        text="Things Edge is tracking for you. Complete them or let them carry over — Edge holds you accountable on your morning calls."
-      />
-
-      {/* Heading row + filter pills on same line */}
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h2 className="text-lg font-bold">{headingByView[filterView]}</h2>
-        <div className="flex items-center gap-2">
-          {filterView === 'open' && (
-            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-              {todayTasks.filter(t => t.completed).length}/{todayTasks.length} done
-            </span>
-          )}
-          {filterControl}
-        </div>
-      </div>
-
-      {/* Add task form */}
-      <form onSubmit={handleAdd} className="flex gap-2 mb-6">
-        <input
-          className="input flex-1 text-sm"
-          placeholder="Add a task…"
-          value={newTask}
-          onChange={e => setNewTask(e.target.value)}
-        />
-        <button type="submit" className="btn-primary text-sm py-2 px-4 flex-shrink-0" disabled={adding || !newTask.trim()}>
-          Add
-        </button>
-      </form>
-
-      {/* Open view */}
-      {filterView === 'open' && (
-        <>
-          {todayTasks.filter(t => t.source === 'edg3' && !t.completed).length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--edg-indigo)' }}>
-                <span>✦</span> From Edge
-              </p>
-              <div className="space-y-1.5">
-                {todayTasks.filter(t => t.source === 'edg3' && !t.completed).map(task => (
-                  <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
-                ))}
-              </div>
-            </div>
-          )}
-          {todayTasks.filter(t => t.source === 'manual' && !t.completed).length > 0 && (
-            <div className="mb-4">
-              <div className="space-y-1.5">
-                {todayTasks.filter(t => t.source === 'manual' && !t.completed).map(task => (
-                  <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
-                ))}
-              </div>
-            </div>
-          )}
-          {incompleteVisible.length > 0 && (
-            <div className="flex justify-end mb-2">
-              <button
-                onClick={handleCompleteAll}
-                disabled={completingAll}
-                className="text-xs font-medium"
-                style={{ color: completingAll ? 'var(--text-faint)' : 'var(--edg-success)' }}
-              >
-                {completingAll ? 'Completing…' : `✓ Complete all (${incompleteVisible.length})`}
-              </button>
-            </div>
-          )}
-          {incompleteVisible.length === 0 && (
-            <div className="glass-card p-8 text-center mb-4">
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                {todayTasks.length === 0
-                  ? "No tasks yet — they'll appear after your morning call."
-                  : 'All done for today.'}
-              </p>
-            </div>
-          )}
-          {pastTasks.length > 0 && (
-            <div className="mt-5">
-              <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--edg-warning)' }}>
-                <span>⚠</span> Carried over
-              </p>
-              <div className="space-y-1.5">
-                {pastTasks.map(task => (
-                  <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Completed view */}
-      {filterView === 'completed' && (
-        completedTasks.length === 0 ? (
-          <div className="glass-card p-8 text-center">
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No completed tasks in the last 30 days.</p>
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {completedTasks.map(task => (
-              <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
-            ))}
-          </div>
-        )
-      )}
-
-      {/* All view */}
-      {filterView === 'all' && (
-        allTasks.length === 0 ? (
-          <div className="glass-card p-8 text-center">
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet.</p>
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {allTasks.map(task => (
-              <TaskRow key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} />
-            ))}
-          </div>
-        )
-      )}
-    </div>
-  );
-}
-
-function TaskRow({ task, onToggle, onDelete }: {
-  task: Task;
-  onToggle: (id: number, completed: boolean) => Promise<void>;
-  onDelete: (id: number) => Promise<void>;
-}) {
-  const [loading, setLoading] = useState(false);
-
-  async function toggle() {
-    setLoading(true);
-    await onToggle(task.id, !task.completed);
-    setLoading(false);
-  }
-
-  return (
-    <div className="glass-card glass-card-hover p-4 flex items-center gap-3 group">
-      <button
-        onClick={toggle}
-        disabled={loading}
-        className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
-        style={{
-          background: task.completed ? 'var(--edg-indigo)' : 'transparent',
-          border: task.completed ? '2px solid var(--edg-indigo)' : '2px solid var(--edg-border-15)',
-        }}
-      >
-        {task.completed && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
-      </button>
-      <span
-        className="flex-1 text-sm"
-        style={{
-          color: task.completed ? 'var(--text-faint)' : 'var(--text-strong)',
-          textDecoration: task.completed ? 'line-through' : 'none',
-        }}
-      >
-        {task.text}
-      </span>
-      {task.source === 'edg3' && (
-        <span className="badge badge-info text-xs opacity-60">EDG3</span>
-      )}
-      <button
-        onClick={() => onDelete(task.id)}
-        className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
-        style={{ color: 'var(--text-faint)' }}
-      >
-        ✕
       </button>
     </div>
   );
@@ -1047,15 +805,6 @@ interface Fact {
   source_briefing_id?: number | null;
 }
 
-interface Task {
-  id: number;
-  text: string;
-  completed: number;
-  source: string;
-  date: string;
-  completed_at: string | null;
-}
-
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -1063,15 +812,13 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'briefings' | 'tasks' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
+  const [activeTab, setActiveTab] = useState<'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
@@ -1119,6 +866,13 @@ export default function Dashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
   const [calendarFitLoading, setCalendarFitLoading] = useState(false);
+  const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
+  const [focusRecLoading, setFocusRecLoading] = useState(false);
+  const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
+  const [dayPlanLoading, setDayPlanLoading] = useState(false);
+  const [dayPlanApplied, setDayPlanApplied] = useState(false);
+  const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1145,7 +899,7 @@ export default function Dashboard() {
     loadHistory();
 
     // Same retry-on-transient pattern for other user-facing data fetches — a cold-start or
-    // session-timing race must not silently blank out priorities/memory/tasks until a reload.
+    // session-timing race must not silently blank out priorities/memory until a reload.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const retryFetch = (url: string, onSuccess: (d: any) => void, attempt = 0) => {
       fetch(url)
@@ -1155,12 +909,15 @@ export default function Dashboard() {
     };
     retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
-    retryFetch('/api/tasks', d => setTasks(d.tasks || []));
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
+    setFocusRecLoading(true);
+    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
+    setDayPlanLoading(true);
+    fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1204,6 +961,29 @@ export default function Dashboard() {
     setFacts(prev => prev.filter(f => f.id !== id));
     setDeletingFactId(null);
     await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
+  async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    await fetch('/api/focus/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ areas }),
+    });
+    setFocusRecDismissed(true);
+  }
+
+  async function handleConfirmDayPlan(planId: string) {
+    const res = await fetch('/api/day-plan/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setDayPlanApplied(true);
+    if (d.newScore != null) {
+      setDayPlanAppliedScore(d.newScore);
+      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    }
   }
 
   async function retryBriefingCall() {
@@ -1432,40 +1212,33 @@ export default function Dashboard() {
 
       {/* Notification center */}
       <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 60 }}>
-        <button
-          onClick={() => { const next = !notifOpen; setNotifOpen(next); if (next && notifUnread > 0) notifAction('markAllRead'); }}
-          title="Notifications"
-          style={{ position: 'relative', width: 40, height: 40, borderRadius: 9999, background: 'var(--edg-fill-hover)', border: '1px solid var(--edg-border-10)', fontSize: 18, cursor: 'pointer' }}
-        >
-          🔔
-          {notifUnread > 0 && (
-            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9999, background: 'var(--edg-danger)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {notifUnread}
-            </span>
-          )}
-        </button>
+        <NotificationBell
+          unreadCount={notifUnread}
+          onClick={() => {
+            const next = !notifOpen;
+            setNotifOpen(next);
+            if (next && notifUnread > 0) notifAction('markAllRead');
+          }}
+        />
         {notifOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto', padding: 12 }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Notifications</span>
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto' }}>
+            <NotificationCenter
+              notifications={notifs.map(n => ({
+                id: n.id,
+                type: 'general' as const,
+                title: n.title,
+                body: n.body,
+                read: !!n.read,
+                createdAt: n.created_at,
+                actions: [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }],
+              }))}
+              onDismiss={() => {}}
+            />
+            <div className="px-3 pb-3 pt-1 flex justify-end" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
               <button onClick={() => notifAction('check')} disabled={notifChecking} className="text-xs" style={{ color: 'var(--text-accent)' }}>
                 {notifChecking ? 'Checking…' : '↻ Check for replies'}
               </button>
             </div>
-            {notifs.length === 0 ? (
-              <p className="text-xs py-6 text-center" style={{ color: 'var(--text-faint)' }}>No notifications yet. When someone replies to an email Edge drafted, it&apos;ll show up here.</p>
-            ) : (
-              notifs.map((n) => (
-                <div key={n.id} className="py-2" style={{ borderTop: '1px solid var(--edg-hairline)', opacity: n.read ? 0.6 : 1 }}>
-                  <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>{n.title}</p>
-                  {n.body && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.body}</p>}
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{new Date(n.created_at).toLocaleString()}</p>
-                    <button onClick={() => openBook(n)} className="text-xs" style={{ color: 'var(--text-accent)' }}>📅 Book a time</button>
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         )}
       </div>
@@ -1517,7 +1290,6 @@ export default function Dashboard() {
           <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
             {[
               { id: 'briefings', label: 'Briefings', icon: '📋' },
-              { id: 'tasks', label: 'Tasks', icon: '✓' },
               { id: 'priorities', label: 'Priorities', icon: '🎯' },
               { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
@@ -1824,14 +1596,37 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Calendar Fit — landing view: always visible above tab content */}
+          {/* Score + plan cards — always visible above tab content */}
           <div className="mb-6">
-            <CalendarFitCard
+            <EdgeScoreCard
               fit={calendarFit}
               loading={calendarFitLoading}
               sparse={priorities.length === 0 || calendarConnected === false}
+              onRequestFix={() => {/* DayPlanCard below handles fixes */}}
             />
           </div>
+          {!focusRecDismissed && (
+            <div className="mb-6">
+              <FocusRecommendationCard
+                recommendation={focusRec}
+                loading={focusRecLoading}
+                onConfirm={handleConfirmFocus}
+                onDismiss={() => setFocusRecDismissed(true)}
+              />
+            </div>
+          )}
+          {calendarConnected !== false && (
+            <div className="mb-6">
+              <DayPlanCard
+                plan={dayPlan}
+                loading={dayPlanLoading}
+                onConfirm={handleConfirmDayPlan}
+                onDismiss={() => setDayPlan(null)}
+                applied={dayPlanApplied}
+                appliedScore={dayPlanAppliedScore}
+              />
+            </div>
+          )}
 
           {/* Tab content */}
           {activeTab === 'briefings' && (
@@ -2010,34 +1805,6 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-          )}
-
-          {activeTab === 'tasks' && (
-            <TasksTab tasks={tasks} onToggle={async (id, completed) => {
-              await fetch(`/api/tasks/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ completed }),
-              });
-              loadData();
-            }} onAdd={async (text) => {
-              await fetch('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text }),
-              });
-              loadData();
-            }} onDelete={async (id) => {
-              await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-              loadData();
-            }} onCompleteAll={async (ids) => {
-              await fetch('/api/tasks/complete-all', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids }),
-              });
-              loadData();
-            }} />
           )}
 
           {activeTab === 'priorities' && (
