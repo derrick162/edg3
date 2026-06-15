@@ -14,6 +14,23 @@ morning (call moving EARLIER, ~9:00 AM) Edge:
 - (Read "week" below as "today"; the engine still mines long-range history for context, but the OUTPUT
   and the action are day-scoped.)
 
+## ★★ The priority HIERARCHY (Derrick 2026-06-15) — reconciles day vs week
+It's not day-OR-week — it's a hierarchy. The daily call is the obsession, but it HINGES on stable anchors.
+- **Overarching priorities (STABLE, ~2, change rarely):** the most important things right now. Derrick's:
+  (1) **Extend personal runway** — ship Edge to market to monetize; sell secondhand on Kijiji; review
+  personal burn on Wednesdays. (2) **Get to 130 lb** — health → confidence → everything better.
+- **Weekly tactics (derived, change week-to-week):** concrete sub-goals under an anchor. E.g., for 130lb
+  this week: "eat 3000 cal/day", "join a local gym if traveling."
+- **Daily focus (the magic moment):** each morning Edge picks **today's 3 focus areas** that LADDER UP to
+  the anchors, modulated by today's energy + today's calendar, and checks whether today actually fits them
+  — reshaping live. ("Forget the week" = don't make weekly *planning* the unit; the week survives as the
+  tactical layer between anchors and daily execution.)
+- **Maps to what we built:** overarching = the `priorities` store (treat as STABLE anchors w/ a strong
+  "why", NOT weekly-reset); weekly tactics = `focus_milestones` under each; daily focus = the derived
+  recommendation. Nothing wasted.
+- **Edge recommends at the TOP too:** propose the overarching priorities from the data (history screams
+  runway + health), confirmed rarely; then derive weekly tactics + daily focus from them.
+
 ## The flip
 Today the user DECLARES their 3 areas of focus and Edge measures against them. **Flip it: Edge analyzes
 your data and TELLS you what your focus should be.** A real chief of staff doesn't ask an overwhelmed
