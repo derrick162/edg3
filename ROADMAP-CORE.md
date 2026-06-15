@@ -9,6 +9,43 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-14** — **Scoring engine MVP simplification — pure-quant Focus % + LLM-tagged Energy %.**
+  - **Stripped** the two-component judgment layer (deferred — see `specs/calendar-scores.md`). No more `quantScore`, `judgmentScore`, `weights`, `ScoreFeedback`, `JudgmentRule`, or the four deterministic rules.
+  - **`ScoreResult` (MVP):** `{ score /*0–100*/, drivers[], topFix }`.
+  - **Focus Score:** `focusAlignedHours / totalWorkingHours * 100` (default 45h/week). Pure, no events needed — just `alignment` + `priorities`. Drivers: per-area hours / zero warnings + biggest time sink. topFix: blocks uncovered area, trims unaligned, or adds time (by score tier).
+  - **`classifyEventsEnergy(events)`:** async batch LLM call (Haiku). Classifies every timed event → `{ type: EventType, demand: 'high'|'medium'|'low' }`. Returns `TaggedEvent[]`. Falls back to `{type:'other', demand:'medium'}` on any LLM failure. Designed for fast-follow cache swap-in (Security's `event_energy_tags` table).
+  - **Energy Score:** `computeEnergyScore(taggedEvents, signal, profile)` → 0–100. Penalty = weighted mismatch: high-demand on red day (w=2); high-demand in trough window (w=2). Score = `(1 − penaltyWeight/totalWeight) × 100`. Special cases: no signal → 50; no events + red → 100 (protected). topFix targets the worst mismatch or suggests profile setup.
+  - **`computeCalendarFit`** signature updated: `(taggedEvents, alignment, priorities, energySignal, energyProfile, totalWorkingHours?)`.
+  - **`app/api/scores/route.ts`:** `classifyEventsEnergy(todayEvents)` now runs in parallel with `computeAlignment`.
+  - **`lib/briefing.ts`:** same — `classifyEventsEnergy(calendarEvents)` in parallel with `computeAlignment`; CALENDAR FIT prompt block updated to `%` framing.
+  - **`lib/vapi.ts`:** CALENDAR SCORES note updated (0–100%, threshold 50, "Focus is at X%").
+  - Tests: rewrote `lib/calendarScore.test.ts` (49 tests, all pure — no LLM in tests). Previous judgment tests removed.
+  - 641/641 green, tsc clean, next build clean.
+- **2026-06-14** — **Focus/Energy scoring engine V2 — two-component blend (quant + judgment).**
+  - `ScoreResult` extended: `{ score, quantScore, judgmentScore, weights: {quant, judgment}, drivers[], topFix }`.
+    Both halves populate `drivers` — no black box. Weights are tunable params (default 50/50).
+  - **Focus Score — Judgment half** (2 deterministic expert rules, 55%/45% within judgment):
+    - `ruleF_DiminishingReturns`: >5h/week on one area past saturation → penalty; worse when another area is starved at 0h. Scale: 2 (critical) → 4 (rebalance needed) → 7 (mild saturation) → 9 (healthy).
+    - `ruleF_DomainArchetypes`: deep work + fundraising priorities need ≥90min/60min blocks respectively; fragmented sessions → score 4 + driver. Fitness/leadership archetypes don't have block-length requirements (generalizable norms, not personal prefs).
+  - **Energy Score — Judgment half** (2 deterministic expert rules, 60%/40%):
+    - `ruleE_DayTypeAppropriateness`: energy level as a capacity MULTIPLIER — red day + any high-demand = score 2 (costs more than it earns); green day + high-demand outside peak = score 6 (leaving capacity on table); green + in peak = 10 (optimal).
+    - `ruleE_RecoveryInsurance`: ≥2 late-evening events (after 7 PM) = score 2; 1 late event = score 5; back-to-back demanding events (<15 min gap) = score 5; clean day = score 9.
+  - **`ScoreFeedback` interface** (hook only, not used V1): `{ ruleId, delta, note? }` — architectural placeholder for the human-in-the-loop tuning loop. Keeps generalizable principles separate from personal tuning.
+  - **`app/api/scores/route.ts`**: now uses `energyProfileQueries.get(userId)` (structured DB profile, fall back to `parseEnergyProfile`); persists each computed score via `calendarScoreQueries.upsert`. Non-fatal on persistence failure.
+  - **`lib/briefing.ts`**: same `energyProfileQueries.get` + fallback pattern added.
+  - 634/634 green, tsc clean, next build clean.
+- **2026-06-14** — **Focus/Energy scoring engine V1 (`lib/calendarScore.ts`) — the headline scores.**
+  - **`lib/calendarScore.ts`** (pure, 0 I/O, 33 new tests):
+    - `ScoreResult { score: 1-10, drivers: string[], topFix }` + `CalendarFit` + `EnergyProfile` — shared contract.
+    - `parseEnergyProfile(statements)` — parses peak/trough windows from free-text preference facts.
+    - `computeFocusScore(events, priorities, alignment)` — 4 weighted components: coverage (35%), aligned share (30%), protected blocks ≥90min (20%), balance vs ranking (15%).
+    - `computeEnergyScore(events, energySignal, energyProfile, priorities)` — 3 components: demand↔window match (40%), load vs capacity (35%), recovery protection (25%).
+    - `computeCalendarFit(...)` — both scores + `computedAt`.
+    - Both scores always populate `drivers` (plain-English reasons) and `topFix` (the single most impactful change) so Edge can say why and offer one fix.
+    - Degrades gracefully: no priorities → score 1 + setup message; no energy signal → score 5; no profile → neutral match score.
+  - **`lib/briefing.ts`**: parses energy profile from preference facts; calls `computeCalendarFit`; injects CALENDAR FIT block (both scores + drivers + topFix) into `userPrompt` — Edge opens every call with the scores.
+  - **`lib/vapi.ts`**: CALENDAR SCORES note — open with "Focus X, Energy Y — here's why", offer topFix immediately; act on yes.
+  - **`app/api/scores/route.ts`** (`GET /api/scores`): fetches today's events + alignment + energy; returns `CalendarFit` for dashboard. 603/603 green, tsc clean, next build clean.
 - **2026-06-14** — **Focus Scoreboard — milestone check-offs + per-area progress + briefing momentum.**
   - **`lib/db.ts`**: `focus_milestones` table (cascades on priority delete; `done_at` tracks completion time);
     `FocusMilestone` interface; `focusMilestoneQueries { listForUser, listForPriority, create, setDone, remove }`.
