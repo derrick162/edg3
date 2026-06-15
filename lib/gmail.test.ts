@@ -7,15 +7,18 @@ const h = vi.hoisted(() => {
   const draftsDelete = vi.fn(async () => ({}));
   const messagesSend = vi.fn(); // must NEVER be called — draft-only guarantee
   const threadsGet = vi.fn(async () => ({ data: { messages: [] } }));
+  const threadsList = vi.fn(async () => ({ data: { threads: [] } }));
   return {
     draftsCreate,
     draftsDelete,
     messagesSend,
     threadsGet,
+    threadsList,
     calGet: vi.fn(),
     upsert: vi.fn(),
     countSince: vi.fn(() => 0),
     logDraft: vi.fn(),
+    auditRecord: vi.fn(),
     oauthClient: { setCredentials: vi.fn(), on: vi.fn() },
   };
 });
@@ -24,6 +27,7 @@ vi.mock('./calendar', () => ({ getOAuthClient: () => h.oauthClient }));
 vi.mock('./db', () => ({
   calendarQueries: { get: h.calGet, upsert: h.upsert },
   gmailQueries: { countSince: h.countSince, logDraft: h.logDraft },
+  auditLogQueries: { record: h.auditRecord },
 }));
 vi.mock('googleapis', () => ({
   google: {
@@ -31,13 +35,13 @@ vi.mock('googleapis', () => ({
       users: {
         drafts: { create: h.draftsCreate, delete: h.draftsDelete },
         messages: { send: h.messagesSend },
-        threads: { get: h.threadsGet },
+        threads: { get: h.threadsGet, list: h.threadsList },
       },
     }),
   },
 }));
 
-import { createDraft, deleteDraft, userHasGmailScope, readThread, GmailScopeError, GmailRateLimitError } from './gmail';
+import { createDraft, deleteDraft, userHasGmailScope, readThread, getRecentEmailSignal, GmailScopeError, GmailRateLimitError } from './gmail';
 
 const WITH_GMAIL = { access_token: 'a', refresh_token: 'r', expiry: null, scope: GOOGLE_SCOPES.join(' ') };
 const CAL_ONLY = { access_token: 'a', refresh_token: 'r', expiry: null, scope: CALENDAR_SCOPES.join(' ') };
@@ -224,5 +228,151 @@ h.threadsGet.mockResolvedValue({ data: { messages: [] } } as any);
     h.calGet.mockReturnValue(WITH_GMAIL);
     await readThread(1, 'thread_abc');
     expect(h.threadsGet).toHaveBeenCalledWith({ userId: 'me', id: 'thread_abc', format: 'full' });
+  });
+});
+
+// ── getRecentEmailSignal ──────────────────────────────────────────────────────
+
+describe('getRecentEmailSignal (email prioritization signal)', () => {
+  it('returns scopeMissing:true when no Google account is connected', async () => {
+    h.calGet.mockReturnValue(undefined);
+    const result = await getRecentEmailSignal(1);
+    expect(result.scopeMissing).toBe(true);
+    expect(result.items).toEqual([]);
+    expect(h.threadsList).not.toHaveBeenCalled();
+  });
+
+  it('returns scopeMissing:true when user lacks gmail.readonly', async () => {
+    h.calGet.mockReturnValue(CAL_ONLY);
+    const result = await getRecentEmailSignal(1);
+    expect(result.scopeMissing).toBe(true);
+    expect(h.threadsList).not.toHaveBeenCalled();
+  });
+
+  it('returns empty items when inbox has no threads', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    const result = await getRecentEmailSignal(1);
+    expect(result.scopeMissing).toBe(false);
+    expect(result.items).toEqual([]);
+  });
+
+  it('maps thread list + metadata to EmailSignalItem fields', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: { threads: [{ id: 'th_1', snippet: 'Foreclosure notice...' }] },
+    } as any);
+    h.threadsGet.mockResolvedValue({
+      data: {
+        messages: [
+          {
+            id: 'msg_1',
+            labelIds: ['INBOX', 'UNREAD', 'IMPORTANT'],
+            payload: {
+              headers: [
+                { name: 'From', value: 'bank@example.com' },
+                { name: 'Subject', value: 'Foreclosure Notice' },
+                { name: 'Date', value: 'Mon, 14 Jun 2026 09:00:00 +0000' },
+              ],
+            },
+          },
+        ],
+      },
+    } as any);
+
+    const result = await getRecentEmailSignal(1, { days: 7, max: 5 });
+    expect(result.scopeMissing).toBe(false);
+    expect(result.items).toHaveLength(1);
+    const item = result.items[0];
+    expect(item.threadId).toBe('th_1');
+    expect(item.sender).toBe('bank@example.com');
+    expect(item.subject).toBe('Foreclosure Notice');
+    expect(item.snippet).toBe('Foreclosure notice...');   // from list response, no body fetch
+    expect(item.date).toBe('Mon, 14 Jun 2026 09:00:00 +0000');
+    expect(item.isUnread).toBe(true);
+    expect(item.isImportant).toBe(true);
+  });
+
+  it('uses thread list snippet (not body content) for the snippet field', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    // List response has snippet; threadsGet response has none on the messages
+    h.threadsList.mockResolvedValue({
+      data: { threads: [{ id: 'th_2', snippet: 'List-sourced snippet' }] },
+    } as any);
+    h.threadsGet.mockResolvedValue({
+      data: { messages: [{ id: 'msg_2', labelIds: [], payload: { headers: [] } }] },
+    } as any);
+
+    const [item] = (await getRecentEmailSignal(1)).items;
+    expect(item.snippet).toBe('List-sourced snippet');
+    // Confirm threads.get was called with metadata format only (no full body)
+    expect(h.threadsGet).toHaveBeenCalledWith(expect.objectContaining({
+      format: 'metadata',
+      metadataHeaders: expect.arrayContaining(['From', 'Subject', 'Date']),
+    }));
+  });
+
+  it('skips failed thread fetches and returns partial results', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: {
+        threads: [
+          { id: 'th_ok', snippet: 'Good one' },
+          { id: 'th_fail', snippet: 'Will fail' },
+        ],
+      },
+    } as any);
+    h.threadsGet
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm1', labelIds: [], payload: { headers: [
+          { name: 'From', value: 'ok@example.com' },
+          { name: 'Subject', value: 'OK Thread' },
+          { name: 'Date', value: 'Mon, 14 Jun 2026' },
+        ] } }] },
+      } as any)
+      .mockRejectedValueOnce(new Error('Network timeout'));
+
+    const result = await getRecentEmailSignal(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].threadId).toBe('th_ok');
+  });
+
+  it('records an audit entry with thread count but no email content', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: { threads: [{ id: 'th_1', snippet: 'Test' }] },
+    } as any);
+    h.threadsGet.mockResolvedValue({
+      data: { messages: [{ id: 'm1', labelIds: [], payload: { headers: [] } }] },
+    } as any);
+
+    await getRecentEmailSignal(1, { days: 7 });
+    expect(h.auditRecord).toHaveBeenCalledOnce();
+    const entry = h.auditRecord.mock.calls[0][0];
+    expect(entry.action).toBe('email_signal_fetch');
+    const args = JSON.parse(entry.argsJson);
+    expect(args.days).toBe(7);
+    expect(args.threadCount).toBe(1);
+    // The audit entry must NOT contain any email content
+    expect(entry.argsJson).not.toContain('snippet');
+    expect(entry.argsJson).not.toContain('subject');
+  });
+
+  it('caps max threads at EMAIL_SIGNAL_CAP (50) regardless of opts.max', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    await getRecentEmailSignal(1, { max: 999 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const call = (h.threadsList.mock.calls as any[][])[0]?.[0];
+    expect(call?.maxResults).toBeLessThanOrEqual(50);
+  });
+
+  it('fetches inbox only (labelIds: INBOX)', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    await getRecentEmailSignal(1);
+    expect(h.threadsList).toHaveBeenCalledWith(expect.objectContaining({
+      labelIds: ['INBOX'],
+    }));
   });
 });
