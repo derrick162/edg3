@@ -9,7 +9,20 @@
 > backlog below.
 
 ## Changelog
-- **2026-06-14** — **Focus/Energy scoring engine (`lib/calendarScore.ts`) — the headline scores.**
+- **2026-06-14** — **Focus/Energy scoring engine V2 — two-component blend (quant + judgment).**
+  - `ScoreResult` extended: `{ score, quantScore, judgmentScore, weights: {quant, judgment}, drivers[], topFix }`.
+    Both halves populate `drivers` — no black box. Weights are tunable params (default 50/50).
+  - **Focus Score — Judgment half** (2 deterministic expert rules, 55%/45% within judgment):
+    - `ruleF_DiminishingReturns`: >5h/week on one area past saturation → penalty; worse when another area is starved at 0h. Scale: 2 (critical) → 4 (rebalance needed) → 7 (mild saturation) → 9 (healthy).
+    - `ruleF_DomainArchetypes`: deep work + fundraising priorities need ≥90min/60min blocks respectively; fragmented sessions → score 4 + driver. Fitness/leadership archetypes don't have block-length requirements (generalizable norms, not personal prefs).
+  - **Energy Score — Judgment half** (2 deterministic expert rules, 60%/40%):
+    - `ruleE_DayTypeAppropriateness`: energy level as a capacity MULTIPLIER — red day + any high-demand = score 2 (costs more than it earns); green day + high-demand outside peak = score 6 (leaving capacity on table); green + in peak = 10 (optimal).
+    - `ruleE_RecoveryInsurance`: ≥2 late-evening events (after 7 PM) = score 2; 1 late event = score 5; back-to-back demanding events (<15 min gap) = score 5; clean day = score 9.
+  - **`ScoreFeedback` interface** (hook only, not used V1): `{ ruleId, delta, note? }` — architectural placeholder for the human-in-the-loop tuning loop. Keeps generalizable principles separate from personal tuning.
+  - **`app/api/scores/route.ts`**: now uses `energyProfileQueries.get(userId)` (structured DB profile, fall back to `parseEnergyProfile`); persists each computed score via `calendarScoreQueries.upsert`. Non-fatal on persistence failure.
+  - **`lib/briefing.ts`**: same `energyProfileQueries.get` + fallback pattern added.
+  - 634/634 green, tsc clean, next build clean.
+- **2026-06-14** — **Focus/Energy scoring engine V1 (`lib/calendarScore.ts`) — the headline scores.**
   - **`lib/calendarScore.ts`** (pure, 0 I/O, 33 new tests):
     - `ScoreResult { score: 1-10, drivers: string[], topFix }` + `CalendarFit` + `EnergyProfile` — shared contract.
     - `parseEnergyProfile(statements)` — parses peak/trough windows from free-text preference facts.

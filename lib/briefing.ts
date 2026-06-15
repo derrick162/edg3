@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, energyProfileQueries, effectiveTimezone, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
@@ -408,8 +408,12 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
   // Calendar Fit scores: Focus + Energy (1-10).
+  // Use structured DB profile when available; fall back to parsing from preference facts.
+  const dbEnergyProfile = (() => { try { return energyProfileQueries.get(userId); } catch { return undefined; } })();
   const preferenceStatements = preferencesFacts.map(f => f.statement);
-  const energyProfile = parseEnergyProfile(preferenceStatements);
+  const energyProfile = dbEnergyProfile
+    ? { peakStart: dbEnergyProfile.peak_start, peakEnd: dbEnergyProfile.peak_end, troughStart: dbEnergyProfile.trough_start, troughEnd: dbEnergyProfile.trough_end }
+    : parseEnergyProfile(preferenceStatements);
   const calendarFit = computeCalendarFit(calendarEvents, priorities, alignment, energySignal, energyProfile);
 
   // Focus Scoreboard: per-area progress + milestone celebrations.

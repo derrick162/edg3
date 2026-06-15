@@ -101,8 +101,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ Focus/Energy scoring engine — `lib/calendarScore.ts` (pure, 33 tests), `GET /api/scores`, briefing + call wiring. 603/603 green. ⚠️ PM: merge `core` → `master`; notify Design to wire `/api/scores` into the dashboard gauge.)_ | `lib/calendarScore.ts`, `lib/briefing.ts`, `lib/vapi.ts`, `app/api/scores/**` | 2026-06-14 |
-| 🔒 Security | `security` | _(✅ Energy OS schema (`energy_log` + `energyLogQueries`) + Focus Scoreboard schema + data export/deletion + call reliability + encryption verification + CASA. Integrated.)_ | `lib/db.ts`, `app/api/account/**`, `lib/energy-log.test.ts`, `specs/` | 2026-06-14 |
+| 🛠️ Core | `core` | _(⏳ Focus/Energy scoring engine **V2** — two-component blend (quant + judgment, 50/50 default), DB persistence via `calendarScoreQueries`, briefing + API wiring.)_ | `lib/calendarScore.ts`, `app/api/scores/route.ts`, `lib/briefing.ts` | 2026-06-14 |
+| 🔒 Security | `security` | _(✅ **Calendar scoring engine schema** — `calendar_scores` table + `calendarScoreQueries` + `energy_profile` table + `energyProfileQueries`. 581/581 green. Awaiting PM.)_ | `lib/db.ts`, `lib/calendar-scores.test.ts` | 2026-06-14 |
 | 🔧 PM | `master` | _(✅ Focus Scoreboard fully integrated (`d5e1da4`, 570 green, UTF-8 clean) — resolved the Core/Security schema collision onto Security's canonical version. Spec'd next wave: Focus/Energy scoring engine (`specs/calendar-scores.md`), voice-energy v2 (`specs/voice-energy.md`), notifications (`specs/notifications.md`), Scores-as-landing + remove Tasks. Holding dispatch for Derrick's go + his hero-loop note.)_ | `ROADMAP*.md`, `specs/**` | 2026-06-14 |
 | 🎨 Design | `design` | _(idle — ✅ FocusScoreboard shipped: ring progress, milestone check-off + celebration, neglected state, tokens. Core: wire props + `/api/milestones`. Awaiting PM.)_ | — | 2026-06-14 |
 
