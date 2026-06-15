@@ -40,6 +40,7 @@ import {
   getSleepHistory,
   getStrainHistory,
   hasWhoopConnected,
+  revokeWhoopAccess,
   whoopFreshnessNote,
   formatWhoopHistoryForCall,
   WHOOP_SCOPES,
@@ -548,5 +549,67 @@ describe('formatWhoopHistoryForCall', () => {
     const out = formatWhoopHistoryForCall(rec, [], []);
     // newest 7 = scores 30..90; oldest two (0,10,20) dropped → first shown is 30%
     expect(out).toContain('30%, 40%, 50%, 60%, 70%, 80%, 90%');
+  });
+});
+
+// ── revokeWhoopAccess ─────────────────────────────────────────────────────────
+
+describe('revokeWhoopAccess', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+  });
+
+  it('calls Whoop revoke endpoint with refresh_token when available', async () => {
+    h.whoopGet.mockReturnValue({ ...VALID_TOKEN });
+    await revokeWhoopAccess(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.prod.whoop.com/oauth/oauth2/revoke',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const body = (mockFetch.mock.calls as any[][])[0]?.[1]?.body as URLSearchParams;
+    expect(body?.get('token')).toBe('refresh_tok');
+    expect(body?.get('client_id')).toBe('test_client_id');
+  });
+
+  it('falls back to access_token when refresh_token is missing', async () => {
+    h.whoopGet.mockReturnValue({ ...VALID_TOKEN, refresh_token: '' });
+    await revokeWhoopAccess(1);
+    const body = (mockFetch.mock.calls as any[][])[0]?.[1]?.body as URLSearchParams;
+    expect(body?.get('token')).toBe('access_tok');
+  });
+
+  it('always deletes the local token row even when revoke call fails', async () => {
+    h.whoopGet.mockReturnValue({ ...VALID_TOKEN });
+    mockFetch.mockRejectedValue(new Error('Network error'));
+    await revokeWhoopAccess(1);
+    expect(h.whoopDelete).toHaveBeenCalledWith(1);
+  });
+
+  it('always deletes the local token row when revoke returns non-2xx', async () => {
+    h.whoopGet.mockReturnValue({ ...VALID_TOKEN });
+    mockFetch.mockResolvedValue({ ok: false, status: 400 });
+    await revokeWhoopAccess(1);
+    expect(h.whoopDelete).toHaveBeenCalledWith(1);
+  });
+
+  it('skips the revoke HTTP call when no token is stored', async () => {
+    h.whoopGet.mockReturnValue(undefined);
+    await revokeWhoopAccess(1);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(h.whoopDelete).toHaveBeenCalledWith(1);
+  });
+
+  it('skips the revoke HTTP call when Whoop client is not configured', async () => {
+    h.whoopGet.mockReturnValue({ ...VALID_TOKEN });
+    const savedId  = process.env.WHOOP_CLIENT_ID;
+    const savedSec = process.env.WHOOP_CLIENT_SECRET;
+    delete process.env.WHOOP_CLIENT_ID;
+    delete process.env.WHOOP_CLIENT_SECRET;
+    await revokeWhoopAccess(1);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(h.whoopDelete).toHaveBeenCalledWith(1);
+    process.env.WHOOP_CLIENT_ID     = savedId;
+    process.env.WHOOP_CLIENT_SECRET = savedSec;
   });
 });

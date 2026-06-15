@@ -14,9 +14,10 @@ import { randomBytes } from 'crypto';
 import { whoopQueries } from './db';
 import { prevDay } from './time';
 
-const AUTH_URL  = 'https://api.prod.whoop.com/oauth/oauth2/auth';
-const TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token';
-const API_BASE  = 'https://api.prod.whoop.com/developer/v2';
+const AUTH_URL   = 'https://api.prod.whoop.com/oauth/oauth2/auth';
+const TOKEN_URL  = 'https://api.prod.whoop.com/oauth/oauth2/token';
+const REVOKE_URL = 'https://api.prod.whoop.com/oauth/oauth2/revoke';
+const API_BASE   = 'https://api.prod.whoop.com/developer/v2';
 
 export const WHOOP_SCOPES = [
   'read:recovery',
@@ -359,6 +360,41 @@ export function formatWhoopHistoryForCall(
     parts.push(`strain averaged ${avg.toFixed(1)}`);
   }
   return parts.length ? `LAST 7 DAYS — ${parts.join('; ')}` : '';
+}
+
+// Clear all in-memory caches for a user (call on disconnect to avoid stale data).
+function clearUserCaches(userId: number): void {
+  recoveryCache.delete(userId);
+  sleepCache.delete(userId);
+  strainCache.delete(userId);
+  recoveryHistCache.delete(userId);
+  sleepHistCache.delete(userId);
+  strainHistCache.delete(userId);
+}
+
+// Revoke the user's Whoop grant at Whoop's token endpoint, then delete the stored
+// tokens and clear in-memory caches. Best-effort on the revoke call — even if
+// Whoop's endpoint fails (expired token, network error) we always clean up locally.
+export async function revokeWhoopAccess(userId: number): Promise<void> {
+  const stored = whoopQueries.get(userId);
+  if (stored && clientConfigured()) {
+    const tokenToRevoke = stored.refresh_token || stored.access_token;
+    try {
+      await fetch(REVOKE_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    new URLSearchParams({
+          token:         tokenToRevoke,
+          client_id:     process.env.WHOOP_CLIENT_ID!,
+          client_secret: process.env.WHOOP_CLIENT_SECRET!,
+        }),
+      });
+    } catch (err) {
+      console.error(`[whoop] Token revoke failed for user ${userId} (cleaning up locally anyway):`, err);
+    }
+  }
+  whoopQueries.delete(userId);
+  clearUserCaches(userId);
 }
 
 // True if the user has connected their Whoop account.
