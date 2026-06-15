@@ -367,6 +367,16 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   100% { transform: scale(1);   opacity: 1; }
 }
 
+@keyframes gauge-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.65; }
+}
+
+@keyframes score-rise {
+  0%   { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0);   opacity: 1; }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
