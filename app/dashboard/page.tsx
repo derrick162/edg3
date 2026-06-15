@@ -271,12 +271,6 @@ function SectionHint({ id, text }: { id: string; text: string }) {
   );
 }
 
-const ENERGY_COST_OPTIONS: { value: 'high' | 'medium' | 'low'; label: string; color: string; tint: string; border: string }[] = [
-  { value: 'high',   label: '⚡ High', color: 'var(--energy-red)',    tint: 'var(--energy-red-tint)',    border: 'var(--energy-red-border)' },
-  { value: 'medium', label: '◑ Med',  color: 'var(--energy-yellow)', tint: 'var(--energy-yellow-tint)', border: 'var(--energy-yellow-border)' },
-  { value: 'low',    label: '○ Low',  color: 'var(--energy-green)',  tint: 'var(--energy-green-tint)',  border: 'var(--energy-green-border)' },
-];
-
 interface Milestone {
   id: number;
   priority_id: number;
@@ -286,12 +280,11 @@ interface Milestone {
 }
 
 function PrioritiesTab({
-  priorities, milestones, onSave, onEnergyCostChange, onMilestoneAdd, onMilestoneToggle, onMilestoneDelete,
+  priorities, milestones, onSave, onMilestoneAdd, onMilestoneToggle, onMilestoneDelete,
 }: {
   priorities: Priority[];
   milestones: Milestone[];
   onSave: (p: string[]) => Promise<void>;
-  onEnergyCostChange?: (id: number, cost: 'high' | 'medium' | 'low' | null) => Promise<void>;
   onMilestoneAdd?: (priorityId: number, text: string) => Promise<void>;
   onMilestoneToggle?: (id: number, done: boolean) => Promise<void>;
   onMilestoneDelete?: (id: number) => Promise<void>;
@@ -299,7 +292,6 @@ function PrioritiesTab({
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(['', '', '']);
   const [loading, setLoading] = useState(false);
-  const [savingCost, setSavingCost] = useState<number | null>(null);
   const [newMilestoneText, setNewMilestoneText] = useState<{ [priorityId: number]: string }>({});
   const [addingMilestone, setAddingMilestone] = useState<number | null>(null);
 
@@ -376,32 +368,7 @@ function PrioritiesTab({
                     {i + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm mb-2">{p.text}</p>
-                    <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                      <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Energy cost:</span>
-                      {ENERGY_COST_OPTIONS.map(opt => {
-                        const active = p.energy_cost === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            disabled={savingCost === p.id}
-                            onClick={async () => {
-                              const next = p.energy_cost === opt.value ? null : opt.value;
-                              setSavingCost(p.id);
-                              await onEnergyCostChange?.(p.id, next);
-                              setSavingCost(null);
-                            }}
-                            className="text-xs px-2 py-0.5 rounded-full transition-all"
-                            style={active
-                              ? { background: opt.tint, border: `1px solid ${opt.border}`, color: opt.color, fontWeight: 600 }
-                              : { background: 'transparent', border: '1px solid var(--edg-hairline)', color: 'var(--text-faint)' }
-                            }
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <p className="font-medium text-sm mb-3">{p.text}</p>
                     {/* Milestone checklist */}
                     {(() => {
                       const pMilestones = milestones.filter(m => m.priority_id === p.id);
@@ -1816,14 +1783,6 @@ export default function Dashboard() {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ priorities: newPriorities }),
-                });
-                loadData();
-              }}
-              onEnergyCostChange={async (id, cost) => {
-                await fetch(`/api/priorities/${id}/energy`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ energy_cost: cost }),
                 });
                 loadData();
               }}

@@ -9,6 +9,22 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Score correctness fixes + priorities → Memory sync + remove energy-cost UI**.
+  - **[FIX] Focus Score now reads confirmed daily_focus** — `/api/scores` prefers today's confirmed
+    `daily_focus` (from `FocusRecommendationCard`) over `getThisWeek`; falls back to `getMostRecent`
+    (any week) so stale-week priorities still count. Confirming a recommendation now closes the
+    loop and drives the Focus Score immediately.
+  - **[FIX] Energy Score no longer fakes 100/70 on empty calendar** — `computeEnergyScore` returns
+    `calibrating: true, score: 50` when `taggedEvents.length === 0`. Covers both classification
+    failure (`.catch(()=>[])`) and genuinely empty calendars. 5 test expectations updated.
+  - **[FEATURE] Priorities → Memory sync** — on every priorities save, `factQueries.syncPriorityFacts`
+    clears old `source='priority-sync'` facts and re-inserts current priorities as `category='goal'`
+    facts. They appear in "What Edge knows" → Goals and flow into Edge's briefing context.
+    `facts.source` column added via migration (nullable TEXT; existing rows default NULL).
+  - **[CLEANUP] Per-priority energy-cost UI removed** — `ENERGY_COST_OPTIONS`, `savingCost` state,
+    the high/med/low badge row, and `onEnergyCostChange` prop removed from `PrioritiesTab`.
+    Backend (`energy_cost` column, `setEnergyCost` query, `/api/priorities/[id]/energy` route) kept.
+  - 733/733 green, tsc clean, next build clean.
 - **2026-06-15** — **Remove Tasks IA — tab + UI pipeline removed from dashboard**.
   - `TasksTab` component + `TaskRow` component deleted from `app/dashboard/page.tsx`.
   - `Task` interface, `tasks` state, `/api/tasks` fetch, `{ id: 'tasks' }` nav entry, and

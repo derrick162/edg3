@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { priorityQueries, memoryQueries } from '@/lib/db';
+import { priorityQueries, memoryQueries, factQueries } from '@/lib/db';
 import { getWeekOf } from '@/lib/briefing';
 
 export async function POST(req: NextRequest) {
@@ -40,6 +40,10 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean).join('. ');
     memoryQueries.create(user.id, 'calendar_note', `[PRIORITY CHANGE]: ${changeNote}`);
   }
+
+  // Sync priorities → facts (category 'goal', source 'priority-sync') so they appear
+  // in the Memory tab and flow into Edge's context. Idempotent: clears stale entries first.
+  try { factQueries.syncPriorityFacts(user.id, newTexts); } catch { /* non-fatal */ }
 
   return NextResponse.json({ success: true });
 }
