@@ -145,6 +145,7 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('tasks');
     expect(data).toHaveProperty('briefings');
     expect(data).toHaveProperty('emailDraftHistory');
+    expect(data).toHaveProperty('dailyFocus');
     expect(data).toHaveProperty('calendarScores');
     expect(data).toHaveProperty('energyProfile');
     expect(data).toHaveProperty('eventEnergyTags');
@@ -227,7 +228,7 @@ describe('DELETE /api/account — deletion', () => {
   it('issues DELETE statements for all user tables', async () => {
     await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
     const sqlCalls = h.dbRun.mock.calls.length;
-    // 16 tables including the users row itself
+    // 17 tables including the users row itself (daily_focus added 2026-06-15)
     expect(sqlCalls).toBeGreaterThanOrEqual(16);
   });
 

@@ -39,6 +39,16 @@ export async function GET(_req: NextRequest) {
     'SELECT date, level, source, created_at FROM energy_log WHERE user_id = ? ORDER BY date DESC'
   ).all(userId) as Array<{ date: string; level: string; source: string; created_at: string }>);
 
+  const dailyFocusRows = (db.prepare(
+    'SELECT date, focus_areas, generated_at, confirmed FROM daily_focus WHERE user_id = ? ORDER BY date ASC'
+  ).all(userId) as Array<{ date: string; focus_areas: string; generated_at: string; confirmed: number }>)
+    .map(r => ({
+      date: r.date,
+      focusAreas: (() => { try { return JSON.parse(r.focus_areas); } catch { return []; } })(),
+      generatedAt: r.generated_at,
+      confirmed: !!r.confirmed,
+    }));
+
   const calendarScoreRows = (db.prepare(
     'SELECT date, focus_score, energy_score, focus_drivers, energy_drivers, created_at FROM calendar_scores WHERE user_id = ? ORDER BY date ASC'
   ).all(userId) as Array<{ date: string; focus_score: number; energy_score: number; focus_drivers: string | null; energy_drivers: string | null; created_at: string }>)
@@ -95,6 +105,7 @@ export async function GET(_req: NextRequest) {
     briefings: briefingRows,
     emailDraftHistory: draftRows,
     energyLog: energyRows,
+    dailyFocus: dailyFocusRows,
     calendarScores: calendarScoreRows,
     energyProfile: energyProfile
       ? {

@@ -8,6 +8,36 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-15** — **Token revocation + security audit of new write paths.**
+  - **Whoop token revocation (CASA item):** `lib/whoop.ts` — `REVOKE_URL` constant;
+    `clearUserCaches(userId)` clears all 6 in-memory caches on disconnect;
+    `revokeWhoopAccess(userId)` (exported) — POSTs to Whoop's RFC-7009 revoke endpoint
+    with refresh_token (falls back to access_token), best-effort (catch/log errors),
+    always deletes local row + clears caches regardless of revoke outcome. Skips HTTP
+    call when client not configured or no token stored.
+    `app/api/whoop/disconnect/route.ts` updated to call `revokeWhoopAccess` (was calling
+    `whoopQueries.delete` directly). 6 new tests: revoke with refresh_token, fallback to
+    access_token, local cleanup on network failure, on non-2xx, no-token skip, unconfigured skip.
+    Note: Google token revocation was already implemented in `lib/calendar.ts:disconnectCalendar()`
+    via `getOAuthClient().revokeToken()`. Both OAuth providers are now fully covered.
+  - **Security/privacy audit of new write paths from Core's overnight build:**
+    Audited: `daily_focus` table, `calendar_plan_executions`, `calendarPlan.ts`, `focusRecommendation.ts`,
+    `/api/day-plan`, `/api/day-plan/confirm`, `/api/focus/recommend`, `/api/focus/confirm`.
+    **Findings (all fixed inline):**
+    1. **GAP FIXED: `daily_focus` missing from deletion routes** — added to both admin delete
+       (`DELETE /api/admin/users/[id]`) and self-service delete (`DELETE /api/account`).
+    2. **GAP FIXED: `daily_focus` missing from data export** — added to `GET /api/account/export`
+       (exports date, parsed focusAreas JSON, generatedAt, confirmed flag for all dates).
+    **No-action findings (documented):**
+    - `daily_focus.focus_areas` is a JSON array of productivity area titles/rationale — same
+      sensitivity tier as `tasks`/`priorities` (not encrypted at rest, consistent policy).
+    - `calendar_plan_executions` is internal idempotency tracking (UUIDs + counts, no user
+      content) — not included in export; not PII; already in deletion routes.
+    - `/api/focus/confirm` accepts an optional `dateParam` from request body (allows planning
+      ahead). Low risk — userId always comes from session; no cross-user leakage.
+    - All write paths are user-scoped, auth-gated, idempotent where appropriate. No SQL
+      injection risk (parameterized queries throughout).
+  - 739/739 green, tsc clean, next build clean.
 - **2026-06-14** — **CASA prep — GDPR deletion table updated, privacy page accurate, CASA checklist.**
   - `specs/google-verification.md`: marked Privacy Policy + self-service deletion checklist items done;
     updated §4 deletion table to include all new tables (`calendar_plan_executions`, `event_energy_tags`,

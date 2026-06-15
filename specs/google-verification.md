@@ -196,34 +196,34 @@ leaf-first order:
 Deletion order (leaf tables first, users row last):
 
 1. `calendar_plan_executions` (idempotency log)
-2. `event_energy_tags` (LLM classification cache)
-3. `calendar_scores` (daily focus/energy scores)
-4. `energy_profile` (peak/trough hours)
-5. `focus_milestones`
-6. `energy_log`
-7. `whoop_tokens` (health PII)
-8. `calendar_tokens` (OAuth tokens)
-9. `gmail_drafts_log`
-10. `watched_threads`
-11. `notifications`
-12. `audit_log`
-13. `facts`
-14. `briefings` + `preview_briefings`
-15. `memories`
-16. `priorities`, `tasks`
-17. `undo_log`, `event_dedupe_keys`, `delete_confirm_tokens`
-18. `users`
+2. `daily_focus` (AI focus areas per day)
+3. `event_energy_tags` (LLM classification cache)
+4. `calendar_scores` (daily focus/energy scores)
+5. `energy_profile` (peak/trough hours)
+6. `focus_milestones`
+7. `energy_log`
+8. `whoop_tokens` (health PII)
+9. `calendar_tokens` (OAuth tokens)
+10. `gmail_drafts_log`
+11. `watched_threads`
+12. `notifications`
+13. `audit_log`
+14. `facts`
+15. `briefings` + `preview_briefings`
+16. `memories`
+17. `priorities`, `tasks`
+18. `undo_log`, `event_dedupe_keys`, `delete_confirm_tokens`
+19. `users`
 
-### Google token revocation
+### Token revocation *(both providers — shipped 2026-06-15)*
 
-When a user disconnects their Google account (`DELETE /api/calendar/disconnect`),
-`calendar_tokens` is deleted. However, we do not currently call the Google token
-revocation endpoint (`accounts.google.com/o/oauth2/revoke`). This should be added
-for proper OAuth hygiene — token revocation ensures Google-side access is also
-terminated.
+**Google:** `lib/calendar.ts:disconnectCalendar()` calls `getOAuthClient().revokeToken()`
+(using the `google-auth-library`'s built-in revoke). Best-effort; local token row always
+deleted even if the revoke call fails.
 
-**Action item:** Add `fetch('https://oauth2.googleapis.com/revoke?token=<accessToken>')`
-in the disconnect flow in `lib/calendar.ts` (Core lane).
+**Whoop:** `lib/whoop.ts:revokeWhoopAccess()` POSTs to
+`https://api.prod.whoop.com/oauth/oauth2/revoke` (RFC 7009) with client credentials and
+the refresh token. Same best-effort pattern. In-memory caches cleared on disconnect.
 
 ---
 
@@ -353,7 +353,10 @@ assessor.
 **What to prepare before submitting:**
 - [x] Self-service user deletion endpoint (`DELETE /api/account`) — shipped; requires
       `{ "confirm": "delete my account" }` body. *(Done 2026-06-13)*
-- [ ] Google token revocation call in disconnect flow (see §4 above). *(PM → Core)*
+- [x] Token revocation on disconnect — both OAuth providers done. *(Done 2026-06-15)*
+  - **Google:** `lib/calendar.ts:disconnectCalendar()` calls `getOAuthClient().revokeToken()` (was already implemented).
+  - **Whoop:** `lib/whoop.ts:revokeWhoopAccess()` POSTs to `https://api.prod.whoop.com/oauth/oauth2/revoke` (RFC 7009).
+  - Both are best-effort: local token row always deleted even if revoke endpoint fails.
 - [x] Privacy policy accurately describes all scopes and data use (see `app/privacy/page.tsx`). *(Done 2026-06-14)*
 - [ ] Demo video (§6 above) recorded and uploaded.
 - [ ] This document reviewed by the user for accuracy before submission.
@@ -362,4 +365,4 @@ assessor.
 
 ---
 
-*Last updated: 2026-06-14. Owner: PM/CTO. Route accuracy questions to Security lane.*
+*Last updated: 2026-06-15. Owner: PM/CTO. Route accuracy questions to Security lane.*
