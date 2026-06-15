@@ -1,6 +1,6 @@
 import { google, gmail_v1 } from 'googleapis';
 import { getOAuthClient } from './calendar';
-import { calendarQueries, gmailQueries } from './db';
+import { calendarQueries, gmailQueries, auditLogQueries } from './db';
 import { hasGmailScope, hasGmailReadScope } from './google-auth';
 
 // Gmail access primitive for EDG3 — the GUARDED, DRAFT-ONLY entry point.
@@ -205,4 +205,118 @@ export async function readThread(userId: number, threadId: string): Promise<Thre
       text: body || (m.snippet ?? ''),
     };
   });
+}
+
+// --- Email signal for Focus Recommendation -----------------------------------
+// Fetches a COMPACT DIGEST of recent inbox threads for use as a prioritization
+// signal by Core's recommendFocusAreas(). Design contract:
+//   - format:'metadata' only — we NEVER fetch message bodies here.
+//   - snippet comes from Gmail's own thread-list response (auto-truncated ~100 chars).
+//   - Nothing is stored: derive the signal, return it, drop the rest.
+//   - Audit: we log the fetch (thread count only) so it appears in the user's
+//     Activity feed. Zero email content enters the audit log.
+//
+// PRIVACY NOTE: this accesses arbitrary inbox threads, not just threads Edge
+// started. This is a USE-CASE EXPANSION of the gmail.readonly scope vs. the
+// prior reply-tracking use. The google-verification.md spec is updated to
+// reflect this. See also the CASA flag in ROADMAP-SECURITY.md.
+
+// Absolute ceiling on threads fetched per call regardless of opts.max.
+const EMAIL_SIGNAL_CAP = 50;
+
+export interface EmailSignalItem {
+  threadId: string;
+  sender: string;     // From header of the thread's first message
+  subject: string;    // Subject header of the thread's first message
+  snippet: string;    // Gmail's own auto-truncated snippet (~100 chars, no body fetch)
+  date: string;       // Date header of the most recent message in the thread
+  isUnread: boolean;
+  isImportant: boolean;
+}
+
+export interface EmailSignal {
+  items: EmailSignalItem[];
+  fetchedAt: string;    // ISO timestamp — caller may cache for one session
+  scopeMissing: boolean; // true when user hasn't granted gmail.readonly yet
+}
+
+/**
+ * Return a compact prioritization digest of the user's recent inbox threads.
+ *
+ * Only header metadata + Gmail's own snippet are read — NO message bodies.
+ * Nothing is stored. Results are returned in-memory for Core's LLM call.
+ *
+ * @throws Never — scope issues return scopeMissing:true; individual thread
+ *   failures are swallowed via Promise.allSettled so the signal is always partial
+ *   rather than absent.
+ */
+export async function getRecentEmailSignal(
+  userId: number,
+  opts: { days?: number; max?: number } = {},
+): Promise<EmailSignal> {
+  const fetchedAt = new Date().toISOString();
+  const days = Math.max(1, opts.days ?? 14);
+  const max = Math.min(opts.max ?? 20, EMAIL_SIGNAL_CAP);
+
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow || !hasGmailReadScope(tokenRow.scope)) {
+    return { items: [], fetchedAt, scopeMissing: true };
+  }
+
+  const gmail = gmailClientFor(userId);
+
+  // List recent INBOX threads — Gmail returns id + snippet in the list response.
+  const listRes = await gmail.users.threads.list({
+    userId: 'me',
+    labelIds: ['INBOX'],
+    q: `newer_than:${days}d`,
+    maxResults: max,
+  });
+  const threads = listRes.data.threads ?? [];
+
+  // Fetch metadata (headers + label IDs) for each thread in parallel.
+  // format:'metadata' with metadataHeaders means ONLY those headers are returned
+  // — no message bodies ever fetched from the Gmail API.
+  const settled = await Promise.allSettled(
+    threads.map(async (t) => {
+      const detail = await gmail.users.threads.get({
+        userId: 'me',
+        id: t.id!,
+        format: 'metadata',
+        metadataHeaders: ['From', 'Subject', 'Date'],
+      });
+      const messages = detail.data.messages ?? [];
+      const firstMsg = messages[0];
+      const lastMsg = messages[messages.length - 1] ?? firstMsg;
+      const hdr = (msg: typeof firstMsg, name: string): string =>
+        (msg?.payload?.headers ?? []).find(
+          (h) => h.name?.toLowerCase() === name.toLowerCase(),
+        )?.value ?? '';
+      const allLabels = messages.flatMap((m) => m.labelIds ?? []);
+      return {
+        threadId: t.id!,
+        sender: hdr(firstMsg, 'From'),
+        subject: hdr(firstMsg, 'Subject'),
+        snippet: t.snippet ?? '',   // from the list response — no extra fetch needed
+        date: hdr(lastMsg, 'Date'),
+        isUnread: allLabels.includes('UNREAD'),
+        isImportant: allLabels.includes('IMPORTANT'),
+      } satisfies EmailSignalItem;
+    }),
+  );
+
+  const items = settled
+    .filter((r): r is PromiseFulfilledResult<EmailSignalItem> => r.status === 'fulfilled')
+    .map((r) => r.value);
+
+  // Audit: thread count only — zero email content enters the log.
+  auditLogQueries.record({
+    userId,
+    action: 'email_signal_fetch',
+    argsJson: JSON.stringify({ days, threadCount: items.length }),
+    resultText: `${items.length} inbox threads read for prioritization`,
+    ok: true,
+  });
+
+  return { items, fetchedAt, scopeMissing: false };
 }
