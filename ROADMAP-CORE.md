@@ -9,6 +9,17 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **ONE Edge Score (0–100) + Energy fix** (`4ab5aaa`).
+  - **`CalendarFit`** extended: `edgeScore: number` (the ONE headline number) + `calibrating: boolean`. Sub-scores `focusScore` + `energyScore` kept as breakdown.
+  - **`computeCalendarFit`**: `edgeScore = avg(focus, energy)` when both real; falls back to `focusScore` alone when energy is calibrating.
+  - **`computeEnergyScore` bug fixes:**
+    - `null signal` → `calibrating: true, score: 50` (never presented as a real score). Previously returned a fake 50 with no calibrating flag.
+    - **Medium-demand on red day now carries a partial penalty (×0.5)** — a packed "medium" day on low recovery was silently scoring 100%; now scores ~50%. Supersedes the old "medium is never penalized in MVP" rule.
+  - **`lib/db.ts`**: `edge_score` column added to `calendar_scores` via migration; `calendarScoreQueries.upsert` signature requires `edgeScore`; `CalendarScore` interface updated.
+  - **`app/api/scores/route.ts`**: persists `edgeScore`.
+  - **`lib/briefing.ts`**: CALENDAR FIT prompt leads with Edge Score + calibrating note.
+  - **`lib/vapi.ts`**: CALENDAR SCORES voice note updated to ONE Edge Score framing.
+  - 8 new tests. 685/685 green, tsc clean, preflight clean.
 - **2026-06-15** — **Focus Recommendation engine v1 — day-scoped, energy-aware, anchor-referencing** (`7264397`).
   - **UNIT = TODAY.** `recommendFocusAreas(userId, opts)` now outputs 3 focus areas **for TODAY** (not the week).
   - **`lib/db.ts`**: `daily_focus` table + `idx_daily_focus_user_date` + `dailyFocusQueries` (upsert, getToday, confirm). `DailyFocusRecord` interface.
