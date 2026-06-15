@@ -56,8 +56,13 @@ user; *emotionally* someone protecting themselves from burnout.
 
 ## The three layers — and where we stand
 
-### Layer 1 — INPUT  (mostly built)
-- 3 areas of focus = priorities ✓ (should be framed/elevated as "your 3 areas of focus").
+### Layer 1 — INPUT  (evolving — see the flip below)
+- 3 areas of focus = priorities ✓ (framed as "your 3 areas of focus").
+- **★ THE FLIP (Derrick 2026-06-15): Edge RECOMMENDS your focus, you don't declare it.** A real chief of
+  staff analyzes your data (past ~6mo calendar + call memory; later ChatGPT/Whoop/email) and TELLS you
+  what your 3 priorities should be this week; you just confirm/tweak. Removes the hardest input for an
+  overwhelmed/ADHD user. This is likely the single most differentiating piece. Full spec:
+  `specs/focus-recommendation.md`. (Upstream of the scores — feeds the same priorities store.)
 - Energy-cost tag per focus area ✓ (Energy OS MVP).
 - Daily energy signal red/yellow/green ✓ (Whoop-auto / dashboard / call).
 

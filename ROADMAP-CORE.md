@@ -348,6 +348,11 @@ priority from user feedback.
   - **Coordination:** same Shared file as the all-day ticket (`tool-call/route.ts`) — batch them; both touch event description/creation logic.
 
 ### Next (decided)
+- [ ] **★★★ Focus RECOMMENDATION engine — Edge TELLS you your focus** — _Derrick "aha" 2026-06-15. Full spec: `specs/focus-recommendation.md`. Likely the single most differentiating feature; HOLDING dispatch for Derrick's go + ChatGPT-source clarification._
+  - **The flip:** instead of the user declaring 3 focus areas, Edge analyzes the data and PROPOSES them; user confirms/tweaks in one breath. A real chief of staff figures out what matters FOR an overwhelmed person.
+  - **Data (MVP = ready now):** past ~6mo calendar (extend `getPastCalendarDays` 14d→180d) + call memory (`factQueries` + memories). Later: ChatGPT (⚠️ no integration today — clarify source), Whoop-past, email.
+  - **Build:** `recommendFocusAreas(userId)` → top 3 proposed focus areas + rationale + confidence (one LLM call over assembled history); surface on the briefing call + dashboard; one-yes confirm writes to the priorities store (scores/scoreboard unchanged). Degrade on thin data.
+  - **Upstream of the scores** — feeds the same priorities the Focus Score measures. Lane split: Core (engine + past-fetch + confirm flow + surfacing), Design (the propose/confirm UI), Security (ChatGPT/email ingestion + privacy if/when added).
 - [ ] **★★★ Focus Score + Energy Score — the proprietary calendar-intelligence engine** — _Derrick + PM, 2026-06-14. Full spec: `specs/calendar-scores.md`. Flagship "spend real time, make it proprietary" build. SEQUENCE right after the Focus Scoreboard._
   - **What:** Edge scans the calendar and grades it with **two 1–10 scores**, recomputed daily + before every call. **Focus Score** = does the calendar reflect the 3 areas of focus? **Energy Score** = does what's booked match the user's energy? Loop: scan → score → propose add/move/delete/recolor → re-score.
   - **Engine** `lib/calendarScore.ts` (pure, tested): `computeFocusScore(events, priorities, alignment)` + `computeEnergyScore(events, energySignal, energyProfile, energyCosts)`, each → `{ score, drivers[], topFix }`. Deterministic + explainable (Edge can always say *why* + offer the single best fix). Builds on `lib/alignment.ts` + the energy signal.
