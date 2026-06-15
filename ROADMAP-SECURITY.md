@@ -8,6 +8,49 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-14** — **CASA prep — GDPR deletion table updated, privacy page accurate, CASA checklist.**
+  - `specs/google-verification.md`: marked Privacy Policy + self-service deletion checklist items done;
+    updated §4 deletion table to include all new tables (`calendar_plan_executions`, `event_energy_tags`,
+    `calendar_scores`, `energy_profile`, `focus_milestones`, `energy_log`) in correct leaf-first order;
+    removed "gap" note (self-service deletion shipped 2026-06-13); fixed "inbox-wide scan" wording in §5
+    security answer; added focus recommendation demo scene (scene 7); updated last-updated date.
+  - **Remaining CASA items (PM + user):** (1) Google token revocation in disconnect flow → Core lane;
+    (2) demo video recorded and uploaded; (3) PM decision on separate inbox-reading consent step;
+    (4) document reviewed by user before submission.
+- **2026-06-14** — **Privacy plumbing — data export coverage + privacy page accuracy.**
+  - `GET /api/account/export`: added `calendarScores` (all days, focus/energy scores + JSON drivers),
+    `energyProfile` (peak/trough hours), `eventEnergyTags` (eventId, type, demand, taggedAt).
+    Encryption assessment: none of these store credentials or health PII — same tier as tasks/priorities;
+    title_hash is a SHA-derived internal key, not exportable user content (omitted from export).
+  - `app/privacy/page.tsx`: Gmail section rewritten to accurately disclose inbox signal reading:
+    metadata-only (sender, subject, auto-snippet — never bodies), in-memory, not stored, audit-count
+    only. Previously said "reads only threads Edge created" which became false after
+    `getRecentEmailSignal` landed. Limited Use section + "How We Use" updated. Date bumped to 2026-06-14.
+  - `account.test.ts`: `energyProfileQueries` added to mock; new export shape assertions
+    (`calendarScores`, `energyProfile`, `eventEnergyTags`). 673/673 green.
+- **2026-06-14** — **`applyCalendarPlan` durability — batch idempotency + plan-level undo group.**
+  - `lib/db.ts`: `calendar_plan_executions` table — `UNIQUE(user_id, plan_id)` + `INSERT OR IGNORE`
+    makes plan apply idempotent (double-submit on retry/re-render silently no-ops). Tracks
+    `status` (applied/reverted), `mutation_count`, `applied_at`, `reverted_at`. Index on
+    `(user_id, plan_id)`. Migration: `ALTER TABLE undo_log ADD COLUMN plan_id TEXT` (idempotent).
+  - `undoQueries` extended: `recordForPlan(userId, label, payload, planId)` — inserts undo entry
+    with plan association; `getByPlanId(userId, planId)` — returns entries `ORDER BY id DESC`
+    (most-recent-first = correct undo order); `markPlanUndone(userId, planId)` — sets `undone=1`
+    on all plan entries (prevents double-undo).
+  - `calendarPlanQueries` exported: `get`, `markApplied` (INSERT OR IGNORE idempotent),
+    `markReverted` (UPDATE status/reverted_at). `CalendarPlanExecution` interface exported.
+  - `lib/undo.ts`: `recordUndo` extended with optional `planId?` — routes to `recordForPlan`
+    when present. `undoPlan(userId, planId, cal)` — executes all entries in a plan batch in
+    reverse-insertion order; marks plan undone + reverted; returns `{ reverted: count }`.
+  - Deletion routes: `calendar_plan_executions` added to both admin + self-service delete (leaf-first).
+  - 22 new tests: `lib/calendar-plan.test.ts` (in-memory SQLite — idempotency, user isolation,
+    markReverted, plan-vs-standalone); `lib/undo.test.ts` (mock-based — empty plan, reverse order,
+    partial failure, markPlanUndone + markReverted side effects). 673/673 green.
+  - **Core handoff:** Generate a UUID `planId` before calling any hero-loop mutations. Pass `planId`
+    to `recordUndo(userId, label, ops, planId)` for each mutation. After all mutations succeed, call
+    `calendarPlanQueries.markApplied(userId, planId, mutationCount)`. Check
+    `calendarPlanQueries.get(userId, planId)` first — if found, it's a replay (idempotent). For undo,
+    call `undoPlan(userId, planId, cal)` to revert the whole batch at once.
 - **2026-06-14** — **Email signal primitive — `getRecentEmailSignal` for Focus Recommendation.**
   - `lib/gmail.ts`: `getRecentEmailSignal(userId, { days?, max? }) → EmailSignal` — fetches a
     compact digest of recent INBOX threads for Core's `recommendFocusAreas()`. Privacy-first:
