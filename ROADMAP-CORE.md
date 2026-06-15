@@ -9,6 +9,14 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Remove Tasks IA — tab + UI pipeline removed from dashboard**.
+  - `TasksTab` component + `TaskRow` component deleted from `app/dashboard/page.tsx`.
+  - `Task` interface, `tasks` state, `/api/tasks` fetch, `{ id: 'tasks' }` nav entry, and
+    `activeTab === 'tasks'` render block all removed. `activeTab` type narrowed.
+  - Underlying task infrastructure kept: `taskQueries`, `/api/tasks/**` routes,
+    `extractTasksFromTranscript` pipeline, and briefing accountability logic remain —
+    they run silently to power morning briefings. Tab removal only.
+  - 733/733 green, tsc clean, next build clean.
 - **2026-06-15** — **Energy color-coding — `colorByEnergy` + `colorEventsByEnergy` Vapi tool**.
   - **`lib/calendarScore.ts`**: `colorByEnergy(tags, signal)` pure function — maps `{ eventId, demand }[]` + `EnergySignal` to `EnergyColorAssignment[]` (eventId → Google Calendar colorId). Color logic: low demand → sage ('2') always; medium → banana ('5') on green/yellow days, tangerine ('6') on red; high demand → blueberry ('9') on green (aligned), tangerine ('6') on yellow (caution), tomato ('11') on red (warning), peacock ('8') when no signal. Also exports `EnergyColorAssignment` type.
   - **`app/api/vapi/tool-call/route.ts`**: `colorEventsByEnergy` handler — fetches today's events, classifies with `classifyEventsEnergy` (Haiku), applies `colorByEnergy`, batch-patches Google Calendar events (skips read-only calendars), records undo group, returns spoken summary.
