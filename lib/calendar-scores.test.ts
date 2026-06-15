@@ -13,6 +13,7 @@ async function loadDb() {
 }
 
 const BASE_SCORES = {
+  edgeScore: 65,
   focusScore: 7,
   energyScore: 6,
   focusDrivers: ['P1 has 2h block', 'P2 at 0h — add one'],
@@ -34,6 +35,7 @@ describe('calendarScoreQueries — upsert + getLatest', () => {
     db.calendarScoreQueries.upsert(db.userId, '2026-06-14', BASE_SCORES);
     const row = db.calendarScoreQueries.getLatest(db.userId);
     expect(row).toBeDefined();
+    expect(row!.edge_score).toBe(65);
     expect(row!.focus_score).toBe(7);
     expect(row!.energy_score).toBe(6);
     expect(JSON.parse(row!.focus_drivers!)).toEqual(BASE_SCORES.focusDrivers);
@@ -45,6 +47,7 @@ describe('calendarScoreQueries — upsert + getLatest', () => {
   it('overwrites on conflict (upsert semantics)', () => {
     db.calendarScoreQueries.upsert(db.userId, '2026-06-14', BASE_SCORES);
     db.calendarScoreQueries.upsert(db.userId, '2026-06-14', {
+      edgeScore: 85,
       focusScore: 9,
       energyScore: 8,
       focusDrivers: ['Updated'],

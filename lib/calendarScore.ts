@@ -12,14 +12,17 @@ import type { EnergySignal } from './energy';
 // ─── Public contract ─────────────────────────────────────────────────────────
 
 export interface ScoreResult {
-  score: number;       // 0–100
-  drivers: string[];   // plain-English reasons (no black box)
+  score: number;           // 0–100
+  calibrating?: boolean;   // true = not enough data for a real score; UI shows "calibrating" not a number
+  drivers: string[];       // plain-English reasons (no black box)
   topFix: { description: string; op?: 'create' | 'move' | 'delete' | 'recolor' } | null;
 }
 
 export interface CalendarFit {
-  focusScore: ScoreResult;
-  energyScore: ScoreResult;
+  edgeScore: number;        // 0–100 — the ONE headline number (blend of focus + energy)
+  calibrating: boolean;     // true when energy component has thin data (energy shows "calibrating")
+  focusScore: ScoreResult;  // breakdown — does calendar reflect priorities?
+  energyScore: ScoreResult; // breakdown — does calendar match energy capacity?
   computedAt: string;
 }
 
@@ -265,7 +268,10 @@ export function computeFocusScore(
 
 /**
  * Energy Score = % of weighted demand appropriately matched to capacity (0–100).
- * Weights: high=2, medium=1, low=0.5. Mismatches: high-demand on red day, or high-demand in trough.
+ * Event weights: high=2, medium=1, low=0.5.
+ * Mismatches (full penalty): high-demand on red day; high-demand in trough window.
+ * Mismatches (partial penalty ×0.5): medium-demand on red day (draining but not catastrophic).
+ * No signal → calibrating (never a fake 50 or 100).
  * Pure — no I/O.
  */
 export function computeEnergyScore(
@@ -273,10 +279,12 @@ export function computeEnergyScore(
   energySignal: EnergySignal | null,
   energyProfile: EnergyProfile | null,
 ): ScoreResult {
+  // No signal = thin data — tell the user to set it; don't invent a number.
   if (!energySignal) {
     return {
       score: 50,
-      drivers: ["No energy signal for today — set it on the dashboard or during your call."],
+      calibrating: true,
+      drivers: ["No energy signal yet — Edge will ask during your call, or set it on the dashboard."],
       topFix: { description: "Set today's energy level (red/yellow/green) to unlock a real Energy Score.", op: 'create' },
     };
   }
@@ -286,7 +294,7 @@ export function computeEnergyScore(
       score: energySignal.level === 'red' ? 100 : 70,
       drivers: energySignal.level === 'red'
         ? ['Light/empty schedule on a red day — excellent recovery protection.']
-        : ['No timed events to score today.'],
+        : ['No timed events to score yet.'],
       topFix: null,
     };
   }
@@ -305,24 +313,28 @@ export function computeEnergyScore(
 
     if (tag.demand === 'low' && energySignal.level === 'red') lightOnRed++;
 
-    let isMismatch = false;
+    let penaltyFraction = 0; // fraction of event weight to add as penalty
     let reason = '';
 
     if (tag.demand === 'high') {
       if (energySignal.level === 'red') {
-        isMismatch = true;
+        penaltyFraction = 1;
         reason = 'High-demand work on a red-recovery day';
       } else if (hasProfile) {
         const h = eventStartHour(ev);
         if (h !== null && inWindow(h, energyProfile!.troughStart, energyProfile!.troughEnd)) {
-          isMismatch = true;
+          penaltyFraction = 1;
           reason = 'High-demand work in your trough window';
         }
       }
+    } else if (tag.demand === 'medium' && energySignal.level === 'red') {
+      // Medium demand on a red day drains recovery — lighter penalty than high-demand.
+      penaltyFraction = 0.5;
+      reason = 'Medium-demand work on a red-recovery day';
     }
 
-    if (isMismatch) {
-      penaltyWeight += w;
+    if (penaltyFraction > 0) {
+      penaltyWeight += w * penaltyFraction;
       if (!worstMismatch) worstMismatch = { event: ev, reason };
     }
   }
@@ -405,7 +417,7 @@ export function computeEnergyScore(
 
 // ─── computeCalendarFit ───────────────────────────────────────────────────────
 
-/** Compute both scores and return the combined CalendarFit. Pure. */
+/** Compute both scores and return the combined CalendarFit with a single Edge Score. Pure. */
 export function computeCalendarFit(
   taggedEvents: TaggedEvent[],
   alignment: AlignmentResult | null,
@@ -414,9 +426,14 @@ export function computeCalendarFit(
   energyProfile: EnergyProfile | null,
   totalWorkingHours = 45,
 ): CalendarFit {
-  return {
-    focusScore:  computeFocusScore(alignment, priorities, totalWorkingHours),
-    energyScore: computeEnergyScore(taggedEvents, energySignal, energyProfile),
-    computedAt:  new Date().toISOString(),
-  };
+  const focusScore  = computeFocusScore(alignment, priorities, totalWorkingHours);
+  const energyScore = computeEnergyScore(taggedEvents, energySignal, energyProfile);
+
+  // Calibrating = energy has thin data (no signal). Edge Score falls back to focus-only.
+  const calibrating = energyScore.calibrating === true;
+  const edgeScore   = calibrating
+    ? focusScore.score
+    : Math.round((focusScore.score + energyScore.score) / 2);
+
+  return { edgeScore, calibrating, focusScore, energyScore, computedAt: new Date().toISOString() };
 }

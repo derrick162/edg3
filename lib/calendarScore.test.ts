@@ -274,8 +274,9 @@ describe('computeFocusScore — topFix', () => {
 // ─── computeEnergyScore — no signal ──────────────────────────────────────────
 
 describe('computeEnergyScore — no signal', () => {
-  it('returns score 50 with "set energy" topFix when signal is null', () => {
+  it('returns calibrating:true, score 50, and "set energy" topFix when signal is null', () => {
     const r = computeEnergyScore([], null, null);
+    expect(r.calibrating).toBe(true);
     expect(r.score).toBe(50);
     expect(r.drivers.some(d => d.includes('No energy signal'))).toBe(true);
     expect(r.topFix?.op).toBe('create');
@@ -338,10 +339,12 @@ describe('computeEnergyScore — red day penalties', () => {
     expect(r.score).toBe(20);
   });
 
-  it('medium-demand on red day → no penalty (medium is never penalized in MVP)', () => {
+  it('medium-demand on red day → partial penalty (×0.5 fraction → score 50)', () => {
+    // medium event: w=1. penalty = 1×0.5 = 0.5. score = 1 - 0.5/1 = 0.5 → 50.
     const ev = makeTimedEvent('Team meeting', '2026-06-14T10:00:00-04:00', '2026-06-14T11:00:00-04:00');
     const r = computeEnergyScore([makeTagged(ev, 'meeting', 'medium')], sigRed, null);
-    expect(r.score).toBe(100);
+    expect(r.score).toBe(50);
+    expect(r.topFix?.op).toBe('move');
   });
 });
 
@@ -436,9 +439,11 @@ describe('computeCalendarFit', () => {
     expect(fit.computedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('energy score is 50 when no signal is passed', () => {
+  it('energy score is 50 and calibrating when no signal is passed', () => {
     const fit = computeCalendarFit([], null, [], null, null);
     expect(fit.energyScore.score).toBe(50);
+    expect(fit.energyScore.calibrating).toBe(true);
+    expect(fit.calibrating).toBe(true);
   });
 
   it('focus score is 0 when no priorities', () => {
@@ -479,16 +484,84 @@ describe('computeCalendarFit', () => {
   });
 
   it('all-day events are excluded from energy score (no dateTime)', () => {
-    // All-day events don't have dateTime, so classifyEventsEnergy won't tag them
-    // — but if passed as TaggedEvent with no dateTime, eventStartHour returns null
-    // which means they're neutral (no mismatch possible from trough window check)
     const allDay = makeAllDay('Conference', '2026-06-14', '2026-06-15');
     const tagged: TaggedEvent = { event: allDay, tag: { type: 'meeting', demand: 'high' } };
     const r = computeEnergyScore([tagged], sigRed, null);
-    // No dateTime → eventStartHour returns null → trough check skipped
-    // But red day + high-demand → STILL a mismatch (red penalty doesn't need hour)
-    // Actually looking at code: `if (tag.demand === 'high') { if (energySignal.level === 'red') { isMismatch = true }...}`
-    // The red check doesn't depend on hour — so score = 0
+    // Red + high-demand → full penalty regardless of hour
     expect(r.score).toBe(0);
+  });
+});
+
+// ─── computeEnergyScore — calibrating state ───────────────────────────────────
+
+describe('computeEnergyScore — calibrating state', () => {
+  it('returns calibrating:true and score 50 when signal is null', () => {
+    const r = computeEnergyScore([], null, null);
+    expect(r.calibrating).toBe(true);
+    expect(r.score).toBe(50);
+    expect(r.drivers.some(d => d.includes('No energy signal'))).toBe(true);
+  });
+
+  it('does NOT set calibrating when signal is present (green)', () => {
+    const r = computeEnergyScore([], sigGreen, null);
+    expect(r.calibrating).toBeFalsy();
+  });
+
+  it('does NOT set calibrating when signal is present (red)', () => {
+    const r = computeEnergyScore([], sigRed, null);
+    expect(r.calibrating).toBeFalsy();
+  });
+});
+
+// ─── computeCalendarFit — edge score ─────────────────────────────────────────
+
+describe('computeCalendarFit — edgeScore', () => {
+  it('includes edgeScore and calibrating fields', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const fit = computeCalendarFit([], null, priorities, sigGreen, null);
+    expect(typeof fit.edgeScore).toBe('number');
+    expect(fit.edgeScore).toBeGreaterThanOrEqual(0);
+    expect(fit.edgeScore).toBeLessThanOrEqual(100);
+    expect(typeof fit.calibrating).toBe('boolean');
+  });
+
+  it('calibrating:true when no energy signal — edgeScore equals focusScore', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
+    const fit = computeCalendarFit([], alignment, priorities, null, null, 45);
+    expect(fit.calibrating).toBe(true);
+    expect(fit.edgeScore).toBe(fit.focusScore.score); // energy doesn't contribute
+  });
+
+  it('calibrating:false when signal present — edgeScore is average of focus + energy', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
+    const fit = computeCalendarFit([], alignment, priorities, sigGreen, null, 45);
+    expect(fit.calibrating).toBe(false);
+    // focusScore=50, energyScore=70 (green + empty) → edgeScore=60
+    expect(fit.edgeScore).toBe(Math.round((fit.focusScore.score + fit.energyScore.score) / 2));
+  });
+
+  it('edgeScore rounds to integer', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 20 }], 25);
+    // focusScore = round(20/45*100)=44, energyScore=70 → avg=57
+    const fit = computeCalendarFit([], alignment, priorities, sigGreen, null, 45);
+    expect(Number.isInteger(fit.edgeScore)).toBe(true);
+  });
+
+  it('full scenario: 50% focus + red day high-demand → edgeScore is average', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
+    const deep = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
+    const fit = computeCalendarFit(
+      [makeTagged(deep, 'deep_work', 'high')],
+      alignment, priorities, sigRed, null, 45,
+    );
+    // focusScore=50, energyScore=0 → edgeScore=25
+    expect(fit.focusScore.score).toBe(50);
+    expect(fit.energyScore.score).toBe(0);
+    expect(fit.edgeScore).toBe(25);
+    expect(fit.calibrating).toBe(false);
   });
 });

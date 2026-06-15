@@ -478,9 +478,10 @@ FOCUS RECOMMENDATION — no priorities set this week. Edge analyzed ${focusRec.b
 ${focusRec.areas.map((a, i) => `${i + 1}. "${a.title}" [${a.confidence}] — ${a.rationale}`).join('\n')}
 INSTRUCTION: Open the call with this recommendation naturally — "Based on your last six months and our calls, here's what I'd focus you on this week: [area 1] and [area 2]. Sound right?" On yes, call confirmFocus with those area titles. On tweak, adjust then confirmFocus. Skip the normal calendar-hook opener and lead with this instead.
 ` : ''}
-CALENDAR FIT — HEADLINE SCORES (open with: "Focus is at ${calendarFit.focusScore.score}%, Energy's at ${calendarFit.energyScore.score}% — here's why and here's the one move that helps most"):
-Focus Score: ${calendarFit.focusScore.score}% — ${calendarFit.focusScore.drivers.join(' ')}${calendarFit.focusScore.topFix ? ` → ${calendarFit.focusScore.topFix.description}` : ''}
-Energy Score: ${calendarFit.energyScore.score}% — ${calendarFit.energyScore.drivers.join(' ')}${calendarFit.energyScore.topFix ? ` → ${calendarFit.energyScore.topFix.description}` : ''}
+CALENDAR FIT — EDGE SCORE (the ONE number; open with: "Your Edge Score is ${calendarFit.edgeScore} out of 100 — ${calendarFit.edgeScore >= 70 ? 'calendar looks solid' : calendarFit.edgeScore >= 40 ? 'a few things to fix' : 'calendar needs reshaping'}. Here's why and here's the one move that helps most"):
+Edge Score: ${calendarFit.edgeScore}/100${calendarFit.calibrating ? ' (energy calibrating — set your energy level to sharpen this)' : ''}
+Focus: ${calendarFit.focusScore.score}% — ${calendarFit.focusScore.drivers.join(' ')}${calendarFit.focusScore.topFix ? ` → ${calendarFit.focusScore.topFix.description}` : ''}
+Energy: ${calendarFit.calibrating ? 'calibrating (no signal yet)' : `${calendarFit.energyScore.score}% — ${calendarFit.energyScore.drivers.join(' ')}${calendarFit.energyScore.topFix ? ` → ${calendarFit.energyScore.topFix.description}` : ''}`}
 
 ${energyBlock}
 

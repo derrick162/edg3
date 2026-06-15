@@ -55,6 +55,7 @@ export async function GET() {
   // Persist today's scores for trend analysis.
   try {
     calendarScoreQueries.upsert(user.id, today, {
+      edgeScore:     fit.edgeScore,
       focusScore:    fit.focusScore.score,
       energyScore:   fit.energyScore.score,
       focusDrivers:  fit.focusScore.drivers,

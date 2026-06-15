@@ -364,6 +364,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE facts ADD COLUMN confidence TEXT NOT NULL DEFAULT 'high'",
     "ALTER TABLE facts ADD COLUMN source_briefing_id INTEGER REFERENCES briefings(id)",
     "ALTER TABLE priorities ADD COLUMN energy_cost TEXT CHECK(energy_cost IN ('high', 'medium', 'low'))",
+    "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1225,6 +1226,7 @@ export interface CalendarScore {
   date: string;
   focus_score: number;
   energy_score: number;
+  edge_score: number | null;
   focus_drivers: string | null;
   energy_drivers: string | null;
   created_at: string;
@@ -1234,12 +1236,13 @@ export const calendarScoreQueries = {
   upsert: (
     userId: number,
     date: string,
-    scores: { focusScore: number; energyScore: number; focusDrivers: string[]; energyDrivers: string[] }
+    scores: { edgeScore: number; focusScore: number; energyScore: number; focusDrivers: string[]; energyDrivers: string[] }
   ): void => {
     getDb().prepare(`
-      INSERT INTO calendar_scores (user_id, date, focus_score, energy_score, focus_drivers, energy_drivers)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO calendar_scores (user_id, date, edge_score, focus_score, energy_score, focus_drivers, energy_drivers)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, date) DO UPDATE SET
+        edge_score     = excluded.edge_score,
         focus_score    = excluded.focus_score,
         energy_score   = excluded.energy_score,
         focus_drivers  = excluded.focus_drivers,
@@ -1247,7 +1250,7 @@ export const calendarScoreQueries = {
         created_at     = datetime('now')
     `).run(
       userId, date,
-      scores.focusScore, scores.energyScore,
+      scores.edgeScore, scores.focusScore, scores.energyScore,
       JSON.stringify(scores.focusDrivers),
       JSON.stringify(scores.energyDrivers),
     );
