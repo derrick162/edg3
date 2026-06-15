@@ -12,7 +12,7 @@ import { computeWhoopCorrelations } from './whoopCorrelations';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
-import { computeCalendarFit, parseEnergyProfile } from './calendarScore';
+import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from './calendarScore';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -283,7 +283,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
   // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
   // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
-  const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
+  const [alignment, taggedEvents] = await Promise.all([
+    computeAlignment(priorities, weekEvents, userTimezone).catch(() => null),
+    classifyEventsEnergy(calendarEvents).catch(() => []),
+  ]);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
   // Call streak: count consecutive days with completed briefings.
@@ -407,14 +410,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
   const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
-  // Calendar Fit scores: Focus + Energy (1-10).
+  // Calendar Fit scores: Focus + Energy (0–100%).
   // Use structured DB profile when available; fall back to parsing from preference facts.
   const dbEnergyProfile = (() => { try { return energyProfileQueries.get(userId); } catch { return undefined; } })();
   const preferenceStatements = preferencesFacts.map(f => f.statement);
   const energyProfile = dbEnergyProfile
     ? { peakStart: dbEnergyProfile.peak_start, peakEnd: dbEnergyProfile.peak_end, troughStart: dbEnergyProfile.trough_start, troughEnd: dbEnergyProfile.trough_end }
     : parseEnergyProfile(preferenceStatements);
-  const calendarFit = computeCalendarFit(calendarEvents, priorities, alignment, energySignal, energyProfile);
+  const calendarFit = computeCalendarFit(taggedEvents, alignment, priorities, energySignal, energyProfile);
 
   // Focus Scoreboard: per-area progress + milestone celebrations.
   const allMilestones = (() => { try { return focusMilestoneQueries.listForUser(userId); } catch { return []; } })();
@@ -450,9 +453,9 @@ ${user.profile_summary || 'No profile summary available.'}
 THIS WEEK'S TOP PRIORITIES:
 ${prioritiesText}
 
-CALENDAR FIT — HEADLINE SCORES (open every call with these: "Focus is a ${calendarFit.focusScore.score}, Energy's a ${calendarFit.energyScore.score} — here's why and here's the one move that helps most"):
-Focus Score: ${calendarFit.focusScore.score}/10 — ${calendarFit.focusScore.drivers.join(' ')}${calendarFit.focusScore.topFix ? ` → ${calendarFit.focusScore.topFix.description}` : ''}
-Energy Score: ${calendarFit.energyScore.score}/10 — ${calendarFit.energyScore.drivers.join(' ')}${calendarFit.energyScore.topFix ? ` → ${calendarFit.energyScore.topFix.description}` : ''}
+CALENDAR FIT — HEADLINE SCORES (open with: "Focus is at ${calendarFit.focusScore.score}%, Energy's at ${calendarFit.energyScore.score}% — here's why and here's the one move that helps most"):
+Focus Score: ${calendarFit.focusScore.score}% — ${calendarFit.focusScore.drivers.join(' ')}${calendarFit.focusScore.topFix ? ` → ${calendarFit.focusScore.topFix.description}` : ''}
+Energy Score: ${calendarFit.energyScore.score}% — ${calendarFit.energyScore.drivers.join(' ')}${calendarFit.energyScore.topFix ? ` → ${calendarFit.energyScore.topFix.description}` : ''}
 
 ${energyBlock}
 

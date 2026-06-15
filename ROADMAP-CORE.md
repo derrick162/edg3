@@ -9,6 +9,18 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-14** — **Scoring engine MVP simplification — pure-quant Focus % + LLM-tagged Energy %.**
+  - **Stripped** the two-component judgment layer (deferred — see `specs/calendar-scores.md`). No more `quantScore`, `judgmentScore`, `weights`, `ScoreFeedback`, `JudgmentRule`, or the four deterministic rules.
+  - **`ScoreResult` (MVP):** `{ score /*0–100*/, drivers[], topFix }`.
+  - **Focus Score:** `focusAlignedHours / totalWorkingHours * 100` (default 45h/week). Pure, no events needed — just `alignment` + `priorities`. Drivers: per-area hours / zero warnings + biggest time sink. topFix: blocks uncovered area, trims unaligned, or adds time (by score tier).
+  - **`classifyEventsEnergy(events)`:** async batch LLM call (Haiku). Classifies every timed event → `{ type: EventType, demand: 'high'|'medium'|'low' }`. Returns `TaggedEvent[]`. Falls back to `{type:'other', demand:'medium'}` on any LLM failure. Designed for fast-follow cache swap-in (Security's `event_energy_tags` table).
+  - **Energy Score:** `computeEnergyScore(taggedEvents, signal, profile)` → 0–100. Penalty = weighted mismatch: high-demand on red day (w=2); high-demand in trough window (w=2). Score = `(1 − penaltyWeight/totalWeight) × 100`. Special cases: no signal → 50; no events + red → 100 (protected). topFix targets the worst mismatch or suggests profile setup.
+  - **`computeCalendarFit`** signature updated: `(taggedEvents, alignment, priorities, energySignal, energyProfile, totalWorkingHours?)`.
+  - **`app/api/scores/route.ts`:** `classifyEventsEnergy(todayEvents)` now runs in parallel with `computeAlignment`.
+  - **`lib/briefing.ts`:** same — `classifyEventsEnergy(calendarEvents)` in parallel with `computeAlignment`; CALENDAR FIT prompt block updated to `%` framing.
+  - **`lib/vapi.ts`:** CALENDAR SCORES note updated (0–100%, threshold 50, "Focus is at X%").
+  - Tests: rewrote `lib/calendarScore.test.ts` (49 tests, all pure — no LLM in tests). Previous judgment tests removed.
+  - 641/641 green, tsc clean, next build clean.
 - **2026-06-14** — **Focus/Energy scoring engine V2 — two-component blend (quant + judgment).**
   - `ScoreResult` extended: `{ score, quantScore, judgmentScore, weights: {quant, judgment}, drivers[], topFix }`.
     Both halves populate `drivers` — no black box. Weights are tunable params (default 50/50).

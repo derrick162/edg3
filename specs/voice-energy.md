@@ -34,6 +34,22 @@ build trust. Until calibrated, lean on transcript inference + explicit ask; don'
 Vapi stores the **call recording** (audio) + transcript. For prosody we fetch the recording, extract
 features, and discard/secure the raw audio. (Transcript-only MVP needs no audio.)
 
+## ★ Start SIMPLE: self-report as the label, learn the tie (Derrick, 2026-06-14)
+Don't lead with the clinical science. The hard part is **labeled data**, and we already collect it:
+- **The label = the user's self-reported energy** (🔴🟡🟢) — set on the dashboard, or, if they forget,
+  **Edge asks on the call** ("before we dive in — how's your energy today?"). Either way we get a
+  ground-truth label every day. (This loop is largely BUILT: dashboard quick-set + `setEnergyLevel`
+  tool + the ask-early prompt.)
+- **The input = how they sounded** that day (the call audio / a compact voice representation).
+- **The goal of v1:** do a really good job of **tying voice → that day's self-reported energy** for each
+  user. Learn the personal mapping from the (voice, label) pairs. Defer engineered acoustic features
+  (jitter/shimmer/prosody) + clinical science to a LATER optimization — only if the simple tie needs it.
+
+**⚠️ Data is the asset and only accrues with time** — can't be backfilled. Even before the model
+exists, there's value in **banking (voice, self-reported-energy) pairs from day one** so we have weeks
+of data when we build it. Requires storing call audio / a voice rep = health-adjacent PII → a
+**Security/privacy decision** (consent, encryption, retention, export/delete) before we start collecting.
+
 ## Build vs buy
 - **DIY** — extract features with an open library (openSMILE / Praat-style / a Python service) → a
   small model + per-user baseline. Most control + proprietary; needs an audio-processing service
@@ -45,15 +61,18 @@ features, and discard/secure the raw audio. (Transcript-only MVP needs no audio.
   the energy loop is valuable. Use the ~10 calibration calls (with explicit energy answers as labels)
   to bootstrap the personal model.
 
-## Phased plan
-1. **MVP (now, decided):** transcript inference — LLM classifies the call transcript → red/yellow/green
-   + confidence; used only when the user didn't state energy; user override wins. No audio needed.
-   Show the "calibrating N/10" framing from day one (sets expectations for the voice upgrade).
-2. **v2a — acoustic features:** stand up an audio-feature service; pull Vapi recordings; extract the
-   features above; store per-user baseline (rolling, encrypted). Combine acoustic + linguistic.
-3. **v2b — personal model + calibration UX:** per-user baseline reached at ~10 calls → flip from
-   "calibrating" to "calibrated"; deviation-from-baseline → energy level + confidence; explicit
-   user answers continually refine it.
+## Phased plan (revised 2026-06-14 — simple-first)
+0. **Labeling loop (mostly BUILT):** ensure every day has a self-reported energy label — dashboard
+   quick-set, and Edge asks on the call if it's not set. This is the ground truth for everything below.
+1. **Bank the data (decide soon):** start storing each call's voice (or a compact voice rep) tied to
+   that day's self-reported label, so the per-user dataset accrues. Gated on the Security/privacy
+   decision above. (Optional interim: transcript inference — LLM classifies the transcript → energy
+   when the user didn't state it — as a cheap parallel signal; no audio needed.)
+2. **v1 — learn the simple tie:** for each user, learn voice → that day's self-reported energy from the
+   banked pairs. Keep it simple (embeddings / a light model); "calibrating N/10" until enough labeled
+   days. Do this *well* before adding science.
+3. **v2 — add the science only if needed:** engineered acoustic features (jitter/shimmer/prosody/HNR/
+   pause-rate) + per-user baseline to improve accuracy beyond the simple tie.
 
 ## Privacy / Security (Security lane)
 Call audio + derived vocal features are **health-adjacent PII** — encrypt at rest, never share with

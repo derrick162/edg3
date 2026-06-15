@@ -6,7 +6,7 @@ import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getLatestRecovery } from '@/lib/whoop';
 import { deriveEnergySignal } from '@/lib/energy';
 import { computeAlignment } from '@/lib/alignment';
-import { computeCalendarFit, parseEnergyProfile } from '@/lib/calendarScore';
+import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from '@/lib/calendarScore';
 
 export async function GET() {
   const user = await getSession();
@@ -29,7 +29,10 @@ export async function GET() {
   })();
   const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
 
-  const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
+  const [alignment, taggedEvents] = await Promise.all([
+    computeAlignment(priorities, weekEvents, userTimezone).catch(() => null),
+    classifyEventsEnergy(todayEvents).catch(() => []),
+  ]);
 
   // Structured energy profile from DB; fall back to parsing from preference facts.
   const dbProfile = (() => { try { return energyProfileQueries.get(user.id); } catch { return undefined; } })();
@@ -47,7 +50,7 @@ export async function GET() {
         } catch { return null; }
       })();
 
-  const fit = computeCalendarFit(todayEvents, priorities, alignment, energySignal, energyProfile);
+  const fit = computeCalendarFit(taggedEvents, alignment, priorities, energySignal, energyProfile);
 
   // Persist today's scores for trend analysis.
   try {
