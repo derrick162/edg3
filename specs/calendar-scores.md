@@ -56,6 +56,25 @@ Components:
 Both are pure, unit-tested, and **stored daily** so we get score *trends* (and can correlate
 score → outcomes later).
 
+## ✅ FINAL — KEEP IT SIMPLE (2026-06-15, Derrick — SUPERSEDES all score deliberation below)
+The score is a **readout, not the product.** Punt the complexity (two-component blend, judgment layer,
+the one-vs-two agonizing — all dropped/deferred). Decision:
+- **ONE "Edge Score" (0–100)** = how well your calendar reflects your **focus** AND your **energy**.
+  A simple blend of the focus measure (% of time on your 3 priorities) + the energy measure (calendar
+  demands matched to your energy / Whoop). One number = "how well you're doing this week."
+- **Still fix the energy half so it MEANS something** — (recovery/sleep availability) × (demand-match);
+  never default to a fake 100; show "calibrating" on thin data.
+- **The real product is the LOOP, not the score:**
+  1. Edge **TELLS you your top 3 priorities** (fresh each week — `specs/focus-recommendation.md`).
+  2. **Assesses** whether your calendar currently reflects those priorities.
+  3. **Reshapes** the calendar to fit them, with **energy / Whoop as an input**.
+  4. The **Edge Score** just reports how well you're doing.
+- **Sequence:** focus-recommendation engine → one simple Edge Score (collapse the existing focus+energy
+  scores into one number; fix the energy half) → the reshape loop (the hero loop).
+
+---
+_The sections below are superseded by the FINAL decision above — kept for history only._
+
 ## ★★ MVP SIMPLIFICATION (2026-06-14, Derrick) — supersedes the judgment layer for now
 With only Derrick to train it, a human-judgment layer would just encode one person's preferences.
 **Strip it for MVP; add it back when real users give feedback.** The MVP is purely quantitative:

@@ -23,17 +23,22 @@ with a one-line rationale** → you confirm or tweak in one breath (one "yes"). 
 the existing priorities store, so the scores + scoreboard keep working unchanged. Re-run weekly; user
 can always override.
 
-## Data sources
-- **Past calendar (~6 months)** — what you actually spend time on. We have a past-fetch primitive
-  (`getPastCalendarDays`, currently 14d) → extend to ~180d. ✅ buildable now.
-- **Call memory (~10 calls)** — accumulated structured facts + raw notes from briefings
-  (`factQueries` + memories). ✅ now.
-- **⚠️ ChatGPT** — NEEDS CLARIFICATION from Derrick. No ChatGPT integration exists today. Likely =
-  importing a ChatGPT conversation-history export as a "what's on my mind" signal. Confirm source/access
-  before scoping into v1.
-- **Whoop past** — recovery/energy history (have ~14d; 6mo needs more). Later, minor signal.
-- **Email** — later.
-- **MVP = calendar + call memory** (both available now; the two richest signals).
+## Data sources — Derrick (2026-06-15): "it has to pull all of these"
+- **Past calendar (~6 months)** — what you actually spend time on. `getPastCalendarDays` (14d) → extend
+  to ~180d. ✅ ready now.
+- **Call memory** — accumulated structured facts + raw notes from briefings (`factQueries` + memories). ✅ now.
+- **Whoop** — recent recovery/energy as the ENERGY input/modulator (have ~14d history; sufficient — not a
+  6mo requirement). ✅ usable now.
+- **★ Email — ELEVATED to a CORE source (was "later").** Derrick: email is a big chunk of his life
+  (foreclosures, financial/legal, life admin) — much of "what matters" lives there; a chief of staff
+  must see it. **NOTE this is a NEW, on-vision use of email — reading it as a PRIORITY SIGNAL — distinct
+  from the parked `draftEmail`/reply-tracking features.** Needs: `gmail.readonly` scope (re-consent),
+  Security-owned ingestion, and **STRONG privacy** (highly sensitive PII — encryption, minimal retention,
+  user-data-only). ⚠️ Elevates the Google read scope → CASA / verification implication.
+- **ChatGPT** — earlier mention now unclear/superseded; likely Derrick meant email. Park unless re-raised.
+- **Sequencing:** TARGET = pull calendar + memory + Whoop + email together. Ship **v1 on calendar +
+  memory** (ready now), fold in **Whoop** (ready) + **email** (needs read scope + Security + privacy) as
+  they land — so we don't block the engine on email plumbing.
 
 ## Build (proposed)
 - `recommendFocusAreas(userId)` — assemble past calendar (~6mo) + call facts/memories → ONE LLM call →
