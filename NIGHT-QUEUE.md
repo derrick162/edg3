@@ -39,5 +39,11 @@ data/logic — overlap → merge master + keep both. Decisions for Derrick → l
 2. **GTM + 30-60-90** (the strategic deliverable for Derrick).
 3. **Onboarding narrative/copy** (pairs with Cam's first-run flow).
 
+## Late additions (dispatched via messages; this doc is the durable backup)
+- **Darren:** Whoop Intelligence (baselines+deviation, strain/sleep-debt, ★ Whoop→calendar recommendations, correlations+recovery-hint, call coaching) ; actionable Today's Focus (complete/dismiss→ranked-pool replacement + learning signal) ; ★ memory salience/weighting (reinforcement·recency·anchor-relevance·type/consequence·confidence·decay → rank context for recs/briefing) ; `/api/support` + `support_messages` table (feedback backend).
+- **Cam:** Help & Support hub (FAQ accordion + feedback/contact form) ; actionable Today's Focus UI (✓ complete + ✕ dismiss→replace).
+- **Vijay:** ★ Security PAGE (`content/security.md`, honest, grounded in what's built) + ★ Security GAP ASSESSMENT (secrets/session/rate-limit/headers/deps/admin-routes — fix quick wins, flag big ones) ; **FAQ privacy verification** — cross-check `content/faq.md` §3 (Data & Privacy) claims against the actual code + privacy policy (encryption, no-sell, email-signal-vs-full-read, deletion-immediate-purges-all-new-tables); confirm true or fix mismatch. CRITICAL pre-beta.
+- **Esther:** ✅ delivered GTM, 30-60-90, onboarding copy, 12 content cards, FAQ. Derrick input needed: pricing ($49–79/mo), 5 design-partner names, voice-check #2/#3.
+
 ---
-_Highest value: the meeting-prep cross-link (Darren) + the first-run experience (Cam). Leave the tree green._
+_Highest value: the meeting-prep cross-link (Darren) + the first-run experience (Cam) + the security gap assessment (Vijay). Leave the tree green._
