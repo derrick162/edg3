@@ -72,15 +72,19 @@ export const openLoopStubQueries = {
   },
 
   resolve(userId: number, id: number): boolean {
-    return openLoopQueries.resolve(userId, id);
+    openLoopQueries.resolve(userId, id);
+    return true;
   },
 
   dismiss(userId: number, id: number): boolean {
-    return openLoopQueries.dismiss(userId, id);
+    openLoopQueries.dismiss(userId, id);
+    return true;
   },
 
   existsSimilar(userId: number, description: string): boolean {
-    return openLoopQueries.existsSimilar(userId, description);
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const target = norm(description);
+    return openLoopQueries.list(userId).some(l => norm(l.description) === target);
   },
 };
 
