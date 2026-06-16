@@ -269,16 +269,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       }
     : null;
   const focusDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(new Date());
-  const focusRec: FocusRecommendation | null = await (
-    priorities.length === 0
-      ? recommendFocusAreas(userId, {
-          energySignal: focusEnergySignal,
-          todayEvents: calendarEvents,
-          anchors: undefined,
-          date: focusDate,
-        }).catch(() => null)
-      : Promise.resolve(null)
-  );
+  // Always recommend focus areas — this drives the hero loop on every briefing.
+  // When priorities are set, pass them as anchors so each recommendation ladders to a real goal.
+  const focusRec: FocusRecommendation | null = await recommendFocusAreas(userId, {
+    energySignal: focusEnergySignal,
+    todayEvents: calendarEvents,
+    anchors: priorities.length > 0 ? priorities : undefined,
+    date: focusDate,
+  }).catch(() => null);
   const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(
     recoveryHistoryPoints,
@@ -474,9 +472,14 @@ ${user.profile_summary || 'No profile summary available.'}
 THIS WEEK'S TOP PRIORITIES:
 ${prioritiesText}
 ${focusRec && focusRec.areas.length > 0 ? `
-FOCUS RECOMMENDATION — no priorities set this week. Edge analyzed ${focusRec.basedOn.join(', ')} and proposes:
-${focusRec.areas.map((a, i) => `${i + 1}. "${a.title}" [${a.confidence}] — ${a.rationale}`).join('\n')}
-INSTRUCTION: Open the call with this recommendation naturally — "Based on your last six months and our calls, here's what I'd focus you on this week: [area 1] and [area 2]. Sound right?" On yes, call confirmFocus with those area titles. On tweak, adjust then confirmFocus. Skip the normal calendar-hook opener and lead with this instead.
+FOCUS RECOMMENDATION — Edge analyzed ${focusRec.basedOn.join(', ')} and recommends today's focus:
+${focusRec.areas.map((a, i) => `${i + 1}. "${a.title}" [${a.confidence}]${a.anchor ? ` → ${a.anchor}` : ''} — ${a.rationale}`).join('\n')}
+INSTRUCTION — THE HERO LOOP (do this every call, in order):
+STEP 1 — EDGE SCORE: Start with the score as instructed below.
+STEP 2 — ENERGY: State energy tier or ask if unknown (see ENERGY STATE below).
+STEP 3 — FOCUS PROPOSAL: Immediately after energy, propose: "Based on your last six months and our calls, here's what I'd focus you on today: [title 1], [title 2], [title 3]. Sound right?" On yes → call confirmFocus(areas) with those titles. On tweak → adjust titles, then confirmFocus. Keep it one breath — don't read the full rationale text.
+STEP 4 — RESHAPE OFFER: Right after confirming focus, say: "Want me to reshape your day around these? I can add a deep-work block and move the one event that's fighting your energy." On yes → call applyCalendarPlan() (no confirmToken yet — it returns a plan summary). Read the plan out loud. On explicit yes → call applyCalendarPlan again WITH the returned confirmToken to execute. Report the new Edge Score.
+This sequence IS the product's magic moment. Do not skip steps 3–4 or bury them at the end.
 ` : ''}
 CALENDAR FIT — EDGE SCORE (the ONE number; open with: "Your Edge Score is ${calendarFit.edgeScore} out of 100 — ${calendarFit.edgeScore >= 70 ? 'calendar looks solid' : calendarFit.edgeScore >= 40 ? 'a few things to fix' : 'calendar needs reshaping'}. Here's why and here's the one move that helps most"):
 Edge Score: ${calendarFit.edgeScore}/100${calendarFit.calibrating ? ' (energy calibrating — set your energy level to sharpen this)' : ''}

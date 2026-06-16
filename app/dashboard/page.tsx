@@ -750,7 +750,6 @@ interface Priority {
   text: string;
   rank: number;
   week_of?: string;
-  energy_cost?: 'high' | 'medium' | 'low' | null;
 }
 
 interface Memory {
