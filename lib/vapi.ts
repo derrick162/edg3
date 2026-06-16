@@ -229,12 +229,9 @@ Always end with warmth. This person is building something — remind them of tha
           '54e47823-ad97-4624-9fef-6f95e96b2ff1', // rememberPreference (created via API 2026-06-13)
           '5606ea96-ca20-4c9d-9ac8-0f4f113ddd6e', // cleanupDuplicates (created via API 2026-06-13)
           '8aac93a3-74bd-40ce-b08b-6a6843917209', // setEnergyLevel (created via API 2026-06-14)
-          // '⚠️ PLACEHOLDER — confirmFocus: create in Vapi dashboard, paste UUID here and uncomment.
-          // Params: areas (array of strings, required). Handler: POST /api/vapi/tool-call.
-          // '⚠️ PLACEHOLDER — applyCalendarPlan: create in Vapi dashboard, paste UUID here and uncomment.
-          // Params: confirmToken (string, optional). Handler: POST /api/vapi/tool-call.
-          // '⚠️ PLACEHOLDER — colorEventsByEnergy: create in Vapi dashboard, paste UUID here and uncomment.
-          // No params required. Handler: POST /api/vapi/tool-call.
+          'f0a3d589-f2f5-4316-a610-333f20ef52a1', // confirmFocus (created via API 2026-06-15)
+          'a9b8eb4e-9431-46bd-a4c6-92dfb6772e10', // applyCalendarPlan (created via API 2026-06-15)
+          '866ce6ca-5b06-4ea9-9458-2721905ca444', // colorEventsByEnergy (created via API 2026-06-15)
         ],
       },
       firstMessage: briefingContent,
