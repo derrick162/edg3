@@ -19,3 +19,5 @@ export { DayPlanCard } from './DayPlanCard';
 export type { DayPlanCardProps, CalendarPlan, PlanChange, PlanChangeOp } from './DayPlanCard';
 export { FocusRecommendationCard } from './FocusRecommendationCard';
 export type { FocusRecommendationCardProps, FocusRecommendation, FocusRecommendationArea } from './FocusRecommendationCard';
+export { ActivationCard } from './ActivationCard';
+export type { ActivationCardProps } from './ActivationCard';

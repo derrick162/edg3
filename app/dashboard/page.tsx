@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
@@ -843,6 +843,9 @@ export default function Dashboard() {
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
   const dayPlanRef = useRef<HTMLDivElement>(null);
 
+  const [activationFacts, setActivationFacts] = useState<string[]>([]);
+  const [activationDismissed, setActivationDismissed] = useState(false);
+
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
     // immediately — then load everything else in the background. Previously the spinner
@@ -888,6 +891,7 @@ export default function Dashboard() {
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
+    fetch('/api/memory/activation').then(r => r.ok ? r.json() : null).then(d => { if (d?.facts) setActivationFacts(d.facts); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -1569,6 +1573,17 @@ export default function Dashboard() {
                   <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                     {briefingText}
                   </p>
+                </div>
+              )}
+
+              {/* Activation moment — first connection, before first briefing */}
+              {!activationDismissed && activationFacts.length > 0 && briefings.length === 0 && (
+                <div className="mb-6">
+                  <ActivationCard
+                    facts={activationFacts}
+                    name={user?.name?.split(' ')[0]}
+                    onDismiss={() => setActivationDismissed(true)}
+                  />
                 </div>
               )}
 

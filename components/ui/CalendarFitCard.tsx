@@ -19,6 +19,10 @@ export interface ScoreResult {
 export interface CalendarFit {
   focusScore: ScoreResult;
   energyScore: ScoreResult;
+  /** How clear a picture Edge has of you — connected sources + accumulated facts/calls. */
+  clarityScore?: ScoreResult;
+  /** How consistently you show up — calls + engagement, trailing 7–14d. Calibrating day 1. */
+  momentumScore?: ScoreResult;
   computedAt: string;
 }
 
