@@ -11,6 +11,7 @@ import { getPastCalendarEvents } from './calendar';
 import type { EmailSignal, EmailSignalItem } from './gmail';
 import { formatOpenLoopsForBriefing, type OpenLoop } from './openLoops';
 import { enrichEmailSignal, formatEnrichedEmailForPrompt } from './emailIntel';
+import { detectCalendarPatterns, formatPatternsAsEnergyProfile } from './calendarPatterns';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
@@ -154,6 +155,7 @@ export async function recommendFocusAreas(
   ]);
 
   const calendarThemes = aggregateEventThemes(rawEvents);
+  const calendarPatterns = detectCalendarPatterns(rawEvents);
   const facts = allFacts.map(f => `[${f.category}] ${f.statement}`);
   const memories = recentMemories.map(m => m.content).filter(Boolean).slice(0, 10) as string[];
 
@@ -208,6 +210,12 @@ export async function recommendFocusAreas(
   if (calendarThemes.length > 0) {
     sections.push('HISTORICAL CALENDAR — where time actually went (past ~180 days, sorted by total hours):');
     sections.push(calendarThemes.map(t => `  • "${t.title}" — ${t.totalHours}h total, ${t.occurrences}×`).join('\n'));
+    sections.push('');
+  }
+
+  const patternsProfile = formatPatternsAsEnergyProfile(calendarPatterns);
+  if (patternsProfile) {
+    sections.push(patternsProfile);
     sections.push('');
   }
 
