@@ -3,6 +3,26 @@
 _Decided with Derrick 2026-06-14. This is flagship, differentiating IP — a "spend real time, make it
 proprietary" build, not a quick ticket._
 
+## ✅✅ CURRENT MODEL (2026-06-15 — SUPERSEDES everything below) — ONE Edge Score, 3 components
+**Edge Score (0–100) = a blend of three components, each shown in an expandable breakdown:**
+1. **Focus** — *how focused are you?* = % of your working hours booked toward your focus areas
+   (sourced from today's confirmed `daily_focus`, else most-recent priorities). drivers = which areas
+   have time / are starved.
+2. **Energy** — *how energized are you?* = a **weighted average of your Whoop SLEEP score + RECOVERY
+   over the trailing ~7 days** (sleep weighted higher, e.g. 60/40, tunable). NOT calendar-energy
+   matching anymore (too complex). `calibrating` when no Whoop data. drivers = "7-day sleep 78,
+   recovery 62."
+3. **Intelligence** — *how well does Edge know you?* = connected sources (calendar/Gmail/Whoop) +
+   accumulated facts/calls. drivers = actionable connect nudges ("Connect Gmail +20"). A growth
+   flywheel: more inputs → smarter → higher score.
+- Blend weights tunable (start ~Focus 40 / Energy 40 / Intelligence 20). No human-judgment layer.
+- The breakdown must be transparent (Derrick wants to see HOW each is calculated + inputs).
+- Calendar-energy *matching* still happens in the PRODUCT (hero-loop reshape, color-coding via event
+  energy-tagging) — it's just no longer how the Energy SCORE is computed. Score = your energy LEVEL;
+  the reshape ACTS on it.
+
+_Everything below is earlier/superseded history — kept for context._
+
 ## The idea
 Edge's most important capability is to **scan the calendar and make a judgment** about how well it
 serves the user. We quantify that judgment as **two scores, each 1–10**, recomputed every day (and
