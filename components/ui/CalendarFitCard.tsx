@@ -17,6 +17,8 @@ export interface ScoreResult {
 }
 
 export interface CalendarFit {
+  edgeScore?: number;      // headline blend (may be absent on old API responses)
+  calibrating?: boolean;   // true when there is genuinely no signal (no priorities + no Whoop + no clarity inputs)
   focusScore: ScoreResult;
   energyScore: ScoreResult;
   /** How clear a picture Edge has of you — connected sources + accumulated facts/calls. */

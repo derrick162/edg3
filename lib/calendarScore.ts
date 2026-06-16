@@ -459,10 +459,10 @@ export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
 
 /**
  * Compute all four scores and return the combined CalendarFit.
- * Full blend (all 4 components): Focus 30% / Energy 30% / Clarity 20% / Momentum 20%.
- * Energy calibrating: Focus 40% / Clarity 30% / Momentum 30% (no energy term).
- * Clarity-only (no momentum): Focus 40% / Energy 40% / Clarity 20% (calibrating: 80/20).
- * Neither: Focus 50% / Energy 50% (calibrating: focus-only). Pure.
+ * Blend weights: Focus 30 / Energy 30 / Clarity 20 / Momentum 20.
+ * Calibrating or absent components are EXCLUDED and the remaining weights are
+ * renormalized so the headline always shows a real number once Focus is computable.
+ * Per-component calibrating flags are preserved in the breakdown (ScoreResult.calibrating).
  */
 export function computeCalendarFit(
   alignment: AlignmentResult | null,
@@ -475,30 +475,27 @@ export function computeCalendarFit(
 ): CalendarFit {
   const focusScore  = computeFocusScore(alignment, priorities, totalWorkingHours);
   const energyScore = computeEnergyScore(recoveryHistory, todaySleep);
-  const calibrating = energyScore.calibrating === true;
 
-  let edgeScore: number;
   let clarityScore: ScoreResult | undefined;
   let momentumScore: ScoreResult | undefined;
+  if (clarityInputs)  clarityScore  = computeClarityScore(clarityInputs);
+  if (momentumInputs) momentumScore = computeMomentumScore(momentumInputs);
 
-  if (clarityInputs && momentumInputs) {
-    clarityScore  = computeClarityScore(clarityInputs);
-    momentumScore = computeMomentumScore(momentumInputs);
-    const c = clarityScore.score, m = momentumScore.score;
-    edgeScore = calibrating
-      ? Math.round(focusScore.score * 0.4 + c * 0.3 + m * 0.3)
-      : Math.round(focusScore.score * 0.3 + energyScore.score * 0.3 + c * 0.2 + m * 0.2);
-  } else if (clarityInputs) {
-    clarityScore = computeClarityScore(clarityInputs);
-    const c = clarityScore.score;
-    edgeScore = calibrating
-      ? Math.round(focusScore.score * 0.8 + c * 0.2)
-      : Math.round(focusScore.score * 0.4 + energyScore.score * 0.4 + c * 0.2);
-  } else {
-    edgeScore = calibrating
-      ? focusScore.score
-      : Math.round((focusScore.score + energyScore.score) / 2);
-  }
+  // Build blend from LIVE (non-calibrating, non-absent) components; renormalize weights.
+  // This ensures a calibrating Energy or Momentum component never blanks the headline score.
+  const live: Array<{ score: number; w: number }> = [
+    { score: focusScore.score,   w: 30 },                                                           // always
+    ...(!energyScore.calibrating                             ? [{ score: energyScore.score,   w: 30 }] : []),
+    ...(clarityScore                                         ? [{ score: clarityScore.score,  w: 20 }] : []),
+    ...(momentumScore && !momentumScore.calibrating          ? [{ score: momentumScore.score, w: 20 }] : []),
+  ];
+  const totalW    = live.reduce((s, c) => s + c.w, 0);
+  const edgeScore = Math.round(live.reduce((s, c) => s + c.score * c.w / totalW, 0));
+
+  // Top-level calibrating: true only when there is genuinely no signal — no priorities,
+  // energy has no Whoop data, and no clarity inputs provided.
+  // Once calendar is connected and priorities are set, this is always false.
+  const calibrating = priorities.length === 0 && !!energyScore.calibrating && !clarityInputs;
 
   return { edgeScore, calibrating, focusScore, energyScore, clarityScore, momentumScore, computedAt: new Date().toISOString() };
 }

@@ -1607,7 +1607,7 @@ export default function Dashboard() {
                   fit={calendarFit}
                   loading={calendarFitLoading}
                   sparse={priorities.length === 0 || calendarConnected === false}
-                  calibrating={calendarFit?.energyScore.calibrating === true}
+                  calibrating={calendarFit?.calibrating === true}
                   calibratingHalf={
                     calendarFit?.focusScore.score === 0 && calendarFit?.energyScore.calibrating
                       ? 'both'
