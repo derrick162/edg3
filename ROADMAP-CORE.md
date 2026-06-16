@@ -9,6 +9,11 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Focus areas always carry their anchor priority** (`lib/focusRecommendation.ts`).
+  - **PM dispatch:** "each focus area should show which top priority it ties to — reinforce the hierarchy."
+  - **Prompt tightened:** `anchor` field instruction changed to "ALWAYS include this field. Use the EXACT text of the closest matching priority. If nothing fits, write 'standalone'. Never omit."
+  - **Post-processing insurance pass:** after parsing the model response, any missing/empty `anchor` gets a fallback: (1) fuzzy keyword match (≥4-char words from priority text) against title+rationale; (2) `'standalone'` when nothing matches or no anchors provided. Model value always wins when present.
+  - 5 new tests. 817/817 green, tsc clean, next build clean.
 - **2026-06-15** — **★ Open Loops / Commitment Tracking (flagship)** — "Edge caught the thing you forgot."
   - **`lib/openLoops.ts`** — full extraction + DB stub + injection layer:
     - `OpenLoop` type (`id, user_id, description, type, source, due_date, status, created_at, resolved_at`).
