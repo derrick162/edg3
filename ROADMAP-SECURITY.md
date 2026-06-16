@@ -8,6 +8,11 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-16** — **⚠️ PM HOTFIX — CSP nonce broke production (site down); strict-dynamic reverted.**
+  - **Symptom:** `https://www.edg3.ai` rendered HTML but never hydrated (blank page) after the CSP-nonce deploy.
+  - **Root cause:** `script-src 'self' 'nonce-…' 'strict-dynamic'` was set, but **Next.js 16 + Turbopack did NOT emit the per-request nonce onto its framework `<script>` tags.** Under `'strict-dynamic'` the browser ignores `'self'`, so every un-nonced script was blocked → no JS ran. The "Next 16 auto-propagates the nonce" assumption in the original comment was false for this Turbopack build.
+  - **Fix (PM, `e2370e3`):** `proxy.ts` reverted to `script-src 'self' 'unsafe-inline'` (same-origin scripts + Next's inline bootstrap; blocks cross-origin injection). Removed nonce/strict-dynamic + the `x-nonce` request-header plumbing. Verified live: CSP updated, `/` and `/dashboard` both 200, scripts now allowed. 989 green.
+  - **🔒 Vijay follow-up (do NOT re-deploy strict CSP until verified):** if we still want nonce-based strict CSP, first reproduce locally with `next build && next start` (NOT dev), curl the HTML, and **confirm the `<script>` tags actually carry `nonce="…"`** before shipping. If Turbopack won't emit nonces, either (a) stay on `'self' 'unsafe-inline'` (acceptable — same-origin only, our real exposure is low), or (b) move CSP to a hashed-script approach. Browser-verify enforcement, not just the header.
 - **2026-06-16** — **H3 OAuth CSRF state, M7 session revocation, CSP nonce, FAQ §3 accuracy, backup + prune coverage (989 green).**
   - **[H3] OAuth CSRF state — COMPLETE:**
     - New `oauth_state` table (`initSchema`): `state TEXT PK`, `user_id`, `flow (calendar|whoop)`, `expires_at` (10-min TTL).
