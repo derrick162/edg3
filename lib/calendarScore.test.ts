@@ -25,10 +25,12 @@ function makeAlign(
   perPriority: { priority: string; hours: number }[],
   unalignedHours = 0,
   topUnaligned: { title: string; hours: number }[] = [],
+  routineHours = 0,
 ): AlignmentResult {
   return {
     perPriority: perPriority.map(p => ({ ...p, blocked: p.hours > 0 })),
     unalignedHours,
+    routineHours,
     topUnaligned,
   };
 }
@@ -155,11 +157,33 @@ describe('computeFocusScore — percentage formula', () => {
     expect(r.score).toBe(0);
   });
 
-  it('9h focused out of 45h (default) → score 20', () => {
+  it('focused week: 15h aligned, 3h unaligned meetings → score in 70-85 range', () => {
     const priorities = [makeP(1, 'Build', 1)];
-    const alignment  = makeAlign([{ priority: 'Build', hours: 9 }], 5);
+    // committed=18, ratio=15/18≈0.833, coverage=1.0 → score=83
+    const alignment  = makeAlign([{ priority: 'Build', hours: 15 }], 3);
     const r = computeFocusScore(alignment, priorities);
-    expect(r.score).toBe(20);
+    expect(r.score).toBeGreaterThanOrEqual(70);
+    expect(r.score).toBeLessThanOrEqual(85);
+  });
+
+  it('tiny focused week: 2h aligned, 0h unaligned → coverage floor keeps score below 100', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    // committed=2, ratio=1.0, coverage=2/15≈0.133 → score=round(100*0.627)=63
+    const alignment  = makeAlign([{ priority: 'Build', hours: 2 }], 0);
+    const r = computeFocusScore(alignment, priorities);
+    expect(r.score).toBeLessThan(100);
+    expect(r.score).toBeGreaterThan(0);
+  });
+
+  it('routine hours excluded from committed: meals do not inflate denominator', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    // 10h routine meals classified as unaligned, 5h aligned → committed=5 (routine excluded)
+    // ratio=1.0, coverage=min(1,5/15)=0.333 → score=round(100*(0.6+0.4*0.333))=73
+    const alignment  = makeAlign([{ priority: 'Build', hours: 5 }], 10, [], 10);
+    const r = computeFocusScore(alignment, priorities);
+    // Without routine exclusion committed=15, ratio=5/15=0.333, score=33 — wrong.
+    // With exclusion committed=5, ratio=1.0, score=73 — correct.
+    expect(r.score).toBeGreaterThan(50);
   });
 
   it('caps at 100 even if aligned hours exceed totalWorkingHours', () => {
@@ -169,14 +193,15 @@ describe('computeFocusScore — percentage formula', () => {
     expect(r.score).toBe(100);
   });
 
-  it('multiple priorities: hours are summed for the score', () => {
+  it('multiple priorities: aligned hours are summed across priorities', () => {
     const priorities = [makeP(1, 'Build', 1), makeP(2, 'Sales', 2)];
+    // aligned=15 (8+7), unaligned=5 → committed=20, ratio=15/20=0.75, coverage=1.0 → score=75
     const alignment  = makeAlign(
-      [{ priority: 'Build', hours: 10 }, { priority: 'Sales', hours: 10 }],
+      [{ priority: 'Build', hours: 8 }, { priority: 'Sales', hours: 7 }],
+      5,
     );
-    const r = computeFocusScore(alignment, priorities, 40);
-    // 20/40 = 50%
-    expect(r.score).toBe(50);
+    const r = computeFocusScore(alignment, priorities);
+    expect(r.score).toBe(75);
   });
 });
 
@@ -258,12 +283,14 @@ describe('computeFocusScore — topFix', () => {
 
   it('topFix suggests adding focus time when score 40-69 and all covered', () => {
     const priorities = [makeP(1, 'Build', 1), makeP(2, 'Sales', 2)];
+    // aligned=10, unaligned=10 → committed=20, ratio=0.5, coverage=1.0 → score=50 (40-69 range)
     const alignment  = makeAlign(
-      [{ priority: 'Build', hours: 10 }, { priority: 'Sales', hours: 10 }],
-      5,
+      [{ priority: 'Build', hours: 5 }, { priority: 'Sales', hours: 5 }],
+      10,
     );
-    const r = computeFocusScore(alignment, priorities, 45);
-    // score = 20/45 ≈ 44% → topFix should suggest adding time
+    const r = computeFocusScore(alignment, priorities);
+    expect(r.score).toBeGreaterThanOrEqual(40);
+    expect(r.score).toBeLessThan(70);
     expect(r.topFix?.op).toBe('create');
   });
 });

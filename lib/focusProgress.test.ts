@@ -16,6 +16,7 @@ const makeM = (id: number, priorityId: number, title: string, done = 0): FocusMi
 const makeAlignment = (entries: { priority: string; hours: number }[]): AlignmentResult => ({
   perPriority: entries.map(e => ({ priority: e.priority, hours: e.hours, blocked: e.hours > 0 })),
   unalignedHours: 0,
+  routineHours: 0,
   topUnaligned: [],
 });
 
