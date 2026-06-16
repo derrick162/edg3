@@ -145,12 +145,9 @@ export async function POST(req: NextRequest) {
         // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and
         //    flags any gaps for the next briefing. Never re-mutates the calendar (the live tools
         //    are the single source of truth), so no auto-dedup is needed anymore.
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.edg3.ai';
-        fetch(`${baseUrl}/api/vapi/verify-promises`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ briefingId: briefing.id }),
-        }).then(r => r.json()).then(r => console.log('[webhook] Verify promises:', JSON.stringify(r)))
+        // Called directly (no self-HTTP) to eliminate the unauthenticated HTTP attack surface.
+        import('@/lib/verifyPromises').then(m => m.runPromiseVerification(briefing, user))
+          .then(r => console.log('[webhook] Verify promises:', JSON.stringify(r)))
           .catch(err => console.error('Promise verification failed:', err));
 
         // 4. Save a call summary (discussion + action items) into today's briefing calendar event.

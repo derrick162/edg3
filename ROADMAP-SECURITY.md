@@ -8,6 +8,79 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-15** — **Pre-beta security gap assessment + quick-win hardening (827 green).**
+  - **Assessment scope:** secrets management, session/auth, rate-limit coverage, input validation,
+    email/Whoop/open-loops data paths, CSRF + security headers, admin-route protection. Findings
+    documented below by severity; quick wins fixed tonight; bigger items flagged for PM.
+
+  **FIXED — HIGH:**
+  - **[H2] Unauthenticated `/api/vapi/verify-promises` endpoint.** Any caller could POST
+    `{briefingId: N}` to read any user's decrypted transcript, trigger unbounded Anthropic Haiku
+    costs, and write to any user's memory.
+    - **Fix (preferred path):** Extracted `runPromiseVerification(briefing, user)` to
+      `lib/verifyPromises.ts`. Webhook (`app/api/vapi/webhook/route.ts`) now calls it directly
+      via dynamic import — no self-HTTP round-trip, attack surface eliminated.
+    - **Fix (defense-in-depth):** `app/api/vapi/verify-promises/route.ts` now gates on
+      `checkVapiSecret` — unauthenticated callers get 401.
+
+  **FIXED — MEDIUM:**
+  - **[M3] `clearSessionCookie()` missing security flags.** Cookie cleared on logout/delete had
+    no `httpOnly`, `secure`, or `sameSite` — differed from the set-cookie flags. Fixed in
+    `lib/auth.ts`: added `httpOnly: true`, `secure: NODE_ENV==='production'`, `sameSite: 'lax'`.
+  - **[M4] `postMessage('...', '*')` in OAuth callbacks.** Calendar and Whoop popup callbacks
+    broadcast to any origin. Fixed: replaced `'*'` with `'${base}'` (interpolated server-side
+    from `NEXT_PUBLIC_APP_URL`) in both `app/api/calendar/callback/route.ts` and
+    `app/api/whoop/callback/route.ts`.
+  - **[M5] No rate limit on `/api/briefing/call` and `/api/briefing/retry-call`.** A user could
+    hammer "Call me now" / "Retry" to rack up Vapi call costs. Fixed: added `briefingCall` bucket
+    (3 / 10 min per user) to `lib/rateLimit.ts`; wired `checkRateLimit('briefingCall', ...)` in
+    both routes.
+  - **[M6] Email not normalized in login/signup.** Mixed-case or trailing-space emails could create
+    duplicate accounts or block login. Fixed: `email = rawEmail.trim().toLowerCase()` applied at
+    the top of both `app/api/auth/login/route.ts` and `app/api/auth/signup/route.ts`.
+
+  **FIXED — LOW:**
+  - **[L4] Vapi secret comparison used `===` (timing side-channel).** `checkVapiSecret` in
+    `lib/vapi.ts` compared strings with `===`. Fixed: added `timingSafeEqual` from Node `crypto`;
+    comparison now uses constant-time buffer comparison (same pattern as `adminAuth.ts`).
+  - **[L5] Backup filename not validated before `verifyBackup`.** Admin route accepted any string;
+    `verifyBackup` used `path.basename` but route had no pattern guard. Fixed: added
+    `/^edg3-[\d-]+\.db$/` regex check in `app/api/admin/backup/route.ts` before calling
+    `verifyBackup` — defense-in-depth alongside the existing `path.basename` protection.
+  - **[L6] `parseInt(stateParam)` without radix in calendar OAuth callback.** Fixed:
+    `parseInt(backupUid, 10)` and `parseInt(stateParam, 10)` in
+    `app/api/calendar/callback/route.ts` (whoop/callback already had radix 10).
+
+  **ADDED — security content page:**
+  - `content/security.md` — honest non-technical write-up for beta trust. Covers: AES-256-GCM
+    encryption at rest (fields listed), bcrypt passwords, session security (HttpOnly/Secure/Lax),
+    OAuth (no password storage), data minimization, retention prune, never-sell policy, rate
+    limiting, audit logging, admin auth, on-volume backups + off-box roadmap, secret handling,
+    export/deletion rights. Cam builds the page UI from this.
+
+  **ADDED — security headers (next.config.ts):**
+  - `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`,
+    `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera/mic/geo=()`,
+    `HSTS` (production only, 2-year preload). CSP omitted — nonce strategy required for
+    Next.js SSR inline scripts; flagged for PM as follow-up.
+
+  **NOT FIXED TONIGHT — flag for PM:**
+  - **[H3] OAuth state/CSRF:** State param is last-resort fallback after session + backup cookie.
+    Quick fix = remove the `stateParam` fallback (raises the bar for CSRF); full fix = bind state
+    to a DB nonce. Recommendation: remove the fallback for now (1-line change) and add nonce in
+    pre-launch sprint. ⚠️ Requires PM go-ahead (breaks flows where session cookie is missing
+    at callback time).
+  - **[M7] JWT revocation:** 30-day sessions, no server-side revocation. Account deletion clears
+    cookie but an intercepted token is valid until expiry. Fix = short-lived JWTs + refresh
+    tokens, or a server-side token blocklist. Pre-launch nice-to-have; post-launch required.
+  - **[CSP] Content-Security-Policy:** Requires nonce injection for Next.js SSR inline `<script>`
+    tags. Needs middleware + `nonce` in every rendered page. Medium-effort; worth adding in
+    pre-launch sprint.
+  - **[M1/M2] SameSite=Lax (not a bug — assessment note):** Assessment flagged SameSite=Lax as
+    CSRF-vulnerable. This is INCORRECT for POST requests — SameSite=Lax blocks all cross-site
+    POSTs (only permits top-level GET navigations). Strict would break email-link UX. Keep Lax.
+
+  - 827 green, tsc clean, next build clean.
 - **2026-06-15** — **facts.statement encryption; open-call reliability; nightly backup (827 green).**
   - **Item 1 — Encrypt `facts.statement` at rest (PM decision GO):**
     - `factQueries` in `lib/db.ts`: `encryptField(statement)` on all writes (`upsertFact`,

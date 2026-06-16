@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const sessionUser = await getSession();
   const cookieStore = await cookies();
   const backupUid = cookieStore.get('edg3_oauth_uid')?.value;
-  const userId = sessionUser?.id ?? (backupUid ? parseInt(backupUid) : null) ?? (stateParam ? parseInt(stateParam) : null);
+  const userId = sessionUser?.id ?? (backupUid ? parseInt(backupUid, 10) : null) ?? (stateParam ? parseInt(stateParam, 10) : null);
   console.log(`[calendar callback] session=${sessionUser?.id} backupUid=${backupUid} state=${stateParam} resolved=${userId}`);
   if (!userId) return NextResponse.redirect(new URL('/login', base));
 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     // Return a page that messages the opener and closes itself (popup), or redirects (full page).
     const html = `<!DOCTYPE html><html><body><script>
       if (window.opener) {
-        window.opener.postMessage('calendar_connected', '*');
+        window.opener.postMessage('calendar_connected', '${base}');
         window.close();
       } else {
         window.location.href = '${fallbackUrl}';

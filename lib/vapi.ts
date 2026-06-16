@@ -1,4 +1,5 @@
 // Vapi integration for outbound voice calls
+import { timingSafeEqual } from 'crypto';
 
 export interface VapiCallRequest {
   phoneNumber: string;
@@ -36,7 +37,13 @@ function resolveWebhookUrl(): string {
 export function checkVapiSecret(provided: string | null): { ok: boolean; status: 'accepted' | 'mismatch-allowed' | 'rejected' } {
   const expected = process.env.VAPI_SERVER_SECRET;
   if (!expected) return { ok: true, status: 'accepted' };
-  if (provided && provided === expected) return { ok: true, status: 'accepted' };
+  if (provided) {
+    try {
+      const a = Buffer.from(expected, 'utf8');
+      const b = Buffer.from(provided, 'utf8');
+      if (a.length === b.length && timingSafeEqual(a, b)) return { ok: true, status: 'accepted' };
+    } catch { /* fall through */ }
+  }
   return process.env.VAPI_SECRET_ENFORCE === 'true'
     ? { ok: false, status: 'rejected' }
     : { ok: true, status: 'mismatch-allowed' };

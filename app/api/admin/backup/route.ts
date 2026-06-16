@@ -35,6 +35,11 @@ export async function POST(req: NextRequest) {
     if (!file || typeof file !== 'string') {
       return NextResponse.json({ error: 'file is required for verify action' }, { status: 400 });
     }
+    // Reject filenames that don't match the backup naming pattern (defense-in-depth
+    // alongside verifyBackup's path.basename guard).
+    if (!/^edg3-[\d-]+\.db$/.test(file)) {
+      return NextResponse.json({ error: 'Invalid backup filename' }, { status: 400 });
+    }
     const result = verifyBackup(file);
     return NextResponse.json(result);
   }

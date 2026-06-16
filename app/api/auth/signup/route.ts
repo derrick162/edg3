@@ -10,7 +10,8 @@ export async function POST(req: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   try {
-    const { email, name, password } = await req.json();
+    const { email: rawEmail, name, password } = await req.json();
+    const email = (rawEmail || '').trim().toLowerCase();
 
     if (!email || !name || !password) {
       return NextResponse.json({ error: 'All fields required' }, { status: 400 });

@@ -10,7 +10,8 @@ export async function POST(req: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   try {
-    const { email, password } = await req.json();
+    const { email: rawEmail, password } = await req.json();
+    const email = (rawEmail || '').trim().toLowerCase();
 
     const user = userQueries.findByEmail(email);
     if (!user) {

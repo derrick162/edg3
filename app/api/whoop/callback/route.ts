@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     // or redirects directly if opened full-page.
     const html = `<!DOCTYPE html><html><body><script>
       if (window.opener) {
-        window.opener.postMessage('whoop_connected', '*');
+        window.opener.postMessage('whoop_connected', '${base}');
         window.close();
       } else {
         window.location.href = '/dashboard?whoop=connected';
