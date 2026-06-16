@@ -39,12 +39,6 @@ function confidenceTint(c: 'high' | 'medium' | 'low') {
   return 'var(--rec-low-tint)';
 }
 
-function confidenceLabel(c: 'high' | 'medium' | 'low') {
-  if (c === 'high')   return 'strong signal';
-  if (c === 'medium') return 'good signal';
-  return 'early read';
-}
-
 // ── Editable area row ─────────────────────────────────────────────────────────
 
 function AreaRow({
@@ -61,9 +55,12 @@ function AreaRow({
 
   function commitEdit() {
     const trimmed = draft.trim();
-    if (trimmed && trimmed !== area.title) {
-      onEdit({ ...area, title: trimmed });
-    }
+    if (trimmed) onEdit({ ...area, title: trimmed });
+    setEditing(false);
+  }
+
+  function cancelEdit() {
+    setDraft(area.title);
     setEditing(false);
   }
 
@@ -71,14 +68,14 @@ function AreaRow({
 
   return (
     <div
-      className="rounded-xl p-4 transition-colors"
+      className="rounded-xl p-3.5 transition-colors"
       style={{
         background: 'var(--rec-area-bg)',
         border: '1px solid var(--rec-area-border)',
       }}
     >
       <div className="flex items-start gap-3">
-        {/* Rank badge */}
+        {/* Rank number */}
         <div
           className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black mt-0.5"
           style={{ background: confidenceTint(area.confidence), color: confidenceColor(area.confidence) }}
@@ -87,63 +84,65 @@ function AreaRow({
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Title — tappable to edit */}
+          {/* Rank label */}
+          <p className="text-xs font-semibold mb-0.5" style={{ color: confidenceColor(area.confidence) }}>
+            {rankLabels[index]}
+          </p>
+
+          {/* Title — edit mode or display */}
           {editing ? (
-            <input
-              autoFocus
-              className="input text-sm font-semibold w-full mb-1"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onBlur={commitEdit}
-              onKeyDown={e => {
-                if (e.key === 'Enter') commitEdit();
-                if (e.key === 'Escape') { setDraft(area.title); setEditing(false); }
-              }}
-            />
-          ) : (
-            <div className="flex items-center gap-2 mb-1">
-              <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
-                {area.title}
-              </p>
-              <button
-                onClick={() => { setDraft(area.title); setEditing(true); }}
-                className="text-xs opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                style={{ color: 'var(--text-faint)' }}
-                title="Edit"
-              >
-                ✎
-              </button>
+            <div className="mb-1">
+              <input
+                autoFocus
+                className="input text-sm font-semibold w-full mb-2"
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitEdit();
+                  if (e.key === 'Escape') cancelEdit();
+                }}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={commitEdit}
+                  className="text-xs px-3 py-1 rounded-lg font-medium transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--edg-accent-15)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-accent)' }}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  className="text-xs px-3 py-1 rounded-lg transition-opacity hover:opacity-80"
+                  style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)', color: 'var(--text-faint)' }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
+          ) : (
+            <p className="text-sm font-semibold leading-snug mb-1" style={{ color: 'var(--text-strong)' }}>
+              {area.title}
+            </p>
           )}
 
           {/* Rationale */}
-          <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--text-muted)' }}>
-            {area.rationale}
-          </p>
-
-          {/* Confidence chip + rank label */}
-          <div className="flex items-center gap-2">
-            <span
-              className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ background: confidenceTint(area.confidence), color: confidenceColor(area.confidence) }}
-            >
-              {rankLabels[index]}
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-              {confidenceLabel(area.confidence)}
-            </span>
-          </div>
+          {!editing && (
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              {area.rationale}
+            </p>
+          )}
         </div>
 
-        {/* Tap-to-edit shortcut (desktop) */}
-        <button
-          onClick={() => { setDraft(area.title); setEditing(true); }}
-          className="flex-shrink-0 text-xs px-2 py-1 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
-          style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}
-          title="Tweak this area"
-        >
-          tweak
-        </button>
+        {/* Edit button — only shown when not editing */}
+        {!editing && (
+          <button
+            onClick={() => { setDraft(area.title); setEditing(true); }}
+            className="flex-shrink-0 text-xs px-2.5 py-1 rounded-lg transition-opacity hover:opacity-100 opacity-50"
+            style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}
+          >
+            Edit
+          </button>
+        )}
       </div>
     </div>
   );
