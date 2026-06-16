@@ -670,6 +670,34 @@ describe('computeMomentumScore', () => {
     expect(result.score).toBe(50); // round(7/14*70)=35 + round(7/14*30)=15
   });
 
+  it('confirming today gives an immediate, visible bump (+20)', () => {
+    const base = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 4, confirmedFocusDays14d: 1, confirmedToday: false,
+    }));
+    const confirmed = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 4, confirmedFocusDays14d: 1, confirmedToday: true,
+    }));
+    expect(confirmed.score).toBe(Math.min(100, base.score + 20));
+    expect(confirmed.score - base.score).toBeGreaterThanOrEqual(15); // perceptible after 20% blend
+  });
+
+  it('confirmedToday alone (day 1, no calls) lifts out of calibrating', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0,
+      confirmedToday: true,
+    }));
+    expect(result.calibrating).toBeFalsy();
+    expect(result.score).toBeGreaterThan(0);
+    expect(result.drivers.some(d => /locked in|boosted/i.test(d))).toBe(true);
+  });
+
+  it('confirmedToday bump never exceeds the 100 ceiling', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 14, confirmedFocusDays14d: 14, confirmedToday: true,
+    }));
+    expect(result.score).toBe(100);
+  });
+
   it('streak >= 2 appears in drivers', () => {
     const result = computeMomentumScore(makeMomentum({ streakDays: 3 }));
     expect(result.drivers.some(d => /streak/i.test(d))).toBe(true);

@@ -50,6 +50,7 @@ export interface MomentumInputs {
   completedCallDays7d: number;   // distinct days with completed briefing in last 7d (driver text)
   confirmedFocusDays14d: number; // days with confirmed focus areas in last 14d
   streakDays: number;            // current consecutive-morning briefing streak
+  confirmedToday?: boolean;      // today's focus is confirmed → immediate, visible momentum lift
 }
 
 // Energy profile (Core's scoring interface — camelCase, nullable).
@@ -419,9 +420,9 @@ export function computeClarityScore(inputs: ClarityInputs): ScoreResult {
  * Pure — caller provides the counts.
  */
 export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
-  const { completedCallDays14d, completedCallDays7d, confirmedFocusDays14d, streakDays } = inputs;
+  const { completedCallDays14d, completedCallDays7d, confirmedFocusDays14d, streakDays, confirmedToday = false } = inputs;
 
-  if (completedCallDays14d === 0 && confirmedFocusDays14d === 0) {
+  if (completedCallDays14d === 0 && confirmedFocusDays14d === 0 && !confirmedToday) {
     return {
       score: 0,
       calibrating: true,
@@ -432,14 +433,23 @@ export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
 
   const showUpScore    = Math.round(completedCallDays14d / 14 * 70);
   const engagementScore = Math.round(confirmedFocusDays14d / 14 * 30);
-  const score = clamp(0, 100, showUpScore + engagementScore);
+  // Confirming TODAY gives an immediate, visible lift. Without it, confirming adds
+  // 1 day to a 14-day window (≈2 momentum pts ≈ 0.4 Edge after the 20% blend) —
+  // imperceptible, so the action felt unrewarded. This bonus makes the moment of
+  // committing to your day move the headline number by a few points right away.
+  const TODAY_CONFIRM_BONUS = 20;
+  const todayBonus = confirmedToday ? TODAY_CONFIRM_BONUS : 0;
+  const score = clamp(0, 100, showUpScore + engagementScore + todayBonus);
 
   const drivers: string[] = [];
   drivers.push(`Shown up ${completedCallDays7d} of the last 7 mornings.`);
   if (streakDays >= 2) drivers.push(`${streakDays}-morning streak — keep it going.`);
+  if (confirmedToday) {
+    drivers.push("Today's focus locked in — Momentum boosted. ✦");
+  }
   if (confirmedFocusDays14d > 0) {
     drivers.push(`Focus confirmed on ${confirmedFocusDays14d} day${confirmedFocusDays14d !== 1 ? 's' : ''} this fortnight.`);
-  } else {
+  } else if (!confirmedToday) {
     drivers.push('Confirm your daily focus areas each morning to build Momentum faster.');
   }
 

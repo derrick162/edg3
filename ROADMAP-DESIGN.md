@@ -25,6 +25,28 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-16 (Derrick live feedback)
+
+> Sync master first (preflight green). Two tickets, Cam:
+
+**D — Edge Score "spark" celebration on focus-confirm.** When the user taps "Focus on
+these today" and their Edge Score goes UP, play a tasteful ~1–1.5s celebration on the score:
+the number ticks old→new + a burst of stars/sparkles + a subtle glow pulse. Clean and premium,
+NOT gimmicky. **The plumbing already works:** `handleConfirmFocus` in `app/dashboard/page.tsx:974`
+POSTs the confirm then refetches `/api/scores` and calls `setCalendarFit(s)` — and PM just shipped
+a Momentum bonus so the Edge number now genuinely rises ~+4 on confirm. Your job: capture the
+old `calendarFit.edgeScore` before the refetch, animate the delta when new > old (no spark if
+unchanged/down — gentle tick at most), and add a `prefers-reduced-motion` fallback (number update
+only, no particle burst). Edge Score display lives in the dashboard home tab / EdgeScore component.
+
+**E — Content cards: real stock images instead of icon thumbnails.** Derrick loves the content
+section but wants actual stock photography for the card thumbnails instead of the current icons.
+Free, license-clear sources (Unsplash/Pexels), topical per card (energy, focus, burnout, sleep,
+recovery…), keep attribution where the license requires it. Consistent aspect ratio, premium feel,
+lazy-loaded + properly sized. Touches `components/ui/ContentSection.tsx` + the content cards.
+
+Ship small / green / full preflight (real exit code); log each below.
+
 ## Backlog (seed — PM/CTO refines)
 ### Now
 - [ ] **Onboard:** read `DESIGN.md` + `ROADMAP.md`; `git merge master`; skim `app/globals.css`.

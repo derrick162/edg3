@@ -8,6 +8,39 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-16 (Derrick live feedback: Edge Score feels wrong)
+
+> Master is at HEAD (preflight green). **Ticket B already shipped by PM** (momentum
+> reward loop). **Tickets A + C are yours, Darren** — sync master first.
+
+**A — Recalibrate the Focus Score (it's too harsh).** `computeFocusScore` in
+`lib/calendarScore.ts` = `alignedHours / 45 * 100`. The fixed 45h denominator assumes
+a fully-blocked week on the top 3 priorities — so a genuinely focused 15–20h week
+scores only ~35–45%. Derrick's week IS focused but reads 41.
+- **Fix:** score focus as the share of *scheduled, non-routine* time that's priority-aligned,
+  with a light coverage floor so a near-empty calendar can't hit 100 off 2h:
+  `ratio = aligned / max(committed,1)`; `coverage = min(1, committed/15)`;
+  `score = round(100 * ratio * (0.6 + 0.4*coverage))`. Calibrate so a focused 18–25h week
+  lands ~70–85 and a meeting-dominated week stays low.
+- **⚠️ Critical subtlety (do not skip):** `alignment.unalignedHours` currently INCLUDES
+  routine events (meals, etc.) that the Haiku classifier marks "none" — see
+  `lib/alignment.ts:130`. If you compute `committed = aligned + unalignedHours` naively,
+  **lunch/breakfast will drag the Focus Score down** — a new trust bug. You own `alignment.ts`:
+  either return a separate `unalignedWorkingHours` that excludes routine titles
+  (gym/walk/meals/commute — reuse the routine set from `lib/timeAllocation.ts`), or filter
+  routine before the alignment classify call on the score path. `committed` must = real
+  working time only.
+- Keep the no-priorities→0 branch + honest drivers. Add tests (focused week → high; meeting-heavy → low; routine must not inflate). **Ping PM if calibration targets feel off before merging.**
+
+**C — Populate the notification center (it only has 1 item — the old email reply).**
+Per `specs/notifications.md`, generate notifications for: (1) **Edge Score changed vs yesterday**
+— "Edge Score 41 → 47 ▲6" — at most once/day, from `calendar_scores` history; (2) **new
+memory/fact learned** (post-call extraction); (3) **new activity** (new `audit_log` mutations not
+yet surfaced). De-dupe, cap volume (one score-change notif/day max — no spam), keep the existing
+email-reply notification.
+
+Ship small / green / full preflight (real exit code) per item; log each below.
+
 ## Changelog
 - **2026-06-16** — **[BUG FIX — PM hotfix] Time-allocation now credits exercise to fitness goals; never flags unmeasurable priorities (992 green).** (`dd40ab1`)
   - **SYMPTOM (live, Derrick's dashboard):** "Get to 130 lbs" showed <1% allocation over 6 weeks → a false highest-urgency "neglected" focus area, despite regular gym + walks.
