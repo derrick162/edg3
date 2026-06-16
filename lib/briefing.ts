@@ -15,7 +15,7 @@ import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatR
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
 import { topFacts } from './memorySalience';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
-import { focusMilestoneQueries } from './db';
+import { focusMilestoneQueries, dailyFocusQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
 import { computeCalendarFit } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
@@ -302,6 +302,17 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     emailSignal: emailSignal ?? undefined,
     openLoops: urgentLoopsEarly.length > 0 ? urgentLoopsEarly : undefined,
   }).catch(() => null);
+  // Pre-warm the dashboard cache so the first post-call dashboard load is instant
+  // (no LLM/Google re-fetch). Never clobber an existing row (a confirmed focus or a
+  // prior generation) — upsert resets confirmed=0. Fire-and-forget, never blocks.
+  if (focusRec && focusRec.areas.length > 0) {
+    try {
+      const existing = dailyFocusQueries.getToday(userId, focusDate);
+      if (!existing) {
+        dailyFocusQueries.upsert(userId, focusDate, JSON.stringify(focusRec.areas), focusRec.generatedAt);
+      }
+    } catch { /* non-fatal */ }
+  }
   const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(
     recoveryHistoryPoints,
