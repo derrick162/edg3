@@ -29,6 +29,12 @@ export interface FocusRecommendationCardProps {
    * while selfFetch is active. Design uses this on the home tab.
    */
   selfFetch?: boolean;
+  /**
+   * Today's already-confirmed focus areas (from /api/focus/confirm GET).
+   * When set, the card skips the proposed state and renders the confirmed view
+   * directly — persists across page reloads.
+   */
+  confirmedAreas?: FocusRecommendationArea[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,6 +170,7 @@ export function FocusRecommendationCard({
   onConfirm,
   onDismiss,
   selfFetch = false,
+  confirmedAreas: confirmedAreasProp,
 }: FocusRecommendationCardProps) {
   // selfFetch mode: card owns its own data fetch
   const [fetchedRec, setFetchedRec] = useState<FocusRecommendation | null>(null);
@@ -271,8 +278,10 @@ export function FocusRecommendationCard({
     );
   }
 
-  // ── Confirmed state
-  if (confirmed) {
+  // ── Confirmed state (internal confirm OR parent-passed confirmedAreas from reload)
+  const confirmedList = confirmedAreasProp && confirmedAreasProp.length > 0 ? confirmedAreasProp : (confirmed ? areas : null);
+  if (confirmedList) {
+    const rankLabels = ['Primary', 'Secondary', 'Third'];
     return (
       <div
         className="glass-card p-5"
@@ -282,38 +291,68 @@ export function FocusRecommendationCard({
           animation: 'score-rise 0.4s ease both',
         }}
       >
-        <div className="flex items-center gap-3 mb-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
+              ✦ TODAY&apos;S FOCUS
+            </p>
+            <h3 className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
+              You&apos;re focused on these today.
+            </h3>
+          </div>
           <span
-            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base"
+            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
             style={{
               background: 'var(--edg-accent-08)',
               border: '1px solid var(--edg-accent-20)',
               boxShadow: 'var(--shadow-btn-glow)',
+              color: 'var(--text-accent)',
               animation: 'pop-in 0.45s ease both',
             }}
           >
             ✓
           </span>
-          <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
-              Focus set for today
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              Edge will score your calendar against these.
-            </p>
-          </div>
         </div>
-        <div className="space-y-1">
-          {areas.map((a, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                style={{ background: confidenceColor(a.confidence) }}
-              />
-              <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{a.title}</p>
+
+        {/* Locked-in area rows */}
+        <div className="space-y-2 mb-4">
+          {confirmedList.map((a, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 rounded-xl px-3 py-3"
+              style={{
+                background: 'var(--rec-area-bg)',
+                border: '1px solid var(--rec-area-border)',
+                animation: `score-rise 0.35s ${0.06 * i}s ease both`,
+              }}
+            >
+              {/* Rank badge */}
+              <div
+                className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black"
+                style={{ background: confidenceTint(a.confidence), color: confidenceColor(a.confidence) }}
+              >
+                {i + 1}
+              </div>
+              <p className="flex-1 text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
+                {a.title}
+              </p>
+              <span className="text-xs flex-shrink-0 font-medium" style={{ color: 'var(--text-faint)' }}>
+                {rankLabels[i]}
+              </span>
+              <span className="flex-shrink-0 text-xs font-bold" style={{ color: 'var(--text-accent)' }}>✓</span>
             </div>
           ))}
         </div>
+
+        {/* Footer link */}
+        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+          Edge scores your calendar against these — adjust any time in the{' '}
+          <span className="underline cursor-pointer" style={{ color: 'var(--text-muted)' }}>
+            Priorities tab
+          </span>
+          .
+        </p>
       </div>
     );
   }

@@ -4,6 +4,24 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { dailyFocusQueries, userQueries, auditLogQueries, type DailyFocusRecord } from '@/lib/db';
 import type { FocusArea } from '@/lib/focusRecommendation';
 
+// GET — return today's confirmed focus areas (if any), so the home tab can restore confirmed state on reload.
+export async function GET() {
+  const user = await getSession();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const profile = userQueries.findById(user.id);
+  const tz = profile?.timezone ?? 'UTC';
+  const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+
+  const row = dailyFocusQueries.getToday(user.id, date);
+  if (!row || !row.confirmed) return NextResponse.json({ confirmed: false, areas: [] });
+
+  let areas: FocusArea[] = [];
+  try { areas = JSON.parse(row.focus_areas); } catch { /* malformed — degrade to empty */ }
+
+  return NextResponse.json({ confirmed: true, date, areas });
+}
+
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
