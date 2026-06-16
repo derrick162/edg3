@@ -31,10 +31,24 @@ function scoreGlow(s: number): string {
 }
 
 function scoreSummary(s: number): string {
-  if (s >= 85) return 'Your day is aligned.';
-  if (s >= 65) return 'Good shape — a few things to tighten.';
-  if (s >= 35) return 'Room to improve — tap to see why.';
-  return 'Day needs attention — tap to fix it.';
+  if (s >= 85) return "You're aligned — keep the momentum.";
+  if (s >= 65) return 'Good shape. A couple of things to tighten.';
+  if (s >= 35) return 'Room to improve — see what to shift.';
+  return 'Day needs attention. Edge can help fix it.';
+}
+
+function scoreCardBorder(s: number): string {
+  if (s >= 85) return 'rgba(34,197,94,0.20)';
+  if (s >= 65) return 'rgba(99,102,241,0.20)';
+  if (s >= 35) return 'rgba(245,158,11,0.15)';
+  return 'rgba(239,68,68,0.18)';
+}
+
+function scoreCardBg(s: number): string {
+  if (s >= 85) return 'rgba(34,197,94,0.03)';
+  if (s >= 65) return 'transparent';
+  if (s >= 35) return 'rgba(245,158,11,0.025)';
+  return 'rgba(239,68,68,0.03)';
 }
 
 // ── Calibrating arc (dashed pulse, no score label) ────────────────────────────
@@ -232,20 +246,28 @@ export function EdgeScoreCard({
 
   const color = scoreColor(edgeScore!);
   const glow  = scoreGlow(edgeScore!);
+  const s     = edgeScore!;
 
   return (
-    <div className="glass-card p-5">
+    <div
+      className="glass-card p-5"
+      style={{
+        borderColor: scoreCardBorder(s),
+        background: scoreCardBg(s),
+        animation: 'score-rise 0.45s ease both',
+      }}
+    >
       <div className="flex items-center gap-5">
         {/* Arc gauge */}
         <div className="flex-shrink-0">
-          <ArcGauge score={edgeScore!} color={color} glow={glow} />
+          <ArcGauge score={s} color={color} glow={glow} />
         </div>
 
         {/* Right panel */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Today</p>
+          <p className="text-xs font-semibold mb-1 uppercase tracking-wide" style={{ color: 'var(--text-faint)', letterSpacing: '0.07em' }}>Today</p>
           <p className="text-sm font-bold mb-2 leading-snug" style={{ color: 'var(--text-strong)' }}>
-            {scoreSummary(edgeScore!)}
+            {scoreSummary(s)}
           </p>
 
           {/* Sub-scores (collapsed by default) */}

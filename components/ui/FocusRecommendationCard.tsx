@@ -297,15 +297,19 @@ export function FocusRecommendationCard({
   return (
     <div
       className="glass-card p-5"
-      style={{ background: 'var(--rec-card-bg)', borderColor: 'var(--rec-card-border)' }}
+      style={{
+        background: 'var(--rec-card-bg)',
+        borderColor: 'var(--rec-card-border)',
+        animation: 'score-rise 0.5s 0.1s ease both',
+      }}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ EDGE&apos;S RECOMMENDATION
+            ✦ TODAY&apos;S FOCUS
           </p>
-          <h3 className="text-base font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
+          <h3 className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {allLow
               ? "Early read — I'm still learning you"
               : "Here's what I'd focus you on today"}
