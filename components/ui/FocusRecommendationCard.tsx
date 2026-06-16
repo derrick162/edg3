@@ -118,14 +118,7 @@ function AreaRow({
               <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
                 {area.title}
               </p>
-              <button
-                onClick={() => { setDraft(area.title); setEditing(true); }}
-                className="text-xs opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                style={{ color: 'var(--text-faint)' }}
-                title="Edit"
-              >
-                ✎
-              </button>
+              {/* Hidden duplicate — edit ✎ on the right handles this */}
             </div>
           )}
 
@@ -155,14 +148,15 @@ function AreaRow({
           </div>
         </div>
 
-        {/* Tap-to-edit shortcut (desktop) */}
+        {/* Edit button — visible on mobile tap, subtle on desktop */}
         <button
           onClick={() => { setDraft(area.title); setEditing(true); }}
-          className="flex-shrink-0 text-xs px-2 py-1 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
+          className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg transition-opacity active:opacity-70"
           style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}
-          title="Tweak this area"
+          title="Edit this focus area"
+          aria-label="Edit"
         >
-          tweak
+          ✎
         </button>
       </div>
     </div>

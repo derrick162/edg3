@@ -161,12 +161,13 @@ function LoopRow({
             <button
               onClick={() => handle('resolve')}
               disabled={acting !== null}
-              className="text-xs px-2 py-1 rounded-md font-medium transition-all"
+              className="text-xs px-2.5 py-1.5 rounded-md font-medium transition-all active:scale-95"
               style={{
                 background: 'var(--edg-accent-08)',
                 color: 'var(--text-accent)',
                 border: '1px solid var(--edg-accent-20)',
                 opacity: acting ? 0.4 : 1,
+                minHeight: 32,
               }}
             >
               {acting === 'resolve' ? '…' : '✓ Done'}
@@ -174,8 +175,8 @@ function LoopRow({
             <button
               onClick={() => handle('dismiss')}
               disabled={acting !== null}
-              className="text-xs px-2 py-1 rounded-md transition-opacity hover:opacity-80"
-              style={{ color: 'var(--text-faint)', opacity: acting ? 0.4 : 1 }}
+              className="text-xs px-2.5 py-1.5 rounded-md transition-opacity active:scale-95"
+              style={{ color: 'var(--text-faint)', opacity: acting ? 0.4 : 1, minHeight: 32 }}
             >
               Dismiss
             </button>
