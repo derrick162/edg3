@@ -193,14 +193,14 @@ function AllClear() {
   return (
     <div
       className="glass-card p-6 text-center"
-      style={{ borderColor: 'rgba(34,197,94,0.2)', animation: 'score-rise 0.4s ease both' }}
+      style={{ borderColor: 'var(--edg-success-border)', animation: 'score-rise 0.4s ease both' }}
     >
       <div
         className="w-12 h-12 rounded-full flex items-center justify-center text-xl mx-auto mb-3"
         style={{
-          background: 'rgba(34,197,94,0.10)',
-          border: '1.5px solid rgba(34,197,94,0.25)',
-          boxShadow: '0 0 20px rgba(34,197,94,0.12)',
+          background: 'var(--edg-success-tint)',
+          border: '1.5px solid var(--edg-success-border)',
+          boxShadow: '0 0 20px rgba(16,185,129,0.12)',
           animation: 'pop-in 0.4s ease both',
         }}
       >
