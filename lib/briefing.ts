@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
@@ -248,6 +248,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const localTime = now.toLocaleTimeString('en-US', { timeZone: userTimezone, hour: 'numeric', minute: '2-digit', hour12: true });
   const localHour = parseInt(now.toLocaleString('en-US', { timeZone: userTimezone, hour: 'numeric', hour12: false }));
   const greeting = localHour >= 18 ? 'Good evening' : localHour >= 12 ? 'Good afternoon' : 'Good morning';
+  const firstName = (user.name || '').split(' ')[0] || user.name;
   const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
 
   // Gather context
@@ -519,6 +520,33 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recentlyDoneMilestones = allMilestones.filter(m => m.done === 1 && m.completed_at && m.completed_at >= recentCutoff);
   const focusScoreboardBlock = formatFocusScoreboardForBriefing(focusProgress, recentlyDoneMilestones);
 
+  // Progress hook: call count + Edge Score delta vs last stored score (prior day)
+  const callCount = recentBriefings.length + 1;
+  const ordSuffix = (n: number) => (n === 11 || n === 12 || n === 13) ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
+  const callCountLabel = `${callCount}${ordSuffix(callCount)}`;
+  const prevScoreRows = (() => {
+    try {
+      const weekAgo = format(new Date(Date.now() - 7 * 86400000), 'yyyy-MM-dd');
+      const yesterday = format(new Date(Date.now() - 86400000), 'yyyy-MM-dd');
+      return calendarScoreQueries.getRange(userId, weekAgo, yesterday);
+    } catch { return []; }
+  })();
+  const prevEdgeScore = prevScoreRows.length > 0 ? prevScoreRows[prevScoreRows.length - 1].edge_score : null;
+  const scoreDelta = prevEdgeScore !== null ? calendarFit.edgeScore - prevEdgeScore : null;
+  const scoreDeltaStr = scoreDelta !== null && Math.abs(scoreDelta) >= 3
+    ? (scoreDelta > 0 ? `, up ${scoreDelta} from yesterday` : `, down ${Math.abs(scoreDelta)} from yesterday`)
+    : '';
+  // Compact energy/sleep line for the greeting hook
+  const progressEnergyStr = (() => {
+    const parts: string[] = [];
+    if (whoopSleep) parts.push(`sleep ${(whoopSleep.durationMs / 3_600_000).toFixed(1)}h`);
+    if (whoopRecovery) {
+      const tier = whoopRecovery.recoveryScore >= 67 ? 'green' : whoopRecovery.recoveryScore >= 34 ? 'yellow' : 'red';
+      parts.push(`recovery ${whoopRecovery.recoveryScore}% (${tier})`);
+    }
+    return parts.join(', ');
+  })();
+
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.
@@ -527,7 +555,7 @@ You speak like Jarvis from Iron Man — confident, sharp, and always one step ah
 You know this person better than they know themselves. You believe in them deeply.
 Your job is not to be a productivity app. Your job is to help them decide what deserves their attention today.
 TONE: Be warm, direct, and encouraging — never harsh, never preachy, never critical of the person's character or patterns in a negative way. Do NOT say things like "you tend to..." or "you have a pattern of..." or "you often..." in a critical tone. If there is misalignment, acknowledge it briefly with empathy ("I notice your calendar is light on X — worth a thought") and move on immediately. One sentence max. Never dwell, never lecture. Always frame as possibility, never as failure. Leave them feeling capable and energized.
-Aim for exactly 2 minutes spoken — about 300 words total. One punchy sentence per section. Cut anything not directly actionable. Always end with: "What's the most important thing I should know before tomorrow's briefing?"
+MAX 220 words total — every sentence earns its place. Tight, punchy, get-to-the-point. No filler, no preamble, no listing events for its own sake.
 Speak in first person to the user. Be warm but authoritative.
 IMPORTANT: Write times naturally as they would be spoken. "1:30 PM" → "one thirty PM". "9:00 AM" → "nine AM". "10:53 AM" → "ten fifty-three AM". Never round times — say the exact time. Never spell out time digits individually. For money: "two hundred fifty thousand dollars". For percentages: "thirty percent". For weights: "lbs" → "pounds", "kg" → "kilograms". For other numbers: spell out fully. Never write bare digits or abbreviations that won't be spoken correctly.
 IMPORTANT: Always write full day names — never abbreviate. "Mon" → "Monday", "Tue" → "Tuesday", "Wed" → "Wednesday", "Thu" → "Thursday", "Fri" → "Friday", "Sat" → "Saturday", "Sun" → "Sunday".
@@ -554,6 +582,11 @@ STEP 3 — FOCUS PROPOSAL: Immediately after energy, propose: "Based on your las
 STEP 4 — RESHAPE OFFER: Right after confirming focus, say: "Want me to reshape your day around these? I can add a deep-work block and move the one event that's fighting your energy." On yes → call applyCalendarPlan() (no confirmToken yet — it returns a plan summary). Read the plan out loud. On explicit yes → call applyCalendarPlan again WITH the returned confirmToken to execute. Report the new Edge Score.
 This sequence IS the product's magic moment. Do not skip steps 3–4 or bury them at the end.
 ` : ''}
+PROGRESS HOOK (use in Part 1 of the briefing — the opening hook, in order):
+Call number: ${callCountLabel} morning
+Edge Score today: ${calendarFit.edgeScore}/100${scoreDeltaStr}
+${progressEnergyStr ? `Energy/sleep: ${progressEnergyStr}` : '(No Whoop data — skip energy/sleep sentence in greeting)'}
+
 CALENDAR FIT — EDGE SCORE (the ONE number; open with: "Your Edge Score is ${calendarFit.edgeScore} out of 100 — ${calendarFit.edgeScore >= 70 ? 'calendar looks solid' : calendarFit.edgeScore >= 40 ? 'a few things to fix' : 'calendar needs reshaping'}. Here's why and here's the one move that helps most"):
 Edge Score: ${calendarFit.edgeScore}/100${calendarFit.calibrating ? ' (energy calibrating — set your energy level to sharpen this)' : ''}
 Focus: ${calendarFit.focusScore.score}% — ${calendarFit.focusScore.drivers.join(' ')}${calendarFit.focusScore.topFix ? ` → ${calendarFit.focusScore.topFix.description}` : ''}
@@ -620,23 +653,22 @@ ${incompleteTasks.length ? incompleteTasks.map(t => `- [${t.date}] ${t.text}`).j
 RECENTLY COMPLETED TASKS:
 ${recentlyCompletedTasks.length ? recentlyCompletedTasks.map(t => `- [${t.date}] ${t.text}`).join('\n') : 'None.'}
 
-Generate a briefing with these sections:
-CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. This includes flights, drives, appointments, meetings — everything. If a flight, drive, or any travel event does NOT appear in the calendar data above, do NOT mention it. Memory, conversation history, and past call transcripts are NOT reliable sources for current calendar events — they may be outdated. Before mentioning ANY event (grocery run, gym, flight, meeting, meal prep, drive, etc.) you MUST confirm it appears in the calendar data above. If it does not appear there, do NOT mention it. Do not say things like "I see you have a grocery run Friday" or "you have your drive to Blue Mountain" unless those exact events appear in the calendar sections above. Treat memory references to calendar events as historical only — not current facts.
+Generate a crisp spoken briefing — MAX 220 words. No filler. Every sentence earns its place. No markdown.
 
-1. GREETING — Start with "${greeting}, [name]." then immediately make a sharp, specific observation about something happening RIGHT NOW or that happened TODAY based on the calendar. Skip routine/low-signal events (breakfast, lunch, dinner, meal prep, gym, morning walk, daily habits, personal standing blocks) — the opener must land on something MEANINGFUL and time-sensitive: a notable meeting, a deadline, a commitment due today, a high-stakes call, anything that makes them sit up. Example of GOOD opener: "You've got your investor call at two PM — let's make sure you're ready for it." Example of BAD opener: "You have lunch at noon." If there are no meaningful events today, skip the calendar hook and open with one sharp line tied to their top priority instead. Make it feel like you're actually watching their day in real time — one punchy sentence that earns their attention.${callStreak >= 2 ? ` Then weave in ONE warm streak line (from CALL STREAK above). Keep it natural and encouraging — one sentence max.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY contains a genuinely relevant connection to today's calendar, weave in ONE dot-connecting moment (e.g. "Your two PM with Acme — you told me closing them is the top priority"). Only if it adds real value — skip if forced.` : ''} If there are [USER NOTE] or [PRIORITY CHANGE] entries in memory, acknowledge them after.
-2. TODAY'S SNAPSHOT — Key events from their calendar (2-3 sentences). Only reference events that appear in the calendar data above.
-3. ALIGNMENT CHECK — ${alignmentText
-  ? 'Use ONLY the ALIGNMENT DATA above — never invent hours or events. State the single biggest mismatch concretely and empathetically in ONE punchy sentence (e.g. "Your top priority is fundraising but you have zero hours blocked for it this week, while 6 hours are going to unrelated meetings"). Then offer to block time for the most under-served priority using a SPECIFIC slot from FREE TIME SLOTS above — name the exact day and time (e.g. "Want me to block Tuesday at two PM for fundraising?"). One sentence observation + one blocking offer. If all priorities are well-covered, say so briefly.'
-  : 'Compare their stated priorities with their calendar. One sentence max, empathetic, then move on.'
-}
-4. ACTION ITEMS — ${edg3Commitment ? `Open with ONE accountability line: "Yesterday you committed to '${edg3Commitment.text}' — did that happen?" Then list ` : 'List '}the 3 highest-leverage things they should do today. Call them "action items". Be specific. Address every weekly priority. Reference incomplete tasks by name.${hygieneFlag ? ` Add ONE punchy hygiene item: surface the CALENDAR HYGIENE FLAG and offer to fix it (e.g. add buffers, protect a focus block).` : ''}
-5. CALENDAR BLOCKS — Recommend 2-3 specific time blocks using the FREE TIME SLOTS above. Only suggest times that appear as free. Always include exact start and end times.${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place the highest-priority deep/creative work in the stated peak window; batch admin or low-energy tasks in the stated trough. Scale to today\'s recovery tier. Make it a direct offer: "Recovery\'s high and it\'s your nine to eleven peak — want me to block vibe-coding there? I\'ll push email to your two PM dip."' : ''}
-6. CLOSING QUESTION — Do NOT always ask the same question. Choose the most relevant one based on today's context:
-   - If they have a big upcoming event: "What do you need to feel ready for [event]?"
-   - Default: "What's the most important thing I should know before tomorrow's briefing?"
-   Pick ONE and make it feel natural and specific.${prioritiesStaleAge > 7 ? ' Then add the PRIORITY DRIFT ALERT nudge from above (one sentence, at the very end).' : ''}
+CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on the calendar is TODAY'S CALENDAR and UPCOMING THIS WEEK sections above. If an event does not appear there, do NOT mention it. Treat memory references to calendar events as historical only — not current facts.
 
-Write this as a spoken briefing — natural language, no markdown headers, flowing paragraphs.`;
+BRIEFING STRUCTURE — 3 parts, in order:
+
+PART 1 — GREETING + HOOK (2–3 sentences MAX):
+Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}." Then ONE energy/sleep sentence using PROGRESS HOOK data (e.g. "Sleep was 7.2h and recovery's green — solid day ahead." or "Recovery's red at 28% — we'll protect your energy today."). If no Whoop data, skip energy sentence. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks). If nothing meaningful: skip.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
+
+PART 2 — FOCUS + ACTION (4–5 sentences MAX):
+${edg3Commitment ? `Open with ONE accountability line: "Yesterday you committed to '${edg3Commitment.text}' — did that happen?" ` : ''}${focusRec && focusRec.areas.length > 0 ? `Propose focus: "For today, I'd focus you on: [area 1], [area 2], [area 3]. Sound right?" Then name what to DO first this morning, anchored to their top focus area and a specific calendar event where one connects. If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?").` : `Name the top 2 concrete things to DO today anchored to priorities. No listing events — name ACTIONS.`}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
+
+PART 3 — CLOSING (1–2 sentences MAX):
+ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar."${prioritiesStaleAge > 7 ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
+
+Write as flowing spoken language.`;
 
   // Main briefing generation: 30-second timeout guard so a slow/hanging Anthropic call
   // can never block the scheduler from placing the call.
@@ -644,7 +676,7 @@ Write this as a spoken briefing — natural language, no markdown headers, flowi
   try {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 450,
+      max_tokens: 320,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     }, { signal: AbortSignal.timeout(30_000) });
