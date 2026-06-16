@@ -63,7 +63,7 @@ export function formatEmailSignalForPrompt(signal: EmailSignal): string {
   if (signal.scopeMissing || signal.items.length === 0) return '';
   return signal.items
     .map(item => {
-      const tag = isUrgentEmail(item) ? ' [URGENT/FINANCIAL]' : item.isUnread ? ' [unread]' : '';
+      const tag = isUrgentEmail(item) ? ' [debt/legal signal]' : item.isUnread ? ' [unread]' : '';
       return `  • From: ${item.sender} | Subject: ${item.subject}${tag}\n    Snippet: ${item.snippet.slice(0, 120)}`;
     })
     .join('\n');
@@ -217,15 +217,16 @@ export async function recommendFocusAreas(
   if (opts.emailSignal) {
     const emailBody = formatEmailSignalForPrompt(opts.emailSignal);
     if (emailBody) {
-      const urgentCount = opts.emailSignal.items.filter(isUrgentEmail).length;
       sections.push('EMAIL INBOX DIGEST (past 14 days — header + snippet only, no body access):');
       sections.push(emailBody);
       sections.push('');
-      if (urgentCount > 0) {
-        sections.push(`INBOX PRIORITY WEIGHTING: ${urgentCount} thread(s) flagged [URGENT/FINANCIAL] — financial, legal, or collection matters. These are HIGHEST-PRIORITY focus candidates for today. An email from a collector, bank, or lawyer about money is always higher priority than a routine calendar block. If such an email is present, propose dealing with it as focus area #1.`);
-      } else {
-        sections.push('INBOX WEIGHTING: Weight unread or marked-important emails toward action items when they represent genuine commitments or time-sensitive matters.');
-      }
+      sections.push('EMAIL JUDGMENT RULES:');
+      sections.push('- Elevate a thread ONLY if it directly moves one of the user\'s overarching anchors (runway = active cash/debt/financing; health goal; a named priority).');
+      sections.push('- Anchor-relevant signals: active collections contact, outstanding bank/creditor demand, CRA/tax notice, court filing, a named negotiation on an anchor project.');
+      sections.push('- NOISE — do NOT elevate: compliance forms, service quotes, SaaS alerts, account notifications, marketing, newsletters, home-service quotes. A [debt/legal signal] tag means the sender/subject pattern matched — use your judgment; do not auto-elevate.');
+      sections.push('- If one anchor-relevant thread exists, surface it as its own specific focus area (name the sender/subject in the rationale). Do NOT bundle unrelated emails into one vague bucket.');
+      sections.push('- Only claim "runway impact" if the item genuinely affects cash, debt, or financing — not merely because it involves money or a business name.');
+      sections.push('- If no email genuinely moves an anchor, ignore the inbox entirely and focus on calendar + goals.');
       sections.push('');
     }
   }

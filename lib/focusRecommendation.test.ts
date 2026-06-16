@@ -359,11 +359,11 @@ describe('formatEmailSignalForPrompt', () => {
     expect(formatEmailSignalForPrompt(signal([]))).toBe('');
   });
 
-  it('tags urgent emails with [URGENT/FINANCIAL]', () => {
+  it('tags urgent emails with [debt/legal signal]', () => {
     const result = formatEmailSignalForPrompt(signal([
       emailItem({ sender: 'collections@cibc.com', subject: 'Past due balance' }),
     ]));
-    expect(result).toContain('[URGENT/FINANCIAL]');
+    expect(result).toContain('[debt/legal signal]');
   });
 
   it('tags unread non-urgent emails with [unread]', () => {
@@ -371,7 +371,7 @@ describe('formatEmailSignalForPrompt', () => {
       emailItem({ isUnread: true, subject: 'Lunch tomorrow?' }),
     ]));
     expect(result).toContain('[unread]');
-    expect(result).not.toContain('[URGENT/FINANCIAL]');
+    expect(result).not.toContain('[debt/legal signal]');
   });
 
   it('truncates snippet to 120 chars', () => {
@@ -414,7 +414,7 @@ describe('recommendFocusAreas with emailSignal', () => {
     expect(result.basedOn.some(s => s.includes('email'))).toBe(false);
   });
 
-  it('injects URGENT priority weighting into Sonnet prompt when urgent emails present', async () => {
+  it('injects anchor-based email judgment rules into Sonnet prompt when emails present', async () => {
     mockCalendar.mockResolvedValue([
       timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
     ]);
@@ -422,8 +422,9 @@ describe('recommendFocusAreas with emailSignal', () => {
     const es = signal([emailItem({ sender: 'collections@cibc.com', subject: 'Past due balance' })]);
     await recommendFocusAreas(1, { emailSignal: es });
     const promptArg = h.create.mock.calls[0][0].messages[0].content as string;
-    expect(promptArg).toContain('URGENT/FINANCIAL');
-    expect(promptArg).toContain('HIGHEST-PRIORITY');
+    expect(promptArg).toContain('EMAIL JUDGMENT RULES');
+    expect(promptArg).toContain('debt/legal signal');
+    expect(promptArg).toContain('NOISE');
   });
 
   it('degrades gracefully when emailSignal is null', async () => {
