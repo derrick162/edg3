@@ -8,10 +8,12 @@ import {
   computeFocusScore,
   computeEnergyScore,
   computeCalendarFit,
-  computeIntelligenceScore,
+  computeClarityScore,
+  computeMomentumScore,
   colorByEnergy,
   type EventDemand,
-  type IntelligenceInputs,
+  type ClarityInputs,
+  type MomentumInputs,
 } from './calendarScore';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
@@ -513,9 +515,9 @@ describe('colorByEnergy', () => {
   });
 });
 
-// ─── computeIntelligenceScore ─────────────────────────────────────────────────
+// ─── computeClarityScore ──────────────────────────────────────────────────────
 
-function makeIntel(overrides: Partial<IntelligenceInputs> = {}): IntelligenceInputs {
+function makeClarity(overrides: Partial<ClarityInputs> = {}): ClarityInputs {
   return {
     calendarConnected: true,
     gmailReadGranted: true,
@@ -528,15 +530,15 @@ function makeIntel(overrides: Partial<IntelligenceInputs> = {}): IntelligenceInp
   };
 }
 
-describe('computeIntelligenceScore', () => {
+describe('computeClarityScore', () => {
   it('returns 100 when all sources connected and context full', () => {
-    const result = computeIntelligenceScore(makeIntel());
+    const result = computeClarityScore(makeClarity());
     expect(result.score).toBe(100);
     expect(result.calibrating).toBeFalsy();
   });
 
   it('returns 0 when nothing connected and no context', () => {
-    const result = computeIntelligenceScore(makeIntel({
+    const result = computeClarityScore(makeClarity({
       calendarConnected: false, gmailReadGranted: false, whoopConnected: false,
       factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
     }));
@@ -544,21 +546,21 @@ describe('computeIntelligenceScore', () => {
   });
 
   it('connected sources only — no context — scores 60', () => {
-    const result = computeIntelligenceScore(makeIntel({
+    const result = computeClarityScore(makeClarity({
       factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
     }));
     expect(result.score).toBe(60); // 20+20+20
   });
 
   it('no sources but max context — scores 40', () => {
-    const result = computeIntelligenceScore(makeIntel({
+    const result = computeClarityScore(makeClarity({
       calendarConnected: false, gmailReadGranted: false, whoopConnected: false,
     }));
     expect(result.score).toBe(40); // 15+10+10+5
   });
 
   it('calendar only + priorities = 25', () => {
-    const result = computeIntelligenceScore(makeIntel({
+    const result = computeClarityScore(makeClarity({
       calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
       factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 1,
     }));
@@ -566,110 +568,202 @@ describe('computeIntelligenceScore', () => {
   });
 
   it('caps facts at 20 (no extra credit)', () => {
-    const r1 = computeIntelligenceScore(makeIntel({ factsCount: 20 }));
-    const r2 = computeIntelligenceScore(makeIntel({ factsCount: 100 }));
+    const r1 = computeClarityScore(makeClarity({ factsCount: 20 }));
+    const r2 = computeClarityScore(makeClarity({ factsCount: 100 }));
     expect(r1.score).toBe(r2.score);
     expect(r1.score).toBe(100);
   });
 
   it('caps briefing calls at 10', () => {
-    const r1 = computeIntelligenceScore(makeIntel({ briefingCallsCount: 10 }));
-    const r2 = computeIntelligenceScore(makeIntel({ briefingCallsCount: 50 }));
+    const r1 = computeClarityScore(makeClarity({ briefingCallsCount: 10 }));
+    const r2 = computeClarityScore(makeClarity({ briefingCallsCount: 50 }));
     expect(r1.score).toBe(r2.score);
   });
 
   it('topFix is calendar when not connected', () => {
-    const result = computeIntelligenceScore(makeIntel({ calendarConnected: false }));
+    const result = computeClarityScore(makeClarity({ calendarConnected: false }));
     expect(result.topFix?.description).toMatch(/calendar/i);
   });
 
   it('topFix is gmail when calendar ok but no gmail', () => {
-    const result = computeIntelligenceScore(makeIntel({ gmailReadGranted: false }));
+    const result = computeClarityScore(makeClarity({ gmailReadGranted: false }));
     expect(result.topFix?.description).toMatch(/gmail/i);
   });
 
   it('topFix is whoop when calendar+gmail ok but no whoop', () => {
-    const result = computeIntelligenceScore(makeIntel({ whoopConnected: false }));
+    const result = computeClarityScore(makeClarity({ whoopConnected: false }));
     expect(result.topFix?.description).toMatch(/whoop/i);
   });
 
   it('topFix is priorities when all connected but no priorities', () => {
-    const result = computeIntelligenceScore(makeIntel({ prioritiesCount: 0 }));
+    const result = computeClarityScore(makeClarity({ prioritiesCount: 0 }));
     expect(result.topFix?.description).toMatch(/priorit/i);
   });
 
   it('topFix is null when all sources connected and context full', () => {
-    const result = computeIntelligenceScore(makeIntel());
+    const result = computeClarityScore(makeClarity());
     expect(result.topFix).toBeNull();
   });
 
   it('score is always 0-100', () => {
     [-10, 0, 5, 50, 100, 200].forEach(factsCount => {
-      const result = computeIntelligenceScore(makeIntel({ factsCount }));
+      const result = computeClarityScore(makeClarity({ factsCount }));
       expect(result.score).toBeGreaterThanOrEqual(0);
       expect(result.score).toBeLessThanOrEqual(100);
     });
   });
 });
 
-// ─── computeCalendarFit -- intelligence blend ─────────────────────────────────
+// ─── computeMomentumScore ─────────────────────────────────────────────────────
 
-describe('computeCalendarFit -- intelligence blend', () => {
-  it('intelligenceScore present in result when inputs provided', () => {
+function makeMomentum(overrides: Partial<MomentumInputs> = {}): MomentumInputs {
+  return {
+    completedCallDays14d: 10,
+    completedCallDays7d: 5,
+    confirmedFocusDays14d: 7,
+    streakDays: 5,
+    ...overrides,
+  };
+}
+
+describe('computeMomentumScore', () => {
+  it('calibrating when no calls and no confirmed focus', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0,
+    }));
+    expect(result.calibrating).toBe(true);
+    expect(result.score).toBe(0);
+  });
+
+  it('not calibrating when at least one completed call', () => {
+    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 1 }));
+    expect(result.calibrating).toBeFalsy();
+  });
+
+  it('not calibrating when confirmed focus but no calls', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 0, confirmedFocusDays14d: 1,
+    }));
+    expect(result.calibrating).toBeFalsy();
+  });
+
+  it('perfect show-up (14d) + engagement (14d) = 100', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 14, confirmedFocusDays14d: 14,
+    }));
+    expect(result.score).toBe(100); // 70 + 30
+  });
+
+  it('show-up only (14/14), no engagement = 70', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 14, confirmedFocusDays14d: 0,
+    }));
+    expect(result.score).toBe(70);
+  });
+
+  it('half show-up (7/14) + half engagement (7/14) = 50', () => {
+    const result = computeMomentumScore(makeMomentum({
+      completedCallDays14d: 7, confirmedFocusDays14d: 7,
+    }));
+    expect(result.score).toBe(50); // round(7/14*70)=35 + round(7/14*30)=15
+  });
+
+  it('streak >= 2 appears in drivers', () => {
+    const result = computeMomentumScore(makeMomentum({ streakDays: 3 }));
+    expect(result.drivers.some(d => /streak/i.test(d))).toBe(true);
+  });
+
+  it('streak < 2 not in drivers', () => {
+    const result = computeMomentumScore(makeMomentum({ streakDays: 1 }));
+    expect(result.drivers.some(d => /streak/i.test(d))).toBe(false);
+  });
+
+  it('score is always 0-100', () => {
+    [0, 5, 7, 14, 20].forEach(n => {
+      const result = computeMomentumScore(makeMomentum({ completedCallDays14d: n }));
+      expect(result.score).toBeGreaterThanOrEqual(0);
+      expect(result.score).toBeLessThanOrEqual(100);
+    });
+  });
+
+  it('topFix nudges call frequency when calls < 5', () => {
+    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 3 }));
+    expect(result.topFix?.description).toMatch(/morning calls/i);
+  });
+});
+
+// ─── computeCalendarFit -- clarity + momentum blend ───────────────────────────
+
+describe('computeCalendarFit -- clarity blend', () => {
+  it('clarityScore present in result when inputs provided', () => {
     const p = [makeP(1, 'Build', 1)];
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [makeRecovDay('2026-06-14', 80)], makeSleep(80),
-      45, makeIntel(),
+      45, makeClarity(),
     );
-    expect(fit.intelligenceScore).toBeDefined();
-    expect(fit.intelligenceScore!.score).toBe(100);
+    expect(fit.clarityScore).toBeDefined();
+    expect(fit.clarityScore!.score).toBe(100);
+    expect(fit.momentumScore).toBeUndefined();
   });
 
-  it('40/40/20 blend: focus=100, energy=80, intel=60 → edgeScore=84', () => {
+  it('clarity-only 40/40/20 blend: focus=100, energy=80, clarity=20 → edgeScore=76', () => {
     const p = [makeP(1, 'Build', 1)];
-    // energyScore: sleep=80*0.6 + recovery=80*0.4 = 80
-    // intelligenceScore: cal(20)+gmail(20)+whoop(20)+facts(15)+mem(10)+briefings(10)+prio(5)=100 → BUT we want 60
-    // Set no connections + no context: score=0 → override: only calendar connected = 20 pts
-    const intelInputs: IntelligenceInputs = {
+    const clarityInputs: ClarityInputs = {
       calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
       factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
     }; // score = 20
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [makeRecovDay('2026-06-14', 80)], makeSleep(80),
-      45, intelInputs,
+      45, clarityInputs,
     );
     expect(fit.focusScore.score).toBe(100);
     expect(fit.energyScore.score).toBe(80);
-    expect(fit.intelligenceScore!.score).toBe(20);
+    expect(fit.clarityScore!.score).toBe(20);
     // 100*0.4 + 80*0.4 + 20*0.2 = 40 + 32 + 4 = 76
     expect(fit.edgeScore).toBe(76);
   });
 
-  it('calibrating: drops to focus 80% + intel 20% when no whoop', () => {
+  it('4-way 30/30/20/20 blend when both clarity and momentum present', () => {
     const p = [makeP(1, 'Build', 1)];
-    const intelInputs: IntelligenceInputs = {
-      calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
-      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
-    }; // score = 20
+    // focus=100, energy=80, clarity=20, momentum≈50 (7/14*70=35 + 7/14*30=15)
+    const fit = computeCalendarFit(
+      makeAlign([{ priority: 'Build', hours: 45 }]), p,
+      [makeRecovDay('2026-06-14', 80)], makeSleep(80),
+      45,
+      { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 },
+      { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
+    );
+    expect(fit.clarityScore).toBeDefined();
+    expect(fit.momentumScore).toBeDefined();
+    // 100*0.3 + 80*0.3 + 20*0.2 + 50*0.2 = 30+24+4+10 = 68
+    expect(fit.edgeScore).toBe(68);
+  });
+
+  it('calibrating + 4-way: drops to focus 40 / clarity 30 / momentum 30', () => {
+    const p = [makeP(1, 'Build', 1)];
+    // focus=100, no whoop→calibrating, clarity=20, momentum=50
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [], null, // no Whoop → calibrating
-      45, intelInputs,
+      45,
+      { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 },
+      { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
     );
     expect(fit.calibrating).toBe(true);
-    // focus=100, intel=20 → 100*0.8 + 20*0.2 = 80 + 4 = 84
-    expect(fit.edgeScore).toBe(84);
+    // 100*0.4 + 20*0.3 + 50*0.3 = 40+6+15 = 61
+    expect(fit.edgeScore).toBe(61);
   });
 
-  it('without intelligenceInputs -- keeps legacy 50/50 blend', () => {
+  it('without any optional inputs -- keeps legacy 50/50 blend', () => {
     const p = [makeP(1, 'Build', 1)];
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [makeRecovDay('2026-06-14', 80)], makeSleep(80),
     );
-    expect(fit.intelligenceScore).toBeUndefined();
+    expect(fit.clarityScore).toBeUndefined();
+    expect(fit.momentumScore).toBeUndefined();
     expect(fit.edgeScore).toBe(Math.round((100 + 80) / 2)); // 90
   });
 });

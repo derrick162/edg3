@@ -22,17 +22,18 @@ export interface ScoreResult {
 }
 
 export interface CalendarFit {
-  edgeScore: number;        // 0–100 — the ONE headline number (blend of focus + energy + intelligence)
-  calibrating: boolean;     // true when energy component has thin data (energy shows "calibrating")
-  focusScore: ScoreResult;        // breakdown — does calendar reflect priorities?
-  energyScore: ScoreResult;       // breakdown — does calendar match energy capacity?
-  intelligenceScore?: ScoreResult; // breakdown — how well does Edge know you?
+  edgeScore: number;       // 0–100 — the ONE headline number (blend of focus + energy + clarity + momentum)
+  calibrating: boolean;    // true when energy component has thin data (energy shows "calibrating")
+  focusScore: ScoreResult;     // breakdown — does calendar reflect priorities?
+  energyScore: ScoreResult;    // breakdown — does calendar match energy capacity?
+  clarityScore?: ScoreResult;  // breakdown — how clear a picture does Edge have of you?
+  momentumScore?: ScoreResult; // breakdown — how consistently are you showing up?
   computedAt: string;
 }
 
-// Inputs for the Intelligence Score — connection + accumulated-context signals.
+// Inputs for the Clarity Score — connection + accumulated-context signals.
 // Callers gather these (synchronous DB reads) and pass them in.
-export interface IntelligenceInputs {
+export interface ClarityInputs {
   calendarConnected: boolean;
   gmailReadGranted: boolean;
   whoopConnected: boolean;
@@ -40,6 +41,15 @@ export interface IntelligenceInputs {
   memoriesCount: number;
   briefingCallsCount: number; // completed briefing calls
   prioritiesCount: number;
+}
+
+// Inputs for the Momentum Score — trailing 7–14 day engagement, calendar-derived.
+// Callers compute these from briefing history + daily_focus (synchronous DB reads).
+export interface MomentumInputs {
+  completedCallDays14d: number;  // distinct days with a completed briefing in last 14d
+  completedCallDays7d: number;   // distinct days with completed briefing in last 7d (driver text)
+  confirmedFocusDays14d: number; // days with confirmed focus areas in last 14d
+  streakDays: number;            // current consecutive-morning briefing streak
 }
 
 // Energy profile (Core's scoring interface — camelCase, nullable).
@@ -342,15 +352,15 @@ export function computeEnergyScore(
   return { score, drivers, topFix };
 }
 
-// ─── computeIntelligenceScore ─────────────────────────────────────────────────
+// ─── computeClarityScore ──────────────────────────────────────────────────────
 
 /**
- * Intelligence Score = how well Edge knows you (connected sources + accumulated context).
+ * Clarity Score = how clear a picture does Edge have of you? (was "Intelligence" — renamed)
  * Connected sources (60 pts): Calendar (20), Gmail read (20), Whoop (20).
  * Accumulated context (40 pts): facts (15), memories (10), briefing calls (10), priorities (5).
  * Pure — caller provides the counts.
  */
-export function computeIntelligenceScore(inputs: IntelligenceInputs): ScoreResult {
+export function computeClarityScore(inputs: ClarityInputs): ScoreResult {
   const {
     calendarConnected, gmailReadGranted, whoopConnected,
     factsCount, memoriesCount, briefingCallsCount, prioritiesCount,
@@ -399,14 +409,60 @@ export function computeIntelligenceScore(inputs: IntelligenceInputs): ScoreResul
   return { score, drivers, topFix };
 }
 
+// ─── computeMomentumScore ─────────────────────────────────────────────────────
+
+/**
+ * Momentum Score = trailing 7–14 day engagement, hardware-free.
+ * Show-up (70 pts): completed morning calls out of last 14 days.
+ * Engagement (30 pts): confirmed focus areas out of last 14 days.
+ * Calibrating on day 1 (no completed calls + no confirmed focus yet).
+ * Pure — caller provides the counts.
+ */
+export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
+  const { completedCallDays14d, completedCallDays7d, confirmedFocusDays14d, streakDays } = inputs;
+
+  if (completedCallDays14d === 0 && confirmedFocusDays14d === 0) {
+    return {
+      score: 0,
+      calibrating: true,
+      drivers: ['Complete your first morning briefing to start building Momentum.'],
+      topFix: { description: 'Complete a morning briefing call to kick off your streak.', op: 'create' },
+    };
+  }
+
+  const showUpScore    = Math.round(completedCallDays14d / 14 * 70);
+  const engagementScore = Math.round(confirmedFocusDays14d / 14 * 30);
+  const score = clamp(0, 100, showUpScore + engagementScore);
+
+  const drivers: string[] = [];
+  drivers.push(`Shown up ${completedCallDays7d} of the last 7 mornings.`);
+  if (streakDays >= 2) drivers.push(`${streakDays}-morning streak — keep it going.`);
+  if (confirmedFocusDays14d > 0) {
+    drivers.push(`Focus confirmed on ${confirmedFocusDays14d} day${confirmedFocusDays14d !== 1 ? 's' : ''} this fortnight.`);
+  } else {
+    drivers.push('Confirm your daily focus areas each morning to build Momentum faster.');
+  }
+
+  let topFix: ScoreResult['topFix'] = null;
+  if (completedCallDays14d < 5) {
+    topFix = { description: `${14 - completedCallDays14d} more morning calls this fortnight would push Momentum past 70.`, op: 'create' };
+  } else if (confirmedFocusDays14d < 3) {
+    topFix = { description: 'Confirm your daily focus areas each morning — it directly lifts Momentum.', op: 'create' };
+  } else if (streakDays < 5) {
+    topFix = { description: `Keep the streak alive — ${5 - streakDays} more mornings gets you to a 5-day run.`, op: 'create' };
+  }
+
+  return { score, drivers, topFix };
+}
+
 // ─── computeCalendarFit ───────────────────────────────────────────────────────
 
 /**
- * Compute all three scores and return the combined CalendarFit with a single Edge Score.
- * Blend: focus 40% / energy 40% / intelligence 20%.
- * When energy is calibrating (no Whoop): drops to focus 80% / intelligence 20%.
- * When no intelligenceInputs: falls back to focus 50% / energy 50% (or focus-only if calibrating).
- * Pure.
+ * Compute all four scores and return the combined CalendarFit.
+ * Full blend (all 4 components): Focus 30% / Energy 30% / Clarity 20% / Momentum 20%.
+ * Energy calibrating: Focus 40% / Clarity 30% / Momentum 30% (no energy term).
+ * Clarity-only (no momentum): Focus 40% / Energy 40% / Clarity 20% (calibrating: 80/20).
+ * Neither: Focus 50% / Energy 50% (calibrating: focus-only). Pure.
  */
 export function computeCalendarFit(
   alignment: AlignmentResult | null,
@@ -414,28 +470,37 @@ export function computeCalendarFit(
   recoveryHistory: WhoopRecoveryDay[],
   todaySleep: WhoopSleep | null,
   totalWorkingHours = 45,
-  intelligenceInputs?: IntelligenceInputs,
+  clarityInputs?: ClarityInputs,
+  momentumInputs?: MomentumInputs,
 ): CalendarFit {
   const focusScore  = computeFocusScore(alignment, priorities, totalWorkingHours);
   const energyScore = computeEnergyScore(recoveryHistory, todaySleep);
   const calibrating = energyScore.calibrating === true;
 
   let edgeScore: number;
-  let intelligenceScore: ScoreResult | undefined;
+  let clarityScore: ScoreResult | undefined;
+  let momentumScore: ScoreResult | undefined;
 
-  if (intelligenceInputs) {
-    intelligenceScore = computeIntelligenceScore(intelligenceInputs);
-    const intel = intelligenceScore.score;
+  if (clarityInputs && momentumInputs) {
+    clarityScore  = computeClarityScore(clarityInputs);
+    momentumScore = computeMomentumScore(momentumInputs);
+    const c = clarityScore.score, m = momentumScore.score;
     edgeScore = calibrating
-      ? Math.round(focusScore.score * 0.8 + intel * 0.2)
-      : Math.round(focusScore.score * 0.4 + energyScore.score * 0.4 + intel * 0.2);
+      ? Math.round(focusScore.score * 0.4 + c * 0.3 + m * 0.3)
+      : Math.round(focusScore.score * 0.3 + energyScore.score * 0.3 + c * 0.2 + m * 0.2);
+  } else if (clarityInputs) {
+    clarityScore = computeClarityScore(clarityInputs);
+    const c = clarityScore.score;
+    edgeScore = calibrating
+      ? Math.round(focusScore.score * 0.8 + c * 0.2)
+      : Math.round(focusScore.score * 0.4 + energyScore.score * 0.4 + c * 0.2);
   } else {
     edgeScore = calibrating
       ? focusScore.score
       : Math.round((focusScore.score + energyScore.score) / 2);
   }
 
-  return { edgeScore, calibrating, focusScore, energyScore, intelligenceScore, computedAt: new Date().toISOString() };
+  return { edgeScore, calibrating, focusScore, energyScore, clarityScore, momentumScore, computedAt: new Date().toISOString() };
 }
 
 // ─── Energy color-coding ─────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ export const LIMITS = {
   focusRecommend: { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user
   focusConfirm:   { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user
   calendarScores: { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user
+  learned:        { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

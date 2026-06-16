@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // ── Types (contract with Core) ────────────────────────────────────────────────
 
@@ -23,6 +23,12 @@ export interface FocusRecommendationCardProps {
   callsCompleted?: number;
   onConfirm: (areas: FocusRecommendationArea[]) => Promise<void>;
   onDismiss?: () => void;
+  /**
+   * When true, the card fetches /api/focus/recommend on mount and manages its
+   * own data. Passes `recommendation` and `loading` from the parent are ignored
+   * while selfFetch is active. Design uses this on the home tab.
+   */
+  selfFetch?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,19 +158,37 @@ function AreaRow({
 // ── FocusRecommendationCard ───────────────────────────────────────────────────
 
 export function FocusRecommendationCard({
-  recommendation,
-  loading = false,
+  recommendation: recommendationProp,
+  loading: loadingProp = false,
   callsCompleted = 0,
   onConfirm,
   onDismiss,
+  selfFetch = false,
 }: FocusRecommendationCardProps) {
+  // selfFetch mode: card owns its own data fetch
+  const [fetchedRec, setFetchedRec] = useState<FocusRecommendation | null>(null);
+  const [fetchLoading, setFetchLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selfFetch) return;
+    setFetchLoading(true);
+    fetch('/api/focus/recommend')
+      .then(r => r.ok ? r.json() : null)
+      .then((data: FocusRecommendation | null) => { if (data?.areas) setFetchedRec(data); })
+      .catch(() => {})
+      .finally(() => setFetchLoading(false));
+  }, [selfFetch]);
+
+  const recommendation = selfFetch ? fetchedRec : recommendationProp;
+  const loading        = selfFetch ? fetchLoading : loadingProp;
+
   const [areas, setAreas] = useState<FocusRecommendationArea[]>(
     recommendation?.areas ?? []
   );
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
 
-  // Sync if recommendation prop changes (e.g. data loads after mount)
+  // Sync if recommendation changes (e.g. selfFetch data arrives)
   const [lastRec, setLastRec] = useState(recommendation);
   if (recommendation !== lastRec) {
     setLastRec(recommendation);

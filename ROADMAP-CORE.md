@@ -9,6 +9,14 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **4-component Edge Score: Intelligence → Clarity rename + Momentum added + `/api/learned`**.
+  - **Rename Intelligence → Clarity**: `IntelligenceInputs` → `ClarityInputs`, `computeIntelligenceScore` → `computeClarityScore`, `CalendarFit.intelligenceScore` → `clarityScore`. Same scoring logic, same weights; just the canonical name change per Derrick ("how clear a picture does Edge have of you?").
+  - **Momentum Score** (`computeMomentumScore(inputs: MomentumInputs): ScoreResult`): trailing 7–14 day engagement — show-up (completed morning calls 70 pts) + engagement (confirmed focus areas 30 pts). Calibrating when zero calls + zero confirmed focus (day 1). Drivers = "shown up N of last 7 mornings", streak, focus confirmation rate. `MomentumInputs`: `completedCallDays14d`, `completedCallDays7d`, `confirmedFocusDays14d`, `streakDays`.
+  - **4-way blend (Focus 30 / Energy 30 / Clarity 20 / Momentum 20)**: `computeCalendarFit` now takes 7th optional param `momentumInputs?`. When both clarity + momentum present: 30/30/20/20. Energy calibrating: 40/0/30/30 (no energy term). Clarity-only: 40/40/20/0. Neither: legacy 50/50. All callers except `/api/scores` pass 4 args — unchanged.
+  - **`/api/scores`** gathers Momentum inputs: `briefingQueries.getRecent(30)` → distinct completed days in last 14d/7d + `computeCallStreak` + raw SQL for `confirmed_focus_days`. Returns all 4 scores (focusScore, energyScore, clarityScore, momentumScore) in the JSON response.
+  - **`/api/learned`** NEW endpoint: returns `{ recentFacts, totalFacts, isFresh }` (facts learned in last 7 days). When `totalFacts < 10` + calendar connected, triggers `extractAndUpsertFactsFromEmail` fire-and-forget in the background. Design uses this for the "what Edge just learned about you" activation panel on home load. Rate-limited 30/hr.
+  - **`FocusRecommendationCard`** adds `selfFetch?: boolean` prop: when `true`, the card fetches `/api/focus/recommend` on mount and manages its own loading state. Design can use `<FocusRecommendationCard selfFetch recommendation={null} onConfirm={...} />` on the home tab without the parent needing to fetch.
+  - 11 new tests (computeMomentumScore + 4-way blend). 777/777 green, tsc clean, next build clean.
 - **2026-06-15** — **Memory tab — pager moved to header row of Call notes**.
   - Prev/Next + page indicator moved from the bottom of the Call notes list to an inline header row alongside the "Call notes" heading. Now clearly reads as "Call notes — page 1 / 3" rather than appearing to paginate the structured facts above. Same state (`memoryPage`), same behavior, just repositioned. 766/766 green.
 - **2026-06-15** — **Intelligence Score — 3rd Edge Score component**.
