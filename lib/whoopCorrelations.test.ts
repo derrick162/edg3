@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeWhoopCorrelations, type CalendarDay } from './whoopCorrelations';
+import { computeWhoopCorrelations, predictTomorrowRecoveryHint, type CalendarDay } from './whoopCorrelations';
 
 // Helper: generate a sequence of recovery points starting from a base date
 function recoveries(startDate: string, scores: number[]): { date: string; value: number }[] {
@@ -99,6 +99,31 @@ describe('computeWhoopCorrelations', () => {
     expect(computeWhoopCorrelations(recEntries, calEntries)).toBeNull();
   });
 
+  it('detects high-strain → lower recovery pattern via optional strainHistory', () => {
+    // Build 14 recovery days + 14 strain days
+    // Even strain days → high strain (16), next-day recovery → 45%
+    // Odd strain days → normal strain (10), next-day recovery → 72%
+    const strainEntries: { date: string; value: number }[] = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date('2026-06-01T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + i);
+      return { date: d.toISOString().slice(0, 10), value: i % 2 === 0 ? 16 : 10 };
+    });
+    const recEntries: { date: string; value: number }[] = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date('2026-06-02T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + i);
+      return { date: d.toISOString().slice(0, 10), value: i % 2 === 0 ? 45 : 72 };
+    });
+    // No meaningful calendar data (late-meeting pattern won't fire)
+    const calEntries: CalendarDay[] = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date('2026-06-01T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + i);
+      return { date: d.toISOString().slice(0, 10), latestEndHour: 17 }; // all early
+    });
+    const result = computeWhoopCorrelations(recEntries, calEntries, strainEntries);
+    expect(result).not.toBeNull();
+    expect(result!.pattern).toContain('high-strain');
+  });
+
   it('returns null when only null calendar days (no events at all)', () => {
     // All days have no events → no "late" group → only "without-late" group ≥ 3
     const calEntries: CalendarDay[] = Array.from({ length: 14 }, (_, i) => {
@@ -108,5 +133,34 @@ describe('computeWhoopCorrelations', () => {
     });
     const recEntries = recoveries('2026-06-02', Array(14).fill(65));
     expect(computeWhoopCorrelations(recEntries, calEntries)).toBeNull();
+  });
+});
+
+describe('predictTomorrowRecoveryHint', () => {
+  it('returns null when todayStrain is null', () => {
+    expect(predictTomorrowRecoveryHint(null, 12)).toBeNull();
+  });
+
+  it('returns null when todayStrain ≤ 14 (not high)', () => {
+    expect(predictTomorrowRecoveryHint(14, 10)).toBeNull();
+    expect(predictTomorrowRecoveryHint(12, null)).toBeNull();
+  });
+
+  it('returns null when strain is above threshold but close to personal baseline', () => {
+    // todayStrain = 15, baseline = 14 → diff = 1, below the +2 gate
+    expect(predictTomorrowRecoveryHint(15, 14)).toBeNull();
+  });
+
+  it('returns hint when todayStrain > 14 and meaningfully above baseline', () => {
+    const hint = predictTomorrowRecoveryHint(18, 12); // 18 > 14, 18 - 12 = 6 ≥ 2
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('18.0');
+    expect(hint).toContain('tomorrow');
+  });
+
+  it('returns hint when todayStrain > 14 and no baseline available', () => {
+    const hint = predictTomorrowRecoveryHint(16, null);
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('16.0');
   });
 });

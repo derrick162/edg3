@@ -321,12 +321,13 @@ function initSchema(db: Database.Database) {
     -- Day-scoped: recomputed fresh each morning, anchored to stable overarching priorities.
     -- focus_areas: JSON array of {title, rationale, confidence, anchor?}.
     CREATE TABLE IF NOT EXISTS daily_focus (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      date         TEXT NOT NULL,
-      focus_areas  TEXT NOT NULL DEFAULT '[]',
-      generated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      confirmed    INTEGER NOT NULL DEFAULT 0,
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      date              TEXT NOT NULL,
+      focus_areas       TEXT NOT NULL DEFAULT '[]',
+      generated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      confirmed         INTEGER NOT NULL DEFAULT 0,
+      dismissed_titles  TEXT NOT NULL DEFAULT '[]',
       UNIQUE(user_id, date)
     );
 
@@ -357,6 +358,15 @@ function initSchema(db: Database.Database) {
       status      TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','done','dismissed')),
       created_at  TEXT DEFAULT (datetime('now')),
       resolved_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      type       TEXT NOT NULL CHECK(type IN ('feedback','question','issue')),
+      message    TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','seen','resolved')),
+      created_at TEXT DEFAULT (datetime('now'))
     );
   `);
 
@@ -399,6 +409,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
     "ALTER TABLE facts ADD COLUMN source TEXT",
     "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
+    "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1425,10 +1436,11 @@ export const eventEnergyTagQueries = {
 export interface DailyFocusRecord {
   id: number;
   user_id: number;
-  date: string;          // YYYY-MM-DD in user's local timezone
-  focus_areas: string;   // JSON: FocusArea[]
+  date: string;              // YYYY-MM-DD in user's local timezone
+  focus_areas: string;       // JSON: FocusArea[]
   generated_at: string;
-  confirmed: number;     // 0 | 1
+  confirmed: number;         // 0 | 1
+  dismissed_titles: string;  // JSON: string[]
 }
 
 export const dailyFocusQueries = {
@@ -1453,6 +1465,30 @@ export const dailyFocusQueries = {
     getDb().prepare(
       `UPDATE daily_focus SET confirmed = 1 WHERE user_id = ? AND date = ?`
     ).run(userId, date);
+  },
+
+  addDismissed: (userId: number, date: string, title: string): void => {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT dismissed_titles FROM daily_focus WHERE user_id = ? AND date = ?`
+    ).get(userId, date) as { dismissed_titles: string } | undefined;
+    const current: string[] = row ? (() => { try { return JSON.parse(row.dismissed_titles); } catch { return []; } })() : [];
+    if (!current.includes(title)) current.push(title);
+    db.prepare(
+      `UPDATE daily_focus SET dismissed_titles = ? WHERE user_id = ? AND date = ?`
+    ).run(JSON.stringify(current), userId, date);
+  },
+
+  getRecentDismissed: (userId: number, daysBack = 7): string[] => {
+    const cutoff = new Date(Date.now() - daysBack * 86_400_000).toISOString().slice(0, 10);
+    const rows = getDb().prepare(
+      `SELECT dismissed_titles FROM daily_focus WHERE user_id = ? AND date >= ?`
+    ).all(userId, cutoff) as Array<{ dismissed_titles: string }>;
+    const all: string[] = [];
+    for (const r of rows) {
+      try { all.push(...JSON.parse(r.dismissed_titles)); } catch { /* skip */ }
+    }
+    return [...new Set(all)];
   },
 };
 
@@ -1574,6 +1610,22 @@ export const openLoopQueries = {
     getDb().prepare(
       `DELETE FROM open_loops WHERE status != 'open' AND resolved_at < datetime('now', '-30 days')`
     ).run();
+  },
+};
+
+export const supportMessageQueries = {
+  insert: (userId: number, type: 'feedback' | 'question' | 'issue', message: string): void => {
+    getDb().prepare(
+      'INSERT INTO support_messages (user_id, type, message) VALUES (?, ?, ?)'
+    ).run(userId, type, message);
+  },
+
+  list: (opts: { limit?: number } = {}): Array<{ id: number; userId: number; type: string; message: string; status: string; createdAt: string }> => {
+    const limit = opts.limit ?? 100;
+    const rows = getDb().prepare(
+      'SELECT id, user_id, type, message, status, created_at FROM support_messages ORDER BY created_at DESC LIMIT ?'
+    ).all(limit) as Array<{ id: number; user_id: number; type: string; message: string; status: string; created_at: string }>;
+    return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: r.message, status: r.status, createdAt: r.created_at }));
   },
 };
 

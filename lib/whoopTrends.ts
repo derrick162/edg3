@@ -14,12 +14,21 @@ export type WhoopTrendFlag =
   | 'RECOVERY_DECLINING_3D'  // last 3 days are monotonically declining
   | 'RECOVERY_LOW_STREAK'    // last 3 days all have recovery < 40%
   | 'SLEEP_DEBT'             // 7-day avg sleep < 6.5 h (< 23_400_000 ms)
-  | 'HIGH_STRAIN_STREAK';    // last 3 days all have strain > 14 (Whoop 0–21)
+  | 'HIGH_STRAIN_STREAK'     // last 3 days all have strain > 14 (Whoop 0–21)
+  | 'OVERREACHING';          // HIGH_STRAIN_STREAK + RECOVERY_DECLINING_3D simultaneously
 
 export interface WhoopTrendSummary {
   recoveryAvg7d:     number | null;                  // mean of ≤7 recovery scores
   recoveryDirection: 'up' | 'down' | 'flat' | null; // recent 3d vs prior 3d
   flags:             WhoopTrendFlag[];
+  sleepAvg7dH?:      number | null; // avg sleep hours last 7 days (populated when sleep data present)
+}
+
+/** 30-day rolling personal baselines for all three Whoop signals. */
+export interface WhoopBaseline {
+  recovery30dAvg: number | null; // 0–100 (rounded)
+  sleep30dAvgH:   number | null; // hours
+  strain30dAvg:   number | null; // 0–21
 }
 
 export interface RecoveryAlert {
@@ -118,8 +127,13 @@ export function computeWhoopTrends(
   if (lastNAll(strains, 3, v => v > STRAIN_HIGH_THRESHOLD)) {
     flags.push('HIGH_STRAIN_STREAK');
   }
+  if (flags.includes('HIGH_STRAIN_STREAK') && flags.includes('RECOVERY_DECLINING_3D')) {
+    flags.push('OVERREACHING');
+  }
 
-  return { recoveryAvg7d, recoveryDirection, flags };
+  const sleepAvg7dH = sleepAvg !== null ? sleepAvg / 3_600_000 : null;
+
+  return { recoveryAvg7d, recoveryDirection, flags, sleepAvg7dH };
 }
 
 /**
@@ -183,6 +197,9 @@ export function formatRecoveryAlertForBriefing(alert: RecoveryAlert): string {
  * Pure function — used by lib/briefing.ts for injection.
  */
 export function formatTrendForBriefing(trend: WhoopTrendSummary): string | null {
+  if (trend.flags.includes('OVERREACHING')) {
+    return "High strain is stacking while recovery keeps dropping — this is the overreaching zone. Today needs to be a genuine recovery day.";
+  }
   if (trend.flags.includes('RECOVERY_DECLINING_3D')) {
     return "Recovery's trended down three days running — something's off; protect your sleep tonight.";
   }
@@ -193,7 +210,10 @@ export function formatTrendForBriefing(trend: WhoopTrendSummary): string | null 
     return "Sleep's been running short and strain's been high — a genuine rest day is overdue.";
   }
   if (trend.flags.includes('SLEEP_DEBT')) {
-    return "Sleep's been running short this week — prioritise an earlier wind-down tonight.";
+    const avgStr = trend.sleepAvg7dH != null
+      ? ` (averaging ${trend.sleepAvg7dH.toFixed(1)}h)`
+      : '';
+    return `Sleep's been running short${avgStr} this week — prioritise an earlier wind-down tonight.`;
   }
   if (trend.flags.includes('HIGH_STRAIN_STREAK')) {
     return "Three or more high-strain days in a row — consider building in a real recovery window.";
@@ -204,6 +224,73 @@ export function formatTrendForBriefing(trend: WhoopTrendSummary): string | null 
   }
   if (trend.recoveryDirection === 'up' && trend.recoveryAvg7d !== null) {
     return `Recovery's been trending up — seven-day average ${Math.round(trend.recoveryAvg7d)}%; good time to push on the top priority.`;
+  }
+  return null;
+}
+
+// --- Personal baselines --------------------------------------------------------
+
+/**
+ * Compute 30-day rolling averages for each Whoop signal.
+ * Safe to call with any history length — averages over whatever is available.
+ */
+export function computeWhoopBaselines(
+  recoveryHistory: WhoopHistoryPoint[],
+  sleepHistory:    WhoopHistoryPoint[],
+  strainHistory:   WhoopHistoryPoint[],
+): WhoopBaseline {
+  const rec30  = sortAsc(recoveryHistory).slice(-30);
+  const slp30  = sortAsc(sleepHistory).slice(-30);
+  const str30  = sortAsc(strainHistory).slice(-30);
+  const recAvg = avg(rec30);
+  const slpAvg = avg(slp30);
+  const strAvg = avg(str30);
+  return {
+    recovery30dAvg: recAvg !== null ? Math.round(recAvg) : null,
+    sleep30dAvgH:   slpAvg !== null ? slpAvg / 3_600_000 : null,
+    strain30dAvg:   strAvg,
+  };
+}
+
+/**
+ * Return a plain-English note when today's recovery or sleep is notably below the
+ * user's personal 30-day baseline.  Fires on: recovery ≥15 pts below baseline OR
+ * sleep ≥45 min shorter than baseline. Returns null when data is unavailable or
+ * within normal range.
+ */
+export function buildBaselineDeviationNote(
+  todayRecovery: number | null,
+  todaySleepMs:  number | null,
+  baseline:      WhoopBaseline,
+): string | null {
+  if (todayRecovery !== null && baseline.recovery30dAvg !== null) {
+    const delta = baseline.recovery30dAvg - todayRecovery;
+    if (delta >= 15) {
+      return `Today's recovery is ${delta} pts below your 30-day average of ${baseline.recovery30dAvg}%.`;
+    }
+  }
+  if (todaySleepMs !== null && baseline.sleep30dAvgH !== null) {
+    const todayH = todaySleepMs / 3_600_000;
+    const deltaH = baseline.sleep30dAvgH - todayH;
+    if (deltaH >= 0.75) {
+      const shortMin = Math.round(deltaH * 60);
+      return `Last night's sleep was ${shortMin} min shorter than your 30-day average of ${baseline.sleep30dAvgH.toFixed(1)} h.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Produce a concrete calendar-action instruction for the briefing prompt based on
+ * today's recovery tier.  Red → name + move the heaviest deferrable block;
+ * Green → block the hardest work now.  Yellow → null (no special action).
+ */
+export function buildCalendarActionFromRecovery(score: number): string | null {
+  if (score <= 33) {
+    return `CALENDAR ACTION (recovery red ${score}%): Open the call by naming the heaviest deferrable block in today's calendar and offering to move it to later this week. Call moveEvent immediately if the user agrees. Initiate this — don't wait for them to ask.`;
+  }
+  if (score >= 67) {
+    return `CALENDAR ACTION (recovery green ${score}%): Proactively recommend blocking the hardest high-priority task this morning. Suggest a specific time slot and call createEvent if they agree.`;
   }
   return null;
 }

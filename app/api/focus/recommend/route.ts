@@ -45,5 +45,11 @@ export async function GET() {
     emailSignal: emailSignal ?? undefined,
   });
 
-  return NextResponse.json(recommendation);
+  // Split the pool: first 3 shown, items 4-6 are replacement candidates.
+  const { areas, ...rest } = recommendation;
+  return NextResponse.json({
+    ...rest,
+    areas: areas.slice(0, 3),
+    candidates: areas.slice(3),
+  });
 }

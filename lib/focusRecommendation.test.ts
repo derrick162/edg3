@@ -12,6 +12,7 @@ vi.mock('./calendar', () => ({ getPastCalendarEvents: vi.fn() }));
 vi.mock('./db', () => ({
   factQueries: { getAll: vi.fn() },
   memoryQueries: { getWeighted: vi.fn() },
+  dailyFocusQueries: { getRecentDismissed: vi.fn(() => []) },
 }));
 
 import { recommendFocusAreas, aggregateEventThemes, isUrgentEmail, formatEmailSignalForPrompt, type EnergySignal } from './focusRecommendation';
@@ -182,7 +183,7 @@ describe('recommendFocusAreas', () => {
     expect(result.basedOn.some(s => s.includes('call notes'))).toBe(true);
   });
 
-  it('caps areas at 3 even if Sonnet returns more', async () => {
+  it('caps areas at 6 even if Sonnet returns more', async () => {
     mockCalendar.mockResolvedValue([
       timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
     ]);
@@ -190,11 +191,14 @@ describe('recommendFocusAreas', () => {
       { title: 'Area 1', rationale: 'r1', confidence: 'high' },
       { title: 'Area 2', rationale: 'r2', confidence: 'high' },
       { title: 'Area 3', rationale: 'r3', confidence: 'high' },
-      { title: 'Area 4', rationale: 'r4', confidence: 'high' }, // should be dropped
+      { title: 'Area 4', rationale: 'r4', confidence: 'high' },
+      { title: 'Area 5', rationale: 'r5', confidence: 'high' },
+      { title: 'Area 6', rationale: 'r6', confidence: 'high' },
+      { title: 'Area 7', rationale: 'r7', confidence: 'high' }, // should be dropped
     ]));
 
     const result = await recommendFocusAreas(1);
-    expect(result.areas).toHaveLength(3);
+    expect(result.areas).toHaveLength(6);
   });
 
   it('defaults unknown confidence to "medium"', async () => {

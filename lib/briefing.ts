@@ -11,8 +11,9 @@ import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
 import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetingContext';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
-import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
-import { computeWhoopCorrelations } from './whoopCorrelations';
+import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
+import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
+import { topFacts } from './memorySalience';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
@@ -254,6 +255,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
 
+  // Load + rank all facts once, early — used by meeting context + event-linked memory below.
+  const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+  const salientFactsEarly = topFacts(allRawFacts, priorities, today, { max: 20, maxPerCategory: 6 });
+
   const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
@@ -308,7 +313,26 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     ? detectRecoveryDrop(whoopRecovery.recoveryScore, recoveryHistoryPoints)
     : null;
   // Part B: calendar ↔ recovery correlation (≥10 days data required).
-  const correlationInsight = computeWhoopCorrelations(recoveryHistoryPoints, pastCalendarDays);
+  const strainHistoryPoints = strainHistory.map(d => ({ date: d.date, value: d.strain }));
+  const correlationInsight = computeWhoopCorrelations(recoveryHistoryPoints, pastCalendarDays, strainHistoryPoints);
+  // Part C: personal baselines (30-day rolling avg) + deviation from baseline + calendar action.
+  const whoopBaselines = computeWhoopBaselines(
+    recoveryHistoryPoints,
+    sleepHistory.map(d => ({ date: d.date, value: d.durationMs })),
+    strainHistoryPoints,
+  );
+  const baselineDeviationNote = buildBaselineDeviationNote(
+    whoopRecovery?.recoveryScore ?? null,
+    whoopSleep?.durationMs ?? null,
+    whoopBaselines,
+  );
+  const calendarActionFromRecovery = whoopRecovery
+    ? buildCalendarActionFromRecovery(whoopRecovery.recoveryScore)
+    : null;
+  const tomorrowRecoveryHint = predictTomorrowRecoveryHint(
+    whoopStrain?.strain ?? null,
+    whoopBaselines.strain30dAvg,
+  );
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
   // source='edg3' tasks come from extractTasksFromTranscript at call end.
@@ -345,12 +369,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Meeting prep: surface related email + facts + open-loops for today's upcoming events.
   const meetingContextBlock = (() => {
     try {
-      const allFacts = factQueries.getAll(userId);
       const allOpenLoops = getUrgentOpenLoops(userId, focusDate);
       const contexts = buildMeetingContexts(
         calendarEvents,
         emailSignal?.items ?? [],
-        allFacts,
+        salientFactsEarly,
         allOpenLoops,
         { lookAheadHours: 12, now: new Date().toISOString() },
       );
@@ -383,14 +406,23 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     if (baselineContext) {
       lines.push(`BASELINE (use these numbers when coaching pacing — grounded in data, not medical advice):\n${baselineContext}`);
     }
+    if (baselineDeviationNote) {
+      lines.push(`BASELINE DEVIATION: ${baselineDeviationNote} Reference this when coaching pacing — it grounds the observation in the user's own history.`);
+    }
     if (whoopTrendLine) {
       lines.push(`WHOOP TREND (past ~2 weeks): ${whoopTrendLine} Surface this as one honest line in section 1 — no additional commentary.`);
     }
     if (recoveryAlert) {
       lines.push(formatRecoveryAlertForBriefing(recoveryAlert));
     }
+    if (calendarActionFromRecovery) {
+      lines.push(calendarActionFromRecovery);
+    }
     if (correlationInsight) {
       lines.push(`WHOOP CORRELATION (${correlationInsight.sampleDays}-day pattern, honest — do NOT fabricate): ${correlationInsight.pattern} Surface at most once, naturally, in the closing or alignment section if relevant.`);
+    }
+    if (tomorrowRecoveryHint) {
+      lines.push(`TOMORROW RECOVERY HINT: ${tomorrowRecoveryHint} Mention this naturally at the end of the call — only once.`);
     }
     return '\n' + lines.join('\n') + '\n';
   })();
@@ -463,13 +495,13 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   const isFirstCall = recentMemories.length === 0;
 
-  // Structured facts — degrade to [] if DB throws.
-  const structuredFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+  // Reuse the already-ranked salient facts (loaded early for meeting context).
+  const salientFacts = salientFactsEarly;
   // Event-linked memory — degrade to [] if thrown on malformed input.
-  const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], structuredFacts); } catch { return []; } })();
+  const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], salientFacts); } catch { return []; } })();
   // Energy matching (V2): energy-profile preferences + recovery modulator.
   // Degrades silently to null when no energy preferences are stored yet.
-  const preferencesFacts = structuredFacts.filter(f => f.category === 'preference');
+  const preferencesFacts = salientFacts.filter(f => f.category === 'preference');
   const energyMatchingBlock = buildEnergyMatchingBlock(preferencesFacts, whoopRecovery);
   // Energy OS: derive today's energy signal (Whoop auto or stored manual/override).
   const todayEnergyLog = (() => { try { return energyLogQueries.getToday(userId, today); } catch { return undefined; } })();

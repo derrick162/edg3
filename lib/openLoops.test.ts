@@ -49,25 +49,6 @@ function makeLoop(overrides: Partial<OpenLoop> = {}): OpenLoop {
   };
 }
 
-// Camelcase version — feeds mockAll for tests that go through openLoopQueries.list → toSnake
-function makeDbLoop(overrides: Partial<{
-  id: number; userId: number; description: string; type: string;
-  source: string; dueDate: string | null; status: string;
-  createdAt: string; resolvedAt: string | null;
-}> = {}) {
-  return {
-    id: 1, userId: 1,
-    description: 'Send CIBC proposal',
-    type: 'commitment_made',
-    source: 'call',
-    dueDate: null,
-    status: 'open',
-    createdAt: '2026-06-15',
-    resolvedAt: null,
-    ...overrides,
-  };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   m.list.mockReturnValue([]);
