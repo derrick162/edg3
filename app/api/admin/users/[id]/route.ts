@@ -21,6 +21,7 @@ export async function DELETE(
 
     // Delete all user-related data before removing the user row.
     // Order: leaf tables first (no outbound FKs), users last.
+    db.prepare('DELETE FROM open_loops WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM calendar_plan_executions WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM daily_focus WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM event_energy_tags WHERE user_id = ?').run(userId);

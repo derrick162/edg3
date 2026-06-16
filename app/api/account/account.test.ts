@@ -54,6 +54,9 @@ vi.mock('@/lib/db', () => ({
   energyProfileQueries: {
     get: (_id: number) => undefined,
   },
+  openLoopQueries: {
+    list: (_id: number) => [],
+  },
 }));
 
 vi.mock('@/lib/crypto', () => ({
@@ -149,6 +152,7 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('calendarScores');
     expect(data).toHaveProperty('energyProfile');
     expect(data).toHaveProperty('eventEnergyTags');
+    expect(data).toHaveProperty('openLoops');
   });
 
   it('omits password_hash from profile', async () => {
@@ -228,8 +232,8 @@ describe('DELETE /api/account — deletion', () => {
   it('issues DELETE statements for all user tables', async () => {
     await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
     const sqlCalls = h.dbRun.mock.calls.length;
-    // 17 tables including the users row itself (daily_focus added 2026-06-15)
-    expect(sqlCalls).toBeGreaterThanOrEqual(16);
+    // 18 tables including the users row itself (open_loops added 2026-06-16)
+    expect(sqlCalls).toBeGreaterThanOrEqual(17);
   });
 
   it('clears the session cookie on success', async () => {

@@ -344,6 +344,20 @@ function initSchema(db: Database.Database) {
       reverted_at    TEXT,
       UNIQUE(user_id, plan_id)
     );
+
+    -- Open loops / commitment tracking. description is email-derived PII → encrypted at rest.
+    -- Retention: resolved/dismissed rows pruned after 30 days via openLoopQueries.prune().
+    CREATE TABLE IF NOT EXISTS open_loops (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      description TEXT NOT NULL,
+      type        TEXT NOT NULL CHECK(type IN ('commitment_made','awaiting_you','deadline')),
+      source      TEXT NOT NULL CHECK(source IN ('email','call','calendar')),
+      due_date    TEXT,
+      status      TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','done','dismissed')),
+      created_at  TEXT DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
   `);
 
   // Indexes for performance
@@ -365,6 +379,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_event_energy_tags_user ON event_energy_tags(user_id, google_event_id);
     CREATE INDEX IF NOT EXISTS idx_daily_focus_user_date ON daily_focus(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_calendar_plan_executions_user ON calendar_plan_executions(user_id, plan_id);
+    CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status, created_at DESC);
   `);
 
   // Migrations for existing databases
@@ -1449,6 +1464,90 @@ export interface CalendarPlanExecution {
 // Core generates a UUID plan_id before the apply call, checks get() first,
 // then calls markApplied() after all mutations succeed. On undo, undoPlan()
 // in lib/undo.ts calls markReverted() here.
+// ── Open loops / commitment tracking ──────────────────────────────────────────
+// description is encrypted at rest (email-derived PII). Retention: resolved/dismissed
+// rows auto-pruned after 30 days via prune() (called by the extraction job).
+
+export type OpenLoopType   = 'commitment_made' | 'awaiting_you' | 'deadline';
+export type OpenLoopSource = 'email' | 'call' | 'calendar';
+export type OpenLoopStatus = 'open' | 'done' | 'dismissed';
+
+export interface OpenLoop {
+  id:          number;
+  userId:      number;
+  description: string;       // decrypted
+  type:        OpenLoopType;
+  source:      OpenLoopSource;
+  dueDate:     string | null;
+  status:      OpenLoopStatus;
+  createdAt:   string;
+  resolvedAt:  string | null;
+}
+
+interface OpenLoopRow {
+  id: number; user_id: number; description: string; type: string; source: string;
+  due_date: string | null; status: string; created_at: string; resolved_at: string | null;
+}
+
+function decryptOpenLoopRow(r: OpenLoopRow): OpenLoop {
+  return {
+    id:         r.id,
+    userId:     r.user_id,
+    description: decryptField(r.description),
+    type:       r.type as OpenLoopType,
+    source:     r.source as OpenLoopSource,
+    dueDate:    r.due_date,
+    status:     r.status as OpenLoopStatus,
+    createdAt:  r.created_at,
+    resolvedAt: r.resolved_at,
+  };
+}
+
+export const openLoopQueries = {
+  /** List open loops for a user, optionally filtered by status. Open loops are ordered by
+   *  due_date (soonest first, nulls last) then created_at so the most urgent appears first. */
+  list: (userId: number, status?: OpenLoopStatus): OpenLoop[] => {
+    const sql = status
+      ? `SELECT * FROM open_loops WHERE user_id = ? AND status = ? ORDER BY due_date ASC NULLS LAST, created_at ASC`
+      : `SELECT * FROM open_loops WHERE user_id = ? ORDER BY status ASC, due_date ASC NULLS LAST, created_at ASC`;
+    const rows = (status
+      ? getDb().prepare(sql).all(userId, status)
+      : getDb().prepare(sql).all(userId)) as OpenLoopRow[];
+    return rows.map(decryptOpenLoopRow);
+  },
+
+  /** Insert a new open loop. description is encrypted at rest. */
+  insert: (
+    userId: number,
+    data: { description: string; type: OpenLoopType; source: OpenLoopSource; due_date?: string | null },
+  ): { lastInsertRowid: number } => {
+    return getDb().prepare(
+      `INSERT INTO open_loops (user_id, description, type, source, due_date) VALUES (?, ?, ?, ?, ?)`
+    ).run(userId, encryptField(data.description), data.type, data.source, data.due_date ?? null) as { lastInsertRowid: number };
+  },
+
+  /** Mark a loop as resolved (done). User-scoped: ignores loops belonging to other users. */
+  resolve: (userId: number, id: number): void => {
+    getDb().prepare(
+      `UPDATE open_loops SET status = 'done', resolved_at = datetime('now') WHERE id = ? AND user_id = ?`
+    ).run(id, userId);
+  },
+
+  /** Mark a loop as dismissed. User-scoped. */
+  dismiss: (userId: number, id: number): void => {
+    getDb().prepare(
+      `UPDATE open_loops SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ? AND user_id = ?`
+    ).run(id, userId);
+  },
+
+  /** Prune done/dismissed loops older than 30 days (retention minimization). Call infrequently. */
+  prune: (): void => {
+    getDb().prepare(
+      `DELETE FROM open_loops WHERE status != 'open' AND resolved_at < datetime('now', '-30 days')`
+    ).run();
+  },
+};
+
 export const calendarPlanQueries = {
   // Returns the execution record if this plan was already applied (idempotency check).
   get: (userId: number, planId: string): CalendarPlanExecution | undefined => {

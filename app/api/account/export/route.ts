@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
 
 // Returns a full JSON export of everything EDG3 has stored for the authenticated user.
@@ -68,6 +68,18 @@ export async function GET(_req: NextRequest) {
   ).all(userId) as Array<{ google_event_id: string; type: string; demand: string; tagged_at: string }>)
     .map(r => ({ eventId: r.google_event_id, type: r.type, demand: r.demand, taggedAt: r.tagged_at }));
 
+  // Open loops — descriptions are decrypted by openLoopQueries.list()
+  const openLoopRows = openLoopQueries.list(userId).map(l => ({
+    id:          l.id,
+    description: l.description,
+    type:        l.type,
+    source:      l.source,
+    dueDate:     l.dueDate,
+    status:      l.status,
+    createdAt:   l.createdAt,
+    resolvedAt:  l.resolvedAt,
+  }));
+
   const payload = {
     exportedAt: new Date().toISOString(),
     version: '1',
@@ -117,6 +129,7 @@ export async function GET(_req: NextRequest) {
         }
       : null,
     eventEnergyTags: eventEnergyTagRows,
+    openLoops: openLoopRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
