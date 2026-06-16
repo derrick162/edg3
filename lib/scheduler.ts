@@ -74,6 +74,11 @@ const CALL_GRACE_MINUTES = 120;
 // suppresses every retry (auto + manual) for the rest of the day.
 const STALE_CALLING_MS = 15 * 60 * 1000;
 
+// A 'pending' row (claim-first slot) older than this is stale — the server must have
+// crashed between createPending() and the Vapi call. Past this age the slot is released
+// so the scheduler can retry instead of being permanently stuck.
+const STALE_PENDING_MS = 5 * 60 * 1000;
+
 function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -190,15 +195,22 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       if (userMinutes < callMinutes || userMinutes >= callMinutes + CALL_GRACE_MINUTES) continue;
 
       // Check if already called today (in user's local date). A 'completed' call always
-      // blocks; a 'calling' row blocks ONLY if recent — a stale 'calling' (>15 min) means
-      // the call was initiated but never completed, so it must stay retryable.
+      // blocks; a 'calling' row blocks only if recent (stale >15 min = call dropped, retryable);
+      // a 'pending' row blocks only if recent (stale >5 min = server crashed mid-gen, retryable);
+      // a 'failed' daily-limit row blocks for the rest of the day (no point retrying).
       const callingCutoff = new Date(now.getTime() - STALE_CALLING_MS).toISOString();
+      const pendingCutoff = new Date(now.getTime() - STALE_PENDING_MS).toISOString();
       const alreadyCalled = db.prepare(`
         SELECT 1 FROM briefings
         WHERE user_id = ?
         AND scheduled_for LIKE ?
-        AND (status = 'completed' OR (status = 'calling' AND scheduled_for >= ?))
-      `).get(user.id, `${userToday}%`, callingCutoff);
+        AND (
+          status = 'completed'
+          OR (status = 'calling' AND scheduled_for >= ?)
+          OR (status = 'pending' AND scheduled_for >= ?)
+          OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+        )
+      `).get(user.id, `${userToday}%`, callingCutoff, pendingCutoff);
 
       if (alreadyCalled) continue;
 
@@ -228,22 +240,44 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     if (inFlight) throw new CallError('A call is already dialing — give it a moment.', 'already_called');
   } else {
     // Auto-scheduler / non-forced: a COMPLETED call always blocks; a 'calling' row blocks
-    // only if recent. A stale 'calling' (>15 min, e.g. the end-webhook never arrived) stays
-    // retryable so one dropped call doesn't suppress the whole day.
+    // only if recent (stale >15 min = dropped call, retryable); a 'pending' row blocks only
+    // if recent (stale >5 min = server crashed mid-gen, retryable); a failed daily-limit row
+    // blocks for the rest of the day — no point retrying and burning more LLM calls.
     const callingCutoff = new Date(Date.now() - STALE_CALLING_MS).toISOString();
+    const pendingCutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
     const existing = getDb().prepare(
-      `SELECT status FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (status = 'completed' OR (status = 'calling' AND scheduled_for >= ?)) ORDER BY scheduled_for DESC LIMIT 1`
-    ).get(userId, `${today}%`, callingCutoff) as { status: string } | undefined;
+      `SELECT status, error_code FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (
+        status = 'completed'
+        OR (status = 'calling' AND scheduled_for >= ?)
+        OR (status = 'pending' AND scheduled_for >= ?)
+        OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+      ) ORDER BY scheduled_for DESC LIMIT 1`
+    ).get(userId, `${today}%`, callingCutoff, pendingCutoff) as { status: string; error_code: string | null } | undefined;
     if (existing) {
+      if (existing.status === 'failed' && existing.error_code === 'vapi_daily_limit') {
+        throw new CallError(
+          'Daily call limit reached on this number — the free-tier cap has been hit. Calls will resume tomorrow, or upgrade to a paid Vapi number.',
+          'vapi_daily_limit',
+        );
+      }
       const msg = existing.status === 'completed'
         ? "You already had a call today — use the open call to chat with Edge now."
-        : "A call is already in progress. Check back in a moment.";
+        : existing.status === 'calling'
+        ? "A call is already in progress. Check back in a moment."
+        : "A briefing is being prepared — please wait a moment.";
       throw new CallError(msg, 'already_called');
     }
   }
 
   const now = new Date();
   const scheduledFor = now.toISOString();
+
+  // Claim the call slot NOW — before the slow briefing generation — so a second cron tick
+  // (which starts ~60s later) sees this 'pending' row and bails instead of generating a
+  // duplicate call. If generation fails, we mark it 'failed'; if the server crashes mid-gen,
+  // the row becomes stale after STALE_PENDING_MS and the slot is released for retry.
+  const result = briefingQueries.createPending(userId, scheduledFor) as { lastInsertRowid: number };
+  const briefingId = result.lastInsertRowid;
 
   // Guard briefing generation — a gen failure must not surface as an unhandled 500.
   let briefingContent: string;
@@ -252,15 +286,15 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     briefingContent = await generateDailyBriefing(userId);
   } catch (err) {
     console.error(`[scheduler] Briefing generation failed for user ${userId}:`, err);
+    briefingQueries.update(briefingId, { status: 'failed', error_code: 'briefing_gen_failed' });
     throw new CallError(
       'Briefing generation failed — please try again shortly.',
       'briefing_gen_failed',
     );
   }
 
-  // Create briefing record (has no briefingId until here, so gen failures above can't be recorded).
-  const result = briefingQueries.create(userId, briefingContent, scheduledFor) as { lastInsertRowid: number };
-  const briefingId = result.lastInsertRowid;
+  // Write the generated content into the already-claimed row.
+  briefingQueries.updateContent(briefingId, briefingContent);
 
   const phoneNumber = user.phone_number;
   if (phoneNumber && process.env.VAPI_API_KEY) {

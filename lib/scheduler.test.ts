@@ -14,13 +14,15 @@ const MOCK_USER = {
 };
 
 const h = vi.hoisted(() => ({
-  prepareAll:           vi.fn<() => unknown[]>(() => []),
-  prepareGet:           vi.fn<() => unknown>(() => undefined),
-  findById:             vi.fn<() => unknown>(() => MOCK_USER),
-  initiateCall:         vi.fn(async () => ({ id: 'call_123' })),
-  generateDailyBriefing: vi.fn(async () => 'Test briefing content'),
-  briefingCreate:       vi.fn(() => ({ lastInsertRowid: 1 })),
-  briefingUpdate:       vi.fn(),
+  prepareAll:              vi.fn<() => unknown[]>(() => []),
+  prepareGet:              vi.fn<() => unknown>(() => undefined),
+  findById:                vi.fn<() => unknown>(() => MOCK_USER),
+  initiateCall:            vi.fn(async () => ({ id: 'call_123' })),
+  generateDailyBriefing:   vi.fn(async () => 'Test briefing content'),
+  briefingCreate:          vi.fn(() => ({ lastInsertRowid: 1 })),
+  briefingCreatePending:   vi.fn(() => ({ lastInsertRowid: 1 })),
+  briefingUpdateContent:   vi.fn(),
+  briefingUpdate:          vi.fn(),
 }));
 
 // ── module mocks ──────────────────────────────────────────────────────────────
@@ -34,7 +36,12 @@ vi.mock('./db', () => ({
       return { get: h.prepareGet };
     },
   }),
-  briefingQueries: { create: h.briefingCreate, update: h.briefingUpdate },
+  briefingQueries: {
+    create: h.briefingCreate,
+    createPending: h.briefingCreatePending,
+    updateContent: h.briefingUpdateContent,
+    update: h.briefingUpdate,
+  },
   userQueries: { findById: h.findById },
   priorityQueries: { getThisWeek: vi.fn(() => []), getMostRecent: vi.fn(() => []) },
   factQueries: { getByCategory: vi.fn(() => []) },
@@ -72,6 +79,7 @@ beforeEach(() => {
   h.initiateCall.mockResolvedValue({ id: 'call_123' });
   h.generateDailyBriefing.mockResolvedValue('Test briefing content');
   h.briefingCreate.mockReturnValue({ lastInsertRowid: 1 });
+  h.briefingCreatePending.mockReturnValue({ lastInsertRowid: 1 });
 });
 
 // ── 1. catch-up window ────────────────────────────────────────────────────────
@@ -79,28 +87,28 @@ beforeEach(() => {
 describe('scheduler catch-up window', () => {
   it('fires exactly at call_time', async () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 0));
-    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
   it('fires a few minutes after call_time (missed-tick catch-up)', async () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 5));
-    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
   it('does NOT fire before call_time', async () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 6, 59));
-    expect(h.briefingCreate).not.toHaveBeenCalled();
+    expect(h.briefingCreatePending).not.toHaveBeenCalled();
   });
 
   it('does NOT fire past the 120-minute grace window', async () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 9, 0)); // 09:00 = call_time + 120 min
-    expect(h.briefingCreate).not.toHaveBeenCalled();
+    expect(h.briefingCreatePending).not.toHaveBeenCalled();
   });
 
   it('does NOT double-fire when already called today', async () => {
     h.prepareGet.mockReturnValue({ 1: 1 }); // simulate alreadyCalled row
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 3));
-    expect(h.briefingCreate).not.toHaveBeenCalled();
+    expect(h.briefingCreatePending).not.toHaveBeenCalled();
   });
 
   it('multiple ticks within the window still fire only once', async () => {
@@ -110,12 +118,12 @@ describe('scheduler catch-up window', () => {
     h.prepareGet.mockReturnValueOnce({ 1: 1 });         // tick 2: already called
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 2));
 
-    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
   it('fires at the last minute of the grace window (07:00 + 119 min = 08:59)', async () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 8, 59));
-    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -254,7 +262,7 @@ describe('scheduleBriefingCall — idempotency guard', () => {
   it('proceeds normally when no calling/completed call exists today', async () => {
     h.prepareGet.mockReturnValue(undefined); // default — no blocking row
     await expect(scheduleBriefingCall(1)).resolves.toBeTypeOf('number');
-    expect(h.briefingCreate).toHaveBeenCalledTimes(1);
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
   it('persists error_code in update when Vapi fails', async () => {
@@ -268,6 +276,57 @@ describe('scheduleBriefingCall — idempotency guard', () => {
   });
 });
 
+// ── 3b. claim-first: pending row inserted before briefing generation ──────────
+
+describe('scheduleBriefingCall — claim-first slot', () => {
+  beforeEach(() => { process.env.VAPI_API_KEY = 'test-key'; });
+  afterEach(() => { delete process.env.VAPI_API_KEY; });
+
+  it('inserts pending row before calling generateDailyBriefing', async () => {
+    let pendingCalledFirst = false;
+    h.briefingCreatePending.mockImplementation(() => {
+      pendingCalledFirst = true;
+      return { lastInsertRowid: 1 };
+    });
+    h.generateDailyBriefing.mockImplementation(async () => {
+      expect(pendingCalledFirst).toBe(true);
+      return 'briefing content';
+    });
+    await scheduleBriefingCall(1);
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls updateContent with generated briefing after pending row', async () => {
+    h.briefingCreatePending.mockReturnValue({ lastInsertRowid: 7 });
+    h.generateDailyBriefing.mockResolvedValue('the content');
+    await scheduleBriefingCall(1);
+    expect(h.briefingUpdateContent).toHaveBeenCalledWith(7, 'the content');
+  });
+
+  it('marks pending row failed (not orphaned) when generation throws', async () => {
+    h.generateDailyBriefing.mockRejectedValueOnce(new Error('LLM timeout'));
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'briefing_gen_failed' });
+    expect(h.briefingUpdate).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ status: 'failed', error_code: 'briefing_gen_failed' }),
+    );
+  });
+
+  it('blocks on vapi_daily_limit failed row — no new gen or row created', async () => {
+    h.prepareGet.mockReturnValue({ status: 'failed', error_code: 'vapi_daily_limit' });
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'vapi_daily_limit' });
+    expect(h.briefingCreatePending).not.toHaveBeenCalled();
+    expect(h.generateDailyBriefing).not.toHaveBeenCalled();
+  });
+
+  it('blocks on recent pending row — gen already in flight', async () => {
+    h.prepareGet.mockReturnValue({ status: 'pending', error_code: null });
+    await expect(scheduleBriefingCall(1)).rejects.toMatchObject({ code: 'already_called' });
+    expect(h.briefingCreatePending).not.toHaveBeenCalled();
+    expect(h.generateDailyBriefing).not.toHaveBeenCalled();
+  });
+});
+
 // ── 4. triggerBriefingCallNow — safe re-trigger ───────────────────────────────
 
 describe('triggerBriefingCallNow', () => {
@@ -276,7 +335,7 @@ describe('triggerBriefingCallNow', () => {
 
   it('returns { ok: true, briefingId } on success', async () => {
     h.prepareGet.mockReturnValue(undefined);
-    h.briefingCreate.mockReturnValue({ lastInsertRowid: 42 });
+    h.briefingCreatePending.mockReturnValue({ lastInsertRowid: 42 });
     const result = await triggerBriefingCallNow(1);
     expect(result).toEqual({ ok: true, briefingId: 42 });
   });

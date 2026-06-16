@@ -533,6 +533,17 @@ export const briefingQueries = {
       'INSERT INTO briefings (user_id, content, scheduled_for) VALUES (?, ?, ?)'
     ).run(userId, content, scheduledFor);
   },
+  // Claim the call slot BEFORE generating the briefing so a second cron tick (60s later)
+  // sees the row and bails instead of generating a second call. Content is filled in by
+  // updateContent() after generation succeeds; on failure the row is marked 'failed'.
+  createPending: (userId: number, scheduledFor: string) => {
+    return getDb().prepare(
+      "INSERT INTO briefings (user_id, content, scheduled_for, status) VALUES (?, '[generating]', ?, 'pending')"
+    ).run(userId, scheduledFor);
+  },
+  updateContent: (id: number, content: string) => {
+    getDb().prepare('UPDATE briefings SET content = ? WHERE id = ?').run(content, id);
+  },
   update: (id: number, data: Partial<Briefing>) => {
     const ALLOWED_FIELDS = new Set(['status', 'transcript', 'user_response', 'vapi_call_id', 'retry_attempted', 'error_code']);
     const entries = Object.entries(data).filter(([k]) => ALLOWED_FIELDS.has(k));
