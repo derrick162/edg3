@@ -9,6 +9,24 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **Email + calendar intelligence deepening (Night-3 queue — Items 3–5)**.
+  - **Item 3: Calendar pattern detection** (`lib/calendarPatterns.ts`, pure):
+    - `detectCalendarPatterns(events, {timezone})` — analyzes 180d history for: recurring routines (≥3/week), peak meeting hours, inferred focus windows, busy/light days, avg meetings/day, 4-week meeting trend.
+    - `formatCalendarPatternsForBriefing()` → compact `CALENDAR PATTERNS` block (section 5 injection: suggest time blocks aligned to inferred focus window).
+    - `formatPatternsAsEnergyProfile()` → energy-profile inference for focus rec (complements user-stated profile; labeled "inferred from calendar, not self-reported").
+    - Wired: `lib/briefing.ts` (11th parallel fetch; injected before section 5 with guidance), `lib/focusRecommendation.ts` (energy-profile prefix), `lib/vapi.ts` (CALENDAR PATTERNS voice note). 20 new tests.
+  - **Item 4: Time-allocation trends** (`lib/timeAllocation.ts`, pure):
+    - `computeTimeAllocation(events, priorities, {weeksBack})` — buckets 8-week calendar history into priority / meetings / routine / other buckets via keyword matching (zero LLM cost).
+    - `formatTimeAllocationForBriefing()` → `TIME ALLOCATION` block with `%` / `h/week` per bucket + misalignment warning when meetings > 40% and top priority < 10%.
+    - `formatTimeAllocationInsight()` → one spoken sentence for Edge mid-call.
+    - Wired: `lib/briefing.ts` (injected alongside ALIGNMENT DATA in section 3), `lib/focusRecommendation.ts` (elevates under-served priorities to high-confidence). 18 new tests.
+  - **Item 5: Open Loops refinement — snooze, recurring detection, improved call-surfacing**.
+    - **Snooze**: `open_loops.snooze_until` column (migration), `openLoopQueries.snooze(userId, id, until)` + `unsnooze()`, `list()` respects snooze (hidden until date passes), `POST /api/open-loops` supports `action='snooze'` with `until: YYYY-MM-DD`.
+    - **Recurring detection**: `detectRecurringPatterns(loops, minCount)` groups by normalized description across any status; `formatRecurringPatternsForBriefing()` injects `RECURRING OPEN LOOPS` block with systemic-friction note and "suggest a permanent fix" instruction.
+    - **Call-surfacing**: `getUrgentOpenLoops` now uses 3-tier priority — (1) overdue/due-today, (2) neglected ≥7 days (no due date), (3) any remaining commitment/awaiting_you — so no commitment gets buried indefinitely without a due date.
+    - `lib/vapi.ts` updated: snooze offer ("want me to snooze that?"), RECURRING LOOPS note.
+    - 11 new tests.
+  - **Combined**: 49 new tests. 939/939 green, tsc clean, next build clean.
 - **2026-06-16** — **Deeper email understanding — deadlines, dollar amounts, VIP senders** (`lib/emailIntel.ts`).
   - **`lib/emailIntel.ts`** — pure enrichment layer (regex + fact lookup, zero I/O, zero LLM cost):
     - `extractDeadlineDate(text, ref)` — finds ISO date, "Month DD", "by Friday", "end of month" patterns; only fires on explicit deadline trigger keywords (due/overdue/deadline/final notice/expires/etc).
