@@ -164,6 +164,72 @@ function ArcGauge({ score, color, glow }: { score: number; color: string; glow: 
   );
 }
 
+// ── Intelligence panel ────────────────────────────────────────────────────────
+// Drivers come in two flavors:
+//   "Connect Gmail (+20)"  → action chip (contains "+N")
+//   "12 calls — deepening" → achievement statement (contains no "+")
+
+function IntelligencePanel({ score }: { score: import('./CalendarFitCard').ScoreResult }) {
+  // Split drivers into achievements (green ✓) and nudges (connect CTA chips)
+  const achievements = score.drivers.filter(d => !/\(\+\d+\)/.test(d));
+  const nudges       = score.drivers.filter(d => /\(\+\d+\)/.test(d));
+
+  return (
+    <div className="rounded-xl p-3" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>🧠 Intelligence Score</span>
+        <span className="text-sm font-black tabular-nums" style={{ color: scoreColor(score.score) }}>
+          {score.score}
+        </span>
+      </div>
+      <div className="h-1 rounded-full overflow-hidden mb-2" style={{ background: 'var(--gauge-bg)' }}>
+        <div className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${score.score}%`, background: scoreColor(score.score) }} />
+      </div>
+      <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+        How well Edge knows you — connected sources + accumulated context
+      </p>
+
+      {/* Achievements — green check bullets */}
+      {achievements.length > 0 && (
+        <ul className="space-y-1 mb-3">
+          {achievements.map((d, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span className="flex-shrink-0 mt-0.5 font-bold" style={{ color: 'var(--edg-success)' }}>✓</span>
+              {d}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Connect nudges — motivating CTA chips */}
+      {nudges.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {nudges.map((d, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium"
+              style={{
+                background: 'var(--edg-accent-08)',
+                border: '1px solid var(--edg-accent-20)',
+                color: 'var(--text-accent)',
+              }}
+            >
+              {d} →
+            </span>
+          ))}
+        </div>
+      )}
+
+      {score.topFix && (
+        <p className="text-xs px-2 py-1.5 rounded-lg mt-2" style={{ color: 'var(--text-accent)', background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>
+          ✦ {score.topFix.description}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── EdgeScoreCard ─────────────────────────────────────────────────────────────
 
 export function EdgeScoreCard({
@@ -334,11 +400,11 @@ export function EdgeScoreCard({
                   )}
                 </div>
                 <p className="text-xs mb-2 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-                  How well your calendar&apos;s demands match your energy today
+                  How energized you are — a blend of your sleep + recovery this week
                 </p>
                 {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
                   <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                    Edge learns your energy patterns after a few calls — check back tomorrow.
+                    Connect Whoop so Edge can score your energy from real sleep + recovery data.
                   </p>
                 ) : (
                   <>
@@ -361,9 +427,14 @@ export function EdgeScoreCard({
                 )}
               </div>
 
+              {/* ── Intelligence sub-score ── */}
+              {fit.intelligenceScore && (
+                <IntelligencePanel score={fit.intelligenceScore} />
+              )}
+
               {/* Inputs footnote */}
               <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-                Focus ← your calendar + focus areas · Energy ← your energy level, Whoop recovery + each event&apos;s demand
+                Focus ← calendar + your focus areas · Energy ← Whoop sleep + recovery · Intelligence ← connected sources + call history
               </p>
 
               {/* Improve my day CTA */}

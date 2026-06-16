@@ -18,6 +18,8 @@ export interface ScoreResult {
 export interface CalendarFit {
   focusScore: ScoreResult;
   energyScore: ScoreResult;
+  /** How much memory + context Edge has of the user. Optional until Core ships it. */
+  intelligenceScore?: ScoreResult;
   computedAt: string;
 }
 
