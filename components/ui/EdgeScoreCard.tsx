@@ -220,26 +220,26 @@ function ScorePanel({
   );
 }
 
-// ── Intelligence panel ────────────────────────────────────────────────────────
+// ── Clarity panel ─────────────────────────────────────────────────────────────
 // Drivers come in two flavors:
-//   "Connect Gmail (+20)"  → action chip (contains "+N")
-//   "12 calls — deepening" → achievement statement
+//   "Connect Gmail (+20)"  → motivating CTA chip (contains "+N")
+//   "12 calls — deepening" → achievement statement (green ✓ bullet)
 
-function IntelligencePanel({ score }: { score: ScoreResult }) {
+function ClarityPanel({ score }: { score: ScoreResult }) {
   const achievements = score.drivers.filter(d => !/\(\+\d+\)/.test(d));
   const nudges       = score.drivers.filter(d => /\(\+\d+\)/.test(d));
 
   return (
     <div className="rounded-xl p-3" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>🧠 Intelligence Score</span>
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>🔮 Clarity Score</span>
         <span className="text-sm font-black tabular-nums" style={{ color: scoreColor(score.score) }}>{score.score}</span>
       </div>
       <div className="h-1 rounded-full overflow-hidden mb-2" style={{ background: 'var(--gauge-bg)' }}>
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score.score}%`, background: scoreColor(score.score) }} />
       </div>
       <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-        How well Edge knows you — connected sources + accumulated context
+        How clear a picture Edge has of you — connected sources + accumulated context
       </p>
       {achievements.length > 0 && (
         <ul className="space-y-1 mb-3">
@@ -252,7 +252,7 @@ function IntelligencePanel({ score }: { score: ScoreResult }) {
         </ul>
       )}
       {nudges.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 mb-2">
           {nudges.map((d, i) => (
             <span key={i} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium"
               style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-accent)' }}>
@@ -262,9 +262,52 @@ function IntelligencePanel({ score }: { score: ScoreResult }) {
         </div>
       )}
       {score.topFix && (
-        <p className="text-xs px-2 py-1.5 rounded-lg mt-2" style={{ color: 'var(--text-accent)', background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>
+        <p className="text-xs px-2 py-1.5 rounded-lg" style={{ color: 'var(--text-accent)', background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>
           ✦ {score.topFix.description}
         </p>
+      )}
+    </div>
+  );
+}
+
+// ── Momentum panel ────────────────────────────────────────────────────────────
+
+function MomentumPanel({ score }: { score: ScoreResult }) {
+  const isCalibrating = score.calibrating === true;
+
+  return (
+    <div className="rounded-xl p-3" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>⚡ Momentum Score</span>
+        {isCalibrating
+          ? <span className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>day 1</span>
+          : <span className="text-sm font-black tabular-nums" style={{ color: scoreColor(score.score) }}>{score.score}</span>
+        }
+      </div>
+      <div className="h-1 rounded-full overflow-hidden mb-2" style={{ background: 'var(--gauge-bg)' }}>
+        {isCalibrating
+          ? <div className="h-full rounded-full" style={{ width: '5%', background: 'var(--gauge-mid)', opacity: 0.4, animation: 'gauge-pulse 2s ease-in-out infinite' }} />
+          : <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score.score}%`, background: scoreColor(score.score) }} />
+        }
+      </div>
+      <p className="text-xs mb-2 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+        How consistently you show up — calls + engagement over the last 7–14 days
+      </p>
+      {isCalibrating ? (
+        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+          You&apos;re on day 1 — Edge will track your consistency from here. Come back tomorrow to see it grow.
+        </p>
+      ) : (
+        score.drivers.length > 0 && (
+          <ul className="space-y-1">
+            {score.drivers.map((d, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                <span className="flex-shrink-0 mt-0.5 font-bold" style={{ color: scoreColor(score.score) }}>·</span>
+                {d}
+              </li>
+            ))}
+          </ul>
+        )
       )}
     </div>
   );
@@ -409,14 +452,19 @@ export function EdgeScoreCard({
                 calibratingNote="Connect Whoop so Edge can score your energy from real sleep + recovery data."
               />
 
-              {/* ── Intelligence (optional — Core populates when ready) ── */}
-              {fit.intelligenceScore && (
-                <IntelligencePanel score={fit.intelligenceScore} />
+              {/* ── Clarity (optional — Core populates when ready) ── */}
+              {fit.clarityScore && (
+                <ClarityPanel score={fit.clarityScore} />
+              )}
+
+              {/* ── Momentum (optional — Core populates when ready) ── */}
+              {fit.momentumScore && (
+                <MomentumPanel score={fit.momentumScore} />
               )}
 
               {/* Inputs footnote */}
               <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-                Focus ← calendar + your focus areas · Energy ← Whoop sleep + recovery · Intelligence ← connected sources + call history
+                Focus ← calendar + focus areas · Energy ← Whoop sleep + recovery · Clarity ← connected sources + call history · Momentum ← daily call + engagement streak
               </p>
 
               {/* Improve my day CTA */}
