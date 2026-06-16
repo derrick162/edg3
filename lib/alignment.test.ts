@@ -173,6 +173,27 @@ describe('computeAlignment', () => {
     expect(result!.unalignedHours).toBe(0);
   });
 
+  it('counts hours from a completed earlier-this-week event (regression: getWeekEvents excluded past)', async () => {
+    // Before the fix, getWeekEvents used timeMin=now so Monday's gym never reached computeAlignment.
+    // After the fix, getFullWeekEvents (Mon→Sun) is passed instead — verify computeAlignment counts it.
+    const mondayGym = {
+      summary: 'Gym',
+      start: { dateTime: '2026-06-08T08:00:00Z' }, // Mon 8 AM UTC — already completed
+      end:   { dateTime: '2026-06-08T09:00:00Z' }, // 1 h
+    };
+    h.create.mockResolvedValue(classifyResponse([{ event: 'Gym', priority: '1' }]));
+
+    const result = await computeAlignment(
+      [priority('Get to 130 lbs / gym', 1)],
+      [mondayGym],
+      'America/Vancouver',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.perPriority[0].hours).toBe(1);
+    expect(result!.perPriority[0].blocked).toBe(true);
+  });
+
   it('caps event input at 40 and still returns a result', async () => {
     const manyEvents = Array.from({ length: 50 }, (_, i) => timedEvent(`Event ${i}`, 0.5));
     h.create.mockResolvedValue(classifyResponse([])); // empty classification → all unaligned, but only 40 sent

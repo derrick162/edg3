@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, User, type Fact } from './db';
-import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
+import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 import { checkOutreachReplies } from './replies';
@@ -260,9 +260,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
   const salientFactsEarly = topFacts(allRawFacts, priorities, today, { max: 20, maxPerCategory: 6 });
 
-  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
+  const [calendarEvents, weekEvents, fullWeekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
+    getFullWeekEvents(userId, userTimezone).catch(() => []),
     getLatestRecovery(userId).catch(() => null),
     getLastSleep(userId).catch(() => null),
     getRecentStrain(userId).catch(() => null),
@@ -345,9 +346,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
   // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
   // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
-  const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
+  const alignment = await computeAlignment(priorities, fullWeekEvents, userTimezone).catch(() => null);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
-  const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
+  const hygieneFlag = detectHygieneFlags(fullWeekEvents, userTimezone);
   // Call streak: count consecutive days with completed briefings.
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
   // Open Loops: already fetched above for focus rec — reuse.

@@ -1,6 +1,6 @@
 import { google, calendar_v3 } from 'googleapis';
 import { calendarQueries, userQueries } from './db';
-import { wallTimeToUtc, dayRangeUtc } from './time';
+import { wallTimeToUtc, dayRangeUtc, todayInTz } from './time';
 import { GOOGLE_SCOPES } from './google-auth';
 
 const BRIEFING_EVENT_TITLE = 'Edg3 Morning Briefing';
@@ -187,6 +187,67 @@ export async function getWeekEvents(userId: number) {
   });
 
   return merged;
+}
+
+/**
+ * Fetch ALL events for the current Mon–Sun week in the user's timezone.
+ * Unlike getWeekEvents (timeMin=now), this includes events that have already
+ * completed earlier this week — needed for accurate per-priority hour totals.
+ */
+export async function getFullWeekEvents(userId: number, tz: string): Promise<calendar_v3.Schema$Event[]> {
+  const tokenRow = calendarQueries.get(userId);
+  if (!tokenRow) return [];
+
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token || undefined,
+    expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+  });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+  // Compute Mon–Sun boundaries in the user's timezone.
+  // todayInTz gives "YYYY-MM-DD" in the user's local timezone.
+  // Using noon UTC on that date string to get a reliable UTC day-of-week
+  // (avoids edge cases where T00:00:00Z crosses midnight in far-east TZs).
+  const todayStr = todayInTz(tz);
+  const todayMidpoint = new Date(`${todayStr}T12:00:00Z`);
+  const dow = todayMidpoint.getUTCDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  const daysSinceMonday = (dow + 6) % 7;  // Mon→0, Tue→1, …, Sun→6
+  const mondayMidpoint = new Date(todayMidpoint.getTime() - daysSinceMonday * 86400000);
+  const sundayMidpoint = new Date(mondayMidpoint.getTime() + 6 * 86400000);
+  const mondayStr = mondayMidpoint.toISOString().slice(0, 10);
+  const sundayStr = sundayMidpoint.toISOString().slice(0, 10);
+
+  const { start: weekStart } = dayRangeUtc(tz, mondayStr);
+  const { end: weekEnd } = dayRangeUtc(tz, sundayStr);
+
+  const calendarList = await calendar.calendarList.list({ minAccessRole: 'reader' });
+  const calendarIds = (calendarList.data.items || [])
+    .filter(c => !c.hidden)
+    .map(c => c.id!)
+    .filter(Boolean);
+
+  const allEvents = await Promise.all(
+    calendarIds.map(calendarId =>
+      calendar.events.list({
+        calendarId,
+        timeMin: weekStart.toISOString(),
+        timeMax: weekEnd.toISOString(),
+        singleEvents: true,
+        showHiddenInvitations: true,
+        orderBy: 'startTime',
+        maxResults: 100,
+      }).then(r => r.data.items || []).catch(() => [])
+    )
+  );
+
+  return allEvents.flat().sort((a, b) => {
+    const aTime = a.start?.dateTime || a.start?.date || '';
+    const bTime = b.start?.dateTime || b.start?.date || '';
+    return aTime.localeCompare(bTime);
+  });
 }
 
 // Fetch events for the next `days` days (defaults to 7). Used by the admin
