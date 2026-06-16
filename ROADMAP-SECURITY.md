@@ -8,6 +8,23 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-15** — **open_loops schema + queries + privacy plumbing; WhoopSleepDay.performancePct.**
+  - **`open_loops` table (additive):** `lib/db.ts` — new table with `id, user_id, description,
+    type (commitment_made|awaiting_you|deadline), source (email|call|calendar), due_date?,
+    status (open|done|dismissed), created_at, resolved_at` + index on `(user_id, status, created_at DESC)`.
+    `openLoopQueries`: `list(userId, status?)` (ordered due_date ASC NULLS LAST, created_at ASC),
+    `insert()` (encrypts description via `encryptField`), `resolve()`, `dismiss()`, `prune()` (30-day
+    retention on done/dismissed rows). `decryptOpenLoopRow()` unwraps on read.
+  - **Privacy plumbing:** `DELETE FROM open_loops` in both self-service account deletion
+    (`app/api/account/route.ts`) and admin user deletion (`app/api/admin/users/[id]/route.ts`).
+    Data export (`app/api/account/export/route.ts`) includes decrypted open loops via
+    `openLoopQueries.list()`. `account.test.ts` updated: mock + `openLoops` shape assertion.
+  - **`WhoopSleepDay.performancePct`:** `lib/whoop.ts` — `WhoopSleepDay` interface extended with
+    `performancePct: number`; `getSleepHistory` now maps `r.score.sleep_performance_percentage`
+    (zero extra API cost — already fetched). Unblocks Core's 7-day weighted Energy Score.
+  - 10 new integration tests in `lib/open-loops.test.ts` (in-memory SQLite): insert+decrypt,
+    encryption-at-rest, due_date, status filter, user isolation (list/resolve/dismiss), resolve/dismiss
+    state transitions, prune retention. Total: 787 green, tsc clean, next build clean.
 - **2026-06-15** — **Call path hardening + CASA rate limiting + audit log.**
   - **Call path — claim-first anti-double-dial:** `lib/scheduler.ts`:
     `briefingQueries.createPending(userId, scheduledFor)` now called *before* briefing generation
