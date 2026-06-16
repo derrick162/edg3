@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import { format, startOfWeek } from 'date-fns';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { priorityQueries, effectiveTimezone, calendarScoreQueries, dailyFocusQueries, type Priority } from '@/lib/db';
+import { priorityQueries, effectiveTimezone, calendarScoreQueries, dailyFocusQueries, calendarQueries, whoopQueries, factQueries, memoryQueries, briefingQueries, type Priority } from '@/lib/db';
 import { getWeekEvents } from '@/lib/calendar';
 import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeAlignment } from '@/lib/alignment';
-import { computeCalendarFit } from '@/lib/calendarScore';
+import { computeCalendarFit, type IntelligenceInputs } from '@/lib/calendarScore';
 
 export async function GET() {
   const user = await getSession();
@@ -52,7 +52,30 @@ export async function GET() {
 
   const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
 
-  const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
+  // Intelligence Score inputs — synchronous DB reads, no I/O.
+  const intelligenceInputs: IntelligenceInputs = (() => {
+    try {
+      const calToken    = calendarQueries.get(user.id);
+      const calScope    = calToken?.scope ?? '';
+      const whoopToken  = whoopQueries.get(user.id);
+      const facts       = factQueries.getAll(user.id);
+      const memories    = memoryQueries.getRecent(user.id, 50);
+      const briefings   = briefingQueries.getRecent(user.id, 30);
+      return {
+        calendarConnected: !!calToken,
+        gmailReadGranted:  calScope.includes('gmail'),
+        whoopConnected:    !!whoopToken,
+        factsCount:        facts.length,
+        memoriesCount:     memories.length,
+        briefingCallsCount: briefings.filter(b => b.status === 'completed').length,
+        prioritiesCount:   priorities.length,
+      };
+    } catch {
+      return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 };
+    }
+  })();
+
+  const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep, 45, intelligenceInputs);
 
   // Persist today's scores for trend analysis.
   try {

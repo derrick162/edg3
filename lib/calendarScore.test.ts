@@ -8,8 +8,10 @@ import {
   computeFocusScore,
   computeEnergyScore,
   computeCalendarFit,
+  computeIntelligenceScore,
   colorByEnergy,
   type EventDemand,
+  type IntelligenceInputs,
 } from './calendarScore';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
@@ -508,5 +510,166 @@ describe('colorByEnergy', () => {
     expect(result[0].colorId).toBe('9');
     expect(result[1].colorId).toBe('5');
     expect(result[2].colorId).toBe('2');
+  });
+});
+
+// ─── computeIntelligenceScore ─────────────────────────────────────────────────
+
+function makeIntel(overrides: Partial<IntelligenceInputs> = {}): IntelligenceInputs {
+  return {
+    calendarConnected: true,
+    gmailReadGranted: true,
+    whoopConnected: true,
+    factsCount: 20,
+    memoriesCount: 15,
+    briefingCallsCount: 10,
+    prioritiesCount: 3,
+    ...overrides,
+  };
+}
+
+describe('computeIntelligenceScore', () => {
+  it('returns 100 when all sources connected and context full', () => {
+    const result = computeIntelligenceScore(makeIntel());
+    expect(result.score).toBe(100);
+    expect(result.calibrating).toBeFalsy();
+  });
+
+  it('returns 0 when nothing connected and no context', () => {
+    const result = computeIntelligenceScore(makeIntel({
+      calendarConnected: false, gmailReadGranted: false, whoopConnected: false,
+      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+    }));
+    expect(result.score).toBe(0);
+  });
+
+  it('connected sources only — no context — scores 60', () => {
+    const result = computeIntelligenceScore(makeIntel({
+      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+    }));
+    expect(result.score).toBe(60); // 20+20+20
+  });
+
+  it('no sources but max context — scores 40', () => {
+    const result = computeIntelligenceScore(makeIntel({
+      calendarConnected: false, gmailReadGranted: false, whoopConnected: false,
+    }));
+    expect(result.score).toBe(40); // 15+10+10+5
+  });
+
+  it('calendar only + priorities = 25', () => {
+    const result = computeIntelligenceScore(makeIntel({
+      calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
+      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 1,
+    }));
+    expect(result.score).toBe(25); // 20 + 5
+  });
+
+  it('caps facts at 20 (no extra credit)', () => {
+    const r1 = computeIntelligenceScore(makeIntel({ factsCount: 20 }));
+    const r2 = computeIntelligenceScore(makeIntel({ factsCount: 100 }));
+    expect(r1.score).toBe(r2.score);
+    expect(r1.score).toBe(100);
+  });
+
+  it('caps briefing calls at 10', () => {
+    const r1 = computeIntelligenceScore(makeIntel({ briefingCallsCount: 10 }));
+    const r2 = computeIntelligenceScore(makeIntel({ briefingCallsCount: 50 }));
+    expect(r1.score).toBe(r2.score);
+  });
+
+  it('topFix is calendar when not connected', () => {
+    const result = computeIntelligenceScore(makeIntel({ calendarConnected: false }));
+    expect(result.topFix?.description).toMatch(/calendar/i);
+  });
+
+  it('topFix is gmail when calendar ok but no gmail', () => {
+    const result = computeIntelligenceScore(makeIntel({ gmailReadGranted: false }));
+    expect(result.topFix?.description).toMatch(/gmail/i);
+  });
+
+  it('topFix is whoop when calendar+gmail ok but no whoop', () => {
+    const result = computeIntelligenceScore(makeIntel({ whoopConnected: false }));
+    expect(result.topFix?.description).toMatch(/whoop/i);
+  });
+
+  it('topFix is priorities when all connected but no priorities', () => {
+    const result = computeIntelligenceScore(makeIntel({ prioritiesCount: 0 }));
+    expect(result.topFix?.description).toMatch(/priorit/i);
+  });
+
+  it('topFix is null when all sources connected and context full', () => {
+    const result = computeIntelligenceScore(makeIntel());
+    expect(result.topFix).toBeNull();
+  });
+
+  it('score is always 0-100', () => {
+    [-10, 0, 5, 50, 100, 200].forEach(factsCount => {
+      const result = computeIntelligenceScore(makeIntel({ factsCount }));
+      expect(result.score).toBeGreaterThanOrEqual(0);
+      expect(result.score).toBeLessThanOrEqual(100);
+    });
+  });
+});
+
+// ─── computeCalendarFit -- intelligence blend ─────────────────────────────────
+
+describe('computeCalendarFit -- intelligence blend', () => {
+  it('intelligenceScore present in result when inputs provided', () => {
+    const p = [makeP(1, 'Build', 1)];
+    const fit = computeCalendarFit(
+      makeAlign([{ priority: 'Build', hours: 45 }]), p,
+      [makeRecovDay('2026-06-14', 80)], makeSleep(80),
+      45, makeIntel(),
+    );
+    expect(fit.intelligenceScore).toBeDefined();
+    expect(fit.intelligenceScore!.score).toBe(100);
+  });
+
+  it('40/40/20 blend: focus=100, energy=80, intel=60 → edgeScore=84', () => {
+    const p = [makeP(1, 'Build', 1)];
+    // energyScore: sleep=80*0.6 + recovery=80*0.4 = 80
+    // intelligenceScore: cal(20)+gmail(20)+whoop(20)+facts(15)+mem(10)+briefings(10)+prio(5)=100 → BUT we want 60
+    // Set no connections + no context: score=0 → override: only calendar connected = 20 pts
+    const intelInputs: IntelligenceInputs = {
+      calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
+      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+    }; // score = 20
+    const fit = computeCalendarFit(
+      makeAlign([{ priority: 'Build', hours: 45 }]), p,
+      [makeRecovDay('2026-06-14', 80)], makeSleep(80),
+      45, intelInputs,
+    );
+    expect(fit.focusScore.score).toBe(100);
+    expect(fit.energyScore.score).toBe(80);
+    expect(fit.intelligenceScore!.score).toBe(20);
+    // 100*0.4 + 80*0.4 + 20*0.2 = 40 + 32 + 4 = 76
+    expect(fit.edgeScore).toBe(76);
+  });
+
+  it('calibrating: drops to focus 80% + intel 20% when no whoop', () => {
+    const p = [makeP(1, 'Build', 1)];
+    const intelInputs: IntelligenceInputs = {
+      calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
+      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+    }; // score = 20
+    const fit = computeCalendarFit(
+      makeAlign([{ priority: 'Build', hours: 45 }]), p,
+      [], null, // no Whoop → calibrating
+      45, intelInputs,
+    );
+    expect(fit.calibrating).toBe(true);
+    // focus=100, intel=20 → 100*0.8 + 20*0.2 = 80 + 4 = 84
+    expect(fit.edgeScore).toBe(84);
+  });
+
+  it('without intelligenceInputs -- keeps legacy 50/50 blend', () => {
+    const p = [makeP(1, 'Build', 1)];
+    const fit = computeCalendarFit(
+      makeAlign([{ priority: 'Build', hours: 45 }]), p,
+      [makeRecovDay('2026-06-14', 80)], makeSleep(80),
+    );
+    expect(fit.intelligenceScore).toBeUndefined();
+    expect(fit.edgeScore).toBe(Math.round((100 + 80) / 2)); // 90
   });
 });

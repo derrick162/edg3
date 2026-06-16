@@ -9,6 +9,11 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Intelligence Score — 3rd Edge Score component**.
+  - **`computeIntelligenceScore(inputs: IntelligenceInputs)`** new pure function in `lib/calendarScore.ts`. Scores 0–100 from two buckets: connected sources (Calendar 20pt / Gmail read 20pt / Whoop 20pt = 60pt max) + accumulated context (facts count 15pt / memories 10pt / briefing calls 10pt / priorities set 5pt = 40pt max). Returns `ScoreResult` with plain-English drivers + topFix (prioritizes: calendar → gmail → whoop → priorities → briefings → facts).
+  - **`CalendarFit`** updated: adds `intelligenceScore?: ScoreResult`. **`computeCalendarFit`** accepts optional 6th param `intelligenceInputs?: IntelligenceInputs`. When provided, blends **focus 40% / energy 40% / intelligence 20%**; when energy is calibrating (no Whoop), falls back to **focus 80% / intelligence 20%**. No-input path unchanged (legacy 50/50 blend) — day-plan, briefing, and vapi-tool callers need no update.
+  - **`/api/scores`** gathers intelligence inputs (sync DB reads: `calendarQueries`, `whoopQueries`, `factQueries`, `memoryQueries`, `briefingQueries`) and passes them to `computeCalendarFit`. `intelligenceScore` now included in the route's JSON response alongside `focusScore` and `energyScore`.
+  - 17 new tests (intelligence score + blend coverage). 766/766 green, tsc clean, next build clean.
 - **2026-06-15** — **Energy Score redefine — Whoop-based weighted average**.
   - **`computeEnergyScore(recoveryHistory, todaySleep)`** replaces the old calendar-demand-matching score. New formula: `sleepPerformancePct * 0.6 + avgRecovery7d * 0.4` (Whoop-only). Degrades to `{ score: 50, calibrating: true }` when no Whoop data. Removed: `taggedEvents`, `energySignal`, `energyProfile` params from score path (calendar demand matching, energy-profile preferences, and per-event mismatch logic all removed from scoring). Kept: `classifyEventsEnergy`, `EnergyProfile`, `parseEnergyProfile`, `colorByEnergy` — still used by hero loop + color tools, unchanged.
   - **`computeCalendarFit` signature** simplified to `(alignment, priorities, recoveryHistory, todaySleep, totalWorkingHours?)`. `worstMismatchEventId`/`worstMismatchEventTitle` still in `ScoreResult` but always `null` with the new score (hero loop degrades gracefully).

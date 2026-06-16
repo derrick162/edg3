@@ -22,11 +22,24 @@ export interface ScoreResult {
 }
 
 export interface CalendarFit {
-  edgeScore: number;        // 0–100 — the ONE headline number (blend of focus + energy)
+  edgeScore: number;        // 0–100 — the ONE headline number (blend of focus + energy + intelligence)
   calibrating: boolean;     // true when energy component has thin data (energy shows "calibrating")
-  focusScore: ScoreResult;  // breakdown — does calendar reflect priorities?
-  energyScore: ScoreResult; // breakdown — does calendar match energy capacity?
+  focusScore: ScoreResult;        // breakdown — does calendar reflect priorities?
+  energyScore: ScoreResult;       // breakdown — does calendar match energy capacity?
+  intelligenceScore?: ScoreResult; // breakdown — how well does Edge know you?
   computedAt: string;
+}
+
+// Inputs for the Intelligence Score — connection + accumulated-context signals.
+// Callers gather these (synchronous DB reads) and pass them in.
+export interface IntelligenceInputs {
+  calendarConnected: boolean;
+  gmailReadGranted: boolean;
+  whoopConnected: boolean;
+  factsCount: number;
+  memoriesCount: number;
+  briefingCallsCount: number; // completed briefing calls
+  prioritiesCount: number;
 }
 
 // Energy profile (Core's scoring interface — camelCase, nullable).
@@ -329,26 +342,100 @@ export function computeEnergyScore(
   return { score, drivers, topFix };
 }
 
+// ─── computeIntelligenceScore ─────────────────────────────────────────────────
+
+/**
+ * Intelligence Score = how well Edge knows you (connected sources + accumulated context).
+ * Connected sources (60 pts): Calendar (20), Gmail read (20), Whoop (20).
+ * Accumulated context (40 pts): facts (15), memories (10), briefing calls (10), priorities (5).
+ * Pure — caller provides the counts.
+ */
+export function computeIntelligenceScore(inputs: IntelligenceInputs): ScoreResult {
+  const {
+    calendarConnected, gmailReadGranted, whoopConnected,
+    factsCount, memoriesCount, briefingCallsCount, prioritiesCount,
+  } = inputs;
+
+  // Connected sources (60 pts max)
+  const srcPoints = (calendarConnected ? 20 : 0) + (gmailReadGranted ? 20 : 0) + (whoopConnected ? 20 : 0);
+
+  // Accumulated context (40 pts max)
+  const factsPoints    = Math.round(Math.min(factsCount, 20) / 20 * 15);
+  const memoryPoints   = Math.round(Math.min(memoriesCount, 15) / 15 * 10);
+  const briefingPoints = Math.round(Math.min(briefingCallsCount, 10) / 10 * 10);
+  const priorityPoints = prioritiesCount > 0 ? 5 : 0;
+  const ctxPoints = factsPoints + memoryPoints + briefingPoints + priorityPoints;
+
+  const score = clamp(0, 100, srcPoints + ctxPoints);
+
+  // Drivers — what's contributing
+  const drivers: string[] = [];
+  if (calendarConnected) drivers.push('Google Calendar connected.');
+  else drivers.push('Google Calendar not connected — Edge can\'t see your schedule.');
+  if (gmailReadGranted) drivers.push('Gmail read access granted — reply tracking active.');
+  else drivers.push('Gmail access not granted — reconnect Google to enable reply tracking.');
+  if (whoopConnected) drivers.push('Whoop connected — recovery data flowing.');
+  else drivers.push('Whoop not connected — energy score is estimated, not measured.');
+  if (factsCount > 0) drivers.push(`${factsCount} preference facts learned from your calls.`);
+  else drivers.push('No preference facts yet — Edge learns from every call.');
+  if (briefingCallsCount > 0) drivers.push(`${briefingCallsCount} completed briefing call${briefingCallsCount !== 1 ? 's' : ''}.`);
+
+  // Top fix — the single most impactful missing piece
+  let topFix: ScoreResult['topFix'] = null;
+  if (!calendarConnected) {
+    topFix = { description: 'Connect Google Calendar so Edge can see and manage your schedule.', op: 'create' };
+  } else if (!gmailReadGranted) {
+    topFix = { description: 'Grant Gmail access (reconnect Google) to enable reply tracking.', op: 'create' };
+  } else if (!whoopConnected) {
+    topFix = { description: 'Connect your Whoop to base your Energy Score on real health data.', op: 'create' };
+  } else if (prioritiesCount === 0) {
+    topFix = { description: 'Set your top 3 focus areas in the Priorities tab.', op: 'create' };
+  } else if (briefingCallsCount < 3) {
+    topFix = { description: 'Complete a few more morning briefings — Edge learns your patterns from every call.', op: 'create' };
+  } else if (factsCount < 5) {
+    topFix = { description: 'Share your goals and preferences with Edge on your next call to build a richer profile.', op: 'create' };
+  }
+
+  return { score, drivers, topFix };
+}
+
 // ─── computeCalendarFit ───────────────────────────────────────────────────────
 
-/** Compute both scores and return the combined CalendarFit with a single Edge Score. Pure. */
+/**
+ * Compute all three scores and return the combined CalendarFit with a single Edge Score.
+ * Blend: focus 40% / energy 40% / intelligence 20%.
+ * When energy is calibrating (no Whoop): drops to focus 80% / intelligence 20%.
+ * When no intelligenceInputs: falls back to focus 50% / energy 50% (or focus-only if calibrating).
+ * Pure.
+ */
 export function computeCalendarFit(
   alignment: AlignmentResult | null,
   priorities: Priority[],
   recoveryHistory: WhoopRecoveryDay[],
   todaySleep: WhoopSleep | null,
   totalWorkingHours = 45,
+  intelligenceInputs?: IntelligenceInputs,
 ): CalendarFit {
   const focusScore  = computeFocusScore(alignment, priorities, totalWorkingHours);
   const energyScore = computeEnergyScore(recoveryHistory, todaySleep);
-
-  // Calibrating = no Whoop data. Edge Score falls back to focus-only when calibrating.
   const calibrating = energyScore.calibrating === true;
-  const edgeScore   = calibrating
-    ? focusScore.score
-    : Math.round((focusScore.score + energyScore.score) / 2);
 
-  return { edgeScore, calibrating, focusScore, energyScore, computedAt: new Date().toISOString() };
+  let edgeScore: number;
+  let intelligenceScore: ScoreResult | undefined;
+
+  if (intelligenceInputs) {
+    intelligenceScore = computeIntelligenceScore(intelligenceInputs);
+    const intel = intelligenceScore.score;
+    edgeScore = calibrating
+      ? Math.round(focusScore.score * 0.8 + intel * 0.2)
+      : Math.round(focusScore.score * 0.4 + energyScore.score * 0.4 + intel * 0.2);
+  } else {
+    edgeScore = calibrating
+      ? focusScore.score
+      : Math.round((focusScore.score + energyScore.score) / 2);
+  }
+
+  return { edgeScore, calibrating, focusScore, energyScore, intelligenceScore, computedAt: new Date().toISOString() };
 }
 
 // ─── Energy color-coding ─────────────────────────────────────────────────────
