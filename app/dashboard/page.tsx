@@ -2060,10 +2060,33 @@ export default function Dashboard() {
                 const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
                 return (
                   <div>
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
-                      <span aria-hidden="true">📋</span>
-                      Call notes
-                    </h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-body)' }}>
+                        <span aria-hidden="true">📋</span>
+                        Call notes
+                      </h3>
+                      {totalPages > 1 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setMemoryPage(p => Math.max(1, p - 1))}
+                            disabled={page <= 1}
+                            className="btn-secondary text-xs py-1 px-3"
+                          >
+                            Prev
+                          </button>
+                          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {page} / {totalPages}
+                          </span>
+                          <button
+                            onClick={() => setMemoryPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page >= totalPages}
+                            className="btn-secondary text-xs py-1 px-3"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <div className="space-y-3">
                       {pageItems.map(m => (
                         <div key={m.id} className="glass-card p-4">
@@ -2085,27 +2108,6 @@ export default function Dashboard() {
                         </div>
                       ))}
                     </div>
-                    {totalPages > 1 && (
-                      <div className="flex items-center justify-between mt-4">
-                        <button
-                          onClick={() => setMemoryPage(p => Math.max(1, p - 1))}
-                          disabled={page <= 1}
-                          className="btn-secondary text-sm py-1.5 px-4"
-                        >
-                          Prev
-                        </button>
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Page {page} of {totalPages}
-                        </span>
-                        <button
-                          onClick={() => setMemoryPage(p => Math.min(totalPages, p + 1))}
-                          disabled={page >= totalPages}
-                          className="btn-secondary text-sm py-1.5 px-4"
-                        >
-                          Next
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })()}

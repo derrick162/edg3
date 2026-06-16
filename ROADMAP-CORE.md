@@ -9,6 +9,8 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Memory tab — pager moved to header row of Call notes**.
+  - Prev/Next + page indicator moved from the bottom of the Call notes list to an inline header row alongside the "Call notes" heading. Now clearly reads as "Call notes — page 1 / 3" rather than appearing to paginate the structured facts above. Same state (`memoryPage`), same behavior, just repositioned. 766/766 green.
 - **2026-06-15** — **Intelligence Score — 3rd Edge Score component**.
   - **`computeIntelligenceScore(inputs: IntelligenceInputs)`** new pure function in `lib/calendarScore.ts`. Scores 0–100 from two buckets: connected sources (Calendar 20pt / Gmail read 20pt / Whoop 20pt = 60pt max) + accumulated context (facts count 15pt / memories 10pt / briefing calls 10pt / priorities set 5pt = 40pt max). Returns `ScoreResult` with plain-English drivers + topFix (prioritizes: calendar → gmail → whoop → priorities → briefings → facts).
   - **`CalendarFit`** updated: adds `intelligenceScore?: ScoreResult`. **`computeCalendarFit`** accepts optional 6th param `intelligenceInputs?: IntelligenceInputs`. When provided, blends **focus 40% / energy 40% / intelligence 20%**; when energy is calibrating (no Whoop), falls back to **focus 80% / intelligence 20%**. No-input path unchanged (legacy 50/50 blend) — day-plan, briefing, and vapi-tool callers need no update.
