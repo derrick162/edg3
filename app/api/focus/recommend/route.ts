@@ -5,6 +5,7 @@ import { recommendFocusAreas, type EnergySignal } from '@/lib/focusRecommendatio
 import { priorityQueries, userQueries } from '@/lib/db';
 import { getCalendarEvents } from '@/lib/calendar';
 import { getLatestRecovery } from '@/lib/whoop';
+import { getRecentEmailSignal } from '@/lib/gmail';
 
 export async function GET() {
   const user = await getSession();
@@ -21,10 +22,11 @@ export async function GET() {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
   // Gather context in parallel; degrade silently on failure
-  const [whoopRec, todayEvents, anchors] = await Promise.all([
+  const [whoopRec, todayEvents, anchors, emailSignal] = await Promise.all([
     getLatestRecovery(user.id).catch(() => null),
     getCalendarEvents(user.id).catch(() => null),
     Promise.resolve(priorityQueries.getMostRecent(user.id)).catch(() => []),
+    getRecentEmailSignal(user.id, { days: 14, max: 20 }).catch(() => null),
   ]);
 
   const energySignal: EnergySignal | null = whoopRec
@@ -40,6 +42,7 @@ export async function GET() {
     todayEvents: todayEvents ?? undefined,
     anchors: anchors.length > 0 ? anchors : undefined,
     date,
+    emailSignal: emailSignal ?? undefined,
   });
 
   return NextResponse.json(recommendation);
