@@ -12,10 +12,18 @@ proprietary" build, not a quick ticket._
    over the trailing ~7 days** (sleep weighted higher, e.g. 60/40, tunable). NOT calendar-energy
    matching anymore (too complex). `calibrating` when no Whoop data. drivers = "7-day sleep 78,
    recovery 62."
-3. **Intelligence** — *how well does Edge know you?* = connected sources (calendar/Gmail/Whoop) +
-   accumulated facts/calls. drivers = actionable connect nudges ("Connect Gmail +20"). A growth
-   flywheel: more inputs → smarter → higher score.
-- Blend weights tunable (start ~Focus 40 / Energy 40 / Intelligence 20). No human-judgment layer.
+3. **Clarity** — *how clear a picture does Edge have of you?* (was "Intelligence/Memory" — renamed by
+   Derrick) = connected sources (calendar/Gmail/Whoop) + accumulated facts/calls. drivers = actionable
+   connect nudges ("Connect Gmail +20"). A growth flywheel: more inputs → clearer picture → Edge works
+   better for you → higher score.
+4. **Momentum** — *how consistently are you showing up?* = trailing 7–14 day engagement, hardware-free /
+   calendar-derived: (a) completed morning calls, (b) confirmed focus areas / engaged with recommendations.
+   Calibrating on day 1. Edge references it naturally ("Momentum's at 85 — you've shown up 6 of the last 7
+   mornings"). drivers = streak / show-up rate.
+- **Blend weights** tunable — start **Focus 30 / Energy 30 / Clarity 20 / Momentum 20**. No human-judgment layer.
+- **Framing (Derrick):** the Edge Score is "how strong you're going to crush it" — a holistic readout of
+  your state. A user who's told Edge a lot (Clarity) + shows up every day (Momentum) + has a focused,
+  energized calendar (Focus + Energy) is set up to execute.
 - The breakdown must be transparent (Derrick wants to see HOW each is calculated + inputs).
 - Calendar-energy *matching* still happens in the PRODUCT (hero-loop reshape, color-coding via event
   energy-tagging) — it's just no longer how the Energy SCORE is computed. Score = your energy LEVEL;
