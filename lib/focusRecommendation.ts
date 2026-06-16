@@ -9,6 +9,7 @@ import type { calendar_v3 } from 'googleapis';
 import { factQueries, memoryQueries, type Priority } from './db';
 import { getPastCalendarEvents } from './calendar';
 import type { EmailSignal, EmailSignalItem } from './gmail';
+import { formatOpenLoopsForBriefing, type OpenLoop } from './openLoops';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ export interface RecommendOpts {
   date?: string;
   /** Inbox digest from getRecentEmailSignal() — caller fetches, passes in */
   emailSignal?: EmailSignal | null;
+  /** Urgent/overdue open loops — fed in by the briefing; surface as focus-area context */
+  openLoops?: OpenLoop[];
 }
 
 // ── Email signal helpers (pure, exported for testing) ─────────────────────────
@@ -231,15 +234,24 @@ export async function recommendFocusAreas(
     }
   }
 
+  if (opts.openLoops && opts.openLoops.length > 0) {
+    const loopsBlock = formatOpenLoopsForBriefing(opts.openLoops);
+    if (loopsBlock) {
+      sections.push(loopsBlock);
+      sections.push('Open-loop guidance: if a commitment_made or awaiting_you loop is clearly tied to a priority anchor, surface it as its own focus area (e.g. "Send CIBC proposal"). A deadline loop qualifies only when due today or overdue. Do NOT surface open loops not connected to an anchor as standalone focus areas.');
+      sections.push('');
+    }
+  }
+
   sections.push(
     'Return ONLY valid JSON — no preamble, no markdown fences:',
-    '{"areas":[{"title":"...","rationale":"...","confidence":"high|medium|low","anchor":"matching overarching priority text or omit if none"}]}',
+    '{"areas":[{"title":"...","rationale":"...","confidence":"high|medium|low","anchor":"exact priority text or standalone"}]}',
     '',
     'Rules:',
     '- title: 2–5 words, action-oriented for TODAY (e.g. "fundraising outreach", "product build", "team hiring") — not generic ("meetings", "work", "email")',
     '- rationale: one honest sentence citing evidence + connection to the anchor priority',
     '- confidence: high = clear signal from 2+ sources; medium = one source or ambiguous; low = thin data',
-    '- anchor: the exact text of the overarching priority this serves (omit if anchors list is empty)',
+    '- anchor: ALWAYS include this field. Use the EXACT text of the closest matching priority from the list above. If nothing fits, write "standalone". Never omit.',
     '- Modulate scope by energy: green=ambitious target, yellow=realistic target, red=one meaningful output',
     '- Return fewer than 3 if fewer than 3 clear priorities emerge — never invent',
     '- Sort by importance, highest first',
@@ -265,6 +277,8 @@ export async function recommendFocusAreas(
 
     const VALID_CONFIDENCE = ['high', 'medium', 'low'] as const;
 
+    const anchorTexts = (opts.anchors ?? []).map(p => p.text);
+
     const areas: FocusArea[] = rawAreas
       .filter((a): a is { title: string; rationale: string; confidence?: string; anchor?: string } =>
         typeof a === 'object' && a !== null &&
@@ -272,14 +286,27 @@ export async function recommendFocusAreas(
         typeof (a as Record<string, unknown>).rationale === 'string'
       )
       .slice(0, 3)
-      .map(a => ({
-        title: String(a.title).trim(),
-        rationale: String(a.rationale).trim(),
-        confidence: VALID_CONFIDENCE.includes(a.confidence as typeof VALID_CONFIDENCE[number])
+      .map(a => {
+        const title    = String(a.title).trim();
+        const rationale = String(a.rationale).trim();
+        const confidence = VALID_CONFIDENCE.includes(a.confidence as typeof VALID_CONFIDENCE[number])
           ? (a.confidence as 'high' | 'medium' | 'low')
-          : 'medium',
-        ...(a.anchor ? { anchor: String(a.anchor).trim() } : {}),
-      }))
+          : 'medium';
+
+        // Always populate anchor: model-returned value wins, then fuzzy match, then 'standalone'.
+        let anchor = a.anchor ? String(a.anchor).trim() : '';
+        if (!anchor && anchorTexts.length > 0) {
+          const combined = (title + ' ' + rationale).toLowerCase();
+          const matched = anchorTexts.find(p =>
+            p.toLowerCase().split(/\s+/).some(word => word.length >= 4 && combined.includes(word))
+          );
+          anchor = matched ?? 'standalone';
+        } else if (!anchor) {
+          anchor = 'standalone';
+        }
+
+        return { title, rationale, confidence, anchor };
+      })
       .filter(a => a.title.length > 0 && a.rationale.length > 0);
 
     return { areas, basedOn, generatedAt, date };

@@ -46,7 +46,7 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts } from './facts';
 import { factQueries, type Fact } from './db';
 
 function textResponse(text: string) {
@@ -304,5 +304,118 @@ describe('factQueries.deleteFact', () => {
     // User 2 attempts to delete id=1 — mock splice guard (f.user_id === userId) blocks it.
     vi.mocked(factQueries.deleteFact)(2, 1);
     expect(factQueries.deleteFact).toHaveBeenCalledWith(2, 1);
+  });
+});
+
+// ── consolidateFacts ──────────────────────────────────────────────────────────
+
+function makeFact(id: number, category: Fact['category'], entity: string | null, statement: string, learned_at = '2026-06-01'): Fact {
+  return { id, user_id: 1, category, entity, statement, learned_at, confidence: 'high', source_briefing_id: null };
+}
+
+describe('consolidateFacts', () => {
+  it('returns 0 when there are no duplicates', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'person', 'Sarah', 'Sarah is the CFO'),
+      makeFact(2, 'person', 'Mike', 'Mike is an investor'),
+    ]);
+    expect(consolidateFacts(1)).toBe(0);
+    expect(factQueries.deleteFact).not.toHaveBeenCalled();
+  });
+
+  it('deletes the shorter duplicate and keeps the longer statement', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'person', 'CIBC', 'User owes CIBC'),
+      makeFact(2, 'person', 'CIBC', 'User is in debt negotiation with CIBC for $45k'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(1);
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 1); // shorter statement deleted
+  });
+
+  it('merges two facts with same category + same entity (case-insensitive)', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'goal', 'Series A', 'Wants to close Series A'),
+      makeFact(2, 'goal', 'Series A', 'Wants to close Series A by September 2026 at $3M'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(1);
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 1); // id=1 is shorter, gets deleted
+  });
+
+  it('updates the kept fact when the best statement is not already on the keeper', () => {
+    // keeper (longest) is fact id=2, but fact id=1 has a slightly longer statement
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'goal', 'Series A', 'Wants to close Series A by September 2026 at $3M', '2026-06-10'),
+      makeFact(2, 'goal', 'series a', 'Wants to close Series A', '2026-06-12'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(1);
+    // id=2 is most recent (tiebreaker), but id=1 has the longest statement (>20 chars diff)
+    // keeper = id=1 (longest first), bestStatement from id=1 = already on keeper → no update needed
+    // OR keeper = id=2 (newest), but id=1 is longer by >20 → sorted[0] = id=1
+    expect(factQueries.deleteFact).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips facts with null entity', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'preference', null, 'Prefers morning calls'),
+      makeFact(2, 'preference', null, 'Prefers morning calls — confirmed twice'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(0);
+    expect(factQueries.deleteFact).not.toHaveBeenCalled();
+  });
+
+  it('skips facts with blank (whitespace-only) entity', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'fact', '  ', 'Some fact'),
+      makeFact(2, 'fact', '   ', 'Another fact'),
+    ]);
+    expect(consolidateFacts(1)).toBe(0);
+    expect(factQueries.deleteFact).not.toHaveBeenCalled();
+  });
+
+  it('handles multiple distinct entity groups independently', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'person', 'Sarah', 'Sarah is CFO'),
+      makeFact(2, 'person', 'Sarah', 'Sarah Green is the CFO and ally'),
+      makeFact(3, 'person', 'Mike', 'Mike is an investor'),
+      makeFact(4, 'person', 'Mike', 'Mike Rodriguez invested $500k in the seed round'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(2); // one dup per group
+    expect(factQueries.deleteFact).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── extractFactsFromTranscript — existingFacts injection ─────────────────────
+
+describe('extractFactsFromTranscript — existingFacts injection', () => {
+  it('includes existing facts in the prompt when provided', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    const existingFacts = [
+      { category: 'goal', statement: 'Wants to close Series A by September', entity: 'Series A' },
+    ];
+    await extractFactsFromTranscript('some transcript', undefined, undefined, existingFacts);
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).toContain('net-new');
+    expect(promptContent).toContain('Wants to close Series A by September');
+  });
+
+  it('omits the existing-facts block when existingFacts is empty', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    await extractFactsFromTranscript('some transcript', undefined, undefined, []);
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).not.toContain('net-new');
+  });
+
+  it('caps the injected existing facts at 30 items', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    const many = Array.from({ length: 40 }, (_, i) => ({ category: 'fact', statement: `Fact ${i}`, entity: null }));
+    await extractFactsFromTranscript('transcript', undefined, undefined, many);
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).toContain('Fact 29');
+    expect(promptContent).not.toContain('Fact 30');
   });
 });

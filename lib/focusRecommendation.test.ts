@@ -261,6 +261,58 @@ describe('recommendFocusAreas', () => {
     expect(result.areas[0].anchor).toBe('Raise seed round');
   });
 
+  it('anchor is always present even when Sonnet omits it — fuzzy-matches against priority list', async () => {
+    mockCalendar.mockResolvedValue([timedEvent('Fundraising call', 5)]);
+    mockFacts.mockReturnValue([fact('goal', 'Grow business'), fact('preference', 'Morning focus')]);
+    // Model omits anchor field
+    h.create.mockResolvedValue({
+      content: [{ type: 'text', text: JSON.stringify({
+        areas: [{ title: 'Fundraising call', rationale: 'Investor meeting today.', confidence: 'high' }],
+      })}],
+    });
+    const result = await recommendFocusAreas(1, { anchors: [anchor(1, 'Raise seed round'), anchor(2, 'Build product')] });
+    // "Fundraising" doesn't keyword-match "Raise"/"seed"/"round"/"Build"/"product" — falls back to standalone
+    // But "call" and "investor" don't match either — should get "standalone"
+    expect(result.areas[0].anchor).toBeDefined();
+    expect(typeof result.areas[0].anchor).toBe('string');
+    expect((result.areas[0].anchor as string).length).toBeGreaterThan(0);
+  });
+
+  it('anchor falls back to "standalone" when no priority text matches and model omits anchor', async () => {
+    mockCalendar.mockResolvedValue([timedEvent('Yoga class', 5)]);
+    mockFacts.mockReturnValue([fact('goal', 'Close deals'), fact('preference', 'Deep work')]);
+    h.create.mockResolvedValue({
+      content: [{ type: 'text', text: JSON.stringify({
+        areas: [{ title: 'Morning yoga', rationale: 'Recovery habit.', confidence: 'low' }],
+      })}],
+    });
+    // Priorities: "Close CIBC deal" — no keyword overlap with "yoga"/"recovery"/"morning"/"habit"
+    const result = await recommendFocusAreas(1, { anchors: [anchor(1, 'Close CIBC deal')] });
+    expect(result.areas[0].anchor).toBe('standalone');
+  });
+
+  it('anchor is "standalone" when no anchors list provided and model omits anchor', async () => {
+    mockCalendar.mockResolvedValue([timedEvent('Team sync', 5)]);
+    mockFacts.mockReturnValue([fact('goal', 'Build runway'), fact('preference', 'Focus blocks')]);
+    h.create.mockResolvedValue({
+      content: [{ type: 'text', text: JSON.stringify({
+        areas: [{ title: 'Team sync', rationale: 'Weekly check-in.', confidence: 'medium' }],
+      })}],
+    });
+    const result = await recommendFocusAreas(1, {}); // no anchors
+    expect(result.areas[0].anchor).toBe('standalone');
+  });
+
+  it('prompt includes ALWAYS include instruction for anchor', async () => {
+    mockCalendar.mockResolvedValue([timedEvent('Work', 5)]);
+    mockFacts.mockReturnValue([fact('goal', 'Ship product'), fact('preference', 'Early start')]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    await recommendFocusAreas(1, { anchors: [anchor(1, 'Ship the MVP')] });
+    const promptArg = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptArg).toContain('ALWAYS include');
+    expect(promptArg).toContain('standalone');
+  });
+
   it('adds energy signal to basedOn when provided', async () => {
     mockCalendar.mockResolvedValue([
       timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),

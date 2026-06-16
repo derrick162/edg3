@@ -416,11 +416,13 @@ describe('computeCalendarFit -- edgeScore', () => {
     expect(typeof fit.calibrating).toBe('boolean');
   });
 
-  it('calibrating:true when no whoop data -- edgeScore equals focusScore', () => {
+  it('no whoop data + priorities set → calibrating:false, edgeScore equals focusScore', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
     const fit = computeCalendarFit(alignment, priorities, [], null, 45);
-    expect(fit.calibrating).toBe(true);
+    // Priorities are set → top-level calibrating=false even with no Whoop.
+    // Energy is excluded from blend (calibrating) → edgeScore = focusScore (only component).
+    expect(fit.calibrating).toBe(false);
     expect(fit.edgeScore).toBe(fit.focusScore.score);
   });
 
@@ -707,7 +709,7 @@ describe('computeCalendarFit -- clarity blend', () => {
     expect(fit.momentumScore).toBeUndefined();
   });
 
-  it('clarity-only 40/40/20 blend: focus=100, energy=80, clarity=20 → edgeScore=76', () => {
+  it('clarity-only blend (no momentum): renormalises 30/30/20 → focus 100, energy 80, clarity 20 → edgeScore=73', () => {
     const p = [makeP(1, 'Build', 1)];
     const clarityInputs: ClarityInputs = {
       calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
@@ -721,8 +723,8 @@ describe('computeCalendarFit -- clarity blend', () => {
     expect(fit.focusScore.score).toBe(100);
     expect(fit.energyScore.score).toBe(80);
     expect(fit.clarityScore!.score).toBe(20);
-    // 100*0.4 + 80*0.4 + 20*0.2 = 40 + 32 + 4 = 76
-    expect(fit.edgeScore).toBe(76);
+    // Weights 30/30/20 renorm to 80 total → 100*(30/80) + 80*(30/80) + 20*(20/80) = 37.5+30+5 = 72.5 → 73
+    expect(fit.edgeScore).toBe(73);
   });
 
   it('4-way 30/30/20/20 blend when both clarity and momentum present', () => {
@@ -741,19 +743,21 @@ describe('computeCalendarFit -- clarity blend', () => {
     expect(fit.edgeScore).toBe(68);
   });
 
-  it('calibrating + 4-way: drops to focus 40 / clarity 30 / momentum 30', () => {
+  it('energy calibrating + 4-way: renormalises 30/20/20 → focus 100, clarity 20, momentum 50 → edgeScore=63', () => {
     const p = [makeP(1, 'Build', 1)];
-    // focus=100, no whoop→calibrating, clarity=20, momentum=50
+    // focus=100, no whoop→energy calibrating (excluded), clarity=20, momentum=50
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
-      [], null, // no Whoop → calibrating
+      [], null, // no Whoop → energy excluded from blend
       45,
       { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 },
       { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
     );
-    expect(fit.calibrating).toBe(true);
-    // 100*0.4 + 20*0.3 + 50*0.3 = 40+6+15 = 61
-    expect(fit.edgeScore).toBe(61);
+    // priorities.length=1 → top-level calibrating=false (per-component energy calibrating stays true in breakdown)
+    expect(fit.calibrating).toBe(false);
+    expect(fit.energyScore.calibrating).toBe(true); // breakdown still shows calibrating
+    // Weights 30/20/20 renorm to 70 total → (100*30 + 20*20 + 50*20)/70 = 4400/70 ≈ 63
+    expect(fit.edgeScore).toBe(63);
   });
 
   it('without any optional inputs -- keeps legacy 50/50 blend', () => {

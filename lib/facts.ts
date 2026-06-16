@@ -23,12 +23,15 @@ const VALID_CATEGORIES = new Set(['person', 'project', 'goal', 'preference', 'fa
 /**
  * ONE Haiku call: parse up to 10 durable structured facts from a transcript.
  * userName is injected so the model uses the correct spelling (not STT's version).
+ * knownNames lets the model correct STT garbling of known contacts.
+ * existingFacts tells the model which facts are already stored so it only returns NET-NEW.
  * Returns [] on any error or when nothing durable was found.
  */
 export async function extractFactsFromTranscript(
   transcript: string,
   userName?: string,
   knownNames?: string[],
+  existingFacts?: Array<{ category: string; statement: string; entity?: string | null }>,
 ): Promise<ExtractedFact[]> {
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -42,6 +45,10 @@ export async function extractFactsFromTranscript(
       ? `Known people in this user's world (prefer these exact spellings when a word sounds phonetically similar but may be garbled — e.g. if you see "Pfizer" in a people context but "Faiza" is a known contact, use "Faiza"): ${knownNames.join(', ')}.\n`
       : '';
 
+    const existingFactsLine = existingFacts && existingFacts.length > 0
+      ? `Already stored facts (return ONLY net-new facts — skip anything already captured here or a paraphrase of it):\n${existingFacts.slice(0, 30).map(f => `- [${f.category}${f.entity ? ` | ${f.entity}` : ''}] ${f.statement}`).join('\n')}\n`
+      : '';
+
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
@@ -49,7 +56,7 @@ export async function extractFactsFromTranscript(
         role: 'user',
         content: `Extract up to 10 DURABLE facts about the user from this call transcript.
 Return ONLY a JSON array — no preamble, no markdown.
-${userLine}${knownNamesLine}
+${userLine}${knownNamesLine}${existingFactsLine}
 Each item: {"category":"<category>","statement":"<one clear sentence>","entity":"<name or null>","confidence":"high"|"low"}
 
 Categories:
@@ -122,13 +129,13 @@ export async function extractAndUpsertFacts(
   sourceBriefingId?: number,
 ): Promise<void> {
   try {
-    // Pass previously stored person names so the model can correct STT mis-spellings
-    // (e.g. "Pfizer" heard in transcript → "Faiza" when that name is already in facts).
+    // Pass previously stored facts so the model returns only net-new items.
+    // Also pass known person names so STT garbling is corrected (e.g. "Pfizer" → "Faiza").
     const storedFacts = factQueries.getAll(userId);
     const knownNames = storedFacts
       .filter(f => f.category === 'person' && typeof f.entity === 'string' && (f.entity as string).trim().length > 0)
       .map(f => f.entity as string);
-    const facts = await extractFactsFromTranscript(transcript, userName, knownNames);
+    const facts = await extractFactsFromTranscript(transcript, userName, knownNames, storedFacts);
     let stored = 0;
     for (const f of facts) {
       // Never file a "person" fact about the user themselves.
@@ -139,9 +146,59 @@ export async function extractAndUpsertFacts(
     if (stored > 0) {
       console.log(`[facts] Upserted ${stored} structured facts for user ${userId}`);
     }
+    // Consolidate near-duplicate facts (same category + similar entity) after each write.
+    const removed = consolidateFacts(userId);
+    if (removed > 0) {
+      console.log(`[facts] Consolidated ${removed} duplicate facts for user ${userId}`);
+    }
   } catch (err) {
     console.error('[facts] extractAndUpsertFacts failed:', err);
   }
+}
+
+/**
+ * Consolidate near-duplicate facts for a user.
+ * Groups by (category, LOWER(TRIM(entity))); keeps the fact with the longest statement
+ * (most recent as tiebreaker) and deletes the rest. Returns the count of removed rows.
+ * Entity-null facts are never merged — they can't be reliably matched.
+ */
+export function consolidateFacts(userId: number): number {
+  const allFacts = factQueries.getAll(userId);
+  const groups = new Map<string, typeof allFacts>();
+
+  for (const f of allFacts) {
+    if (!f.entity || !f.entity.trim()) continue;
+    const key = `${f.category}::${f.entity.trim().toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(f);
+  }
+
+  let removed = 0;
+  for (const group of groups.values()) {
+    if (group.length <= 1) continue;
+
+    const sorted = [...group].sort((a, b) => {
+      const lenDiff = b.statement.length - a.statement.length;
+      if (Math.abs(lenDiff) > 20) return lenDiff;
+      return (b.learned_at ?? '').localeCompare(a.learned_at ?? '');
+    });
+
+    const keep = sorted[0];
+    const bestStatement = sorted.reduce(
+      (best, f) => f.statement.length > best.length ? f.statement : best,
+      sorted[0].statement,
+    );
+    if (bestStatement !== keep.statement) {
+      factQueries.updateFact(userId, keep.id, bestStatement, keep.entity ?? null);
+    }
+
+    for (const dup of sorted.slice(1)) {
+      factQueries.deleteFact(userId, dup.id);
+      removed++;
+    }
+  }
+
+  return removed;
 }
 
 /**

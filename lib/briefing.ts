@@ -6,6 +6,7 @@ import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
+import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops } from './openLoops';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
 import { computeWhoopCorrelations } from './whoopCorrelations';
@@ -276,14 +277,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Derive durable facts from inbox digest (fire-and-forget — never blocks the briefing).
   if (emailSignal && !emailSignal.scopeMissing) {
     extractAndUpsertFactsFromEmail(userId, emailSignal, user.name).catch(() => {});
+    // Also extract open loops from the inbox (fire-and-forget).
+    extractAndUpsertOpenLoops(userId, { emailSignal, today }).catch(() => {});
   }
 
+  // Urgent open loops — pure DB read, fetch before focus rec so they can modulate recommendations.
+  const urgentLoopsEarly = (() => { try { return getUrgentOpenLoops(userId, focusDate); } catch { return []; } })();
   const focusRec: FocusRecommendation | null = await recommendFocusAreas(userId, {
     energySignal: focusEnergySignal,
     todayEvents: calendarEvents,
     anchors: priorities.length > 0 ? priorities : undefined,
     date: focusDate,
     emailSignal: emailSignal ?? undefined,
+    openLoops: urgentLoopsEarly.length > 0 ? urgentLoopsEarly : undefined,
   }).catch(() => null);
   const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(
@@ -315,6 +321,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
   // Call streak: count consecutive days with completed briefings.
   const callStreak = computeCallStreak(recentBriefings, userTimezone);
+  // Open Loops: already fetched above for focus rec — reuse.
+  const urgentLoops = urgentLoopsEarly;
+  const openLoopsBlock = formatOpenLoopsForBriefing(urgentLoops);
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
   const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
   const baselineContext = buildBaselineContext(
@@ -511,6 +520,9 @@ ${hygieneFlag}
 ` : ''}${edg3Commitment ? `
 YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said they'd do it):
 - ${edg3Commitment.text}
+` : ''}${openLoopsBlock ? `
+${openLoopsBlock}
+When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.
 ` : ''}${callStreak >= 2 ? `
 CALL STREAK: ${callStreak} consecutive days of morning calls. Acknowledge this warmly in the GREETING — one specific, energizing line (e.g. "five mornings straight — you're building real momentum here").
 ` : ''}${prioritiesStaleAge > 7 ? `
