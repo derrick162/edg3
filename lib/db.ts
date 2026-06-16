@@ -1198,15 +1198,21 @@ export const whoopQueries = {
   },
 };
 
+// Decrypt a raw DB row so statement is plaintext. Non-encrypted (legacy) values pass through.
+function decryptFactRow(r: Fact): Fact {
+  return { ...r, statement: decryptField(r.statement) };
+}
+
 export const factQueries = {
   getAll: (userId: number): Fact[] => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at DESC'
-    ).all(userId) as Fact[];
+    ).all(userId) as Fact[]).map(decryptFactRow);
   },
 
   // Upsert: dedupe by (category, entity) when entity present; by (category, first-80-chars-statement) otherwise.
-  // Updates statement + learned_at when a fact evolved; skips exact duplicates; inserts new facts.
+  // statement is encrypted at rest; no-entity dedup compares decrypted values in app (SQL SUBSTR
+  // cannot match ciphertext).
   upsertFact: (
     userId: number,
     category: string,
@@ -1216,37 +1222,46 @@ export const factQueries = {
     sourceBriefingId?: number | null,
   ): void => {
     const db = getDb();
-    let existing: Fact | undefined;
+    let existingId: number | undefined;
+    let existingStatement: string | undefined;
+
     if (entity) {
-      existing = db.prepare(
-        'SELECT * FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
-      ).get(userId, category, entity) as Fact | undefined;
+      const row = db.prepare(
+        'SELECT id, statement FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
+      ).get(userId, category, entity) as { id: number; statement: string } | undefined;
+      if (row) { existingId = row.id; existingStatement = decryptField(row.statement); }
     } else {
-      existing = db.prepare(
-        "SELECT * FROM facts WHERE user_id=? AND category=? AND entity IS NULL AND LOWER(SUBSTR(statement,1,80))=LOWER(SUBSTR(?,1,80))"
-      ).get(userId, category, statement) as Fact | undefined;
+      const cands = db.prepare(
+        'SELECT id, statement FROM facts WHERE user_id=? AND category=? AND entity IS NULL'
+      ).all(userId, category) as Array<{ id: number; statement: string }>;
+      const match = cands.find(
+        r => decryptField(r.statement).toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
+      );
+      if (match) { existingId = match.id; existingStatement = decryptField(match.statement); }
     }
-    if (existing) {
-      if (existing.statement.toLowerCase() !== statement.toLowerCase()) {
-        db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=?").run(statement, existing.id);
+
+    if (existingId !== undefined) {
+      if (existingStatement!.toLowerCase() !== statement.toLowerCase()) {
+        db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=?")
+          .run(encryptField(statement), existingId);
       }
     } else {
       db.prepare(
         'INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id) VALUES (?,?,?,?,?,?)'
-      ).run(userId, category, statement, entity ?? null, confidence, sourceBriefingId ?? null);
+      ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
     }
   },
 
   getByCategory: (userId: number, category: string): Fact[] => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM facts WHERE user_id=? AND category=? ORDER BY learned_at DESC'
-    ).all(userId, category) as Fact[];
+    ).all(userId, category) as Fact[]).map(decryptFactRow);
   },
 
   updateFact: (userId: number, id: number, statement: string, entity: string | null): void => {
     getDb().prepare(
       "UPDATE facts SET statement=?, entity=?, learned_at=datetime('now') WHERE id=? AND user_id=?"
-    ).run(statement, entity, id, userId);
+    ).run(encryptField(statement), entity, id, userId);
   },
 
   deleteFact: (userId: number, id: number): void => {
@@ -1260,7 +1275,7 @@ export const factQueries = {
     for (const text of priorityTexts) {
       db.prepare(
         "INSERT INTO facts (user_id, category, statement, entity, confidence, source) VALUES (?,?,?,?,?,?)"
-      ).run(userId, 'goal', text, null, 'high', 'priority-sync');
+      ).run(userId, 'goal', encryptField(text), null, 'high', 'priority-sync');
     }
   },
 };
@@ -1452,13 +1467,15 @@ export const dailyFocusQueries = {
         focus_areas  = excluded.focus_areas,
         generated_at = excluded.generated_at,
         confirmed    = 0
-    `).run(userId, date, areasJson, generatedAt);
+    `).run(userId, date, encryptField(areasJson), generatedAt);
   },
 
   getToday: (userId: number, date: string): DailyFocusRecord | null => {
-    return (getDb().prepare(
+    const row = (getDb().prepare(
       `SELECT * FROM daily_focus WHERE user_id = ? AND date = ?`
     ).get(userId, date) ?? null) as DailyFocusRecord | null;
+    if (!row) return null;
+    return { ...row, focus_areas: decryptField(row.focus_areas) };
   },
 
   confirm: (userId: number, date: string): void => {
@@ -1576,18 +1593,28 @@ export const openLoopQueries = {
     ).run(userId, encryptField(data.description), data.type, data.source, data.due_date ?? null) as { lastInsertRowid: number };
   },
 
-  /** Mark a loop as resolved (done). User-scoped: ignores loops belonging to other users. */
-  resolve: (userId: number, id: number): void => {
-    getDb().prepare(
-      `UPDATE open_loops SET status = 'done', resolved_at = datetime('now') WHERE id = ? AND user_id = ?`
-    ).run(id, userId);
+  /** Mark a loop as resolved (done). Returns true if a row was updated. */
+  resolve: (userId: number, id: number): boolean => {
+    const res = getDb().prepare(
+      `UPDATE open_loops SET status = 'done', resolved_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'open'`
+    ).run(id, userId) as { changes: number };
+    return res.changes > 0;
   },
 
-  /** Mark a loop as dismissed. User-scoped. */
-  dismiss: (userId: number, id: number): void => {
-    getDb().prepare(
-      `UPDATE open_loops SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ? AND user_id = ?`
-    ).run(id, userId);
+  /** Mark a loop as dismissed. Returns true if a row was updated. */
+  dismiss: (userId: number, id: number): boolean => {
+    const res = getDb().prepare(
+      `UPDATE open_loops SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'open'`
+    ).run(id, userId) as { changes: number };
+    return res.changes > 0;
+  },
+
+  /** Dedup check: true if a similar (first-80-char prefix match) open loop exists. In-memory
+   *  comparison so encrypted descriptions are decrypted before comparing. */
+  existsSimilar: (userId: number, description: string): boolean => {
+    const open = openLoopQueries.list(userId, 'open');
+    const prefix = description.trim().toLowerCase().slice(0, 80);
+    return open.some(l => l.description.trim().toLowerCase().slice(0, 80) === prefix);
   },
 
   /** Snooze a loop until a given YYYY-MM-DD date. Loop remains open but is hidden from
