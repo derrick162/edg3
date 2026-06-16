@@ -3,9 +3,10 @@
 // Tracks unresolved action threads pulled from email + call transcripts + calendar.
 // Three buckets: commitments YOU made · awaiting YOUR response · deadlines.
 
-import { openLoopQueries, type OpenLoop, type OpenLoopType, type OpenLoopSource, type OpenLoopStatus } from './db';
+import { openLoopQueries, factQueries, type OpenLoop, type OpenLoopType, type OpenLoopSource, type OpenLoopStatus } from './db';
 import type { EmailSignal } from './gmail';
 import type { calendar_v3 } from 'googleapis';
+import { enrichEmailSignal, formatEnrichedEmailForPrompt } from './emailIntel';
 
 export type { OpenLoop, OpenLoopType, OpenLoopSource, OpenLoopStatus };
 
@@ -154,9 +155,10 @@ export async function extractAndUpsertOpenLoops(
     }
 
     if (options.emailSignal && !options.emailSignal.scopeMissing && options.emailSignal.items.length > 0) {
-      const digest = options.emailSignal.items
-        .map(item => `From: ${item.sender} | Subject: ${item.subject}\nSnippet: ${item.snippet.slice(0, 150)}`)
-        .join('\n\n');
+      // Enrich with deadlines, dollar amounts, and VIP signals before passing to the LLM.
+      const facts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+      const enriched = enrichEmailSignal(options.emailSignal.items, facts, today);
+      const digest = formatEnrichedEmailForPrompt(enriched);
       const loops = await extractOpenLoopsFromText(digest, 'email', today);
       allExtracted.push(...loops);
     }

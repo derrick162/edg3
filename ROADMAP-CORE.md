@@ -9,6 +9,18 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **Deeper email understanding — deadlines, dollar amounts, VIP senders** (`lib/emailIntel.ts`).
+  - **`lib/emailIntel.ts`** — pure enrichment layer (regex + fact lookup, zero I/O, zero LLM cost):
+    - `extractDeadlineDate(text, ref)` — finds ISO date, "Month DD", "by Friday", "end of month" patterns; only fires on explicit deadline trigger keywords (due/overdue/deadline/final notice/expires/etc).
+    - `extractDollarAmounts(text)` — extracts `$X,XXX`, `$Xk`, `$X million`, `X dollars` patterns as numbers.
+    - `isSenderVip(sender, personFacts)` — true when sender name/email matches any stored 'person' fact entity (case-insensitive, partial match on first/last name).
+    - `computeUrgencyLevel(item, deadline, dollars, vip, ref)` — critical: deadline ≤2d OR deadline ≤7d+dollar≥$1k; high: deadline ≤7d OR VIP OR isImportant OR dollar≥$5k; normal: everything else.
+    - `enrichEmailSignal(items, facts, ref)` — enriches batch of `EmailSignalItem` into `EmailIntelItem[]`.
+    - `formatEnrichedEmailForPrompt(items)` — richer prompt block with `[CRITICAL · VIP sender · deadline YYYY-MM-DD · $Xk]` tags.
+  - **`lib/openLoops.ts`** — email digest path now enriches signal before passing to Haiku (deadline dates surfaced as explicit `due_date`; dollar amounts + VIP flags as urgency context).
+  - **`lib/focusRecommendation.ts`** — `formatEmailSignalForPrompt` uses enriched format when facts available; passes `allFacts` for VIP detection.
+  - **`lib/meetingContext.ts`** — VIP email items get +2 score boost in meeting relevance ranking.
+  - 37 new tests. 890/890 green, tsc clean, next build clean.
 - **2026-06-16** — **★ Meeting prep cross-link — email + calendar + memory** (`lib/meetingContext.ts`, `app/api/meeting-context/route.ts`).
   - **`lib/meetingContext.ts`** — pure keyword-matching layer (no LLM cost):
     - `extractKeywords(text)` — strips stop words, returns ≥4-char tokens.

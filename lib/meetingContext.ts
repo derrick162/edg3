@@ -9,6 +9,7 @@
 import type { calendar_v3 } from 'googleapis';
 import type { EmailSignalItem } from './gmail';
 import type { Fact, OpenLoop } from './db';
+import type { EmailIntelItem } from './emailIntel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -85,12 +86,14 @@ export function buildMeetingContext(
     .map(a => a.displayName ?? a.email?.split('@')[0] ?? '')
     .filter(Boolean);
 
-  // Score emails by token overlap with subject + sender + snippet
+  // Score emails by token overlap + VIP boost
   const relatedEmails = emailItems
     .map(item => {
       const haystack = `${item.sender} ${item.subject} ${item.snippet}`.toLowerCase();
-      const score = tokens.filter(t => haystack.includes(t)).length;
-      return { item, score };
+      const tokenScore = tokens.filter(t => haystack.includes(t)).length;
+      // VIP senders get a +2 boost so they surface even with fewer keyword matches
+      const vipBoost = 'senderVip' in item && (item as EmailIntelItem).senderVip ? 2 : 0;
+      return { item, score: tokenScore + vipBoost };
     })
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score)
