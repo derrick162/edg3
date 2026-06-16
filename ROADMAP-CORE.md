@@ -9,6 +9,10 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **[BUG FIX] Alignment hours now count the full current week, not future-only.**
+  - **ROOT CAUSE:** `getWeekEvents` used `timeMin: now` — completed events (gym on Monday, meetings from earlier days) were never passed to `computeAlignment`. Edge told Derrick "2.5h on gym" when real completed hours were much higher. Also affected hygiene flags and Edge Score focus%.
+  - **Fix:** new `getFullWeekEvents(userId, tz)` in `lib/calendar.ts` — fetches Mon 00:00 through Sun 23:59 in the user's timezone (using `dayRangeUtc` + `todayInTz` for exact UTC bounds). `briefing.ts` runs it in parallel, passes the full-week set to `computeAlignment` + `detectHygieneFlags`. Future-only `weekEvents` kept for calendar display and free-time slots.
+  - 1 regression test added (`computeAlignment` counts a completed Monday gym event). 989/989 green, tsc clean, next build clean.
 - **2026-06-16** — **Briefing call UX — 5 live improvements (PM dispatch from Derrick's morning call).**
   - **Condense**: max_tokens 450→320; word cap updated to MAX 220 in system prompt.
   - **Hook opener**: 3-part briefing structure replaces 6-section framework. PART 1: "${greeting}, ${firstName}. This is your Nth morning — Edge Score X/100[±delta]." Then ONE energy/sleep line from PROGRESS HOOK data. Then ONE meaningful event only (no meals/gym). Streak line stays.
