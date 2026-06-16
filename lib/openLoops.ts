@@ -2,14 +2,8 @@
 //
 // Tracks unresolved action threads pulled from email + call transcripts + calendar.
 // Three buckets: commitments YOU made · awaiting YOUR response · deadlines.
-//
-// DB STUB: until Vijay's open_loops migration lands on master, this file self-creates
-// the open_loops table and owns the CRUD directly. When openLoopQueries lands in lib/db.ts:
-// 1. Delete the "DB STUB" section below (ensureTable + stubQueries)
-// 2. Import { openLoopQueries, type OpenLoop } from './db' and alias to openLoopStubQueries
-// 3. Remove the exported OpenLoop type below (use the one from ./db)
 
-import { getDb } from './db';
+import { openLoopQueries, type OpenLoop as DbOpenLoop } from './db';
 import type { EmailSignal } from './gmail';
 import type { calendar_v3 } from 'googleapis';
 
@@ -19,6 +13,7 @@ export type OpenLoopType   = 'commitment_made' | 'awaiting_you' | 'deadline';
 export type OpenLoopSource = 'email' | 'call' | 'calendar';
 export type OpenLoopStatus = 'open' | 'done' | 'dismissed';
 
+// Snake-case interface retained for backwards compat with the route + UI component.
 export interface OpenLoop {
   id: number;
   user_id: number;
@@ -38,78 +33,54 @@ export interface ExtractedOpenLoop {
   due_date: string | null;
 }
 
-// ─── DB STUB ─────────────────────────────────────────────────────────────────
-// Remove this block when Vijay's migration lands and openLoopQueries is in lib/db.ts.
+// ─── Adapter ─────────────────────────────────────────────────────────────────
+// Converts the camelCase DbOpenLoop (from lib/db.ts) to the snake_case OpenLoop
+// interface expected by the route and UI component.
 
-let tableReady = false;
-function ensureTable(): void {
-  if (tableReady) return;
-  getDb().exec(`
-    CREATE TABLE IF NOT EXISTS open_loops (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES users(id),
-      description TEXT    NOT NULL,
-      type        TEXT    NOT NULL CHECK(type IN ('commitment_made','awaiting_you','deadline')),
-      source      TEXT    NOT NULL CHECK(source IN ('email','call','calendar')),
-      due_date    TEXT,
-      status      TEXT    NOT NULL DEFAULT 'open' CHECK(status IN ('open','done','dismissed')),
-      created_at  TEXT    DEFAULT (datetime('now')),
-      resolved_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status);
-  `);
-  tableReady = true;
+function toSnake(l: DbOpenLoop): OpenLoop {
+  return {
+    id:          l.id,
+    user_id:     l.userId,
+    description: l.description,
+    type:        l.type as OpenLoopType,
+    source:      l.source as OpenLoopSource,
+    due_date:    l.dueDate,
+    status:      l.status as OpenLoopStatus,
+    created_at:  l.createdAt,
+    resolved_at: l.resolvedAt,
+  };
 }
 
+// openLoopStubQueries: thin wrapper over the encrypted openLoopQueries from lib/db.ts.
+// Preserves the snake_case interface so the route, UI component, and tests remain unchanged.
 export const openLoopStubQueries = {
   insert(userId: number, loop: ExtractedOpenLoop): void {
-    ensureTable();
-    getDb().prepare(
-      `INSERT INTO open_loops (user_id, description, type, source, due_date)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(userId, loop.description, loop.type, loop.source, loop.due_date ?? null);
+    openLoopQueries.insert(userId, {
+      description: loop.description,
+      type:        loop.type,
+      source:      loop.source,
+      due_date:    loop.due_date,
+    });
   },
 
   getOpen(userId: number): OpenLoop[] {
-    ensureTable();
-    return getDb()
-      .prepare(`SELECT * FROM open_loops WHERE user_id=? AND status='open' ORDER BY due_date ASC NULLS LAST, created_at ASC`)
-      .all(userId) as OpenLoop[];
+    return openLoopQueries.list(userId, 'open').map(toSnake);
   },
 
-  getAll(userId: number, limit = 50): OpenLoop[] {
-    ensureTable();
-    return getDb()
-      .prepare(`SELECT * FROM open_loops WHERE user_id=? ORDER BY created_at DESC LIMIT ?`)
-      .all(userId, limit) as OpenLoop[];
+  getAll(userId: number, _limit = 50): OpenLoop[] {
+    return openLoopQueries.list(userId).map(toSnake);
   },
 
   resolve(userId: number, id: number): boolean {
-    ensureTable();
-    const res = getDb().prepare(
-      `UPDATE open_loops SET status='done', resolved_at=datetime('now') WHERE id=? AND user_id=? AND status='open'`,
-    ).run(id, userId);
-    return res.changes > 0;
+    return openLoopQueries.resolve(userId, id);
   },
 
   dismiss(userId: number, id: number): boolean {
-    ensureTable();
-    const res = getDb().prepare(
-      `UPDATE open_loops SET status='dismissed', resolved_at=datetime('now') WHERE id=? AND user_id=? AND status='open'`,
-    ).run(id, userId);
-    return res.changes > 0;
+    return openLoopQueries.dismiss(userId, id);
   },
 
   existsSimilar(userId: number, description: string): boolean {
-    ensureTable();
-    const prefix = description.trim().toLowerCase().slice(0, 80);
-    const row = getDb().prepare(
-      `SELECT 1 FROM open_loops
-       WHERE user_id=? AND status='open'
-       AND LOWER(SUBSTR(description,1,80))=?
-       LIMIT 1`,
-    ).get(userId, prefix);
-    return !!row;
+    return openLoopQueries.existsSimilar(userId, description);
   },
 };
 

@@ -17,6 +17,18 @@ const mockPrepare = vi.fn(() => ({ run: mockRun, get: mockGet, all: mockAll }));
 
 vi.mock('./db', () => ({
   getDb: () => ({ prepare: mockPrepare, exec: mockExec }),
+  openLoopQueries: {
+    list: (_userId: number, _status?: string) => mockAll(),
+    insert: (_userId: number, _loop: unknown) => { mockRun(); },
+    resolve: (_userId: number, _id: number): boolean => mockRun().changes > 0,
+    dismiss: (_userId: number, _id: number): boolean => mockRun().changes > 0,
+    existsSimilar: (_userId: number, description: string): boolean => {
+      const existing = mockAll() as Array<{ description: string }>;
+      const prefix = description.trim().toLowerCase().slice(0, 80);
+      return existing.some(l => l.description.trim().toLowerCase().slice(0, 80) === prefix);
+    },
+    prune: () => { mockRun(); },
+  },
 }));
 
 import {
@@ -44,6 +56,25 @@ function makeLoop(overrides: Partial<OpenLoop> = {}): OpenLoop {
     status: 'open',
     created_at: '2026-06-15',
     resolved_at: null,
+    ...overrides,
+  };
+}
+
+// Camelcase version — feeds mockAll for tests that go through openLoopQueries.list → toSnake
+function makeDbLoop(overrides: Partial<{
+  id: number; userId: number; description: string; type: string;
+  source: string; dueDate: string | null; status: string;
+  createdAt: string; resolvedAt: string | null;
+}> = {}) {
+  return {
+    id: 1, userId: 1,
+    description: 'Send CIBC proposal',
+    type: 'commitment_made',
+    source: 'call',
+    dueDate: null,
+    status: 'open',
+    createdAt: '2026-06-15',
+    resolvedAt: null,
     ...overrides,
   };
 }
@@ -175,9 +206,9 @@ describe('extractOpenLoopsFromCalendar', () => {
 describe('getUrgentOpenLoops', () => {
   it('returns loops due today or overdue', () => {
     mockAll.mockReturnValue([
-      makeLoop({ due_date: '2026-06-14', type: 'deadline' }),  // overdue
-      makeLoop({ id: 2, due_date: '2026-06-15', type: 'deadline' }), // today
-      makeLoop({ id: 3, due_date: '2026-06-20', type: 'deadline' }), // future — skip
+      makeDbLoop({ dueDate: '2026-06-14', type: 'deadline' }),  // overdue
+      makeDbLoop({ id: 2, dueDate: '2026-06-15', type: 'deadline' }), // today
+      makeDbLoop({ id: 3, dueDate: '2026-06-20', type: 'deadline' }), // future — skip
     ]);
     const urgent = getUrgentOpenLoops(1, '2026-06-15');
     expect(urgent).toHaveLength(2);
@@ -196,7 +227,7 @@ describe('getUrgentOpenLoops', () => {
   });
 
   it('caps at 5 urgent loops', () => {
-    const loops = Array.from({ length: 8 }, (_, i) => makeLoop({ id: i, due_date: '2026-06-10' }));
+    const loops = Array.from({ length: 8 }, (_, i) => makeDbLoop({ id: i, dueDate: '2026-06-10' }));
     mockAll.mockReturnValue(loops);
     expect(getUrgentOpenLoops(1, '2026-06-15')).toHaveLength(5);
   });
@@ -262,7 +293,7 @@ describe('extractAndUpsertOpenLoops', () => {
       { description: 'Send CIBC proposal', type: 'commitment_made', due_date: null },
     ])));
     // existsSimilar returns true → skip insert
-    mockGet.mockReturnValue({ 1: 1 });
+    mockAll.mockReturnValue([makeDbLoop()]);
     await extractAndUpsertOpenLoops(1, { transcript: 'I said I would send the CIBC proposal next week for sure' });
     expect(mockRun).not.toHaveBeenCalled();
   });
