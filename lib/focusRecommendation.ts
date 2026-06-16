@@ -6,7 +6,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { calendar_v3 } from 'googleapis';
-import { factQueries, memoryQueries, type Priority } from './db';
+import { factQueries, memoryQueries, dailyFocusQueries, type Priority } from './db';
 import { topFacts } from './memorySalience';
 import { getPastCalendarEvents } from './calendar';
 import type { EmailSignal, EmailSignalItem } from './gmail';
@@ -150,10 +150,11 @@ export async function recommendFocusAreas(
   const date = opts.date ?? new Date().toISOString().slice(0, 10);
 
   // ── Assemble sources in parallel ─────────────────────────────────────────────
-  const [rawEvents, allFacts, recentMemories] = await Promise.all([
+  const [rawEvents, allFacts, recentMemories, recentDismissed] = await Promise.all([
     getPastCalendarEvents(userId, 180).catch(() => [] as calendar_v3.Schema$Event[]),
     Promise.resolve(factQueries.getAll(userId)).catch(() => []),
     Promise.resolve(memoryQueries.getWeighted(userId, 15)).catch(() => []),
+    Promise.resolve(dailyFocusQueries.getRecentDismissed(userId, 7)).catch(() => [] as string[]),
   ]);
 
   const calendarThemes = aggregateEventThemes(rawEvents);
@@ -187,7 +188,8 @@ export async function recommendFocusAreas(
   // ── Build Sonnet prompt ───────────────────────────────────────────────────────
   const sections: string[] = [
     `You are Edge, a personal chief-of-staff AI. Today is ${date}.`,
-    'Recommend the top 1–3 focus areas for TODAY — not the week, just today. Each focus area should ladder up to one of the user\'s stable overarching priorities.',
+    'Recommend the top 3–6 focus areas for TODAY — not the week, just today. Return AT LEAST 3 and UP TO 6. Sort by importance: the first 3 are shown immediately; items 4-6 are replacement candidates if the user dismisses one.',
+    'Each focus area should ladder up to one of the user\'s stable overarching priorities.',
     '',
   ];
 
@@ -269,6 +271,12 @@ export async function recommendFocusAreas(
     }
   }
 
+  if (recentDismissed.length > 0) {
+    sections.push('RECENTLY DISMISSED (user skipped these in the past 7 days — do NOT suggest the same titles again; suggest related but more specific or actionable alternatives if the underlying priority still applies):');
+    sections.push(recentDismissed.map(t => `  - "${t}"`).join('\n'));
+    sections.push('');
+  }
+
   sections.push(
     'Return ONLY valid JSON — no preamble, no markdown fences:',
     '{"areas":[{"title":"...","rationale":"...","confidence":"high|medium|low","anchor":"exact priority text or standalone"}]}',
@@ -279,8 +287,8 @@ export async function recommendFocusAreas(
     '- confidence: high = clear signal from 2+ sources; medium = one source or ambiguous; low = thin data',
     '- anchor: ALWAYS include this field. Use the EXACT text of the closest matching priority from the list above. If nothing fits, write "standalone". Never omit.',
     '- Modulate scope by energy: green=ambitious target, yellow=realistic target, red=one meaningful output',
-    '- Return fewer than 3 if fewer than 3 clear priorities emerge — never invent',
-    '- Sort by importance, highest first',
+    '- Return 3–6 areas. Never return fewer than 3 unless data is genuinely too thin to support them.',
+    '- Sort by importance, highest first. Items 4-6 are backup candidates.',
   );
 
   const prompt = sections.join('\n');
@@ -290,7 +298,7 @@ export async function recommendFocusAreas(
   try {
     const res = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 600,
+      max_tokens: 900,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -311,7 +319,7 @@ export async function recommendFocusAreas(
         typeof (a as Record<string, unknown>).title === 'string' &&
         typeof (a as Record<string, unknown>).rationale === 'string'
       )
-      .slice(0, 3)
+      .slice(0, 6)
       .map(a => {
         const title    = String(a.title).trim();
         const rationale = String(a.rationale).trim();
