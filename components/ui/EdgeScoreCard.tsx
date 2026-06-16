@@ -12,6 +12,7 @@ export interface EdgeScoreCardProps {
   sparse?: boolean;         // true = no focus areas or no calendar connected
   calibrating?: boolean;    // energy score still learning (< 10 calls)
   calibratingHalf?: 'focus' | 'energy' | 'both';  // which half is still calibrating
+  previousScore?: number;   // yesterday's score — shows movement delta
   onRequestFix?: () => void;
 }
 
@@ -31,10 +32,10 @@ function scoreGlow(s: number): string {
 }
 
 function scoreSummary(s: number): string {
-  if (s >= 85) return "You're aligned — keep the momentum.";
-  if (s >= 65) return 'Good shape. A couple of things to tighten.';
-  if (s >= 35) return 'Room to improve — see what to shift.';
-  return 'Day needs attention. Edge can help fix it.';
+  if (s >= 85) return "You're set up well today — keep going.";
+  if (s >= 65) return 'Good shape. A couple of small things to shift.';
+  if (s >= 35) return 'A few changes could make today stronger.';
+  return 'Today needs some work — Edge can help fix it.';
 }
 
 function scoreCardBorder(s: number): string {
@@ -88,7 +89,7 @@ function CalibratingArc() {
         fill="var(--text-faint)"
         style={{ fontFamily: 'inherit' }}
       >
-        CALIBRATING
+        BUILDING
       </text>
     </svg>
   );
@@ -183,7 +184,7 @@ function ScorePanel({
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>{icon} {label}</span>
         {calibrating
-          ? <span className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>calibrating…</span>
+          ? <span className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>learning…</span>
           : <span className="text-sm font-black tabular-nums" style={{ color: scoreColor(score) }}>{score}</span>
         }
       </div>
@@ -321,6 +322,7 @@ export function EdgeScoreCard({
   sparse = false,
   calibrating = false,
   calibratingHalf,
+  previousScore,
   onRequestFix,
 }: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -414,7 +416,19 @@ export function EdgeScoreCard({
 
         {/* Right panel */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold mb-1 uppercase tracking-wide" style={{ color: 'var(--text-faint)', letterSpacing: '0.07em' }}>Today</p>
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-faint)', letterSpacing: '0.07em' }}>Today</p>
+            {previousScore !== undefined && (() => {
+              const delta = s - previousScore;
+              if (Math.abs(delta) < 2) return null;
+              const up = delta > 0;
+              return (
+                <span className="text-xs font-semibold" style={{ color: up ? 'var(--gauge-peak)' : 'var(--gauge-low)' }}>
+                  {up ? '▲' : '▼'} {Math.abs(delta)} vs yesterday
+                </span>
+              );
+            })()}
+          </div>
           <p className="text-sm font-bold mb-2 leading-snug" style={{ color: 'var(--text-strong)' }}>
             {scoreSummary(s)}
           </p>
@@ -425,7 +439,7 @@ export function EdgeScoreCard({
             className="text-xs mb-2 transition-opacity hover:opacity-80"
             style={{ color: 'var(--text-accent)' }}
           >
-            {expanded ? '▲ Hide how this is calculated' : '▼ How is this calculated?'}
+            {expanded ? '▲ Hide breakdown' : '▼ See the breakdown'}
           </button>
 
           {expanded && (
@@ -478,7 +492,7 @@ export function EdgeScoreCard({
                     color: 'var(--text-accent)',
                   }}
                 >
-                  ✦ Improve my day →
+                  ✦ See what to shift →
                 </button>
               )}
             </div>
