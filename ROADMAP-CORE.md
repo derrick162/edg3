@@ -10,10 +10,11 @@
 
 ## 📥 PM DISPATCH — 2026-06-16 (NEW — landing page waitlist 404)
 
-> Master at `3d4c623` (997 green). **Tickets A + C shipped ✅** (integrated by PM).
-> One new launch-blocker, Darren — sync master first.
+> Master at `bda358f` (997 green). **Tickets A + C shipped ✅** (integrated by PM).
+> **Ticket F SHIPPED ✅ by PM** (`bda358f`) — landing CTA was launch-blocking and live-broken,
+> so PM built it directly. Darren: do NOT rebuild; sync master. Details below for the record.
 
-**F — Build the missing `/api/waitlist` route (landing-page form 404s).** Security's audit
+**F — ~~Build the missing `/api/waitlist` route (landing-page form 404s).~~ DONE (PM).** Security's audit
 found that `app/page.tsx` POSTs `{ email }` to `/api/waitlist` (lines 33, 103, 288) but the
 route **does not exist** → every waitlist signup 404s. This blocks the whole top-of-funnel for
 beta. Build `app/api/waitlist/route.ts` (POST): validate email, persist to a `waitlist` table
