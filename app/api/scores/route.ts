@@ -102,18 +102,46 @@ export async function GET() {
 
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep, 45, clarityInputs, momentumInputs);
 
-  // Persist today's scores for trend analysis and fire score-change notification.
-  try {
-    calendarScoreQueries.upsert(user.id, today, {
-      edgeScore:     fit.edgeScore,
-      focusScore:    fit.focusScore.score,
-      energyScore:   fit.energyScore.score,
-      focusDrivers:  fit.focusScore.drivers,
-      energyDrivers: fit.energyScore.drivers,
-    });
-    maybeCreateScoreChangeNotif(user.id, fit.edgeScore, today);
-  } catch {
-    // Non-fatal — scoring still returns even if persistence fails.
+  // Focus is the ONLY component derived from a live LLM classification (computeAlignment)
+  // + a Google Calendar fetch, so it's the only one that can transiently fail. When it
+  // does, computeFocusScore returns 0 — which made the headline flicker to a misleading
+  // low value on refresh (and, because we persisted it, polluted the trend + showed again).
+  // Treat focus as RELIABLE only when alignment succeeded AND we actually had events.
+  const focusReliable = alignment !== null && weekEvents.length > 0;
+
+  if (focusReliable) {
+    // Persist the good score for trend analysis + fire score-change notification.
+    try {
+      calendarScoreQueries.upsert(user.id, today, {
+        edgeScore:     fit.edgeScore,
+        focusScore:    fit.focusScore.score,
+        energyScore:   fit.energyScore.score,
+        focusDrivers:  fit.focusScore.drivers,
+        energyDrivers: fit.energyScore.drivers,
+      });
+      maybeCreateScoreChangeNotif(user.id, fit.edgeScore, today);
+    } catch {
+      // Non-fatal — scoring still returns even if persistence fails.
+    }
+  } else {
+    // Degraded compute (LLM/Google hiccup). Do NOT persist a transient 0 — that would
+    // flicker the UI and corrupt the trend. Serve the last good score so the number
+    // stays stable across refreshes when nothing actually changed.
+    try {
+      const lastGood = calendarScoreQueries.getLatest(user.id);
+      if (lastGood && lastGood.focus_score != null) {
+        fit.focusScore.score = lastGood.focus_score;
+        fit.focusScore.calibrating = false;
+        fit.focusScore.drivers = ['Showing your most recent Focus Score — Edge couldn’t refresh it this moment; it’ll update on the next successful load.'];
+        fit.focusScore.topFix = null;
+        if (lastGood.edge_score != null) fit.edgeScore = lastGood.edge_score;
+      } else {
+        // No history yet — show focus as calibrating rather than a hard, misleading 0.
+        fit.focusScore.calibrating = true;
+      }
+    } catch {
+      // Ignore — fall through with computed values.
+    }
   }
 
   // 7-day Edge Score trend (oldest→newest) for the sparkline + trend arrow.
