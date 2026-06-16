@@ -6,6 +6,7 @@ import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, effectiveTimezone, User } from './db';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
+import { maybeDailyBackup } from './backup';
 
 /**
  * Structured call failure — carries a user-facing message and a reason code so
@@ -160,10 +161,11 @@ export function startScheduler() {
     await checkAndInitiateCalls(new Date());
   });
 
-  // Nightly retention prune at 3am server time (UTC) — remove old email-derived PII rows.
+  // Nightly at 3am UTC: retention prune for PII rows + daily DB snapshot (covers no-call days).
   cron.schedule('0 3 * * *', () => {
     try { openLoopQueries.prune(); } catch (e) { console.error('[scheduler] openLoopQueries.prune failed:', e); }
     try { watchedThreadQueries.prune(); } catch (e) { console.error('[scheduler] watchedThreadQueries.prune failed:', e); }
+    maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
   });
 
   console.log('EDG3 scheduler started');

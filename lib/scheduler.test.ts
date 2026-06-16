@@ -49,6 +49,7 @@ vi.mock('./db', () => ({
   effectiveTimezone: (u: { timezone?: string }) => u.timezone ?? 'America/Vancouver',
 }));
 
+vi.mock('./backup', () => ({ maybeDailyBackup: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./vapi', () => ({ initiateCall: h.initiateCall }));
 vi.mock('./briefing', () => ({
   generateDailyBriefing: h.generateDailyBriefing,
