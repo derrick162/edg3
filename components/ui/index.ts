@@ -21,3 +21,5 @@ export { FocusRecommendationCard } from './FocusRecommendationCard';
 export type { FocusRecommendationCardProps, FocusRecommendation, FocusRecommendationArea } from './FocusRecommendationCard';
 export { ActivationCard } from './ActivationCard';
 export type { ActivationCardProps } from './ActivationCard';
+export { ContentSection } from './ContentSection';
+export type { ContentCard } from './ContentSection';
