@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getAuthUrl } from '@/lib/whoop';
+import { oauthStateQueries } from '@/lib/db';
+import { randomBytes } from 'crypto';
 
 export async function GET() {
   const user = await getSession();
@@ -10,16 +12,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Whoop not configured' }, { status: 503 });
   }
 
-  const url = getAuthUrl(user.id);
-  const response = NextResponse.json({ url });
-  // Backup cookie: preserves userId across the OAuth redirect in case the session
-  // cookie is dropped (same pattern as /api/calendar/connect).
-  response.cookies.set('edg3_whoop_uid', String(user.id), {
-    httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge:   60 * 10,
-    path:     '/',
-  });
-  return response;
+  // Generate a cryptographic CSRF state token, bound to this user + flow.
+  // The callback verifies it before accepting the OAuth code.
+  const state = randomBytes(20).toString('hex');
+  oauthStateQueries.create(state, user.id, 'whoop');
+
+  const url = getAuthUrl(state);
+  return NextResponse.json({ url });
 }

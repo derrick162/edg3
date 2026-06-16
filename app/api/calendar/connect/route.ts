@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getAuthUrl } from '@/lib/calendar';
+import { oauthStateQueries } from '@/lib/db';
+import { randomBytes } from 'crypto';
 
 export async function GET() {
   const user = await getSession();
@@ -10,15 +12,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Google Calendar not configured' }, { status: 503 });
   }
 
-  const url = getAuthUrl(user.id);
-  const response = NextResponse.json({ url });
-  // Set a short-lived cookie as backup in case session drops during OAuth redirect
-  response.cookies.set('edg3_oauth_uid', String(user.id), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 10, // 10 minutes
-    path: '/',
-  });
-  return response;
+  // Generate a cryptographic CSRF state token, bound to this user + flow.
+  // The callback verifies it before accepting the OAuth code.
+  const state = randomBytes(20).toString('hex');
+  oauthStateQueries.create(state, user.id, 'calendar');
+
+  const url = getAuthUrl(state);
+  return NextResponse.json({ url });
 }

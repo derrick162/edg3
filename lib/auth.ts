@@ -25,17 +25,17 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-export function createToken(userId: number): string {
-  return jwt.sign({ userId }, getJwtSecret(), { expiresIn: '30d' });
+export function createToken(userId: number, sessionVersion: number): string {
+  return jwt.sign({ userId, ver: sessionVersion }, getJwtSecret(), { expiresIn: '30d' });
 }
 
-export function verifyToken(token: string): { userId: number } | null {
+export function verifyToken(token: string): { userId: number; ver?: number } | null {
   // Resolve the secret outside the try so a misconfigured server surfaces loudly
   // (500) instead of silently treating every session as invalid; only a genuinely
   // bad/expired token falls through to null.
   const secret = getJwtSecret();
   try {
-    return jwt.verify(token, secret) as { userId: number };
+    return jwt.verify(token, secret) as { userId: number; ver?: number };
   } catch {
     return null;
   }
@@ -49,7 +49,14 @@ export async function getSession(): Promise<User | null> {
   const payload = verifyToken(token);
   if (!payload) return null;
 
-  return userQueries.findById(payload.userId) || null;
+  const user = userQueries.findById(payload.userId);
+  if (!user) return null;
+
+  // Revocation check: if the token carries a version, it must match the user's current
+  // session_version. Legacy tokens (no ver) are grandfathered until they expire naturally.
+  if (payload.ver !== undefined && payload.ver !== user.session_version) return null;
+
+  return user;
 }
 
 export function setSessionCookie(token: string) {

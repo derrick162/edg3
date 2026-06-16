@@ -368,6 +368,15 @@ function initSchema(db: Database.Database) {
       status     TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','seen','resolved')),
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- OAuth CSRF state tokens — one-time-use, short-lived (10 min).
+    -- Generated in /api/[calendar|whoop]/connect; consumed (verified + deleted) in /api/[...]/callback.
+    CREATE TABLE IF NOT EXISTS oauth_state (
+      state      TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop')),
+      expires_at TEXT NOT NULL
+    );
   `);
 
   // Indexes for performance
@@ -410,6 +419,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE facts ADD COLUMN source TEXT",
     "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
     "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -440,6 +450,33 @@ export const userQueries = {
   },
   completeOnboarding: (id: number) => {
     return getDb().prepare('UPDATE users SET onboarding_complete = 1 WHERE id = ?').run(id);
+  },
+  incrementSessionVersion: (id: number) => {
+    return getDb().prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?').run(id);
+  },
+};
+
+// OAuth CSRF state — one-time-use tokens that bind a flow to a userId.
+export const oauthStateQueries = {
+  create: (state: string, userId: number, flow: 'calendar' | 'whoop'): void => {
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10-minute TTL
+    getDb().prepare(
+      'INSERT OR REPLACE INTO oauth_state (state, user_id, flow, expires_at) VALUES (?, ?, ?, ?)'
+    ).run(state, userId, flow, expiresAt);
+  },
+  // Atomically verify + delete a state token. Returns {userId, flow} on success; null if missing/expired.
+  consume: (state: string): { userId: number; flow: string } | null => {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT user_id, flow FROM oauth_state WHERE state = ? AND expires_at > datetime('now')"
+    ).get(state) as { user_id: number; flow: string } | undefined;
+    if (!row) return null;
+    db.prepare('DELETE FROM oauth_state WHERE state = ?').run(state);
+    return { userId: row.user_id, flow: row.flow };
+  },
+  // Prune expired tokens (called from cron — defensive cleanup).
+  prune: (): void => {
+    getDb().prepare("DELETE FROM oauth_state WHERE expires_at <= datetime('now')").run();
   },
 };
 
@@ -1054,6 +1091,7 @@ export interface User {
   onboarding_complete: number;
   phone_number: string | null;
   current_timezone: string | null;
+  session_version: number;
   created_at: string;
 }
 

@@ -90,19 +90,19 @@ beforeEach(() => {
 
 describe('getAuthUrl', () => {
   it('contains all required scopes in the URL', () => {
-    const url = getAuthUrl(42);
+    const url = getAuthUrl('test-state-abc123');
     for (const scope of WHOOP_SCOPES) {
       expect(decodeURIComponent(url)).toContain(scope);
     }
   });
 
-  it('embeds userId as the state parameter', () => {
-    const url = getAuthUrl(99);
-    expect(url).toContain('state=99');
+  it('embeds the provided state parameter in the URL', () => {
+    const url = getAuthUrl('my-csrf-token');
+    expect(decodeURIComponent(url)).toContain('state=my-csrf-token');
   });
 
   it('uses the correct redirect_uri', () => {
-    const url = getAuthUrl(1);
+    const url = getAuthUrl('any-state');
     expect(decodeURIComponent(url)).toContain('https://www.edg3.ai/api/whoop/callback');
   });
 });

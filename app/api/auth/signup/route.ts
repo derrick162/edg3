@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await hashPassword(password);
     const result = userQueries.create(email, name, passwordHash) as any;
-    const token = createToken(result.lastInsertRowid);
+    const token = createToken(result.lastInsertRowid, 1);
 
     const response = NextResponse.json({ success: true });
     response.cookies.set(setSessionCookie(token));

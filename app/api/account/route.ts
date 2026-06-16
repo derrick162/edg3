@@ -49,6 +49,7 @@ export async function DELETE(req: NextRequest) {
     db.prepare('DELETE FROM undo_log WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM event_dedupe_keys WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM delete_confirm_tokens WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM oauth_state WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
 
     // Clear the session cookie — the user no longer exists.

@@ -57,7 +57,7 @@ Edge won't leave a voicemail or reschedule automatically. You'll see a summary o
 *Whoop (optional):* Edge reads your daily recovery score and sleep data to understand your energy level. This is read-only — Edge never writes anything to Whoop.
 
 **Is my data encrypted?**
-Yes. Your calendar data, email signals, Whoop health data, and call transcripts are encrypted at rest. Health data (Whoop) gets an additional layer of encryption because it's particularly sensitive.
+Yes. Your Google Calendar access credentials, Whoop health tokens, call transcripts, and stored facts are all encrypted at rest using AES-256-GCM. Calendar events themselves are fetched live from Google — they are not stored in our database.
 
 **Do you sell my data?**
 No. Never. Your data is used to make Edge work for you — that's it. It is not sold, shared with advertisers, or used to train models for other users.

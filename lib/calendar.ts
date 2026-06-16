@@ -45,7 +45,7 @@ export function getOAuthClient() {
   );
 }
 
-export function getAuthUrl(userId?: number): string {
+export function getAuthUrl(state: string): string {
   const oauth2Client = getOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -54,7 +54,7 @@ export function getAuthUrl(userId?: number): string {
     // Incremental auth: keep previously-granted scopes when a calendar-only user
     // re-consents to add Gmail, so we never silently drop calendar access.
     include_granted_scopes: true,
-    state: userId ? String(userId) : undefined,
+    state,
   });
 }
 
