@@ -8,6 +8,31 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-15** — **Privacy/security audit of email-derived data; retention prune for watched_threads.**
+  - **Audit findings (email-derived PII coverage):**
+    - `gmail_drafts_log.recipient/subject` ✅ encrypted at rest (`encryptNullable`)
+    - `watched_threads.recipient/context` ✅ encrypted at rest (`encryptNullable`)
+    - `notifications.title/body` ✅ encrypted at rest (`encryptNullable`)
+    - `open_loops.description` ✅ encrypted at rest (shipped this session)
+    - No email body ever stored — `getRecentEmailSignal` uses `format:'metadata'` only
+    - Audit log records email signal fetch (thread count only, zero content)
+    - All tables covered in self-service + admin deletion paths ✅
+    - All tables (except `watched_threads` / `notifications` — ephemeral ops state) in data export ✅
+  - **⚠️ PM DECISION REQUIRED — `facts.statement` plaintext:**
+    LLM-distilled facts from email (`extractAndUpsertFactsFromEmail`) are stored as `facts.statement TEXT`
+    (plaintext), shared with call-derived facts in the same column. Examples: "User is in debt
+    negotiation with CIBC", "User owes a past-due balance to a collection agency." Risk: MEDIUM
+    (LLM summary, not verbatim email). Options: (a) encrypt `facts.statement` globally (requires
+    migration of existing rows — breaking, needs PM go-ahead); (b) add `source` column + encrypt
+    email-derived rows only; (c) accept current design (LLM-distilled = not raw PII). Decision
+    logged here so it doesn't fall through. PM/Derrick call.
+  - **Retention minimization — `watched_threads`:**
+    `watchedThreadQueries.prune()` added: deletes handled/dismissed reply-tracking rows older than
+    30 days. Called nightly at 3am UTC alongside `openLoopQueries.prune()` via new cron in
+    `lib/scheduler.ts` (independent try/catch so one failure can't block the other).
+  - **CASA code items — ALL COMPLETE:** rate limiting ✅, audit log ✅, token revocation ✅,
+    Google token revocation in disconnect ✅, privacy policy ✅. Remaining CASA non-eng:
+    demo video scene (focus recommendation) + PM consent decision on inbox-reading opt-in.
 - **2026-06-15** — **open_loops schema + queries + privacy plumbing; WhoopSleepDay.performancePct.**
   - **`open_loops` table (additive):** `lib/db.ts` — new table with `id, user_id, description,
     type (commitment_made|awaiting_you|deadline), source (email|call|calendar), due_date?,
