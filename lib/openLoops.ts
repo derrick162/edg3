@@ -24,6 +24,7 @@ function existsSimilar(userId: number, description: string): boolean {
     .some(l => l.description.trim().toLowerCase().slice(0, 80) === prefix);
 }
 
+
 // ─── LLM extraction from text ─────────────────────────────────────────────────
 
 const VALID_TYPES: OpenLoopType[] = ['commitment_made', 'awaiting_you', 'deadline'];

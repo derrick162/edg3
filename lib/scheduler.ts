@@ -6,6 +6,7 @@ import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, effectiveTimezone, User } from './db';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
+import { maybeDailyBackup } from './backup';
 
 /**
  * Structured call failure — carries a user-facing message and a reason code so
@@ -160,10 +161,11 @@ export function startScheduler() {
     await checkAndInitiateCalls(new Date());
   });
 
-  // Nightly retention prune at 3am server time (UTC) — remove old email-derived PII rows.
+  // Nightly at 3am UTC: retention prune for PII rows + daily DB snapshot (covers no-call days).
   cron.schedule('0 3 * * *', () => {
     try { openLoopQueries.prune(); } catch (e) { console.error('[scheduler] openLoopQueries.prune failed:', e); }
     try { watchedThreadQueries.prune(); } catch (e) { console.error('[scheduler] watchedThreadQueries.prune failed:', e); }
+    maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
   });
 
   console.log('EDG3 scheduler started');
@@ -334,6 +336,14 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
 export async function scheduleOpenCall(userId: number) {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
+
+  // Guard against double-tap: refuse if a call started in the last 3 minutes.
+  // Without this, a user double-clicking "Open Call" spawns two concurrent Vapi calls.
+  const recentCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const inFlight = getDb().prepare(
+    `SELECT 1 FROM briefings WHERE user_id = ? AND status = 'calling' AND scheduled_for >= ?`
+  ).get(userId, recentCutoff);
+  if (inFlight) throw new CallError('A call is already in progress — give it a moment.', 'already_called');
 
   const timezone = effectiveTimezone(user);
   const scheduledFor = new Date().toISOString();

@@ -25,3 +25,7 @@ export { ContentSection } from './ContentSection';
 export type { ContentCard } from './ContentSection';
 export { OpenLoopsSection } from './OpenLoopsSection';
 export type { OpenLoopsSectionProps, OpenLoop, OpenLoopType, OpenLoopSource, OpenLoopStatus } from './OpenLoopsSection';
+export { MeetingPrepCard } from './MeetingPrepCard';
+export type { MeetingPrepCardProps, MeetingPrepContext, MeetingThread, MeetingFact } from './MeetingPrepCard';
+export { HelpSupportSection } from './HelpSupportSection';
+export type { HelpSupportSectionProps } from './HelpSupportSection';

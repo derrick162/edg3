@@ -263,11 +263,8 @@ export function ContentSection() {
   return (
     <>
       <div>
-        <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>
-          LEARN
-        </p>
         <div
-          className="flex gap-3 overflow-x-auto pb-1 no-scrollbar"
+          className="flex gap-3 overflow-x-auto pb-2 no-scrollbar"
           style={{ scrollSnapType: 'x mandatory' }}
         >
           {CONTENT.map(card => (
