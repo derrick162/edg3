@@ -358,6 +358,15 @@ function initSchema(db: Database.Database) {
       created_at  TEXT DEFAULT (datetime('now')),
       resolved_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      type       TEXT NOT NULL CHECK(type IN ('feedback','question','issue')),
+      message    TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','seen','resolved')),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -1574,6 +1583,22 @@ export const openLoopQueries = {
     getDb().prepare(
       `DELETE FROM open_loops WHERE status != 'open' AND resolved_at < datetime('now', '-30 days')`
     ).run();
+  },
+};
+
+export const supportMessageQueries = {
+  insert: (userId: number, type: 'feedback' | 'question' | 'issue', message: string): void => {
+    getDb().prepare(
+      'INSERT INTO support_messages (user_id, type, message) VALUES (?, ?, ?)'
+    ).run(userId, type, message);
+  },
+
+  list: (opts: { limit?: number } = {}): Array<{ id: number; userId: number; type: string; message: string; status: string; createdAt: string }> => {
+    const limit = opts.limit ?? 100;
+    const rows = getDb().prepare(
+      'SELECT id, user_id, type, message, status, created_at FROM support_messages ORDER BY created_at DESC LIMIT ?'
+    ).all(limit) as Array<{ id: number; user_id: number; type: string; message: string; status: string; created_at: string }>;
+    return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: r.message, status: r.status, createdAt: r.created_at }));
   },
 };
 

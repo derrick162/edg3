@@ -36,6 +36,7 @@ export const LIMITS = {
   learned:        { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user
   openLoops:      { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (resolve/dismiss)
   openCall:       { limit: 5,  windowMs:  5 * 60 * 1000 },  // 5  / 5 min per user (Vapi call cost)
+  support:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
