@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection, TimeAllocationViz } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop, TimeAllocationBucket } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -821,6 +821,11 @@ export default function Dashboard() {
     flags: string[];
     recoveryAction: string | null;
   } | null>(null);
+  const [timeAllocation, setTimeAllocation] = useState<{
+    buckets: TimeAllocationBucket[];
+    periodWeeks: number;
+    biggestMisalignment: string | null;
+  } | null>(null);
   const [whoopData, setWhoopData] = useState<{
     recoveryScore: number | null;
     tier: 'high' | 'medium' | 'low' | null;
@@ -929,6 +934,11 @@ export default function Dashboard() {
           .catch(() => {});
       }
     }).catch(() => {});
+    // Time allocation (gracefully absent until Core ships /api/time-allocation)
+    fetch('/api/time-allocation')
+      .then(r => r.ok ? r.json() : null)
+      .then(ta => { if (ta?.buckets?.length) setTimeAllocation(ta); })
+      .catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1696,6 +1706,17 @@ export default function Dashboard() {
                     onDismiss={() => setDayPlan(null)}
                     applied={dayPlanApplied}
                     appliedScore={dayPlanAppliedScore}
+                  />
+                </div>
+              )}
+
+              {/* Time allocation viz — where time actually went vs priorities */}
+              {timeAllocation && (
+                <div className="glass-card p-4 mb-6">
+                  <TimeAllocationViz
+                    buckets={timeAllocation.buckets}
+                    periodWeeks={timeAllocation.periodWeeks}
+                    biggestMisalignment={timeAllocation.biggestMisalignment}
                   />
                 </div>
               )}

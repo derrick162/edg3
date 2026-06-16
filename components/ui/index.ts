@@ -29,3 +29,5 @@ export { MeetingPrepCard } from './MeetingPrepCard';
 export type { MeetingPrepCardProps, MeetingPrepContext, MeetingThread, MeetingFact } from './MeetingPrepCard';
 export { HelpSupportSection } from './HelpSupportSection';
 export type { HelpSupportSectionProps } from './HelpSupportSection';
+export { TimeAllocationViz } from './TimeAllocationViz';
+export type { TimeAllocationVizProps, TimeAllocationBucket } from './TimeAllocationViz';
