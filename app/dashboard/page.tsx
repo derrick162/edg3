@@ -854,6 +854,7 @@ export default function Dashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
   const [calendarFitLoading, setCalendarFitLoading] = useState(false);
+  const [celebrateFromScore, setCelebrateFromScore] = useState<number | null>(null);
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
@@ -972,6 +973,7 @@ export default function Dashboard() {
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    const oldScore = typeof calendarFit?.edgeScore === 'number' ? calendarFit.edgeScore : null;
     await fetch('/api/focus/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -979,9 +981,16 @@ export default function Dashboard() {
     });
     // Transition card to confirmed state (don't dismiss — the locked view fills the slot)
     setConfirmedFocusAreas(areas);
-    // Re-fetch Edge Score: Focus component now reads today's confirmed daily_focus,
-    // so the score updates live instead of showing a stale pre-confirm value.
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    // Re-fetch Edge Score — Momentum bonus fires on confirm so the number rises.
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+      if (s) {
+        setCalendarFit(s);
+        // Trigger celebration animation when score genuinely rose
+        if (oldScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > oldScore) {
+          setCelebrateFromScore(oldScore);
+        }
+      }
+    }).catch(() => {});
   }
 
   async function handleCompleteArea(idOrTitle: string) {
@@ -1660,6 +1669,7 @@ export default function Dashboard() {
                       ? 'energy'
                       : undefined
                   }
+                  celebrateFromScore={celebrateFromScore}
                   onRequestFix={() => {
                     setActiveTab('home');
                     setTimeout(() => {
