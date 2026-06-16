@@ -276,85 +276,108 @@ export function EdgeScoreCard({
             className="text-xs mb-2 transition-opacity hover:opacity-80"
             style={{ color: 'var(--text-accent)' }}
           >
-            {expanded ? '▲ Hide breakdown' : '▼ See breakdown'}
+            {expanded ? '▲ Hide how this is calculated' : '▼ How is this calculated?'}
           </button>
 
           {expanded && (
-            <div className="space-y-2">
-              {/* Focus sub-score */}
-              <div>
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>🎯 Focus</span>
-                  <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor(fit.focusScore.score) }}>
-                    {fit.focusScore.score}%
+            <div className="space-y-4 mt-1">
+              {/* ── Focus sub-score ── */}
+              <div className="rounded-xl p-3" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>🎯 Focus Score</span>
+                  <span className="text-sm font-black tabular-nums" style={{ color: scoreColor(fit.focusScore.score) }}>
+                    {fit.focusScore.score}
                   </span>
                 </div>
-                <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--gauge-bg)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${fit.focusScore.score}%`, background: scoreColor(fit.focusScore.score) }}
-                  />
+                <div className="h-1 rounded-full overflow-hidden mb-2" style={{ background: 'var(--gauge-bg)' }}>
+                  <div className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${fit.focusScore.score}%`, background: scoreColor(fit.focusScore.score) }} />
                 </div>
+                <p className="text-xs mb-2 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+                  % of your working hours booked toward your focus areas
+                </p>
+                {fit.focusScore.drivers.length > 0 && (
+                  <ul className="space-y-1 mb-2">
+                    {fit.focusScore.drivers.map((d, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <span className="flex-shrink-0 mt-0.5" style={{ color: scoreColor(fit.focusScore.score) }}>·</span>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {fit.focusScore.topFix && (
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                  <p className="text-xs px-2 py-1.5 rounded-lg" style={{ color: 'var(--text-accent)', background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>
                     ✦ {fit.focusScore.topFix.description}
                   </p>
                 )}
               </div>
 
-              {/* Energy sub-score — may be calibrating */}
-              <div>
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ Energy</span>
+              {/* ── Energy sub-score ── */}
+              <div className="rounded-xl p-3" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>⚡ Energy Score</span>
                   {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
                     <span className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>calibrating…</span>
                   ) : (
-                    <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor(fit.energyScore.score) }}>
-                      {fit.energyScore.score}%
+                    <span className="text-sm font-black tabular-nums" style={{ color: scoreColor(fit.energyScore.score) }}>
+                      {fit.energyScore.score}
                     </span>
                   )}
                 </div>
-                <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--gauge-bg)' }}>
+                <div className="h-1 rounded-full overflow-hidden mb-2" style={{ background: 'var(--gauge-bg)' }}>
                   {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: '40%',
-                        background: 'var(--gauge-mid)',
-                        opacity: 0.4,
-                        animation: 'gauge-pulse 2s ease-in-out infinite',
-                      }}
-                    />
+                    <div className="h-full rounded-full" style={{ width: '40%', background: 'var(--gauge-mid)', opacity: 0.4, animation: 'gauge-pulse 2s ease-in-out infinite' }} />
                   ) : (
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${fit.energyScore.score}%`, background: scoreColor(fit.energyScore.score) }}
-                    />
+                    <div className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${fit.energyScore.score}%`, background: scoreColor(fit.energyScore.score) }} />
                   )}
                 </div>
+                <p className="text-xs mb-2 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+                  How well your calendar&apos;s demands match your energy today
+                </p>
                 {calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both') ? (
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-                    Edge learns your energy after a few calls — check back tomorrow.
+                  <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                    Edge learns your energy patterns after a few calls — check back tomorrow.
                   </p>
-                ) : fit.energyScore.topFix ? (
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-                    ✦ {fit.energyScore.topFix.description}
-                  </p>
-                ) : null}
+                ) : (
+                  <>
+                    {fit.energyScore.drivers.length > 0 && (
+                      <ul className="space-y-1 mb-2">
+                        {fit.energyScore.drivers.map((d, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                            <span className="flex-shrink-0 mt-0.5" style={{ color: scoreColor(fit.energyScore.score) }}>·</span>
+                            {d}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {fit.energyScore.topFix && (
+                      <p className="text-xs px-2 py-1.5 rounded-lg" style={{ color: 'var(--text-accent)', background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>
+                        ✦ {fit.energyScore.topFix.description}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
 
-              {/* Fix it CTA */}
+              {/* Inputs footnote */}
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+                Focus ← your calendar + focus areas · Energy ← your energy level, Whoop recovery + each event&apos;s demand
+              </p>
+
+              {/* Improve my day CTA */}
               {onRequestFix && (
                 <button
                   onClick={onRequestFix}
-                  className="text-xs px-3 py-1.5 rounded-lg mt-1 transition-all"
+                  className="w-full text-xs py-2 rounded-lg transition-all font-medium"
                   style={{
                     background: 'var(--edg-accent-08)',
                     border: '1px solid var(--edg-accent-20)',
                     color: 'var(--text-accent)',
                   }}
                 >
-                  Fix it →
+                  ✦ Improve my day →
                 </button>
               )}
             </div>

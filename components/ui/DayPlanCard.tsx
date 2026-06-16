@@ -182,7 +182,7 @@ export function DayPlanCard({
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ HERE&apos;S TODAY&apos;S PLAN
+            ✦ HERE&apos;S WHAT I&apos;D CHANGE
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {plan.summary}
@@ -195,8 +195,12 @@ export function DayPlanCard({
         )}
       </div>
 
+      <p className="text-xs mt-1 mb-3" style={{ color: 'var(--text-faint)' }}>
+        Preview — nothing changes until you confirm.
+      </p>
+
       {/* Score delta preview */}
-      <div className="flex items-center gap-3 mb-4 mt-3">
+      <div className="flex items-center gap-3 mb-4">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
           <span className="text-sm font-black tabular-nums" style={{ color: 'var(--text-faint)' }}>
             {plan.scoreBefore}
