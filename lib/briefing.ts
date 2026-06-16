@@ -7,6 +7,7 @@ import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops } from './openLoops';
+import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetingContext';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
 import { computeWhoopCorrelations } from './whoopCorrelations';
@@ -324,6 +325,21 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Open Loops: already fetched above for focus rec — reuse.
   const urgentLoops = urgentLoopsEarly;
   const openLoopsBlock = formatOpenLoopsForBriefing(urgentLoops);
+  // Meeting prep: surface related email + facts + open-loops for today's upcoming events.
+  const meetingContextBlock = (() => {
+    try {
+      const allFacts = factQueries.getAll(userId);
+      const allOpenLoops = getUrgentOpenLoops(userId, focusDate);
+      const contexts = buildMeetingContexts(
+        calendarEvents,
+        emailSignal?.items ?? [],
+        allFacts,
+        allOpenLoops,
+        { lookAheadHours: 12, now: new Date().toISOString() },
+      );
+      return formatMeetingContextsForBriefing(contexts, userTimezone);
+    } catch { return ''; }
+  })();
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
   const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
   const baselineContext = buildBaselineContext(
@@ -523,6 +539,9 @@ YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said 
 ` : ''}${openLoopsBlock ? `
 ${openLoopsBlock}
 When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.
+` : ''}${meetingContextBlock ? `
+${meetingContextBlock}
+Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE specific observation for the most important upcoming meeting: relevant email thread, a fact you know about the person, or an open loop they should close before walking in. Keep it to one sentence per event — don't read every bullet. Only reference meetings that actually appear in the calendar data.
 ` : ''}${callStreak >= 2 ? `
 CALL STREAK: ${callStreak} consecutive days of morning calls. Acknowledge this warmly in the GREETING — one specific, energizing line (e.g. "five mornings straight — you're building real momentum here").
 ` : ''}${prioritiesStaleAge > 7 ? `

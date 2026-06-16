@@ -9,6 +9,17 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **★ Meeting prep cross-link — email + calendar + memory** (`lib/meetingContext.ts`, `app/api/meeting-context/route.ts`).
+  - **`lib/meetingContext.ts`** — pure keyword-matching layer (no LLM cost):
+    - `extractKeywords(text)` — strips stop words, returns ≥4-char tokens.
+    - `eventTokens(event)` — attendee first-names (from displayName + email prefix) + event title keywords.
+    - `buildMeetingContext(event, emails, facts, loops)` — scores email threads by token overlap (top 3); filters facts by entity token match (top 4); filters open loops by description token match (top 2). Returns null when nothing useful to surface.
+    - `buildMeetingContexts(events, emails, facts, loops, opts)` — filters to upcoming timed events within `lookAheadHours` (default 8), returns top N contexts.
+    - `formatMeetingContextsForBriefing(contexts, tz)` — compact `MEETING PREP` block with `[EMAIL]`, `[PERSON/GOAL/...]`, `[YOU COMMITTED]`/`[AWAITING]`/`[DEADLINE]` tags.
+  - **`lib/briefing.ts`** — `meetingContextBlock` built after open-loops (pure DB read + in-memory matching; degrades to '' on any error). Injected in user prompt with instruction: "weave in ONE specific observation for the most important upcoming meeting."
+  - **`app/api/meeting-context/route.ts`** — `GET /api/meeting-context?date=YYYY-MM-DD&hours=N` — returns `{ date, contexts[], total }`. For Cam to render pre-meeting panel without needing a briefing call.
+  - **`lib/vapi.ts`** — MEETING PREP voice note: Edge surfaces one sharp observation per meeting ("Your 2pm with Faiza — I noticed your CIBC thread came in this morning"); never reads the full block aloud.
+  - 26 new tests. 853/853 green, tsc clean, next build clean.
 - **2026-06-15** — **Focus areas always carry their anchor priority** (`lib/focusRecommendation.ts`).
   - **PM dispatch:** "each focus area should show which top priority it ties to — reinforce the hierarchy."
   - **Prompt tightened:** `anchor` field instruction changed to "ALWAYS include this field. Use the EXACT text of the closest matching priority. If nothing fits, write 'standalone'. Never omit."
