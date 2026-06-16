@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
@@ -792,7 +792,7 @@ export default function Dashboard() {
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [expandedMemorySections, setExpandedMemorySections] = useState<Set<string>>(new Set());
@@ -847,6 +847,7 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [focusCandidates, setFocusCandidates] = useState<FocusRecommendationArea[]>([]);
   const [confirmedFocusAreas, setConfirmedFocusAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -899,7 +900,7 @@ export default function Dashboard() {
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
-    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
+    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) { setFocusRec(d); if (d.candidates) setFocusCandidates(d.candidates); } }).catch(() => {}).finally(() => setFocusRecLoading(false));
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
@@ -961,6 +962,22 @@ export default function Dashboard() {
     // Re-fetch Edge Score: Focus component now reads today's confirmed daily_focus,
     // so the score updates live instead of showing a stale pre-confirm value.
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+  }
+
+  async function handleCompleteArea(idOrTitle: string) {
+    await fetch('/api/focus/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idOrTitle }),
+    }).catch(() => {});
+  }
+
+  async function handleDismissArea(idOrTitle: string) {
+    await fetch('/api/focus/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idOrTitle }),
+    }).catch(() => {});
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -1286,6 +1303,7 @@ export default function Dashboard() {
               { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
               { id: 'profile', label: 'Profile', icon: '👤' },
+              { id: 'help', label: 'Help', icon: '?' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -1646,8 +1664,11 @@ export default function Dashboard() {
                     recommendation={focusRec}
                     loading={focusRecLoading}
                     confirmedAreas={confirmedFocusAreas ?? undefined}
+                    candidates={focusCandidates}
                     onConfirm={handleConfirmFocus}
                     onDismiss={confirmedFocusAreas ? undefined : () => setFocusRecDismissed(true)}
+                    onCompleteArea={handleCompleteArea}
+                    onDismissArea={handleDismissArea}
                   />
                 </div>
               )}
@@ -2192,6 +2213,18 @@ export default function Dashboard() {
 
           {activeTab === 'profile' && (
             <ProfileTab onSettingsSaved={loadData} />
+          )}
+
+          {activeTab === 'help' && (
+            <div className="max-w-2xl mx-auto">
+              <div className="mb-6">
+                <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Help &amp; Support</h2>
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                  Common questions and a direct line to us.
+                </p>
+              </div>
+              <HelpSupportSection />
+            </div>
           )}
         </main>
       </div>
