@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { scheduleOpenCall, CallError } from '@/lib/scheduler';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function POST() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('openCall', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   try {
     const briefingId = await scheduleOpenCall(user.id);

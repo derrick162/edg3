@@ -335,6 +335,14 @@ export async function scheduleOpenCall(userId: number) {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
+  // Guard against double-tap: refuse if a call started in the last 3 minutes.
+  // Without this, a user double-clicking "Open Call" spawns two concurrent Vapi calls.
+  const recentCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const inFlight = getDb().prepare(
+    `SELECT 1 FROM briefings WHERE user_id = ? AND status = 'calling' AND scheduled_for >= ?`
+  ).get(userId, recentCutoff);
+  if (inFlight) throw new CallError('A call is already in progress — give it a moment.', 'already_called');
+
   const timezone = effectiveTimezone(user);
   const scheduledFor = new Date().toISOString();
 
