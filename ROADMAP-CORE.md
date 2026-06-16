@@ -9,6 +9,32 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **Whoop Intelligence — baselines, overreaching, calendar actions, deeper correlations, coaching** (5-sub-item PM dispatch).
+  - **Sub-item 1: Personal baselines (30-day rolling averages)**
+    - `computeWhoopBaselines(recoveryHistory, sleepHistory, strainHistory)` → `WhoopBaseline { recovery30dAvg, sleep30dAvgH, strain30dAvg }` — pure, up to 30 most-recent points per signal.
+    - `buildBaselineDeviationNote(todayRecovery, todaySleepMs, baseline)` → string | null — fires on: recovery ≥15 pts below 30d avg OR sleep ≥45 min short of 30d avg. Injected into `whoopContextBlock` as `BASELINE DEVIATION` block.
+    - Both wired in `lib/briefing.ts`; deviation note referenced in `lib/vapi.ts` coaching note.
+  - **Sub-item 2: Overreaching detection + sleep debt quantity**
+    - New `OVERREACHING` flag in `WhoopTrendFlag` — fires when `HIGH_STRAIN_STREAK` + `RECOVERY_DECLINING_3D` co-occur.
+    - `sleepAvg7dH` added to `WhoopTrendSummary` (optional, backward-compatible) — populated by `computeWhoopTrends`.
+    - `formatTrendForBriefing` updated: OVERREACHING takes highest priority ("overreaching zone — today needs to be a genuine recovery day"); SLEEP_DEBT message now includes average hours when available.
+  - **Sub-item 3: ★ Whoop → concrete calendar recommendations**
+    - `buildCalendarActionFromRecovery(score)` → string | null — red (≤33%): "name the heaviest deferrable block and offer to move it, don't wait for them to ask"; green (≥67%): "recommend blocking hardest work this morning"; yellow → null.
+    - Injected into `whoopContextBlock` as `CALENDAR ACTION` block.
+    - `lib/vapi.ts`: new WHOOP COACHING bullet — execute CALENDAR ACTION at the start of the call; reference BASELINE DEVIATION for personalised pacing; drop TOMORROW RECOVERY HINT at the end.
+  - **Sub-item 4: Deeper correlations + tomorrow-recovery hint**
+    - `lib/whoopCorrelations.ts` refactored — `checkLateMeetingCorrelation` + `checkHighStrainCorrelation` internal helpers; `computeWhoopCorrelations` now accepts optional `strainHistory` and tries both patterns in order.
+    - Pattern 2: high strain day (>14) → lower next-day recovery — same confidence gate (≥10 paired days, ≥3 per group, ≥5 pt diff).
+    - `predictTomorrowRecoveryHint(todayStrain, strainBaseline30d)` → string | null — fires when today's strain >14 and ≥2 pts above personal baseline; injected as `TOMORROW RECOVERY HINT`.
+  - **Sub-item 5: Whoop coaching on call**
+    - `lib/vapi.ts` WHOOP COACHING line added (replaces weaker WHOOP TRENDS-only reference).
+    - RECOVERY ALERT unchanged; CALENDAR ACTION + BASELINE DEVIATION + TOMORROW RECOVERY HINT now each have explicit voice-call instructions.
+  - 28 new tests. 988/988 green, tsc clean, next build clean.
+- **2026-06-16** — **Support backend + Memory salience + Focus actionable (PM dispatch — 3 workstreams)**.
+  - **Feedback/Support backend**: `support_messages` table (type, message, status, user_id); `supportMessageQueries.insert/list`; `POST /api/support` (auth, rate-limit 10/hr, validates type + message ≤2000 chars). Wires the Design lane's Cam feedback form.
+  - **Memory Salience Layer** (`lib/memorySalience.ts`, pure): `scoreFact(fact, allFacts, anchors, today)` → `ScoredFact` with 5-signal weighted composite (recency 25%, type 25%, confidence 15%, reinforcement 20%, relevance 15%). Category weights (goal=0.9 → preference=0.4). High-stakes keyword bonus (+0.15). `rankFacts`, `topFacts(max=20, maxPerCategory=6)`. Wired into `lib/briefing.ts` (replaces raw `factQueries.getAll()`) and `lib/focusRecommendation.ts` (ranked facts + dismissed-title down-weighting). 21 tests.
+  - **Focus actionable — complete/dismiss + learning signal**: `dismissed_titles TEXT DEFAULT '[]'` column on `daily_focus` (migration); `dailyFocusQueries.addDismissed/getRecentDismissed`. `POST /api/focus/complete` (audit log). `POST /api/focus/dismiss` (writes to dismissed_titles). `recommendFocusAreas` now returns 6 items (3 shown + 3 candidates); `RECENTLY DISMISSED` block injected into prompt. Route splits `areas[0..2]` + `candidates[3..]` in response. 0 new tests (thin integration layer; pure logic already covered by existing focusRecommendation tests).
+  - 960/960 green, tsc clean, next build clean.
 - **2026-06-16** — **Email + calendar intelligence deepening (Night-3 queue — Items 3–5)**.
   - **Item 3: Calendar pattern detection** (`lib/calendarPatterns.ts`, pure):
     - `detectCalendarPatterns(events, {timezone})` — analyzes 180d history for: recurring routines (≥3/week), peak meeting hours, inferred focus windows, busy/light days, avg meetings/day, 4-week meeting trend.
