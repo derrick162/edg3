@@ -2,34 +2,12 @@
 //
 // Tracks unresolved action threads pulled from email + call transcripts + calendar.
 // Three buckets: commitments YOU made · awaiting YOUR response · deadlines.
-//
-// DB STUB: until Vijay's open_loops migration lands on master, this file self-creates
-// the open_loops table and owns the CRUD directly. When openLoopQueries lands in lib/db.ts:
-// 1. Delete the "DB STUB" section below (ensureTable + stubQueries)
-// 2. Import { openLoopQueries, type OpenLoop } from './db' and alias to openLoopStubQueries
-// 3. Remove the exported OpenLoop type below (use the one from ./db)
 
-import { getDb } from './db';
+import { openLoopQueries, type OpenLoop, type OpenLoopType, type OpenLoopSource, type OpenLoopStatus } from './db';
 import type { EmailSignal } from './gmail';
 import type { calendar_v3 } from 'googleapis';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type OpenLoopType   = 'commitment_made' | 'awaiting_you' | 'deadline';
-export type OpenLoopSource = 'email' | 'call' | 'calendar';
-export type OpenLoopStatus = 'open' | 'done' | 'dismissed';
-
-export interface OpenLoop {
-  id: number;
-  user_id: number;
-  description: string;
-  type: OpenLoopType;
-  source: OpenLoopSource;
-  due_date: string | null;
-  status: OpenLoopStatus;
-  created_at: string;
-  resolved_at: string | null;
-}
+export type { OpenLoop, OpenLoopType, OpenLoopSource, OpenLoopStatus };
 
 export interface ExtractedOpenLoop {
   description: string;
@@ -38,80 +16,12 @@ export interface ExtractedOpenLoop {
   due_date: string | null;
 }
 
-// ─── DB STUB ─────────────────────────────────────────────────────────────────
-// Remove this block when Vijay's migration lands and openLoopQueries is in lib/db.ts.
-
-let tableReady = false;
-function ensureTable(): void {
-  if (tableReady) return;
-  getDb().exec(`
-    CREATE TABLE IF NOT EXISTS open_loops (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES users(id),
-      description TEXT    NOT NULL,
-      type        TEXT    NOT NULL CHECK(type IN ('commitment_made','awaiting_you','deadline')),
-      source      TEXT    NOT NULL CHECK(source IN ('email','call','calendar')),
-      due_date    TEXT,
-      status      TEXT    NOT NULL DEFAULT 'open' CHECK(status IN ('open','done','dismissed')),
-      created_at  TEXT    DEFAULT (datetime('now')),
-      resolved_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status);
-  `);
-  tableReady = true;
+// Dedup check — scan open loops for a matching first-80-char prefix
+function existsSimilar(userId: number, description: string): boolean {
+  const prefix = description.trim().toLowerCase().slice(0, 80);
+  return openLoopQueries.list(userId, 'open')
+    .some(l => l.description.trim().toLowerCase().slice(0, 80) === prefix);
 }
-
-export const openLoopStubQueries = {
-  insert(userId: number, loop: ExtractedOpenLoop): void {
-    ensureTable();
-    getDb().prepare(
-      `INSERT INTO open_loops (user_id, description, type, source, due_date)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(userId, loop.description, loop.type, loop.source, loop.due_date ?? null);
-  },
-
-  getOpen(userId: number): OpenLoop[] {
-    ensureTable();
-    return getDb()
-      .prepare(`SELECT * FROM open_loops WHERE user_id=? AND status='open' ORDER BY due_date ASC NULLS LAST, created_at ASC`)
-      .all(userId) as OpenLoop[];
-  },
-
-  getAll(userId: number, limit = 50): OpenLoop[] {
-    ensureTable();
-    return getDb()
-      .prepare(`SELECT * FROM open_loops WHERE user_id=? ORDER BY created_at DESC LIMIT ?`)
-      .all(userId, limit) as OpenLoop[];
-  },
-
-  resolve(userId: number, id: number): boolean {
-    ensureTable();
-    const res = getDb().prepare(
-      `UPDATE open_loops SET status='done', resolved_at=datetime('now') WHERE id=? AND user_id=? AND status='open'`,
-    ).run(id, userId);
-    return res.changes > 0;
-  },
-
-  dismiss(userId: number, id: number): boolean {
-    ensureTable();
-    const res = getDb().prepare(
-      `UPDATE open_loops SET status='dismissed', resolved_at=datetime('now') WHERE id=? AND user_id=? AND status='open'`,
-    ).run(id, userId);
-    return res.changes > 0;
-  },
-
-  existsSimilar(userId: number, description: string): boolean {
-    ensureTable();
-    const prefix = description.trim().toLowerCase().slice(0, 80);
-    const row = getDb().prepare(
-      `SELECT 1 FROM open_loops
-       WHERE user_id=? AND status='open'
-       AND LOWER(SUBSTR(description,1,80))=?
-       LIMIT 1`,
-    ).get(userId, prefix);
-    return !!row;
-  },
-};
 
 // ─── LLM extraction from text ─────────────────────────────────────────────────
 
@@ -258,8 +168,8 @@ export async function extractAndUpsertOpenLoops(
 
     let inserted = 0;
     for (const loop of allExtracted) {
-      if (openLoopStubQueries.existsSimilar(userId, loop.description)) continue;
-      openLoopStubQueries.insert(userId, loop);
+      if (existsSimilar(userId, loop.description)) continue;
+      openLoopQueries.insert(userId, loop);
       inserted++;
     }
 
@@ -279,10 +189,9 @@ export async function extractAndUpsertOpenLoops(
  * - commitment_made + awaiting_you without a due date (they're always relevant)
  */
 export function getUrgentOpenLoops(userId: number, today: string): OpenLoop[] {
-  const open = openLoopStubQueries.getOpen(userId);
-  return open
+  return openLoopQueries.list(userId, 'open')
     .filter(loop => {
-      if (loop.due_date) return loop.due_date <= today;
+      if (loop.dueDate) return loop.dueDate <= today;
       return loop.type === 'commitment_made' || loop.type === 'awaiting_you';
     })
     .slice(0, 5);
@@ -300,7 +209,7 @@ export function formatOpenLoopsForBriefing(loops: OpenLoop[]): string {
       loop.type === 'commitment_made' ? 'YOU COMMITTED' :
       loop.type === 'awaiting_you'    ? 'AWAITING YOUR RESPONSE' :
       'DEADLINE';
-    const due = loop.due_date ? ` (due ${loop.due_date})` : '';
+    const due = loop.dueDate ? ` (due ${loop.dueDate})` : '';
     return `- [${tag}]${due} ${loop.description}`;
   });
 

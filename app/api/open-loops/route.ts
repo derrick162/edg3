@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { openLoopStubQueries } from '@/lib/openLoops';
+import { openLoopQueries } from '@/lib/db';
 import type { OpenLoopType } from '@/lib/openLoops';
 
 // GET /api/open-loops
@@ -10,7 +10,7 @@ export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const allOpen = openLoopStubQueries.getOpen(user.id);
+  const allOpen = openLoopQueries.list(user.id, 'open');
 
   const buckets: Record<OpenLoopType, typeof allOpen> = {
     commitment_made: [],
@@ -45,13 +45,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Provide id (number) and action ("resolve" | "dismiss")' }, { status: 400 });
   }
 
-  const changed = action === 'resolve'
-    ? openLoopStubQueries.resolve(user.id, id)
-    : openLoopStubQueries.dismiss(user.id, id);
-
-  if (!changed) {
+  const existing = openLoopQueries.list(user.id, 'open').find(l => l.id === id);
+  if (!existing) {
     return NextResponse.json({ error: 'Loop not found or already closed' }, { status: 404 });
   }
+
+  if (action === 'resolve') openLoopQueries.resolve(user.id, id);
+  else openLoopQueries.dismiss(user.id, id);
 
   return NextResponse.json({ ok: true, id, action });
 }
