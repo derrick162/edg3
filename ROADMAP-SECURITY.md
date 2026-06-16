@@ -7,6 +7,29 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## 📥 PM DISPATCH — 2026-06-16 EVENING (Vijay)
+
+> Master at `2c73f5b` (997 green). Sync master first. Two contained tasks:
+
+**S1 — Harden + audit the new public `/api/waitlist` endpoint.** PM shipped it (`bda358f`) to fix
+the dead landing CTA — it's the first **unauthenticated public write** endpoint. Review it:
+confirm IP rate-limit is effective (5/hr `waitlist` key), email validation can't be abused
+(header injection, oversized input, unicode tricks), no enumeration leak (it returns generic
+success — verify), and the `waitlist` table can't be spammed to exhaustion. Add anything missing
+(e.g., basic disposable-domain guard is optional). Add the `waitlist` table to the backup/export
+set if it's not already covered. Tests.
+
+**S2 — Resolve the parked CSP decision for real.** Strict nonce CSP was reverted (broke prod —
+Turbopack didn't emit nonces). EITHER reproduce locally (`next build && next start`, curl the HTML,
+confirm `<script>` tags carry `nonce="…"`) and re-enable strict CSP if it genuinely works in a
+browser, OR formally close it out: document that `'self' 'unsafe-inline'` is the accepted pre-beta
+baseline and remove the "follow-up" TODO so it's not a lingering open item. Don't redeploy strict
+CSP without browser-verified enforcement.
+
+Ship small / green / full preflight / log changelog.
+
+---
+
 ## Changelog
 - **2026-06-16** — **CSP decision: park strict nonce; `'self' 'unsafe-inline'` is the right baseline. Audit of new Core routes — all clean.**
   - **CSP decision (final, no code change):**

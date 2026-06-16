@@ -8,6 +8,32 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-16 EVENING (Ticket G — the dashboard Hero Loop)
+
+> Master at `2c73f5b` (997 green). Sync master first. This is the #1 strategic build —
+> bring the voice `applyCalendarPlan` reshape to the dashboard as ONE visible motion.
+
+**G — Dashboard Hero Loop: one-click "Fix my day".** The hero loop (diagnose → propose →
+one yes → reshaped day → re-score) exists in pieces but not as a single on-screen motion.
+Build that card on the home tab:
+1. **Diagnose** — from data we ALREADY compute: alignment (`/api/scores` → focus drivers,
+   `topUnaligned`), hygiene flags (`detectHygieneFlags`), recovery tier, open loops. Surface
+   1–3 concrete problems ("0h on 'extend runway' today", "3 back-to-back meetings, no breaks",
+   "recovery low — you're over-scheduled").
+2. **Propose** — generate a CONCRETE reshaped day: named blocks + times (reuse `/api/day-plan`
+   / the `applyCalendarPlan` plan-generation). Show it as a clear before→after, not prose.
+3. **One yes** — a single **Apply** button that executes the whole plan atomically via the
+   existing `applyCalendarPlan` path (create/move/buffer ops), each `recordUndo`'d.
+4. **Re-score** — on success, refetch `/api/scores` so the Edge Score visibly climbs.
+   Coordinate with Cam: the spark animation (Design D) fires at this moment.
+- REUSE existing: `DayPlanCard`, `applyCalendarPlan`, `/api/day-plan`, alignment, scores, undo.
+  Build the missing GLUE + the concrete before→after proposal. Don't rebuild what exists.
+- Ship incrementally: diagnose+propose card first (green/mergeable), then wire Apply, then rescore.
+- Tests for plan-generation + the apply/undo path. Keep `app/dashboard/**` diffs small (Shared
+  with Design — claim in Status Board, coordinate with Cam who's in the same files for D/E).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-16 (NEW — landing page waitlist 404)
 
 > Master at `bda358f` (997 green). **Tickets A + C shipped ✅** (integrated by PM).
