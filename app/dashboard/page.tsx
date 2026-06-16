@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -856,6 +856,7 @@ export default function Dashboard() {
 
   const [activationFacts, setActivationFacts] = useState<string[]>([]);
   const [activationDismissed, setActivationDismissed] = useState(false);
+  const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -903,6 +904,7 @@ export default function Dashboard() {
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => { if (d?.recentFacts) setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement)); }).catch(() => {});
+    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
     fetch('/api/focus/confirm').then(r => r.ok ? r.json() : null).then(d => { if (d?.confirmed && d.areas?.length) setConfirmedFocusAreas(d.areas); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1654,6 +1656,23 @@ export default function Dashboard() {
                     onDismiss={() => setDayPlan(null)}
                     applied={dayPlanApplied}
                     appliedScore={dayPlanAppliedScore}
+                  />
+                </div>
+              )}
+
+              {/* Open Loops */}
+              {openLoops.length > 0 && (
+                <div className="mb-6">
+                  <OpenLoopsSection
+                    loops={openLoops}
+                    onResolve={async (id) => {
+                      await fetch(`/api/open-loops/${id}/resolve`, { method: 'POST' });
+                      setOpenLoops(prev => prev.filter(l => l.id !== id));
+                    }}
+                    onDismiss={async (id) => {
+                      await fetch(`/api/open-loops/${id}/dismiss`, { method: 'POST' });
+                      setOpenLoops(prev => prev.filter(l => l.id !== id));
+                    }}
                   />
                 </div>
               )}

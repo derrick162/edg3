@@ -23,3 +23,5 @@ export { ActivationCard } from './ActivationCard';
 export type { ActivationCardProps } from './ActivationCard';
 export { ContentSection } from './ContentSection';
 export type { ContentCard } from './ContentSection';
+export { OpenLoopsSection } from './OpenLoopsSection';
+export type { OpenLoopsSectionProps, OpenLoop, OpenLoopType, OpenLoopSource, OpenLoopStatus } from './OpenLoopsSection';
