@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, effectiveTimezone, User } from './db';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 
 /**
@@ -158,6 +158,12 @@ export function startScheduler() {
   // Check every minute if any users need a call
   cron.schedule('* * * * *', async () => {
     await checkAndInitiateCalls(new Date());
+  });
+
+  // Nightly retention prune at 3am server time (UTC) — remove old email-derived PII rows.
+  cron.schedule('0 3 * * *', () => {
+    try { openLoopQueries.prune(); } catch (e) { console.error('[scheduler] openLoopQueries.prune failed:', e); }
+    try { watchedThreadQueries.prune(); } catch (e) { console.error('[scheduler] watchedThreadQueries.prune failed:', e); }
   });
 
   console.log('EDG3 scheduler started');

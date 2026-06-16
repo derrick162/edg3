@@ -696,6 +696,11 @@ export const watchedThreadQueries = {
   setStatus: (id: number, status: 'open' | 'handled' | 'dismissed') => {
     getDb().prepare('UPDATE watched_threads SET status = ? WHERE id = ?').run(status, id);
   },
+  // Retention minimization: remove non-open threads older than 30 days (email PII).
+  prune: (): void => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    getDb().prepare("DELETE FROM watched_threads WHERE status != 'open' AND created_at < ?").run(cutoff);
+  },
 };
 
 // In-app notification center. title/body are PII (reply content) → encrypted at rest.
