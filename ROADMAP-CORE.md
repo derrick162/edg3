@@ -8,10 +8,27 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-16 (NEW — landing page waitlist 404)
+
+> Master at `3d4c623` (997 green). **Tickets A + C shipped ✅** (integrated by PM).
+> One new launch-blocker, Darren — sync master first.
+
+**F — Build the missing `/api/waitlist` route (landing-page form 404s).** Security's audit
+found that `app/page.tsx` POSTs `{ email }` to `/api/waitlist` (lines 33, 103, 288) but the
+route **does not exist** → every waitlist signup 404s. This blocks the whole top-of-funnel for
+beta. Build `app/api/waitlist/route.ts` (POST): validate email, persist to a `waitlist` table
+(add to `lib/db.ts` — coordinate schema; `email TEXT UNIQUE`, `created_at`, optional `source`),
+de-dupe on email (ON CONFLICT IGNORE), rate-limit (add a `waitlist` key to `lib/rateLimit.ts`),
+return 200 on success/duplicate (never leak whether an email already signed up). No auth (public
+endpoint). Tests. ⚠️ This is the single highest-priority Core item — landing page is live but the
+CTA is dead.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-16 (Derrick live feedback: Edge Score feels wrong)
 
-> Master is at HEAD (preflight green). **Ticket B already shipped by PM** (momentum
-> reward loop). **Tickets A + C are yours, Darren** — sync master first.
+> **Tickets A + C COMPLETE ✅** (shipped by Darren, integrated to master by PM at `3d4c623`).
+> **Ticket B shipped by PM** (momentum reward loop). History below for reference.
 
 **A — Recalibrate the Focus Score (it's too harsh).** `computeFocusScore` in
 `lib/calendarScore.ts` = `alignedHours / 45 * 100`. The fixed 45h denominator assumes
