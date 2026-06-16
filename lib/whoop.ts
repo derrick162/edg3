@@ -228,7 +228,7 @@ export interface WhoopStrain {
 
 // History shapes — clean minimal arrays for Core's trend analysis.
 export interface WhoopRecoveryDay { date: string; recoveryScore: number } // date: YYYY-MM-DD
-export interface WhoopSleepDay    { date: string; durationMs:    number }
+export interface WhoopSleepDay    { date: string; durationMs: number; performancePct: number }
 export interface WhoopStrainDay   { date: string; strain:        number }
 
 // --- Public fetch functions --------------------------------------------------
@@ -451,7 +451,11 @@ export async function getSleepHistory(
     );
     const result: WhoopSleepDay[] = records
       .filter(r => !r.nap && r.score_state === 'SCORED' && !!r.start)
-      .map(r => ({ date: r.start!.slice(0, 10), durationMs: r.score.stage_summary.total_in_bed_time_milli }))
+      .map(r => ({
+        date: r.start!.slice(0, 10),
+        durationMs: r.score.stage_summary.total_in_bed_time_milli,
+        performancePct: Math.round(r.score.sleep_performance_percentage),
+      }))
       .reverse();
     setCache(sleepHistCache, userId, result);
     return result;

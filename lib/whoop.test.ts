@@ -428,8 +428,8 @@ describe('getSleepHistory', () => {
     });
     const result = await getSleepHistory(310);
     expect(result).toEqual([
-      { date: '2026-06-12', durationMs: 25_200_000 },
-      { date: '2026-06-13', durationMs: 28_800_000 },
+      { date: '2026-06-12', durationMs: 25_200_000, performancePct: 85 },
+      { date: '2026-06-13', durationMs: 28_800_000, performancePct: 85 },
     ]);
   });
 
