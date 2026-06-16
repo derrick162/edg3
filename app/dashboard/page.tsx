@@ -784,7 +784,7 @@ export default function Dashboard() {
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
@@ -979,7 +979,7 @@ export default function Dashboard() {
     if (isNaN(id)) return;
     const target = briefings.find(b => b.id === id);
     if (target) {
-      setActiveTab('briefings');
+      setActiveTab('briefings' as const);
       setSelectedBriefing(target);
     }
   }, [briefingsLoaded, briefings]);
@@ -1255,6 +1255,7 @@ export default function Dashboard() {
 
           <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
             {[
+              { id: 'home', label: 'Home', icon: '✦' },
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'priorities', label: 'Priorities', icon: '🎯' },
               { id: 'activity', label: 'Activity', icon: '⏪' },
@@ -1562,35 +1563,36 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Score + plan cards — always visible above tab content */}
-          <div className="mb-6">
-            <EdgeScoreCard
-              fit={calendarFit}
-              loading={calendarFitLoading}
-              sparse={priorities.length === 0 || calendarConnected === false}
-              onRequestFix={() => {/* DayPlanCard below handles fixes */}}
-            />
-          </div>
-          {!focusRecDismissed && (
-            <div className="mb-6">
-              <FocusRecommendationCard
-                recommendation={focusRec}
-                loading={focusRecLoading}
-                onConfirm={handleConfirmFocus}
-                onDismiss={() => setFocusRecDismissed(true)}
+          {/* ── Home tab — morning cockpit ──────────────────────────── */}
+          {activeTab === 'home' && (
+            <div className="space-y-6">
+              {/* Edge Score — hero */}
+              <EdgeScoreCard
+                fit={calendarFit}
+                loading={calendarFitLoading}
+                sparse={priorities.length === 0 || calendarConnected === false}
+                onRequestFix={() => {/* DayPlanCard below handles fixes */}}
               />
-            </div>
-          )}
-          {calendarConnected !== false && (
-            <div className="mb-6">
-              <DayPlanCard
-                plan={dayPlan}
-                loading={dayPlanLoading}
-                onConfirm={handleConfirmDayPlan}
-                onDismiss={() => setDayPlan(null)}
-                applied={dayPlanApplied}
-                appliedScore={dayPlanAppliedScore}
-              />
+              {/* Today's focus recommendations */}
+              {!focusRecDismissed && (
+                <FocusRecommendationCard
+                  recommendation={focusRec}
+                  loading={focusRecLoading}
+                  onConfirm={handleConfirmFocus}
+                  onDismiss={() => setFocusRecDismissed(true)}
+                />
+              )}
+              {/* Day plan — reshape CTA / "Your day looks good" */}
+              {calendarConnected !== false && (
+                <DayPlanCard
+                  plan={dayPlan}
+                  loading={dayPlanLoading}
+                  onConfirm={handleConfirmDayPlan}
+                  onDismiss={() => setDayPlan(null)}
+                  applied={dayPlanApplied}
+                  appliedScore={dayPlanAppliedScore}
+                />
+              )}
             </div>
           )}
 
