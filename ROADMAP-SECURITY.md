@@ -8,6 +8,27 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-16** — **CSP decision: park strict nonce; `'self' 'unsafe-inline'` is the right baseline. Audit of new Core routes — all clean.**
+  - **CSP decision (final, no code change):**
+    - PM hotfix (`e2370e3`) reverted `'strict-dynamic'` nonce to `script-src 'self' 'unsafe-inline'` after production-down incident.
+    - **Decision: stay on `'self' 'unsafe-inline'` for the pre-beta period.** Rationale:
+      1. `'self'` blocks all cross-origin script loading — the primary attack vector for a deployed web app.
+      2. `'unsafe-inline'` allows Next.js bootstrap scripts and Tailwind/React inline styles — removing it without verified nonce support causes a blank page (confirmed in production).
+      3. Our actual XSS exposure is low: no user-generated HTML is rendered as raw HTML; all output is JSON → React components.
+      4. `'unsafe-inline'` for `script-src` is only exploitable if an attacker can inject HTML into our pages — which requires a pre-existing vulnerability this CSP can't prevent anyway.
+    - **Strict nonce path is NOT abandoned — it's parked until testable:**
+      - Next.js 16 + Turbopack does not emit per-request nonces on its framework `<script>` tags in the configuration tested. The docs claim it does; production proved otherwise.
+      - **Before re-attempting:** reproduce locally with `next build && next start` (NOT dev), curl the served HTML, and confirm framework `<script>` tags actually carry `nonce="…"`. If they do, the original `proxy.ts` approach was correct and just needs a re-verify. If they don't, the hash-based SRI approach (experimental, `next.config.ts`) is the next option.
+      - **Who unblocks this:** Next.js 16 release notes for nonce support, or a confirmed local test. Not a code task until then.
+  - **Audit of new Core routes (from master `303a3c9` merge):**
+    - `/api/scores/route.ts` — ✅ auth-gated (`getSession`), rate-limited (`calendarScores` 20/hr), all DB reads user-scoped via `user.id`. No SQL injection risk (parameterized queries). No cross-user leakage.
+    - `/api/focus/recommend/route.ts` — ✅ auth-gated, rate-limited (`focusRecommend` 20/hr), user-scoped reads. `forceRefresh` boolean from query params is safe (no injection vector). Caching guard correctly checks `!existing.confirmed` before overwriting.
+    - `app/page.tsx` (landing page) — ✅ no `dangerouslySetInnerHTML`, no `eval`, no stored XSS vectors. Client-only fetches to `/api/auth/me` and `/api/waitlist`. **⚠️ NOTE for Core:** `/api/waitlist` route does not exist — waitlist form submits will 404 (HTTP 404 silently, form shows no error). Core should implement the route or handle the 404 gracefully.
+    - All 14 admin routes verified to have `checkAdminAuth` or `checkAdminSecretAuth` gates — all 14 confirmed ✅.
+    - `/api/notifications/route.ts` — ✅ user-scoped (`listRecent(user.id)`, `markRead(id, user.id)` with `AND user_id = ?`). Clean.
+    - `/api/support/route.ts` — ✅ auth-gated, rate-limited (`support` 10/hr), input validated (type enum + 2000-char body limit).
+  - No code changes — audit-only session.
+
 - **2026-06-16** — **⚠️ PM HOTFIX — CSP nonce broke production (site down); strict-dynamic reverted.**
   - **Symptom:** `https://www.edg3.ai` rendered HTML but never hydrated (blank page) after the CSP-nonce deploy.
   - **Root cause:** `script-src 'self' 'nonce-…' 'strict-dynamic'` was set, but **Next.js 16 + Turbopack did NOT emit the per-request nonce onto its framework `<script>` tags.** Under `'strict-dynamic'` the browser ignores `'self'`, so every un-nonced script was blocked → no JS ran. The "Next 16 auto-propagates the nonce" assumption in the original comment was false for this Turbopack build.

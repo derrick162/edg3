@@ -14,6 +14,7 @@ import { type Priority } from './db';
 export interface AlignmentResult {
   perPriority: { priority: string; hours: number; blocked: boolean }[];
   unalignedHours: number;
+  routineHours: number;  // subset of unalignedHours that are routine (meals, gym, etc.)
   topUnaligned: { title: string; hours: number }[];
 }
 
@@ -33,6 +34,15 @@ function eventDurationHours(e: calendar_v3.Schema$Event): number {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+const ROUTINE_TITLES_ALIGNMENT = new Set([
+  'breakfast', 'lunch', 'dinner', 'coffee', 'gym', 'workout', 'morning walk',
+  'evening walk', 'meal prep', 'sleep', 'commute', 'transit', 'shower',
+]);
+function isRoutineTitle(title: string): boolean {
+  const t = title.toLowerCase().trim();
+  return [...ROUTINE_TITLES_ALIGNMENT].some(r => t.includes(r));
+}
 
 /**
  * Classify this week's calendar events against the user's stated priorities via one Haiku call.
@@ -63,6 +73,7 @@ export async function computeAlignment(
       return {
         perPriority: priorities.map(p => ({ priority: p.text, hours: 0, blocked: false })),
         unalignedHours: 0,
+        routineHours: 0,
         topUnaligned: [],
       };
     }
@@ -106,6 +117,7 @@ Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","p
 
     const hoursMap = new Map<number, number>(priorities.map((_, i) => [i + 1, 0]));
     const unalignedList: { title: string; hours: number }[] = [];
+    let routineHoursTotal = 0;
 
     // Match the model's echoed title back to our event robustly — exact-string match was
     // fragile (any case/whitespace drift dropped the event and silently zeroed its hours).
@@ -118,6 +130,7 @@ Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","p
       if (!isNaN(idx) && idx >= 1 && idx <= priorities.length) {
         hoursMap.set(idx, (hoursMap.get(idx) ?? 0) + ev.hours);
       } else {
+        if (isRoutineTitle(ev.title)) routineHoursTotal += ev.hours;
         unalignedList.push({ title: ev.title, hours: ev.hours });
       }
     }
@@ -128,7 +141,9 @@ Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","p
         return { priority: p.text, hours: h, blocked: h > 0 };
       }),
       unalignedHours: round1(unalignedList.reduce((s, e) => s + e.hours, 0)),
+      routineHours: round1(routineHoursTotal),
       topUnaligned: [...unalignedList]
+        .filter(e => !isRoutineTitle(e.title))
         .sort((a, b) => b.hours - a.hours)
         .slice(0, 3)
         .map(e => ({ title: e.title, hours: round1(e.hours) })),

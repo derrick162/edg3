@@ -251,7 +251,12 @@ export function computeFocusScore(
     ?? priorities.map(p => ({ priority: p.text, hours: 0, blocked: false }));
 
   const focusAlignedHours = perPriority.reduce((s, p) => s + p.hours, 0);
-  const score = Math.min(100, Math.round((focusAlignedHours / Math.max(totalWorkingHours, 0.01)) * 100));
+  const routineH = alignment?.routineHours ?? 0;
+  const unalignedWorking = Math.max(0, (alignment?.unalignedHours ?? 0) - routineH);
+  const committed = focusAlignedHours + unalignedWorking;
+  const ratio = focusAlignedHours / Math.max(committed, 1);
+  const coverage = Math.min(1, committed / 15);
+  const score = Math.min(100, Math.round(100 * ratio * (0.6 + 0.4 * coverage)));
 
   const drivers: string[] = [];
   for (const p of perPriority) {

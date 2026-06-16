@@ -8,10 +8,28 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-16 (NEW — landing page waitlist 404)
+
+> Master at `bda358f` (997 green). **Tickets A + C shipped ✅** (integrated by PM).
+> **Ticket F SHIPPED ✅ by PM** (`bda358f`) — landing CTA was launch-blocking and live-broken,
+> so PM built it directly. Darren: do NOT rebuild; sync master. Details below for the record.
+
+**F — ~~Build the missing `/api/waitlist` route (landing-page form 404s).~~ DONE (PM).** Security's audit
+found that `app/page.tsx` POSTs `{ email }` to `/api/waitlist` (lines 33, 103, 288) but the
+route **does not exist** → every waitlist signup 404s. This blocks the whole top-of-funnel for
+beta. Build `app/api/waitlist/route.ts` (POST): validate email, persist to a `waitlist` table
+(add to `lib/db.ts` — coordinate schema; `email TEXT UNIQUE`, `created_at`, optional `source`),
+de-dupe on email (ON CONFLICT IGNORE), rate-limit (add a `waitlist` key to `lib/rateLimit.ts`),
+return 200 on success/duplicate (never leak whether an email already signed up). No auth (public
+endpoint). Tests. ⚠️ This is the single highest-priority Core item — landing page is live but the
+CTA is dead.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-16 (Derrick live feedback: Edge Score feels wrong)
 
-> Master is at HEAD (preflight green). **Ticket B already shipped by PM** (momentum
-> reward loop). **Tickets A + C are yours, Darren** — sync master first.
+> **Tickets A + C COMPLETE ✅** (shipped by Darren, integrated to master by PM at `3d4c623`).
+> **Ticket B shipped by PM** (momentum reward loop). History below for reference.
 
 **A — Recalibrate the Focus Score (it's too harsh).** `computeFocusScore` in
 `lib/calendarScore.ts` = `alignedHours / 45 * 100`. The fixed 45h denominator assumes
@@ -42,6 +60,19 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-16** — **Ticket A: Recalibrate Focus Score — ratio×coverage replaces aligned/45.** (`df727a3`)
+  - **PROBLEM:** Old formula `aligned/45` made a genuinely focused 15-20h week score ~35-45% — "too harsh."
+  - **New formula:** `ratio = aligned / max(committed,1)`; `coverage = min(1, committed/15)`; `score = round(100 * ratio * (0.6 + 0.4*coverage))`. A focused 15-18h week with some meetings now scores 70-85. Zero-priority or meeting-dominated weeks stay low.
+  - **Routine exclusion:** Added `ROUTINE_TITLES_ALIGNMENT` + `isRoutineTitle()` to `lib/alignment.ts`. Routine events (meals, gym) classified "none" by Haiku are now tracked as `routineHours` (new `AlignmentResult` field) and excluded from `committed`. Previously, lunches inflated the denominator and dragged scores down. Also filtered from `topUnaligned` — meals no longer appear as "time sinks."
+  - Tests updated: `makeAlign` factory gains `routineHours=0` default; old fixed-denominator tests replaced with calibrated new ones (focused week→70-85, tiny-focused week→coverage floor, routine exclusion, meeting-heavy→low). 997 green, tsc clean, build clean.
+- **2026-06-16** — **Ticket C: Populate notification center — score change, facts learned, activity.** (`c365d9c`)
+  - **Problem:** Notification center only showed email reply notifications.
+  - **New `lib/notifications.ts`:** 3 fire-and-forget producers (never throw, all wrapped in try/catch):
+    - `maybeCreateScoreChangeNotif(userId, todayScore, todayDate)` — fires from `/api/scores` after upsert when Edge Score shifts ≥3 pts vs yesterday; de-duped to 1/day.
+    - `maybeCreateFactLearnedNotif(userId, count)` — fires from `extractAndUpsertFacts` when new preferences are stored post-call; de-duped to 1/day.
+    - `maybeCreateActivityNotif(userId, toolName, eventTitle)` — fires from `tool-call` route after first successful calendar mutation (create/move/delete/edit/cleanup); de-duped to 1/day.
+  - **`lib/db.ts`:** `notificationQueries.existsToday(userId, type)` — UTC midnight check for de-duplication.
+  - 997 green, tsc clean, build clean.
 - **2026-06-16** — **[BUG FIX — PM hotfix] Time-allocation now credits exercise to fitness goals; never flags unmeasurable priorities (992 green).** (`dd40ab1`)
   - **SYMPTOM (live, Derrick's dashboard):** "Get to 130 lbs" showed <1% allocation over 6 weeks → a false highest-urgency "neglected" focus area, despite regular gym + walks.
   - **ROOT CAUSE (two compounding, in `lib/timeAllocation.ts`):** (1) `gym/workout/walk` were hard-coded in `ROUTINE_TITLES` and excluded from every priority bucket → weight-goal work counted toward nothing; (2) "Get to 130 lbs" has no keyword ≥4 chars that isn't a stopword (get/130/lbs) → `priorityScore` could never credit it → structurally guaranteed 0% → fired the misalignment flag, which [focusRecommendation.ts:232](lib/focusRecommendation.ts) escalates to a high-confidence focus area.
