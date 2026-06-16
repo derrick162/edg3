@@ -369,6 +369,14 @@ function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- Public landing-page waitlist signups (no auth — pre-account).
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      email      TEXT NOT NULL UNIQUE,
+      source     TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- OAuth CSRF state tokens — one-time-use, short-lived (10 min).
     -- Generated in /api/[calendar|whoop]/connect; consumed (verified + deleted) in /api/[...]/callback.
     CREATE TABLE IF NOT EXISTS oauth_state (
@@ -1699,6 +1707,22 @@ export const supportMessageQueries = {
       'SELECT id, user_id, type, message, status, created_at FROM support_messages ORDER BY created_at DESC LIMIT ?'
     ).all(limit) as Array<{ id: number; user_id: number; type: string; message: string; status: string; created_at: string }>;
     return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: r.message, status: r.status, createdAt: r.created_at }));
+  },
+};
+
+export const waitlistQueries = {
+  // Insert a signup; idempotent on email (duplicate signups are silently ignored).
+  // Returns true if a NEW row was created, false if the email already existed.
+  add: (email: string, source?: string): boolean => {
+    const info = getDb().prepare(
+      'INSERT INTO waitlist (email, source) VALUES (?, ?) ON CONFLICT(email) DO NOTHING'
+    ).run(email.trim().toLowerCase(), source ?? null);
+    return info.changes > 0;
+  },
+
+  count: (): number => {
+    const row = getDb().prepare('SELECT COUNT(*) AS n FROM waitlist').get() as { n: number };
+    return row.n;
   },
 };
 

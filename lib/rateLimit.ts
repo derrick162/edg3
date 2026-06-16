@@ -38,6 +38,7 @@ export const LIMITS = {
   openCall:       { limit: 5,  windowMs:  5 * 60 * 1000 },  // 5  / 5 min per user (Vapi call cost)
   briefingCall:   { limit: 3,  windowMs: 10 * 60 * 1000 },  // 3  / 10 min per user (manual call + retry)
   support:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user
+  waitlist:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per IP (public signup, anti-spam)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
