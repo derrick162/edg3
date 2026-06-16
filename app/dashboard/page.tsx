@@ -837,6 +837,7 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [confirmedFocusAreas, setConfirmedFocusAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
@@ -891,7 +892,8 @@ export default function Dashboard() {
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
-    fetch('/api/memory/activation').then(r => r.ok ? r.json() : null).then(d => { if (d?.facts) setActivationFacts(d.facts); }).catch(() => {});
+    fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => { if (d?.recentFacts) setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement)); }).catch(() => {});
+    fetch('/api/focus/confirm').then(r => r.ok ? r.json() : null).then(d => { if (d?.confirmed && d.areas?.length) setConfirmedFocusAreas(d.areas); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -942,7 +944,8 @@ export default function Dashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ areas }),
     });
-    setFocusRecDismissed(true);
+    // Transition card to confirmed state (don't dismiss — the locked view fills the slot)
+    setConfirmedFocusAreas(areas);
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -1615,14 +1618,15 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Focus recommendation */}
-              {!focusRecDismissed && (
+              {/* Focus recommendation — stays visible after confirm (transitions to locked state) */}
+              {(!focusRecDismissed || confirmedFocusAreas) && (
                 <div className="mb-6">
                   <FocusRecommendationCard
                     recommendation={focusRec}
                     loading={focusRecLoading}
+                    confirmedAreas={confirmedFocusAreas ?? undefined}
                     onConfirm={handleConfirmFocus}
-                    onDismiss={() => setFocusRecDismissed(true)}
+                    onDismiss={confirmedFocusAreas ? undefined : () => setFocusRecDismissed(true)}
                   />
                 </div>
               )}
