@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
@@ -8,7 +8,7 @@ import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
-import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops } from './openLoops';
+import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
 import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetingContext';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
@@ -328,6 +328,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Open Loops: already fetched above for focus rec — reuse.
   const urgentLoops = urgentLoopsEarly;
   const openLoopsBlock = formatOpenLoopsForBriefing(urgentLoops);
+  // Recurring-pattern detection: look across ALL loops (any status) for systemic friction.
+  const allLoopsForRecurring = (() => {
+    try { return openLoopQueries.list(userId, undefined, { includeSnoozed: true }); } catch { return []; }
+  })();
+  const recurringBlock = formatRecurringPatternsForBriefing(detectRecurringPatterns(allLoopsForRecurring, 3));
   // Calendar patterns: analyze 180-day history for routines, focus windows, and meeting load.
   const calendarPatternsBlock = formatCalendarPatternsForBriefing(
     detectCalendarPatterns(pastCalendarHistory, { timezone: userTimezone }),
@@ -554,6 +559,9 @@ YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said 
 ` : ''}${openLoopsBlock ? `
 ${openLoopsBlock}
 When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.
+` : ''}${recurringBlock ? `
+${recurringBlock}
+Use RECURRING OPEN LOOPS only if one matches today's context — mention it briefly and suggest a permanent fix ("that one keeps coming back — want to schedule a standing 30 minutes for it?"). One mention max, in section 4. Skip if the urgent loops already cover it.
 ` : ''}${meetingContextBlock ? `
 ${meetingContextBlock}
 Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE specific observation for the most important upcoming meeting: relevant email thread, a fact you know about the person, or an open loop they should close before walking in. Keep it to one sentence per event — don't read every bullet. Only reference meetings that actually appear in the calendar data.

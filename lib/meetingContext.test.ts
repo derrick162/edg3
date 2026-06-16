@@ -29,7 +29,7 @@ function fact(category: 'person' | 'goal' | 'project' | 'preference' | 'fact', e
 }
 
 function loop(description: string, type: OpenLoop['type'] = 'commitment_made'): OpenLoop {
-  return { id: 1, userId: 1, description, type, source: 'call', dueDate: null, status: 'open', createdAt: '2026-06-15', resolvedAt: null };
+  return { id: 1, userId: 1, description, type, source: 'call', dueDate: null, status: 'open', createdAt: '2026-06-15', resolvedAt: null, snoozedUntil: null };
 }
 
 // ── extractKeywords ───────────────────────────────────────────────────────────

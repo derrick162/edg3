@@ -24,6 +24,8 @@ import {
   extractAndUpsertOpenLoops,
   getUrgentOpenLoops,
   formatOpenLoopsForBriefing,
+  detectRecurringPatterns,
+  formatRecurringPatternsForBriefing,
   type OpenLoop,
   type ExtractedOpenLoop,
 } from './openLoops';
@@ -42,6 +44,7 @@ function makeLoop(overrides: Partial<OpenLoop> = {}): OpenLoop {
     status: 'open',
     createdAt: '2026-06-15',
     resolvedAt: null,
+    snoozedUntil: null,
     ...overrides,
   };
 }
@@ -202,6 +205,14 @@ describe('getUrgentOpenLoops', () => {
     m.list.mockReturnValue([]);
     expect(getUrgentOpenLoops(1, '2026-06-15')).toEqual([]);
   });
+
+  it('surfaces tier-2: commitment_made older than 7 days even without due date', () => {
+    m.list.mockReturnValue([
+      makeLoop({ type: 'commitment_made', dueDate: null, createdAt: '2026-06-07' }), // 8 days old
+    ]);
+    const urgent = getUrgentOpenLoops(1, '2026-06-15');
+    expect(urgent).toHaveLength(1);
+  });
 });
 
 // ── formatOpenLoopsForBriefing ────────────────────────────────────────────────
@@ -237,6 +248,88 @@ describe('formatOpenLoopsForBriefing', () => {
     const result = formatOpenLoopsForBriefing([makeLoop({ dueDate: null })]);
     expect(result).not.toContain('due');
     expect(result).not.toContain('null');
+  });
+});
+
+// ── detectRecurringPatterns ───────────────────────────────────────────────────
+
+describe('detectRecurringPatterns', () => {
+  it('returns empty array when no loops', () => {
+    expect(detectRecurringPatterns([])).toEqual([]);
+  });
+
+  it('returns empty when count < minCount', () => {
+    const loops = [
+      makeLoop({ description: 'Send CIBC proposal' }),
+      makeLoop({ id: 2, description: 'Send CIBC proposal' }),
+    ];
+    expect(detectRecurringPatterns(loops, 3)).toEqual([]);
+  });
+
+  it('detects patterns appearing >= minCount times', () => {
+    const loops = Array.from({ length: 4 }, (_, i) =>
+      makeLoop({ id: i, description: 'Send CIBC proposal' }),
+    );
+    const result = detectRecurringPatterns(loops, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBe(4);
+  });
+
+  it('normalizes descriptions for comparison', () => {
+    const loops = [
+      makeLoop({ description: 'Send CIBC Proposal!' }),
+      makeLoop({ id: 2, description: 'send cibc proposal' }),
+      makeLoop({ id: 3, description: 'Send CIBC proposal...' }),
+    ];
+    const result = detectRecurringPatterns(loops, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBe(3);
+  });
+
+  it('sorts patterns by count descending', () => {
+    const loops = [
+      ...Array.from({ length: 2 }, (_, i) => makeLoop({ id: i, description: 'Pay rent' })),
+      ...Array.from({ length: 4 }, (_, i) => makeLoop({ id: 10 + i, description: 'Send CIBC proposal' })),
+    ];
+    const result = detectRecurringPatterns(loops, 2);
+    expect(result[0].count).toBeGreaterThanOrEqual(result[1].count);
+  });
+
+  it('includes loops of any status (not just open)', () => {
+    const loops = [
+      makeLoop({ status: 'open',      description: 'Follow up' }),
+      makeLoop({ id: 2, status: 'done',       description: 'Follow up' }),
+      makeLoop({ id: 3, status: 'dismissed',  description: 'Follow up' }),
+    ];
+    const result = detectRecurringPatterns(loops, 3);
+    expect(result).toHaveLength(1);
+  });
+});
+
+// ── formatRecurringPatternsForBriefing ────────────────────────────────────────
+
+describe('formatRecurringPatternsForBriefing', () => {
+  it('returns empty string for empty array', () => {
+    expect(formatRecurringPatternsForBriefing([])).toBe('');
+  });
+
+  it('includes RECURRING OPEN LOOPS header', () => {
+    const patterns = [{ description: 'Send Cibc Proposal', count: 4, type: 'commitment_made' as const }];
+    expect(formatRecurringPatternsForBriefing(patterns)).toContain('RECURRING OPEN LOOPS');
+  });
+
+  it('mentions the count', () => {
+    const patterns = [{ description: 'Send Cibc Proposal', count: 4, type: 'commitment_made' as const }];
+    expect(formatRecurringPatternsForBriefing(patterns)).toContain('4 times');
+  });
+
+  it('caps at 3 patterns in the output', () => {
+    const patterns = Array.from({ length: 6 }, (_, i) => ({
+      description: `Pattern ${i}`, count: 3, type: 'commitment_made' as const,
+    }));
+    const output = formatRecurringPatternsForBriefing(patterns);
+    const matchCount = (output.match(/has come up/g) ?? []).length;
+    expect(matchCount).toBe(3);
   });
 });
 
