@@ -9,6 +9,13 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **Briefing call UX — 5 live improvements (PM dispatch from Derrick's morning call).**
+  - **Condense**: max_tokens 450→320; word cap updated to MAX 220 in system prompt.
+  - **Hook opener**: 3-part briefing structure replaces 6-section framework. PART 1: "${greeting}, ${firstName}. This is your Nth morning — Edge Score X/100[±delta]." Then ONE energy/sleep line from PROGRESS HOOK data. Then ONE meaningful event only (no meals/gym). Streak line stays.
+  - **Anchor to actions**: PART 2 opens with focus proposal ("For today, I'd focus you on… Sound right?") then names concrete first action. No event listing for its own sake. Accountability line + hygiene flag integrated inline.
+  - **Buffer handling**: new vapi.ts BUFFER HANDLING bullet — classify FIXED (haircuts, meetings, flights) vs FLEXIBLE (gym, deep work) events. Always create buffer after FIXED; move FLEXIBLE to fill remaining slot. Worked example: haircut 1-2pm + gym → buffer at 2pm + gym at 2:15pm.
+  - **Close/capture**: new vapi.ts BRIEFING CLOSE bullet — end with ONE focus-driven question (bans generic "most important thing" fallback), then `editEvent` to capture answer in calendar: "I've noted that in your calendar."
+  - `firstName` local const added to `generateDailyBriefing` (was only in helper functions). 988/988 green, tsc clean, next build clean.
 - **2026-06-16** — **Whoop Intelligence — baselines, overreaching, calendar actions, deeper correlations, coaching** (5-sub-item PM dispatch).
   - **Sub-item 1: Personal baselines (30-day rolling averages)**
     - `computeWhoopBaselines(recoveryHistory, sleepHistory, strainHistory)` → `WhoopBaseline { recovery30dAvg, sleep30dAvgH, strain30dAvg }` — pure, up to 30 most-recent points per signal.
