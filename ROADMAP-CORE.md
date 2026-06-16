@@ -9,6 +9,10 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **[BUG FIX — PM hotfix] Time-allocation now credits exercise to fitness goals; never flags unmeasurable priorities (992 green).** (`dd40ab1`)
+  - **SYMPTOM (live, Derrick's dashboard):** "Get to 130 lbs" showed <1% allocation over 6 weeks → a false highest-urgency "neglected" focus area, despite regular gym + walks.
+  - **ROOT CAUSE (two compounding, in `lib/timeAllocation.ts`):** (1) `gym/workout/walk` were hard-coded in `ROUTINE_TITLES` and excluded from every priority bucket → weight-goal work counted toward nothing; (2) "Get to 130 lbs" has no keyword ≥4 chars that isn't a stopword (get/130/lbs) → `priorityScore` could never credit it → structurally guaranteed 0% → fired the misalignment flag, which [focusRecommendation.ts:232](lib/focusRecommendation.ts) escalates to a high-confidence focus area.
+  - **Fix:** `GOAL_CATEGORIES` (fitness) maps a weight/fitness priority to exercise event titles and credits that time to the goal; priority matching now runs BEFORE the routine catch-all (events with no priority match still fall to routine, so non-fitness users' gym time stays routine). `isMeasurablePriority` guards the misalignment flag — a goal with no keyword AND no category is never falsely flagged as neglected. 3 new tests. Darren: extend `GOAL_CATEGORIES` if other short-token goals surface (e.g. reading/learning).
 - **2026-06-16** — **[BUG FIX] Alignment hours now count the full current week, not future-only.**
   - **ROOT CAUSE:** `getWeekEvents` used `timeMin: now` — completed events (gym on Monday, meetings from earlier days) were never passed to `computeAlignment`. Edge told Derrick "2.5h on gym" when real completed hours were much higher. Also affected hygiene flags and Edge Score focus%.
   - **Fix:** new `getFullWeekEvents(userId, tz)` in `lib/calendar.ts` — fetches Mon 00:00 through Sun 23:59 in the user's timezone (using `dayRangeUtc` + `todayInTz` for exact UTC bounds). `briefing.ts` runs it in parallel, passes the full-week set to `computeAlignment` + `detectHygieneFlags`. Future-only `weekEvents` kept for calendar display and free-time slots.
