@@ -8,6 +8,29 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-15** — **Call path hardening + CASA rate limiting + audit log.**
+  - **Call path — claim-first anti-double-dial:** `lib/scheduler.ts`:
+    `briefingQueries.createPending(userId, scheduledFor)` now called *before* briefing generation
+    so a second cron tick (60s later) sees the 'pending' row and bails — fixes the TOCTOU race
+    where two ticks both passed the guard during the 10–30s async briefing gen step.
+    `briefingQueries.updateContent(id, content)` writes generated content after gen succeeds.
+    On gen failure, row is marked `status='failed', error_code='briefing_gen_failed'` (not orphaned).
+    `STALE_PENDING_MS = 5 min` — stale pending rows release the slot so a server crash mid-gen
+    doesn't permanently block the day's call.
+  - **Call path — daily-limit guard:** Both `checkAndInitiateCalls` and `scheduleBriefingCall`
+    now also block on `status='failed' AND error_code='vapi_daily_limit'` rows for today — previously
+    the scheduler retried every minute for 2 hours (120 wasted LLM calls) on a permanent failure.
+    Daily-limit `CallError` now surfaced directly from the idempotency check, not only from the Vapi
+    call path. 'pending' + daily-limit conditions mirrored in `checkAndInitiateCalls` (cron level).
+  - 6 new scheduler tests (claim-first order, updateContent call, gen-failure marks row, blocks on
+    daily-limit, blocks on pending). 31 scheduler tests total.
+  - **CASA rate limiting on new routes** (`lib/rateLimit.ts` — 5 new keys, user-scoped):
+    `/api/day-plan` (10/hr), `/api/day-plan/confirm` (5/hr), `/api/focus/recommend` (20/hr),
+    `/api/focus/confirm` (30/hr), `/api/scores` (20/hr). User-scoped via `user.id.toString()`
+    (avoids shared-IP false positives behind corporate NAT).
+  - **Audit log on write paths:** `applyDayPlan` logged in `/api/day-plan/confirm` (action count,
+    descriptions). `confirmFocusAreas` logged in `/api/focus/confirm` (date, area titles).
+  - 744/744 green, tsc clean, next build clean.
 - **2026-06-15** — **Token revocation + security audit of new write paths.**
   - **Whoop token revocation (CASA item):** `lib/whoop.ts` — `REVOKE_URL` constant;
     `clearUserCaches(userId)` clears all 6 in-memory caches on disconnect;
