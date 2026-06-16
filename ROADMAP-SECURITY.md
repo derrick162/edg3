@@ -8,6 +8,35 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-15** — **facts.statement encryption; open-call reliability; nightly backup (827 green).**
+  - **Item 1 — Encrypt `facts.statement` at rest (PM decision GO):**
+    - `factQueries` in `lib/db.ts`: `encryptField(statement)` on all writes (`upsertFact`,
+      `updateFact`, `syncPriorityFacts`); `decryptFactRow()` helper; `getAll()`/`getByCategory()`
+      decrypt on read. No-entity dedup changed from SQL `LOWER(SUBSTR(...))` to in-memory
+      comparison of decrypted values (encrypted text can't be SQL-compared).
+    - `dailyFocusQueries`: `encryptField(areasJson)` on upsert, `decryptField(focus_areas)` on read.
+    - `openLoopQueries.existsSimilar()`: new in-memory dedup helper (description decrypt before compare).
+    - `openLoopQueries.resolve()`/`dismiss()`: return `boolean`, add `AND status = 'open'` guard.
+    - **Stub swap**: removed Darren's self-managed DB STUB from `lib/openLoops.ts` and replaced
+      `openLoopStubQueries` with a thin camelCase→snake_case adapter over the encrypted
+      `openLoopQueries` from `lib/db.ts`. Test mock updated: `openLoopQueries` added to `./db` mock;
+      `makeDbLoop()` helper for tests that go through the `list → toSnake` path; dedup test
+      uses `mockAll` instead of `mockGet`.
+  - **Item 2 — 9am call reliability hardening:**
+    - `scheduleOpenCall()` in `lib/scheduler.ts`: added 3-minute in-flight guard (same pattern
+      as the force-retry path) to prevent double Vapi calls when user double-taps "Open Call".
+    - `openCall` rate limit added to `lib/rateLimit.ts` (5 / 5 min per user).
+    - `/api/briefing/open-call`: wired `checkRateLimit('openCall', ...)`.
+    - Scheduler audit: claim-first anti-double-dial ✅, STALE_CALLING/PENDING guards ✅,
+      graceful Vapi error classification ✅, catch-up window (120 min) ✅. No further issues.
+  - **Item 3 — Backups / durability:**
+    - `maybeDailyBackup()` wired into nightly 3am cron (covers no-call days — previously
+      only fired from Vapi webhook). 14-backup rotation on-volume unchanged.
+    - Idempotency confirmed: `dailyFocusQueries.upsert` uses `ON CONFLICT DO UPDATE`;
+      `calendarScoreQueries.upsert` same; `open_loops.insert` + `existsSimilar` dedup guard.
+  - **Item 4 — CASA prep:** All code items remain COMPLETE from prior session.
+    Remaining non-code: demo video scene (focus recommendation) + PM consent decision.
+  - 827 green, tsc clean, next build clean.
 - **2026-06-15** — **Privacy/security audit of email-derived data; retention prune for watched_threads.**
   - **Audit findings (email-derived PII coverage):**
     - `gmail_drafts_log.recipient/subject` ✅ encrypted at rest (`encryptNullable`)
