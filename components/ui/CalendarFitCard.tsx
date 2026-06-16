@@ -25,6 +25,8 @@ export interface CalendarFit {
   clarityScore?: ScoreResult;
   /** How consistently you show up — calls + engagement, trailing 7–14d. Calibrating day 1. */
   momentumScore?: ScoreResult;
+  /** Trailing Edge Score history (oldest→newest) for the 7-day trend sparkline. */
+  history?: { date: string; score: number }[];
   computedAt: string;
 }
 

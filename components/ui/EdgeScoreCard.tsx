@@ -314,6 +314,50 @@ function MomentumPanel({ score }: { score: ScoreResult }) {
   );
 }
 
+// ── 7-day Edge Score trend sparkline ──────────────────────────────────────────
+
+function EdgeTrendSparkline({ history }: { history: { date: string; score: number }[] }) {
+  if (history.length < 2) {
+    return (
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+        Your 7-day trend appears here once Edge has a couple of days of scores.
+      </p>
+    );
+  }
+  const W = 240, H = 52, pad = 6;
+  const scores = history.map(h => h.score);
+  const min = Math.min(...scores), max = Math.max(...scores);
+  const range = Math.max(1, max - min);
+  const n = history.length;
+  const x = (i: number) => pad + (i / (n - 1)) * (W - pad * 2);
+  const y = (v: number) => H - pad - ((v - min) / range) * (H - pad * 2);
+  const line = history.map((h, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(h.score).toFixed(1)}`).join(' ');
+  const area = `${line} L ${x(n - 1).toFixed(1)} ${(H - pad).toFixed(1)} L ${x(0).toFixed(1)} ${(H - pad).toFixed(1)} Z`;
+  const delta = scores[n - 1] - scores[0];
+  const stroke = delta > 0 ? 'var(--gauge-peak)' : delta < 0 ? 'var(--gauge-low)' : 'var(--text-muted)';
+  const last = history[n - 1];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>Edge Score · last {n} days</p>
+        <span className="text-xs font-semibold" style={{ color: stroke }}>
+          {delta > 0 ? '▲' : delta < 0 ? '▼' : '→'} {Math.abs(delta)}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxWidth: W, display: 'block' }} aria-hidden>
+        <path d={area} fill={stroke} opacity={0.1} />
+        <path d={line} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={x(n - 1)} cy={y(last.score)} r={3} fill={stroke} />
+      </svg>
+      <div className="flex items-center justify-between mt-0.5">
+        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{scores[0]}</span>
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>{last.score} today</span>
+      </div>
+    </div>
+  );
+}
+
 // ── EdgeScoreCard ─────────────────────────────────────────────────────────────
 
 export function EdgeScoreCard({
@@ -327,11 +371,24 @@ export function EdgeScoreCard({
 }: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // When energy half is calibrating, only average the focus score
+  // Show the canonical 4-component Edge Score (Focus + Energy + Clarity + Momentum,
+  // already weight-renormalized server-side so calibrating components don't blank it).
+  // Fall back to the focus/energy blend only for old API responses without edgeScore.
   const edgeScore = fit
-    ? calibrating && calibratingHalf !== 'focus'
-      ? fit.focusScore.score  // energy still learning — show focus score only
-      : Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
+    ? typeof fit.edgeScore === 'number'
+      ? fit.edgeScore
+      : calibrating && calibratingHalf !== 'focus'
+        ? fit.focusScore.score
+        : Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
+    : null;
+
+  // 7-day Edge Score trend (oldest→newest) — drives the trend arrow + sparkline.
+  const history = (fit?.history ?? []).filter(h => typeof h.score === 'number');
+  const trend = history.length >= 2
+    ? (() => {
+        const delta = history[history.length - 1].score - history[0].score;
+        return { delta, up: delta > 0, down: delta < 0, days: history.length };
+      })()
     : null;
 
   // ── Loading
@@ -418,16 +475,16 @@ export function EdgeScoreCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-faint)', letterSpacing: '0.07em' }}>Today</p>
-            {previousScore !== undefined && (() => {
-              const delta = s - previousScore;
-              if (Math.abs(delta) < 2) return null;
-              const up = delta > 0;
-              return (
-                <span className="text-xs font-semibold" style={{ color: up ? 'var(--gauge-peak)' : 'var(--gauge-low)' }}>
-                  {up ? '▲' : '▼'} {Math.abs(delta)} vs yesterday
-                </span>
-              );
-            })()}
+            {/* 7-day trend arrow — green up when trending up over the window. */}
+            {trend && Math.abs(trend.delta) >= 1 ? (
+              <span className="text-xs font-semibold" style={{ color: trend.up ? 'var(--gauge-peak)' : trend.down ? 'var(--gauge-low)' : 'var(--text-faint)' }}>
+                {trend.up ? '▲' : trend.down ? '▼' : '→'} {Math.abs(trend.delta)} over {trend.days}d
+              </span>
+            ) : previousScore !== undefined && Math.abs(s - previousScore) >= 2 ? (
+              <span className="text-xs font-semibold" style={{ color: s > previousScore ? 'var(--gauge-peak)' : 'var(--gauge-low)' }}>
+                {s > previousScore ? '▲' : '▼'} {Math.abs(s - previousScore)} vs yesterday
+              </span>
+            ) : null}
           </div>
           <p className="text-sm font-bold mb-2 leading-snug" style={{ color: 'var(--text-strong)' }}>
             {scoreSummary(s)}
@@ -444,6 +501,11 @@ export function EdgeScoreCard({
 
           {expanded && (
             <div className="space-y-3 mt-1">
+              {/* ── 7-day Edge Score trend ── */}
+              <div className="pb-1" style={{ borderBottom: '1px solid var(--edg-hairline)' }}>
+                <EdgeTrendSparkline history={history} />
+              </div>
+
               {/* ── Focus ── */}
               <ScorePanel
                 icon="🎯"

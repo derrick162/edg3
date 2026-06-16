@@ -114,5 +114,19 @@ export async function GET() {
     // Non-fatal — scoring still returns even if persistence fails.
   }
 
-  return NextResponse.json(fit);
+  // 7-day Edge Score trend (oldest→newest) for the sparkline + trend arrow.
+  // Read after the upsert so today's point is included.
+  let history: { date: string; score: number }[] = [];
+  try {
+    const from = new Date(today);
+    from.setDate(from.getDate() - 6);
+    const fromStr = from.toISOString().slice(0, 10);
+    history = calendarScoreQueries.getRange(user.id, fromStr, today)
+      .filter(r => r.edge_score !== null && r.edge_score !== undefined)
+      .map(r => ({ date: r.date, score: r.edge_score as number }));
+  } catch {
+    // Non-fatal — trend is additive; scoring still returns without it.
+  }
+
+  return NextResponse.json({ ...fit, history });
 }
