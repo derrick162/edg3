@@ -28,6 +28,7 @@ const VALID_CATEGORIES = new Set(['person', 'project', 'goal', 'preference', 'fa
 export async function extractFactsFromTranscript(
   transcript: string,
   userName?: string,
+  knownNames?: string[],
 ): Promise<ExtractedFact[]> {
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -37,6 +38,10 @@ export async function extractFactsFromTranscript(
       ? `The user's name is "${userName}". Speech-to-text often mis-spells it in the transcript (e.g. "Derek" for "Derrick", "Sun Yat-Sen" as "Yassen"). Always refer to the user by their correct name "${userName}" in statements. Do NOT create a "person" fact about the user themselves — only about OTHER people.\n`
       : '';
 
+    const knownNamesLine = knownNames && knownNames.length > 0
+      ? `Known people in this user's world (prefer these exact spellings when a word sounds phonetically similar but may be garbled — e.g. if you see "Pfizer" in a people context but "Faiza" is a known contact, use "Faiza"): ${knownNames.join(', ')}.\n`
+      : '';
+
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
@@ -44,7 +49,7 @@ export async function extractFactsFromTranscript(
         role: 'user',
         content: `Extract up to 10 DURABLE facts about the user from this call transcript.
 Return ONLY a JSON array — no preamble, no markdown.
-${userLine}
+${userLine}${knownNamesLine}
 Each item: {"category":"<category>","statement":"<one clear sentence>","entity":"<name or null>","confidence":"high"|"low"}
 
 Categories:
@@ -117,7 +122,13 @@ export async function extractAndUpsertFacts(
   sourceBriefingId?: number,
 ): Promise<void> {
   try {
-    const facts = await extractFactsFromTranscript(transcript, userName);
+    // Pass previously stored person names so the model can correct STT mis-spellings
+    // (e.g. "Pfizer" heard in transcript → "Faiza" when that name is already in facts).
+    const storedFacts = factQueries.getAll(userId);
+    const knownNames = storedFacts
+      .filter(f => f.category === 'person' && typeof f.entity === 'string' && (f.entity as string).trim().length > 0)
+      .map(f => f.entity as string);
+    const facts = await extractFactsFromTranscript(transcript, userName, knownNames);
     let stored = 0;
     for (const f of facts) {
       // Never file a "person" fact about the user themselves.

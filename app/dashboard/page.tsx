@@ -10,6 +10,14 @@ import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, Calenda
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
+// SQLite stores timestamps as "2026-06-16 01:20:00" (space, no 'Z') — V8 parses that as LOCAL
+// time, shifting dates by the UTC offset (e.g. shows "Tuesday" at 9 PM ET when it's still Monday).
+// Normalise to ISO 8601 with an explicit 'Z' so the Date is correctly interpreted as UTC,
+// then displayed in the user's local timezone by the browser.
+function parseUTC(ts: string): Date {
+  return new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
+}
+
 // for DISPLAY only, correct capitalized words that are clearly a mishearing of the user's first
 // name (same first 3 letters, similar length). Conservative: leaves all other words untouched.
 function correctName(text: string, firstName: string): string {
@@ -509,7 +517,7 @@ function ActivityTab() {
   }
 
   function relativeTime(created_at: string): string {
-    const ms = Date.now() - new Date(created_at).getTime();
+    const ms = Date.now() - parseUTC(created_at).getTime();
     const s = Math.floor(ms / 1000);
     if (s < 60) return 'just now';
     const m = Math.floor(s / 60);
@@ -521,7 +529,7 @@ function ActivityTab() {
   }
 
   function dayLabel(created_at: string): string {
-    const d = new Date(created_at);
+    const d = parseUTC(created_at);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
@@ -948,6 +956,9 @@ export default function Dashboard() {
     });
     // Transition card to confirmed state (don't dismiss — the locked view fills the slot)
     setConfirmedFocusAreas(areas);
+    // Re-fetch Edge Score: Focus component now reads today's confirmed daily_focus,
+    // so the score updates live instead of showing a stale pre-confirm value.
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -2033,10 +2044,10 @@ export default function Dashboard() {
                                             </p>
                                             {f.source_briefing_id ? (
                                               <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs hover:underline" style={{ color: 'var(--text-faint)' }}>
-                                                {format(new Date(f.learned_at), 'MMM d')} ↗
+                                                {format(parseUTC(f.learned_at), 'MMM d')} ↗
                                               </a>
                                             ) : (
-                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(new Date(f.learned_at), 'MMM d')}</span>
+                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(f.learned_at), 'MMM d')}</span>
                                             )}
                                           </div>
                                           <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -2123,7 +2134,7 @@ export default function Dashboard() {
                               <div key={m.id} className="rounded-lg px-3 py-2.5" style={{ border: '1px solid var(--edg-hairline)', background: 'transparent' }}>
                                 <div className="flex items-center gap-2 mb-1.5">
                                   <span className={`badge ${m.type === 'insight' ? 'badge-success' : m.type === 'transcript' ? 'badge-info' : m.type === 'profile' ? 'badge-pending' : 'badge-info'}`}>{m.type}</span>
-                                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(new Date(m.created_at), 'MMM d, yyyy')}</span>
+                                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(m.created_at), 'MMM d, yyyy')}</span>
                                 </div>
                                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-body)' }}>
                                   {correctName(m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content, firstName)}
