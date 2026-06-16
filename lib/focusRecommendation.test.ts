@@ -14,7 +14,8 @@ vi.mock('./db', () => ({
   memoryQueries: { getWeighted: vi.fn() },
 }));
 
-import { recommendFocusAreas, aggregateEventThemes, type EnergySignal } from './focusRecommendation';
+import { recommendFocusAreas, aggregateEventThemes, isUrgentEmail, formatEmailSignalForPrompt, type EnergySignal } from './focusRecommendation';
+import type { EmailSignal, EmailSignalItem } from './gmail';
 import { getPastCalendarEvents } from './calendar';
 import { factQueries, memoryQueries, type Priority } from './db';
 import type { calendar_v3 } from 'googleapis';
@@ -303,5 +304,135 @@ describe('recommendFocusAreas', () => {
     const result = await recommendFocusAreas(1);
     expect(result.areas).toHaveLength(1);
     expect(result.areas[0].title).toBe('Good one');
+  });
+});
+
+// ── isUrgentEmail ─────────────────────────────────────────────────────────────
+
+function emailItem(overrides: Partial<EmailSignalItem> = {}): EmailSignalItem {
+  return {
+    threadId: 'thread1',
+    sender: 'someone@example.com',
+    subject: 'Hello',
+    snippet: 'Just checking in.',
+    date: 'Mon, 15 Jun 2026 09:00:00 -0400',
+    isUnread: false,
+    isImportant: false,
+    ...overrides,
+  };
+}
+
+describe('isUrgentEmail', () => {
+  it('returns true when isImportant', () => {
+    expect(isUrgentEmail(emailItem({ isImportant: true }))).toBe(true);
+  });
+
+  it('returns true on urgent subject keyword', () => {
+    expect(isUrgentEmail(emailItem({ subject: 'FINAL NOTICE: Payment overdue' }))).toBe(true);
+  });
+
+  it('returns true on urgent sender keyword (CIBC)', () => {
+    expect(isUrgentEmail(emailItem({ sender: 'collections@cibc.com' }))).toBe(true);
+  });
+
+  it('returns true on collector in subject', () => {
+    expect(isUrgentEmail(emailItem({ subject: 'Collections department notice' }))).toBe(true);
+  });
+
+  it('returns false for normal email', () => {
+    expect(isUrgentEmail(emailItem({ sender: 'friend@gmail.com', subject: 'Weekend plans' }))).toBe(false);
+  });
+});
+
+// ── formatEmailSignalForPrompt ────────────────────────────────────────────────
+
+function signal(items: EmailSignalItem[], scopeMissing = false): EmailSignal {
+  return { items, fetchedAt: '2026-06-15T10:00:00Z', scopeMissing };
+}
+
+describe('formatEmailSignalForPrompt', () => {
+  it('returns empty string when scopeMissing', () => {
+    expect(formatEmailSignalForPrompt(signal([], true))).toBe('');
+  });
+
+  it('returns empty string when no items', () => {
+    expect(formatEmailSignalForPrompt(signal([]))).toBe('');
+  });
+
+  it('tags urgent emails with [URGENT/FINANCIAL]', () => {
+    const result = formatEmailSignalForPrompt(signal([
+      emailItem({ sender: 'collections@cibc.com', subject: 'Past due balance' }),
+    ]));
+    expect(result).toContain('[URGENT/FINANCIAL]');
+  });
+
+  it('tags unread non-urgent emails with [unread]', () => {
+    const result = formatEmailSignalForPrompt(signal([
+      emailItem({ isUnread: true, subject: 'Lunch tomorrow?' }),
+    ]));
+    expect(result).toContain('[unread]');
+    expect(result).not.toContain('[URGENT/FINANCIAL]');
+  });
+
+  it('truncates snippet to 120 chars', () => {
+    const longSnippet = 'A'.repeat(200);
+    const result = formatEmailSignalForPrompt(signal([emailItem({ snippet: longSnippet })]));
+    expect(result).toContain('A'.repeat(120));
+    expect(result).not.toContain('A'.repeat(121));
+  });
+});
+
+// ── recommendFocusAreas — email signal integration ───────────────────────────
+
+describe('recommendFocusAreas with emailSignal', () => {
+  it('adds email to basedOn when signal has items', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    const es = signal([emailItem({ subject: 'Weekend plans' })]);
+    const result = await recommendFocusAreas(1, { emailSignal: es });
+    expect(result.basedOn.some(s => s.includes('email inbox'))).toBe(true);
+  });
+
+  it('includes urgent count in basedOn', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    const es = signal([emailItem({ sender: 'collections@cibc.com', subject: 'Past due' })]);
+    const result = await recommendFocusAreas(1, { emailSignal: es });
+    expect(result.basedOn.some(s => s.includes('1 urgent'))).toBe(true);
+  });
+
+  it('does NOT add email to basedOn when scopeMissing', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    const result = await recommendFocusAreas(1, { emailSignal: signal([], true) });
+    expect(result.basedOn.some(s => s.includes('email'))).toBe(false);
+  });
+
+  it('injects URGENT priority weighting into Sonnet prompt when urgent emails present', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([]));
+    const es = signal([emailItem({ sender: 'collections@cibc.com', subject: 'Past due balance' })]);
+    await recommendFocusAreas(1, { emailSignal: es });
+    const promptArg = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptArg).toContain('URGENT/FINANCIAL');
+    expect(promptArg).toContain('HIGHEST-PRIORITY');
+  });
+
+  it('degrades gracefully when emailSignal is null', async () => {
+    mockCalendar.mockResolvedValue([
+      timedEvent('Investor calls', 5), timedEvent('Product work', 4), timedEvent('Team syncs', 3),
+    ]);
+    h.create.mockResolvedValue(sonnetOk([{ title: 'Product work', rationale: 'Core theme.', confidence: 'high' }]));
+    const result = await recommendFocusAreas(1, { emailSignal: null });
+    expect(result.areas).toHaveLength(1);
+    expect(result.basedOn.some(s => s.includes('email'))).toBe(false);
   });
 });

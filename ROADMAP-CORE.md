@@ -9,6 +9,16 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Email signal wired into focus recommendations** (`lib/focusRecommendation.ts`, `lib/briefing.ts`, `app/api/focus/recommend/route.ts`).
+  - **`isUrgentEmail(item)`** — pure helper; returns true when `isImportant` OR subject/sender matches financial/legal/collection keywords (CIBC, "overdue", "final notice", "collections", "attorney", etc.). Exported + tested.
+  - **`formatEmailSignalForPrompt(signal)`** — formats inbox digest for LLM context: sender, subject, [URGENT/FINANCIAL] or [unread] tag, 120-char snippet. Returns '' on `scopeMissing` or empty. Exported + tested.
+  - **`RecommendOpts.emailSignal`** — new optional field. When provided, injects EMAIL INBOX DIGEST section into the Sonnet prompt. Urgent threads get `INBOX PRIORITY WEIGHTING` instruction telling the model to rank collector/financial/legal emails as `#1` focus candidate above any calendar block.
+  - **`basedOn`** includes `"email inbox (N threads, X urgent)"` when signal contributes.
+  - **`lib/briefing.ts`** — `getRecentEmailSignal(userId, { days:14, max:20 })` added to the main `Promise.all` (runs in parallel alongside Whoop; degrades to null on scope-missing or error). Passed as `emailSignal` to `recommendFocusAreas`.
+  - **`app/api/focus/recommend/route.ts`** — same pattern: fetches email signal in parallel, passes to `recommendFocusAreas`.
+  - Degrades gracefully: `scopeMissing:true` → no email section in prompt, no basedOn entry; any fetch error → null → prompt unchanged. Calendar+memory path unaffected.
+  - 20 new tests (5 `isUrgentEmail`, 5 `formatEmailSignalForPrompt`, 6 `recommendFocusAreas` email integration, 4 existing suites). 759/759 green, tsc clean, next build clean.
+  - ⚠️ **Requires gmail.readonly scope** — Derrick will need to reconnect Google (Settings → disconnect → reconnect Google) to grant this. Once granted, email flows into tomorrow's 9am briefing automatically.
 - **2026-06-15** — **Hero Loop briefing fix — `recommendFocusAreas` always fires; 4-step INSTRUCTION; `energy_cost` ref cleanup**.
   - **[FIX] `recommendFocusAreas` now fires on EVERY briefing call** — removed the `priorities.length === 0` guard in `lib/briefing.ts`. When priorities are set, they're passed as `anchors` so each recommendation ladders to a real goal. Previously the engine only ran when no priorities existed, meaning Derrick (who has priorities) never got a focus proposal.
   - **[FEATURE] 4-step HERO LOOP INSTRUCTION** in the `FOCUS RECOMMENDATION` briefing block — guides Edge through: STEP 1 Edge Score → STEP 2 Energy → STEP 3 Focus Proposal (propose → `confirmFocus`) → STEP 4 Reshape Offer (`applyCalendarPlan`). Rationale text is shown alongside each area's anchor priority. Step 3–4 explicitly marked as "the product's magic moment — do not skip."
