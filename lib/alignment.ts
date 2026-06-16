@@ -89,6 +89,7 @@ export async function computeAlignment(
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
+      temperature: 0, // deterministic classification — same calendar → same Focus Score on refresh
       messages: [{
         role: 'user',
         content: `Classify each calendar event against the priorities below. Output ONLY a JSON array — no preamble, no markdown, no commentary.
