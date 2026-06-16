@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection, TimeAllocationViz } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop, TimeAllocationBucket } from '@/components/ui';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -816,6 +816,16 @@ export default function Dashboard() {
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
+  const [whoopIntelligence, setWhoopIntelligence] = useState<{
+    deviationPts: number | null;
+    flags: string[];
+    recoveryAction: string | null;
+  } | null>(null);
+  const [timeAllocation, setTimeAllocation] = useState<{
+    buckets: TimeAllocationBucket[];
+    periodWeeks: number;
+    biggestMisalignment: string | null;
+  } | null>(null);
   const [whoopData, setWhoopData] = useState<{
     recoveryScore: number | null;
     tier: 'high' | 'medium' | 'low' | null;
@@ -917,8 +927,18 @@ export default function Dashboard() {
           .then(r => r.ok ? r.json() : null)
           .then(rd => { if (rd && rd.connected) setWhoopData(rd); })
           .catch(() => {});
+        // Whoop Intelligence (deviation, flags, action) — gracefully 404 until Darren ships endpoint
+        fetch('/api/whoop/intelligence')
+          .then(r => r.ok ? r.json() : null)
+          .then(intel => { if (intel) setWhoopIntelligence(intel); })
+          .catch(() => {});
       }
     }).catch(() => {});
+    // Time allocation (gracefully absent until Core ships /api/time-allocation)
+    fetch('/api/time-allocation')
+      .then(r => r.ok ? r.json() : null)
+      .then(ta => { if (ta?.buckets?.length) setTimeAllocation(ta); })
+      .catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1522,6 +1542,9 @@ export default function Dashboard() {
                       sleepTier={whoopData.sleepTier ?? undefined}
                       strain={whoopData.strain ?? undefined}
                       history={whoopData.history}
+                      deviationPts={whoopIntelligence?.deviationPts ?? null}
+                      flags={(whoopIntelligence?.flags ?? []) as any}
+                      recoveryAction={whoopIntelligence?.recoveryAction ?? null}
                     />
                   </div>
                 )}
@@ -1565,9 +1588,9 @@ export default function Dashboard() {
         {/* Main content */}
         <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4 md:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 md:mb-8">
             <div>
-              <h1 className="text-2xl font-bold">{(() => {
+              <h1 className="text-xl md:text-2xl font-bold">{(() => {
                 const h = new Date().getHours();
                 const g = h >= 18 ? 'Good evening' : h >= 12 ? 'Good afternoon' : 'Good morning';
                 return `${g}, ${user.name.split(' ')[0]}`;
@@ -1576,11 +1599,11 @@ export default function Dashboard() {
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3 flex-shrink-0">
               <button
                 onClick={openCall}
                 disabled={openingCall}
-                className="btn-secondary text-sm py-2 px-4"
+                className="btn-secondary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
                 title="An open conversation — no briefing"
               >
                 {openingCall ? 'Calling…' : '💬 Open call'}
@@ -1588,7 +1611,7 @@ export default function Dashboard() {
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
-                className="btn-primary text-sm py-2 px-4"
+                className="btn-primary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
               >
                 {initiatingCall ? 'Calling…' : '📞 Call me now'}
               </button>
@@ -1683,6 +1706,17 @@ export default function Dashboard() {
                     onDismiss={() => setDayPlan(null)}
                     applied={dayPlanApplied}
                     appliedScore={dayPlanAppliedScore}
+                  />
+                </div>
+              )}
+
+              {/* Time allocation viz — where time actually went vs priorities */}
+              {timeAllocation && (
+                <div className="glass-card p-4 mb-6">
+                  <TimeAllocationViz
+                    buckets={timeAllocation.buckets}
+                    periodWeeks={timeAllocation.periodWeeks}
+                    biggestMisalignment={timeAllocation.biggestMisalignment}
                   />
                 </div>
               )}
