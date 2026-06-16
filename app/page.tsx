@@ -308,6 +308,9 @@ export default function LandingPage() {
             {' · '}
             <Link href="/privacy" style={{ color: 'var(--edg-indigo)' }}>Privacy</Link>
           </p>
+          <p className="text-xs mt-3" style={{ color: 'var(--text-faint)' }}>
+            Delta Edg3 LLC · 95 Wall Street, Apt #2112, New York, NY 10005
+          </p>
         </footer>
       </div>
     </div>
