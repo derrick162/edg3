@@ -137,93 +137,116 @@ function SparklinePlaceholder() {
 export function RecoveryCard({
   recoveryScore,
   tier,
+  sleepScore,
+  sleepTier,
   sleepHours,
   strain,
   history,
   className = '',
 }: RecoveryCardProps) {
-  const color = TIER_COLOR[tier];
+  // Sleep score is the hero when available; recovery is secondary.
+  const hasSleep   = sleepScore !== undefined && sleepTier !== undefined;
+  const heroTier   = hasSleep ? sleepTier! : tier;
+  const heroColor  = TIER_COLOR[heroTier];
   const hasHistory = history && history.length >= 2;
+
+  const SLEEP_LABEL: Record<RecoveryTier, string> = {
+    high:   'Great',
+    medium: 'OK',
+    low:    'Poor',
+  };
 
   return (
     <div
       className={className}
       style={{
-        background: TIER_TINT[tier],
-        border: `1px solid ${TIER_BORDER[tier]}`,
+        background: TIER_TINT[heroTier],
+        border: `1px solid ${TIER_BORDER[heroTier]}`,
         borderRadius: 'var(--radius-lg)',
         padding: 'var(--space-4) var(--space-5)',
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Left accent bar */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: 3,
-          background: color,
-          borderRadius: '3px 0 0 3px',
-        }}
-      />
+      {/* Left accent bar — follows hero color */}
+      <div style={{
+        position: 'absolute', top: 0, bottom: 0, left: 0, width: 3,
+        background: heroColor, borderRadius: '3px 0 0 3px',
+      }} />
 
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-        {/* Score */}
-        <span
-          style={{
-            fontSize: 36,
-            fontWeight: 900,
-            letterSpacing: '-0.03em',
-            lineHeight: 1,
-            color,
-            fontFamily: 'var(--font-sans)',
-          }}
-        >
-          {recoveryScore}
-          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 2 }}>%</span>
-        </span>
+      {hasSleep ? (
+        <>
+          {/* ── Sleep Score HERO ── */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+            <span style={{
+              fontSize: 36, fontWeight: 900, letterSpacing: '-0.03em',
+              lineHeight: 1, color: heroColor, fontFamily: 'var(--font-sans)',
+            }}>
+              {sleepScore}
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 2 }}>%</span>
+            </span>
+            <div style={{ paddingBottom: 2 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: heroColor, marginBottom: 1 }}>
+                {SLEEP_LABEL[sleepTier!]} Sleep
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{
+                  display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+                  background: heroColor, boxShadow: `0 0 5px ${heroColor}`, flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sleep Score · Today</span>
+              </div>
+            </div>
+          </div>
 
-        {/* Label + tier badge */}
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 700, color, marginBottom: 2 }}>
-            {TIER_LABEL[tier]} Recovery
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {/* Energy dot */}
-            <span
-              style={{
-                display: 'inline-block',
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                background: color,
-                boxShadow: `0 0 5px ${color}`,
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Today</span>
+          {/* ── Recovery SECONDARY ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            padding: '6px 10px', borderRadius: 8, marginBottom: 'var(--space-3)',
+            background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)',
+          }}>
+            <span style={{
+              fontSize: 16, fontWeight: 800, letterSpacing: '-0.02em',
+              color: TIER_COLOR[tier], fontFamily: 'var(--font-sans)',
+            }}>
+              {recoveryScore}%
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>
+              {TIER_LABEL[tier]} Recovery
+            </span>
+          </div>
+        </>
+      ) : (
+        /* ── No sleep score — recovery is hero (original layout) ── */
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+          <span style={{
+            fontSize: 36, fontWeight: 900, letterSpacing: '-0.03em',
+            lineHeight: 1, color: heroColor, fontFamily: 'var(--font-sans)',
+          }}>
+            {recoveryScore}
+            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 2 }}>%</span>
+          </span>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: heroColor, marginBottom: 2 }}>
+              {TIER_LABEL[tier]} Recovery
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+                background: heroColor, boxShadow: `0 0 5px ${heroColor}`, flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Today</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Stats row */}
+      {/* Stats row — sleep duration + strain */}
       {(sleepHours !== undefined || strain !== undefined) && (
-        <div
-          style={{
-            display: 'flex',
-            gap: 'var(--space-5)',
-            marginBottom: 'var(--space-3)',
-          }}
-        >
+        <div style={{ display: 'flex', gap: 'var(--space-5)', marginBottom: 'var(--space-3)' }}>
           {sleepHours !== undefined && (
             <div>
-              <p style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Sleep
-              </p>
+              <p style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sleep</p>
               <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-body)' }}>
                 {Math.floor(sleepHours)}h{Math.round((sleepHours % 1) * 60).toString().padStart(2, '0')}m
               </p>
@@ -231,9 +254,7 @@ export function RecoveryCard({
           )}
           {strain !== undefined && (
             <div>
-              <p style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Strain
-              </p>
+              <p style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Strain</p>
               <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-body)' }}>
                 {strain.toFixed(1)}
               </p>
@@ -242,7 +263,7 @@ export function RecoveryCard({
         </div>
       )}
 
-      {/* Sparkline */}
+      {/* 14-day sparkline (recovery history) */}
       <div>
         <p style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           14-day trend
