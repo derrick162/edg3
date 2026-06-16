@@ -8,6 +8,7 @@ import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeAlignment } from '@/lib/alignment';
 import { computeCalendarFit, type ClarityInputs, type MomentumInputs } from '@/lib/calendarScore';
 import { computeCallStreak } from '@/lib/streak';
+import { maybeCreateScoreChangeNotif } from '@/lib/notifications';
 
 export async function GET() {
   const user = await getSession();
@@ -101,7 +102,7 @@ export async function GET() {
 
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep, 45, clarityInputs, momentumInputs);
 
-  // Persist today's scores for trend analysis.
+  // Persist today's scores for trend analysis and fire score-change notification.
   try {
     calendarScoreQueries.upsert(user.id, today, {
       edgeScore:     fit.edgeScore,
@@ -110,6 +111,7 @@ export async function GET() {
       focusDrivers:  fit.focusScore.drivers,
       energyDrivers: fit.energyScore.drivers,
     });
+    maybeCreateScoreChangeNotif(user.id, fit.edgeScore, today);
   } catch {
     // Non-fatal — scoring still returns even if persistence fails.
   }

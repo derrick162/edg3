@@ -784,6 +784,14 @@ export const notificationQueries = {
   markAllRead: (userId: number) => {
     getDb().prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(userId);
   },
+  existsToday: (userId: number, type: string): boolean => {
+    const now = Date.now();
+    const todayStart = now - (now % 86400000); // UTC midnight today in ms
+    const row = getDb().prepare(
+      'SELECT 1 FROM notifications WHERE user_id = ? AND type = ? AND created_at >= ? LIMIT 1'
+    ).get(userId, type, todayStart) as { 1: number } | undefined;
+    return !!row;
+  },
 };
 
 // Event-creation idempotency dedupe (#3). Keyed by (user_id, normalized-title+start-minute).

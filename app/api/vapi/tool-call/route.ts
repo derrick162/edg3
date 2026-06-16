@@ -18,6 +18,7 @@ import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
+import { maybeCreateActivityNotif } from '@/lib/notifications';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -1406,6 +1407,13 @@ export async function POST(req: NextRequest) {
         resultText: result,
         ok,
       });
+      if (ok) {
+        const argsTitle = typeof tc.args.title === 'string' ? tc.args.title : undefined;
+        const firstEventTitle = Array.isArray(tc.args.events)
+          ? (tc.args.events[0] as { title?: string })?.title
+          : undefined;
+        maybeCreateActivityNotif(briefing.user_id, tc.name, argsTitle ?? firstEventTitle ?? '');
+      }
     }
 
     return NextResponse.json(

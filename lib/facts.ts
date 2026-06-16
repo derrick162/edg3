@@ -8,6 +8,7 @@
 // processing. Extraction failure === no new facts stored, existing facts unchanged.
 
 import { factQueries, type Fact } from './db';
+import { maybeCreateFactLearnedNotif } from './notifications';
 import type { calendar_v3 } from 'googleapis';
 import type { EmailSignal } from './gmail';
 
@@ -145,6 +146,7 @@ export async function extractAndUpsertFacts(
     }
     if (stored > 0) {
       console.log(`[facts] Upserted ${stored} structured facts for user ${userId}`);
+      maybeCreateFactLearnedNotif(userId, stored);
     }
     // Consolidate near-duplicate facts (same category + similar entity) after each write.
     const removed = consolidateFacts(userId);
