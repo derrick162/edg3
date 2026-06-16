@@ -9,6 +9,47 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-16** — **Email + calendar intelligence deepening (Night-3 queue — Items 3–5)**.
+  - **Item 3: Calendar pattern detection** (`lib/calendarPatterns.ts`, pure):
+    - `detectCalendarPatterns(events, {timezone})` — analyzes 180d history for: recurring routines (≥3/week), peak meeting hours, inferred focus windows, busy/light days, avg meetings/day, 4-week meeting trend.
+    - `formatCalendarPatternsForBriefing()` → compact `CALENDAR PATTERNS` block (section 5 injection: suggest time blocks aligned to inferred focus window).
+    - `formatPatternsAsEnergyProfile()` → energy-profile inference for focus rec (complements user-stated profile; labeled "inferred from calendar, not self-reported").
+    - Wired: `lib/briefing.ts` (11th parallel fetch; injected before section 5 with guidance), `lib/focusRecommendation.ts` (energy-profile prefix), `lib/vapi.ts` (CALENDAR PATTERNS voice note). 20 new tests.
+  - **Item 4: Time-allocation trends** (`lib/timeAllocation.ts`, pure):
+    - `computeTimeAllocation(events, priorities, {weeksBack})` — buckets 8-week calendar history into priority / meetings / routine / other buckets via keyword matching (zero LLM cost).
+    - `formatTimeAllocationForBriefing()` → `TIME ALLOCATION` block with `%` / `h/week` per bucket + misalignment warning when meetings > 40% and top priority < 10%.
+    - `formatTimeAllocationInsight()` → one spoken sentence for Edge mid-call.
+    - Wired: `lib/briefing.ts` (injected alongside ALIGNMENT DATA in section 3), `lib/focusRecommendation.ts` (elevates under-served priorities to high-confidence). 18 new tests.
+  - **Item 5: Open Loops refinement — snooze, recurring detection, improved call-surfacing**.
+    - **Snooze**: `open_loops.snooze_until` column (migration), `openLoopQueries.snooze(userId, id, until)` + `unsnooze()`, `list()` respects snooze (hidden until date passes), `POST /api/open-loops` supports `action='snooze'` with `until: YYYY-MM-DD`.
+    - **Recurring detection**: `detectRecurringPatterns(loops, minCount)` groups by normalized description across any status; `formatRecurringPatternsForBriefing()` injects `RECURRING OPEN LOOPS` block with systemic-friction note and "suggest a permanent fix" instruction.
+    - **Call-surfacing**: `getUrgentOpenLoops` now uses 3-tier priority — (1) overdue/due-today, (2) neglected ≥7 days (no due date), (3) any remaining commitment/awaiting_you — so no commitment gets buried indefinitely without a due date.
+    - `lib/vapi.ts` updated: snooze offer ("want me to snooze that?"), RECURRING LOOPS note.
+    - 11 new tests.
+  - **Combined**: 49 new tests. 939/939 green, tsc clean, next build clean.
+- **2026-06-16** — **Deeper email understanding — deadlines, dollar amounts, VIP senders** (`lib/emailIntel.ts`).
+  - **`lib/emailIntel.ts`** — pure enrichment layer (regex + fact lookup, zero I/O, zero LLM cost):
+    - `extractDeadlineDate(text, ref)` — finds ISO date, "Month DD", "by Friday", "end of month" patterns; only fires on explicit deadline trigger keywords (due/overdue/deadline/final notice/expires/etc).
+    - `extractDollarAmounts(text)` — extracts `$X,XXX`, `$Xk`, `$X million`, `X dollars` patterns as numbers.
+    - `isSenderVip(sender, personFacts)` — true when sender name/email matches any stored 'person' fact entity (case-insensitive, partial match on first/last name).
+    - `computeUrgencyLevel(item, deadline, dollars, vip, ref)` — critical: deadline ≤2d OR deadline ≤7d+dollar≥$1k; high: deadline ≤7d OR VIP OR isImportant OR dollar≥$5k; normal: everything else.
+    - `enrichEmailSignal(items, facts, ref)` — enriches batch of `EmailSignalItem` into `EmailIntelItem[]`.
+    - `formatEnrichedEmailForPrompt(items)` — richer prompt block with `[CRITICAL · VIP sender · deadline YYYY-MM-DD · $Xk]` tags.
+  - **`lib/openLoops.ts`** — email digest path now enriches signal before passing to Haiku (deadline dates surfaced as explicit `due_date`; dollar amounts + VIP flags as urgency context).
+  - **`lib/focusRecommendation.ts`** — `formatEmailSignalForPrompt` uses enriched format when facts available; passes `allFacts` for VIP detection.
+  - **`lib/meetingContext.ts`** — VIP email items get +2 score boost in meeting relevance ranking.
+  - 37 new tests. 890/890 green, tsc clean, next build clean.
+- **2026-06-16** — **★ Meeting prep cross-link — email + calendar + memory** (`lib/meetingContext.ts`, `app/api/meeting-context/route.ts`).
+  - **`lib/meetingContext.ts`** — pure keyword-matching layer (no LLM cost):
+    - `extractKeywords(text)` — strips stop words, returns ≥4-char tokens.
+    - `eventTokens(event)` — attendee first-names (from displayName + email prefix) + event title keywords.
+    - `buildMeetingContext(event, emails, facts, loops)` — scores email threads by token overlap (top 3); filters facts by entity token match (top 4); filters open loops by description token match (top 2). Returns null when nothing useful to surface.
+    - `buildMeetingContexts(events, emails, facts, loops, opts)` — filters to upcoming timed events within `lookAheadHours` (default 8), returns top N contexts.
+    - `formatMeetingContextsForBriefing(contexts, tz)` — compact `MEETING PREP` block with `[EMAIL]`, `[PERSON/GOAL/...]`, `[YOU COMMITTED]`/`[AWAITING]`/`[DEADLINE]` tags.
+  - **`lib/briefing.ts`** — `meetingContextBlock` built after open-loops (pure DB read + in-memory matching; degrades to '' on any error). Injected in user prompt with instruction: "weave in ONE specific observation for the most important upcoming meeting."
+  - **`app/api/meeting-context/route.ts`** — `GET /api/meeting-context?date=YYYY-MM-DD&hours=N` — returns `{ date, contexts[], total }`. For Cam to render pre-meeting panel without needing a briefing call.
+  - **`lib/vapi.ts`** — MEETING PREP voice note: Edge surfaces one sharp observation per meeting ("Your 2pm with Faiza — I noticed your CIBC thread came in this morning"); never reads the full block aloud.
+  - 26 new tests. 853/853 green, tsc clean, next build clean.
 - **2026-06-15** — **Focus areas always carry their anchor priority** (`lib/focusRecommendation.ts`).
   - **PM dispatch:** "each focus area should show which top priority it ties to — reinforce the hierarchy."
   - **Prompt tightened:** `anchor` field instruction changed to "ALWAYS include this field. Use the EXACT text of the closest matching priority. If nothing fits, write 'standalone'. Never omit."

@@ -1,12 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, User, type Fact } from './db';
-import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays } from './calendar';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, User, type Fact } from './db';
+import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
+import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
+import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
-import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops } from './openLoops';
+import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
+import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetingContext';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
 import { computeWhoopCorrelations } from './whoopCorrelations';
@@ -251,7 +254,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
 
-  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal] = await Promise.all([
+  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
     getLatestRecovery(userId).catch(() => null),
@@ -262,6 +265,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getStrainHistory(userId).catch(() => []),
     getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
     getRecentEmailSignal(userId, { days: 14, max: 20 }).catch(() => null),
+    getPastCalendarEvents(userId, 180).catch(() => []),
   ]);
   // Build energy signal from Whoop recovery for focus recommendation modulation.
   const focusEnergySignal = whoopRecovery
@@ -324,6 +328,35 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Open Loops: already fetched above for focus rec — reuse.
   const urgentLoops = urgentLoopsEarly;
   const openLoopsBlock = formatOpenLoopsForBriefing(urgentLoops);
+  // Recurring-pattern detection: look across ALL loops (any status) for systemic friction.
+  const allLoopsForRecurring = (() => {
+    try { return openLoopQueries.list(userId, undefined, { includeSnoozed: true }); } catch { return []; }
+  })();
+  const recurringBlock = formatRecurringPatternsForBriefing(detectRecurringPatterns(allLoopsForRecurring, 3));
+  // Calendar patterns: analyze 180-day history for routines, focus windows, and meeting load.
+  const calendarPatternsBlock = formatCalendarPatternsForBriefing(
+    detectCalendarPatterns(pastCalendarHistory, { timezone: userTimezone }),
+  );
+  // Time-allocation trends: how time has split across priorities over recent weeks.
+  const allPrioritiesForAllocation = priorities.length > 0 ? priorities : priorityQueries.getMostRecent(userId);
+  const timeAllocationBlock = formatTimeAllocationForBriefing(
+    computeTimeAllocation(pastCalendarHistory, allPrioritiesForAllocation, { weeksBack: 8 }),
+  );
+  // Meeting prep: surface related email + facts + open-loops for today's upcoming events.
+  const meetingContextBlock = (() => {
+    try {
+      const allFacts = factQueries.getAll(userId);
+      const allOpenLoops = getUrgentOpenLoops(userId, focusDate);
+      const contexts = buildMeetingContexts(
+        calendarEvents,
+        emailSignal?.items ?? [],
+        allFacts,
+        allOpenLoops,
+        { lookAheadHours: 12, now: new Date().toISOString() },
+      );
+      return formatMeetingContextsForBriefing(contexts, userTimezone);
+    } catch { return ''; }
+  })();
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
   const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
   const baselineContext = buildBaselineContext(
@@ -510,6 +543,9 @@ ${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
+` : ''}${timeAllocationBlock ? `
+${timeAllocationBlock}
+Use TIME ALLOCATION in section 3 (ALIGNMENT CHECK) only — surface the biggest misalignment concretely (e.g. "60% of your calendar time has been going to meetings, while fundraising — your top priority — has only gotten 8% in the last 8 weeks"). One observation max. Do not repeat it elsewhere.
 ` : ''}${focusScoreboardBlock ? `
 ${focusScoreboardBlock}
 ` : ''}${whoopContextBlock}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `
@@ -523,6 +559,15 @@ YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said 
 ` : ''}${openLoopsBlock ? `
 ${openLoopsBlock}
 When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.
+` : ''}${recurringBlock ? `
+${recurringBlock}
+Use RECURRING OPEN LOOPS only if one matches today's context — mention it briefly and suggest a permanent fix ("that one keeps coming back — want to schedule a standing 30 minutes for it?"). One mention max, in section 4. Skip if the urgent loops already cover it.
+` : ''}${meetingContextBlock ? `
+${meetingContextBlock}
+Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE specific observation for the most important upcoming meeting: relevant email thread, a fact you know about the person, or an open loop they should close before walking in. Keep it to one sentence per event — don't read every bullet. Only reference meetings that actually appear in the calendar data.
+` : ''}${calendarPatternsBlock ? `
+${calendarPatternsBlock}
+Use CALENDAR PATTERNS in section 5 (CALENDAR BLOCKS) — suggest time blocks that align with the inferred focus window and avoid the historically-packed meeting window. Reference patterns only when they strengthen a recommendation (e.g. "Tuesday mornings are usually light for you — good slot for deep work"). Do not read the whole block aloud.
 ` : ''}${callStreak >= 2 ? `
 CALL STREAK: ${callStreak} consecutive days of morning calls. Acknowledge this warmly in the GREETING — one specific, energizing line (e.g. "five mornings straight — you're building real momentum here").
 ` : ''}${prioritiesStaleAge > 7 ? `

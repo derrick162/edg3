@@ -398,6 +398,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
     "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
     "ALTER TABLE facts ADD COLUMN source TEXT",
+    "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1478,43 +1479,51 @@ export type OpenLoopSource = 'email' | 'call' | 'calendar';
 export type OpenLoopStatus = 'open' | 'done' | 'dismissed';
 
 export interface OpenLoop {
-  id:          number;
-  userId:      number;
-  description: string;       // decrypted
-  type:        OpenLoopType;
-  source:      OpenLoopSource;
-  dueDate:     string | null;
-  status:      OpenLoopStatus;
-  createdAt:   string;
-  resolvedAt:  string | null;
+  id:           number;
+  userId:       number;
+  description:  string;       // decrypted
+  type:         OpenLoopType;
+  source:       OpenLoopSource;
+  dueDate:      string | null;
+  status:       OpenLoopStatus;
+  createdAt:    string;
+  resolvedAt:   string | null;
+  snoozedUntil: string | null; // YYYY-MM-DD: loop hidden from surfaces until this date
 }
 
 interface OpenLoopRow {
   id: number; user_id: number; description: string; type: string; source: string;
   due_date: string | null; status: string; created_at: string; resolved_at: string | null;
+  snooze_until: string | null;
 }
 
 function decryptOpenLoopRow(r: OpenLoopRow): OpenLoop {
   return {
-    id:         r.id,
-    userId:     r.user_id,
-    description: decryptField(r.description),
-    type:       r.type as OpenLoopType,
-    source:     r.source as OpenLoopSource,
-    dueDate:    r.due_date,
-    status:     r.status as OpenLoopStatus,
-    createdAt:  r.created_at,
-    resolvedAt: r.resolved_at,
+    id:           r.id,
+    userId:       r.user_id,
+    description:  decryptField(r.description),
+    type:         r.type as OpenLoopType,
+    source:       r.source as OpenLoopSource,
+    dueDate:      r.due_date,
+    status:       r.status as OpenLoopStatus,
+    createdAt:    r.created_at,
+    resolvedAt:   r.resolved_at,
+    snoozedUntil: r.snooze_until,
   };
 }
 
 export const openLoopQueries = {
-  /** List open loops for a user, optionally filtered by status. Open loops are ordered by
-   *  due_date (soonest first, nulls last) then created_at so the most urgent appears first. */
-  list: (userId: number, status?: OpenLoopStatus): OpenLoop[] => {
+  /** List open loops for a user, optionally filtered by status.
+   *  Snoozed loops (snooze_until > today) are excluded unless includeSnoozed is true.
+   *  Open loops are ordered by due_date (soonest first, nulls last) then created_at. */
+  list: (userId: number, status?: OpenLoopStatus, opts: { includeSnoozed?: boolean } = {}): OpenLoop[] => {
+    const today = new Date().toISOString().slice(0, 10);
+    const snoozeClause = opts.includeSnoozed
+      ? ''
+      : `AND (snooze_until IS NULL OR snooze_until <= '${today}')`;
     const sql = status
-      ? `SELECT * FROM open_loops WHERE user_id = ? AND status = ? ORDER BY due_date ASC NULLS LAST, created_at ASC`
-      : `SELECT * FROM open_loops WHERE user_id = ? ORDER BY status ASC, due_date ASC NULLS LAST, created_at ASC`;
+      ? `SELECT * FROM open_loops WHERE user_id = ? AND status = ? ${snoozeClause} ORDER BY due_date ASC NULLS LAST, created_at ASC`
+      : `SELECT * FROM open_loops WHERE user_id = ? ${snoozeClause} ORDER BY status ASC, due_date ASC NULLS LAST, created_at ASC`;
     const rows = (status
       ? getDb().prepare(sql).all(userId, status)
       : getDb().prepare(sql).all(userId)) as OpenLoopRow[];
@@ -1542,6 +1551,21 @@ export const openLoopQueries = {
   dismiss: (userId: number, id: number): void => {
     getDb().prepare(
       `UPDATE open_loops SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ? AND user_id = ?`
+    ).run(id, userId);
+  },
+
+  /** Snooze a loop until a given YYYY-MM-DD date. Loop remains open but is hidden from
+   *  briefings and call surfaces until the snooze date passes. User-scoped. */
+  snooze: (userId: number, id: number, until: string): void => {
+    getDb().prepare(
+      `UPDATE open_loops SET snooze_until = ? WHERE id = ? AND user_id = ? AND status = 'open'`
+    ).run(until, id, userId);
+  },
+
+  /** Clear any active snooze on a loop, making it visible again immediately. */
+  unsnooze: (userId: number, id: number): void => {
+    getDb().prepare(
+      `UPDATE open_loops SET snooze_until = NULL WHERE id = ? AND user_id = ?`
     ).run(id, userId);
   },
 

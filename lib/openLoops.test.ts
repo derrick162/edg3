@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => ({ create: vi.fn() }));
+const m = vi.hoisted(() => ({
+  list:    vi.fn((): unknown[] => []),
+  insert:  vi.fn(),
+  resolve: vi.fn(),
+  dismiss: vi.fn(),
+}));
 
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {
@@ -8,27 +14,8 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-// Stub getDb so no real SQLite needed
-const mockRun  = vi.fn().mockReturnValue({ changes: 1 });
-const mockGet  = vi.fn().mockReturnValue(undefined);
-const mockAll  = vi.fn().mockReturnValue([]);
-const mockExec = vi.fn();
-const mockPrepare = vi.fn(() => ({ run: mockRun, get: mockGet, all: mockAll }));
-
 vi.mock('./db', () => ({
-  getDb: () => ({ prepare: mockPrepare, exec: mockExec }),
-  openLoopQueries: {
-    list: (_userId: number, _status?: string) => mockAll(),
-    insert: (_userId: number, _loop: unknown) => { mockRun(); },
-    resolve: (_userId: number, _id: number): boolean => mockRun().changes > 0,
-    dismiss: (_userId: number, _id: number): boolean => mockRun().changes > 0,
-    existsSimilar: (_userId: number, description: string): boolean => {
-      const existing = mockAll() as Array<{ description: string }>;
-      const prefix = description.trim().toLowerCase().slice(0, 80);
-      return existing.some(l => l.description.trim().toLowerCase().slice(0, 80) === prefix);
-    },
-    prune: () => { mockRun(); },
-  },
+  openLoopQueries: m,
 }));
 
 import {
@@ -37,7 +24,8 @@ import {
   extractAndUpsertOpenLoops,
   getUrgentOpenLoops,
   formatOpenLoopsForBriefing,
-  openLoopStubQueries,
+  detectRecurringPatterns,
+  formatRecurringPatternsForBriefing,
   type OpenLoop,
   type ExtractedOpenLoop,
 } from './openLoops';
@@ -48,14 +36,15 @@ function textResponse(text: string) {
 
 function makeLoop(overrides: Partial<OpenLoop> = {}): OpenLoop {
   return {
-    id: 1, user_id: 1,
+    id: 1, userId: 1,
     description: 'Send CIBC proposal',
     type: 'commitment_made',
     source: 'call',
-    due_date: null,
+    dueDate: null,
     status: 'open',
-    created_at: '2026-06-15',
-    resolved_at: null,
+    createdAt: '2026-06-15',
+    resolvedAt: null,
+    snoozedUntil: null,
     ...overrides,
   };
 }
@@ -81,9 +70,8 @@ function makeDbLoop(overrides: Partial<{
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockRun.mockReturnValue({ changes: 1 });
-  mockGet.mockReturnValue(undefined);
-  mockAll.mockReturnValue([]);
+  m.list.mockReturnValue([]);
+  m.insert.mockReturnValue(undefined);
 });
 
 // ── extractOpenLoopsFromText ──────────────────────────────────────────────────
@@ -205,21 +193,28 @@ describe('extractOpenLoopsFromCalendar', () => {
 
 describe('getUrgentOpenLoops', () => {
   it('returns loops due today or overdue', () => {
+<<<<<<< HEAD
+    m.list.mockReturnValue([
+      makeLoop({ dueDate: '2026-06-14', type: 'deadline' }),   // overdue
+      makeLoop({ id: 2, dueDate: '2026-06-15', type: 'deadline' }), // today
+      makeLoop({ id: 3, dueDate: '2026-06-20', type: 'deadline' }), // future — skip
+=======
     mockAll.mockReturnValue([
       makeDbLoop({ dueDate: '2026-06-14', type: 'deadline' }),  // overdue
       makeDbLoop({ id: 2, dueDate: '2026-06-15', type: 'deadline' }), // today
       makeDbLoop({ id: 3, dueDate: '2026-06-20', type: 'deadline' }), // future — skip
+>>>>>>> origin/master
     ]);
     const urgent = getUrgentOpenLoops(1, '2026-06-15');
     expect(urgent).toHaveLength(2);
-    expect(urgent.every(l => l.due_date! <= '2026-06-15')).toBe(true);
+    expect(urgent.every(l => l.dueDate! <= '2026-06-15')).toBe(true);
   });
 
   it('always includes commitment_made and awaiting_you without due dates', () => {
-    mockAll.mockReturnValue([
-      makeLoop({ type: 'commitment_made', due_date: null }),
-      makeLoop({ id: 2, type: 'awaiting_you', due_date: null }),
-      makeLoop({ id: 3, type: 'deadline', due_date: null }),  // no due date → skip
+    m.list.mockReturnValue([
+      makeLoop({ type: 'commitment_made', dueDate: null }),
+      makeLoop({ id: 2, type: 'awaiting_you', dueDate: null }),
+      makeLoop({ id: 3, type: 'deadline', dueDate: null }),  // no due date → skip
     ]);
     const urgent = getUrgentOpenLoops(1, '2026-06-15');
     expect(urgent).toHaveLength(2);
@@ -227,14 +222,27 @@ describe('getUrgentOpenLoops', () => {
   });
 
   it('caps at 5 urgent loops', () => {
+<<<<<<< HEAD
+    const loops = Array.from({ length: 8 }, (_, i) => makeLoop({ id: i, dueDate: '2026-06-10' }));
+    m.list.mockReturnValue(loops);
+=======
     const loops = Array.from({ length: 8 }, (_, i) => makeDbLoop({ id: i, dueDate: '2026-06-10' }));
     mockAll.mockReturnValue(loops);
+>>>>>>> origin/master
     expect(getUrgentOpenLoops(1, '2026-06-15')).toHaveLength(5);
   });
 
   it('returns empty when no open loops exist', () => {
-    mockAll.mockReturnValue([]);
+    m.list.mockReturnValue([]);
     expect(getUrgentOpenLoops(1, '2026-06-15')).toEqual([]);
+  });
+
+  it('surfaces tier-2: commitment_made older than 7 days even without due date', () => {
+    m.list.mockReturnValue([
+      makeLoop({ type: 'commitment_made', dueDate: null, createdAt: '2026-06-07' }), // 8 days old
+    ]);
+    const urgent = getUrgentOpenLoops(1, '2026-06-15');
+    expect(urgent).toHaveLength(1);
   });
 });
 
@@ -246,7 +254,7 @@ describe('formatOpenLoopsForBriefing', () => {
   });
 
   it('formats commitment_made with YOU COMMITTED tag', () => {
-    const result = formatOpenLoopsForBriefing([makeLoop({ type: 'commitment_made', due_date: '2026-06-18' })]);
+    const result = formatOpenLoopsForBriefing([makeLoop({ type: 'commitment_made', dueDate: '2026-06-18' })]);
     expect(result).toContain('[YOU COMMITTED]');
     expect(result).toContain('2026-06-18');
     expect(result).toContain('Send CIBC proposal');
@@ -267,10 +275,92 @@ describe('formatOpenLoopsForBriefing', () => {
     expect(result).toContain('OPEN LOOPS');
   });
 
-  it('omits due date part when due_date is null', () => {
-    const result = formatOpenLoopsForBriefing([makeLoop({ due_date: null })]);
+  it('omits due date part when dueDate is null', () => {
+    const result = formatOpenLoopsForBriefing([makeLoop({ dueDate: null })]);
     expect(result).not.toContain('due');
     expect(result).not.toContain('null');
+  });
+});
+
+// ── detectRecurringPatterns ───────────────────────────────────────────────────
+
+describe('detectRecurringPatterns', () => {
+  it('returns empty array when no loops', () => {
+    expect(detectRecurringPatterns([])).toEqual([]);
+  });
+
+  it('returns empty when count < minCount', () => {
+    const loops = [
+      makeLoop({ description: 'Send CIBC proposal' }),
+      makeLoop({ id: 2, description: 'Send CIBC proposal' }),
+    ];
+    expect(detectRecurringPatterns(loops, 3)).toEqual([]);
+  });
+
+  it('detects patterns appearing >= minCount times', () => {
+    const loops = Array.from({ length: 4 }, (_, i) =>
+      makeLoop({ id: i, description: 'Send CIBC proposal' }),
+    );
+    const result = detectRecurringPatterns(loops, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBe(4);
+  });
+
+  it('normalizes descriptions for comparison', () => {
+    const loops = [
+      makeLoop({ description: 'Send CIBC Proposal!' }),
+      makeLoop({ id: 2, description: 'send cibc proposal' }),
+      makeLoop({ id: 3, description: 'Send CIBC proposal...' }),
+    ];
+    const result = detectRecurringPatterns(loops, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBe(3);
+  });
+
+  it('sorts patterns by count descending', () => {
+    const loops = [
+      ...Array.from({ length: 2 }, (_, i) => makeLoop({ id: i, description: 'Pay rent' })),
+      ...Array.from({ length: 4 }, (_, i) => makeLoop({ id: 10 + i, description: 'Send CIBC proposal' })),
+    ];
+    const result = detectRecurringPatterns(loops, 2);
+    expect(result[0].count).toBeGreaterThanOrEqual(result[1].count);
+  });
+
+  it('includes loops of any status (not just open)', () => {
+    const loops = [
+      makeLoop({ status: 'open',      description: 'Follow up' }),
+      makeLoop({ id: 2, status: 'done',       description: 'Follow up' }),
+      makeLoop({ id: 3, status: 'dismissed',  description: 'Follow up' }),
+    ];
+    const result = detectRecurringPatterns(loops, 3);
+    expect(result).toHaveLength(1);
+  });
+});
+
+// ── formatRecurringPatternsForBriefing ────────────────────────────────────────
+
+describe('formatRecurringPatternsForBriefing', () => {
+  it('returns empty string for empty array', () => {
+    expect(formatRecurringPatternsForBriefing([])).toBe('');
+  });
+
+  it('includes RECURRING OPEN LOOPS header', () => {
+    const patterns = [{ description: 'Send Cibc Proposal', count: 4, type: 'commitment_made' as const }];
+    expect(formatRecurringPatternsForBriefing(patterns)).toContain('RECURRING OPEN LOOPS');
+  });
+
+  it('mentions the count', () => {
+    const patterns = [{ description: 'Send Cibc Proposal', count: 4, type: 'commitment_made' as const }];
+    expect(formatRecurringPatternsForBriefing(patterns)).toContain('4 times');
+  });
+
+  it('caps at 3 patterns in the output', () => {
+    const patterns = Array.from({ length: 6 }, (_, i) => ({
+      description: `Pattern ${i}`, count: 3, type: 'commitment_made' as const,
+    }));
+    const output = formatRecurringPatternsForBriefing(patterns);
+    const matchCount = (output.match(/has come up/g) ?? []).length;
+    expect(matchCount).toBe(3);
   });
 });
 
@@ -285,16 +375,21 @@ describe('extractAndUpsertOpenLoops', () => {
   it('skips calendar extraction when no events provided', async () => {
     await extractAndUpsertOpenLoops(1, {});
     expect(h.create).not.toHaveBeenCalled();
-    expect(mockRun).not.toHaveBeenCalled();
+    expect(m.insert).not.toHaveBeenCalled();
   });
 
   it('deduplicates against existing open loops', async () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([
       { description: 'Send CIBC proposal', type: 'commitment_made', due_date: null },
     ])));
+<<<<<<< HEAD
+    // existsSimilar: list returns a loop with matching description prefix
+    m.list.mockReturnValue([makeLoop({ description: 'Send CIBC proposal' })]);
+=======
     // existsSimilar returns true → skip insert
     mockAll.mockReturnValue([makeDbLoop()]);
+>>>>>>> origin/master
     await extractAndUpsertOpenLoops(1, { transcript: 'I said I would send the CIBC proposal next week for sure' });
-    expect(mockRun).not.toHaveBeenCalled();
+    expect(m.insert).not.toHaveBeenCalled();
   });
 });

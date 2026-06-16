@@ -3,28 +3,12 @@
 // Tracks unresolved action threads pulled from email + call transcripts + calendar.
 // Three buckets: commitments YOU made · awaiting YOUR response · deadlines.
 
-import { openLoopQueries, type OpenLoop as DbOpenLoop } from './db';
+import { openLoopQueries, factQueries, type OpenLoop, type OpenLoopType, type OpenLoopSource, type OpenLoopStatus } from './db';
 import type { EmailSignal } from './gmail';
 import type { calendar_v3 } from 'googleapis';
+import { enrichEmailSignal, formatEnrichedEmailForPrompt } from './emailIntel';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type OpenLoopType   = 'commitment_made' | 'awaiting_you' | 'deadline';
-export type OpenLoopSource = 'email' | 'call' | 'calendar';
-export type OpenLoopStatus = 'open' | 'done' | 'dismissed';
-
-// Snake-case interface retained for backwards compat with the route + UI component.
-export interface OpenLoop {
-  id: number;
-  user_id: number;
-  description: string;
-  type: OpenLoopType;
-  source: OpenLoopSource;
-  due_date: string | null;
-  status: OpenLoopStatus;
-  created_at: string;
-  resolved_at: string | null;
-}
+export type { OpenLoop, OpenLoopType, OpenLoopSource, OpenLoopStatus };
 
 export interface ExtractedOpenLoop {
   description: string;
@@ -33,60 +17,13 @@ export interface ExtractedOpenLoop {
   due_date: string | null;
 }
 
-// ─── Adapter ─────────────────────────────────────────────────────────────────
-// Converts the camelCase DbOpenLoop (from lib/db.ts) to the snake_case OpenLoop
-// interface expected by the route and UI component.
-
-function toSnake(l: DbOpenLoop): OpenLoop {
-  return {
-    id:          l.id,
-    user_id:     l.userId,
-    description: l.description,
-    type:        l.type as OpenLoopType,
-    source:      l.source as OpenLoopSource,
-    due_date:    l.dueDate,
-    status:      l.status as OpenLoopStatus,
-    created_at:  l.createdAt,
-    resolved_at: l.resolvedAt,
-  };
+// Dedup check — scan open loops for a matching first-80-char prefix
+function existsSimilar(userId: number, description: string): boolean {
+  const prefix = description.trim().toLowerCase().slice(0, 80);
+  return openLoopQueries.list(userId, 'open')
+    .some(l => l.description.trim().toLowerCase().slice(0, 80) === prefix);
 }
 
-// openLoopStubQueries: thin wrapper over the encrypted openLoopQueries from lib/db.ts.
-// Preserves the snake_case interface so the route, UI component, and tests remain unchanged.
-export const openLoopStubQueries = {
-  insert(userId: number, loop: ExtractedOpenLoop): void {
-    openLoopQueries.insert(userId, {
-      description: loop.description,
-      type:        loop.type,
-      source:      loop.source,
-      due_date:    loop.due_date,
-    });
-  },
-
-  getOpen(userId: number): OpenLoop[] {
-    return openLoopQueries.list(userId, 'open').map(toSnake);
-  },
-
-  getAll(userId: number, _limit = 50): OpenLoop[] {
-    return openLoopQueries.list(userId).map(toSnake);
-  },
-
-  resolve(userId: number, id: number): boolean {
-    openLoopQueries.resolve(userId, id);
-    return true;
-  },
-
-  dismiss(userId: number, id: number): boolean {
-    openLoopQueries.dismiss(userId, id);
-    return true;
-  },
-
-  existsSimilar(userId: number, description: string): boolean {
-    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-    const target = norm(description);
-    return openLoopQueries.list(userId).some(l => norm(l.description) === target);
-  },
-};
 
 // ─── LLM extraction from text ─────────────────────────────────────────────────
 
@@ -219,9 +156,10 @@ export async function extractAndUpsertOpenLoops(
     }
 
     if (options.emailSignal && !options.emailSignal.scopeMissing && options.emailSignal.items.length > 0) {
-      const digest = options.emailSignal.items
-        .map(item => `From: ${item.sender} | Subject: ${item.subject}\nSnippet: ${item.snippet.slice(0, 150)}`)
-        .join('\n\n');
+      // Enrich with deadlines, dollar amounts, and VIP signals before passing to the LLM.
+      const facts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+      const enriched = enrichEmailSignal(options.emailSignal.items, facts, today);
+      const digest = formatEnrichedEmailForPrompt(enriched);
       const loops = await extractOpenLoopsFromText(digest, 'email', today);
       allExtracted.push(...loops);
     }
@@ -233,8 +171,8 @@ export async function extractAndUpsertOpenLoops(
 
     let inserted = 0;
     for (const loop of allExtracted) {
-      if (openLoopStubQueries.existsSimilar(userId, loop.description)) continue;
-      openLoopStubQueries.insert(userId, loop);
+      if (existsSimilar(userId, loop.description)) continue;
+      openLoopQueries.insert(userId, loop);
       inserted++;
     }
 
@@ -249,18 +187,33 @@ export async function extractAndUpsertOpenLoops(
 // ─── Briefing + recommendation injection ─────────────────────────────────────
 
 /**
- * Return open loops that are urgent enough to surface in the briefing and focus recs:
- * - Any loop with a due_date <= today (overdue or due today)
- * - commitment_made + awaiting_you without a due date (they're always relevant)
+ * Return open loops that are urgent enough to surface in the briefing and focus recs.
+ * Rules (applied in order — first match wins the slot):
+ *  1. Overdue or due today (dueDate <= today)
+ *  2. commitment_made / awaiting_you that's been open ≥7 days (neglected)
+ *  3. Any commitment_made / awaiting_you (capped at 5 total)
  */
 export function getUrgentOpenLoops(userId: number, today: string): OpenLoop[] {
-  const open = openLoopStubQueries.getOpen(userId);
-  return open
-    .filter(loop => {
-      if (loop.due_date) return loop.due_date <= today;
-      return loop.type === 'commitment_made' || loop.type === 'awaiting_you';
-    })
-    .slice(0, 5);
+  const all = openLoopQueries.list(userId, 'open');
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const weekAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+
+  const tier1 = all.filter(l => l.dueDate && l.dueDate <= today);
+  const tier2 = all.filter(l =>
+    !l.dueDate &&
+    (l.type === 'commitment_made' || l.type === 'awaiting_you') &&
+    l.createdAt.slice(0, 10) <= weekAgoStr &&
+    !tier1.some(t => t.id === l.id),
+  );
+  const tier3 = all.filter(l =>
+    !l.dueDate &&
+    (l.type === 'commitment_made' || l.type === 'awaiting_you') &&
+    !tier1.some(t => t.id === l.id) &&
+    !tier2.some(t => t.id === l.id),
+  );
+
+  return [...tier1, ...tier2, ...tier3].slice(0, 5);
 }
 
 /**
@@ -275,9 +228,62 @@ export function formatOpenLoopsForBriefing(loops: OpenLoop[]): string {
       loop.type === 'commitment_made' ? 'YOU COMMITTED' :
       loop.type === 'awaiting_you'    ? 'AWAITING YOUR RESPONSE' :
       'DEADLINE';
-    const due = loop.due_date ? ` (due ${loop.due_date})` : '';
+    const due = loop.dueDate ? ` (due ${loop.dueDate})` : '';
     return `- [${tag}]${due} ${loop.description}`;
   });
 
   return `OPEN LOOPS (unresolved commitments — mention proactively):\n${lines.join('\n')}`;
+}
+
+// ─── Recurring-pattern detection ──────────────────────────────────────────────
+
+export interface RecurringPattern {
+  description: string;     // normalized canonical description
+  count:       number;     // how many times this commitment has recurred
+  type:        OpenLoopType;
+}
+
+function normalizeDescription(desc: string): string {
+  return desc.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+/**
+ * Detect commitments that keep resurfacing: same description across multiple
+ * loop rows (any status). Returns groups that have appeared ≥ `minCount` times.
+ * Pure — takes the full loop list, no I/O.
+ */
+export function detectRecurringPatterns(allLoops: OpenLoop[], minCount = 3): RecurringPattern[] {
+  const counts = new Map<string, { count: number; type: OpenLoopType }>();
+
+  for (const loop of allLoops) {
+    const key = normalizeDescription(loop.description);
+    if (!key) continue;
+    const existing = counts.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      counts.set(key, { count: 1, type: loop.type });
+    }
+  }
+
+  return [...counts.entries()]
+    .filter(([, v]) => v.count >= minCount)
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([desc, v]) => ({
+      description: desc.replace(/\b\w/g, c => c.toUpperCase()),  // title-case for readability
+      count:       v.count,
+      type:        v.type,
+    }));
+}
+
+/**
+ * Format recurring patterns for the briefing (adds a note about systemic friction).
+ * Returns '' when no patterns.
+ */
+export function formatRecurringPatternsForBriefing(patterns: RecurringPattern[]): string {
+  if (!patterns.length) return '';
+  const lines = patterns.slice(0, 3).map(p =>
+    `- "${p.description}" — has come up ${p.count} times and keeps resurfacing`
+  );
+  return `RECURRING OPEN LOOPS (systemic friction — mention if relevant, suggest a permanent fix):\n${lines.join('\n')}`;
 }

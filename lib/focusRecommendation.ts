@@ -10,6 +10,9 @@ import { factQueries, memoryQueries, type Priority } from './db';
 import { getPastCalendarEvents } from './calendar';
 import type { EmailSignal, EmailSignalItem } from './gmail';
 import { formatOpenLoopsForBriefing, type OpenLoop } from './openLoops';
+import { enrichEmailSignal, formatEnrichedEmailForPrompt } from './emailIntel';
+import { detectCalendarPatterns, formatPatternsAsEnergyProfile } from './calendarPatterns';
+import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
@@ -59,11 +62,16 @@ export function isUrgentEmail(item: Pick<EmailSignalItem, 'sender' | 'subject' |
 
 /**
  * Format an inbox digest for inclusion in the focus-recommendation prompt.
+ * When facts are provided, uses the richer enriched format (deadlines, dollars, VIP).
  * Returns '' when scope is missing or no threads available.
  * Exported for unit testing.
  */
-export function formatEmailSignalForPrompt(signal: EmailSignal): string {
+export function formatEmailSignalForPrompt(signal: EmailSignal, facts?: { category: string; entity: string | null; statement: string }[]): string {
   if (signal.scopeMissing || signal.items.length === 0) return '';
+  if (facts && facts.length > 0) {
+    const enriched = enrichEmailSignal(signal.items, facts as Parameters<typeof enrichEmailSignal>[1]);
+    return formatEnrichedEmailForPrompt(enriched);
+  }
   return signal.items
     .map(item => {
       const tag = isUrgentEmail(item) ? ' [debt/legal signal]' : item.isUnread ? ' [unread]' : '';
@@ -148,6 +156,8 @@ export async function recommendFocusAreas(
   ]);
 
   const calendarThemes = aggregateEventThemes(rawEvents);
+  const calendarPatterns = detectCalendarPatterns(rawEvents);
+  const timeAllocation = computeTimeAllocation(rawEvents, opts.anchors ?? [], { weeksBack: 8 });
   const facts = allFacts.map(f => `[${f.category}] ${f.statement}`);
   const memories = recentMemories.map(m => m.content).filter(Boolean).slice(0, 10) as string[];
 
@@ -205,6 +215,19 @@ export async function recommendFocusAreas(
     sections.push('');
   }
 
+  const patternsProfile = formatPatternsAsEnergyProfile(calendarPatterns);
+  if (patternsProfile) {
+    sections.push(patternsProfile);
+    sections.push('');
+  }
+
+  const timeAllocationBlock = formatTimeAllocationForBriefing(timeAllocation);
+  if (timeAllocationBlock) {
+    sections.push(timeAllocationBlock);
+    sections.push('Use TIME ALLOCATION to elevate the most under-served anchor — if a stated priority has < 10% of recent calendar time, treat it as the highest-urgency focus area (label it "high" confidence regardless of other signals).');
+    sections.push('');
+  }
+
   if (facts.length > 0) {
     sections.push('WHAT EDGE KNOWS ABOUT THIS PERSON:');
     sections.push(facts.map(f => `  ${f}`).join('\n'));
@@ -218,7 +241,7 @@ export async function recommendFocusAreas(
   }
 
   if (opts.emailSignal) {
-    const emailBody = formatEmailSignalForPrompt(opts.emailSignal);
+    const emailBody = formatEmailSignalForPrompt(opts.emailSignal, allFacts);
     if (emailBody) {
       sections.push('EMAIL INBOX DIGEST (past 14 days — header + snippet only, no body access):');
       sections.push(emailBody);
