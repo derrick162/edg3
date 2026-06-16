@@ -8,6 +8,43 @@
 > anything in the ⚠️ Shared list.
 
 ## Changelog
+- **2026-06-16** — **H3 OAuth CSRF state, M7 session revocation, CSP nonce, FAQ §3 accuracy, backup + prune coverage (989 green).**
+  - **[H3] OAuth CSRF state — COMPLETE:**
+    - New `oauth_state` table (`initSchema`): `state TEXT PK`, `user_id`, `flow (calendar|whoop)`, `expires_at` (10-min TTL).
+    - `oauthStateQueries`: `create(state, userId, flow)`, `consume(state)` (atomic read+delete, prevents replay), `prune()`.
+    - `getAuthUrl` signatures updated in `lib/calendar.ts` (was `(userId?: number)`) and `lib/whoop.ts` (was `(userId: number)`) — both now `(state: string)`. Callers generate the state.
+    - Connect routes (`/api/calendar/connect`, `/api/whoop/connect`) generate `randomBytes(20).toString('hex')` state, bind to user+flow via `oauthStateQueries.create()`, pass to `getAuthUrl()`.
+    - Callback routes: if state present → `consume()` and verify `flow` match; invalid/expired → reject with `oauth_invalid_state` (CSRF defense); absent → session fallback (backward compat). Previous `parseInt(stateParam)` userId path eliminated.
+    - `oauth_state` included in account deletion (`app/api/account/route.ts`).
+    - `oauthStateQueries.prune()` wired into nightly 3am cron (`lib/scheduler.ts`).
+    - `lib/whoop.test.ts` `getAuthUrl` tests updated to pass string state.
+  - **[M7] JWT/session revocation — COMPLETE:**
+    - `session_version INTEGER NOT NULL DEFAULT 1` migration on `users` table.
+    - `User` interface + `userQueries.incrementSessionVersion(id)` added to `lib/db.ts`.
+    - `createToken(userId, sessionVersion)` embeds `ver` in JWT payload; `verifyToken` returns `{ userId, ver? }`.
+    - `getSession()` rejects tokens where `payload.ver !== user.session_version` (legacy tokens without `ver` grandfathered — no surprise logout for Derrick).
+    - Logout (`/api/auth/logout`) increments `session_version` → all prior tokens invalidated instantly.
+    - Login/signup pass `session_version` to `createToken`. No user-facing change; old sessions survive until next logout.
+  - **[CSP] Nonce-based Content-Security-Policy — COMPLETE:**
+    - `proxy.ts` (new file, Next.js 16 Proxy API — replaces deprecated `middleware.ts`):
+      generates per-request `crypto.randomUUID() → base64` nonce; sets strict CSP header with
+      `script-src 'self' 'nonce-{nonce}' 'strict-dynamic'` (+ `'unsafe-eval'` in dev);
+      `style-src 'self' 'unsafe-inline'` (dashboard inline styles); `connect-src 'self'`;
+      forwards nonce as `x-nonce` request header; matcher excludes `_next/static`, `_next/image`, favicon, prefetch requests.
+    - Callback routes (`/api/calendar/callback`, `/api/whoop/callback`) read `x-nonce` and attach `nonce="{nonce}"` to inline `<script>` tags.
+    - Next.js 16 automatically applies the nonce from the CSP header to its framework scripts (no layout change needed — dynamic rendering).
+  - **[FAQ §3] Privacy claims verified + fixed:**
+    - INACCURATE: "Health data (Whoop) gets an additional layer of encryption" — Both Whoop tokens and calendar tokens use the same AES-256-GCM `encryptField`. Fixed: replaced with accurate statement that credentials and tokens are encrypted at rest.
+    - CLARIFIED: calendar events are fetched live from Google, not stored; the encrypted items are the OAuth access/refresh tokens.
+    - CONFIRMED ACCURATE: call transcripts ✅ (`ENCRYPTED_BRIEFING_FIELDS`), facts ✅ (`encryptField(statement)`), email signals not stored ✅, data deletion covers all tables ✅.
+  - **Backup coverage extended:**
+    - `verifyBackup()` in `lib/backup.ts` now checks: `whoop_tokens`, `facts`, `open_loops`, `audit_log` alongside existing 6 tables.
+  - 989/989 green, tsc clean, next build clean.
+  - **⚠️ PM / user action required:**
+    - CSP nonce forces dynamic rendering — verify dashboard loads correctly in production before beta launch (build was clean; no static-render regression observed in build output).
+    - No user-facing changes to OAuth flow (CSRF fix is transparent).
+    - Derrick will NOT be logged out — legacy tokens grandfathered; revocation only activates on next logout.
+
 - **2026-06-15** — **Pre-beta security gap assessment + quick-win hardening (827 green).**
   - **Assessment scope:** secrets management, session/auth, rate-limit coverage, input validation,
     email/Whoop/open-loops data paths, CSRF + security headers, admin-route protection. Findings

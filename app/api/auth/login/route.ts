@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const token = createToken(user.id);
+    const token = createToken(user.id, user.session_version ?? 1);
     const response = NextResponse.json({
       success: true,
       onboarding_complete: user.onboarding_complete === 1,

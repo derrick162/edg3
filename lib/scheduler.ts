@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, effectiveTimezone, User } from './db';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
 
@@ -165,6 +165,7 @@ export function startScheduler() {
   cron.schedule('0 3 * * *', () => {
     try { openLoopQueries.prune(); } catch (e) { console.error('[scheduler] openLoopQueries.prune failed:', e); }
     try { watchedThreadQueries.prune(); } catch (e) { console.error('[scheduler] watchedThreadQueries.prune failed:', e); }
+    try { oauthStateQueries.prune(); } catch (e) { console.error('[scheduler] oauthStateQueries.prune failed:', e); }
     maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
   });
 

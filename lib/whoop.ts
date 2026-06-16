@@ -10,7 +10,6 @@
 //   Token:  https://api.prod.whoop.com/oauth/oauth2/token
 //   API:    https://api.prod.whoop.com/developer/v2/{recovery,activity/sleep,cycle}
 
-import { randomBytes } from 'crypto';
 import { whoopQueries } from './db';
 import { prevDay } from './time';
 
@@ -41,14 +40,13 @@ function getRedirectUri(): string {
 
 // --- OAuth surface (used by routes) -----------------------------------------
 
-export function getAuthUrl(userId: number): string {
+export function getAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id:     process.env.WHOOP_CLIENT_ID!,
     redirect_uri:  getRedirectUri(),
     response_type: 'code',
     scope:         WHOOP_SCOPES.join(' '),
-    // WHOOP rejects state < 8 chars (invalid_state). Pad with random; userId stays parseInt-recoverable in the callback.
-    state:         `${userId}-${randomBytes(8).toString('hex')}`,
+    state,
   });
   return `${AUTH_URL}?${params}`;
 }
