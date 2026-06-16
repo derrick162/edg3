@@ -9,6 +9,11 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **Energy Score redefine — Whoop-based weighted average**.
+  - **`computeEnergyScore(recoveryHistory, todaySleep)`** replaces the old calendar-demand-matching score. New formula: `sleepPerformancePct * 0.6 + avgRecovery7d * 0.4` (Whoop-only). Degrades to `{ score: 50, calibrating: true }` when no Whoop data. Removed: `taggedEvents`, `energySignal`, `energyProfile` params from score path (calendar demand matching, energy-profile preferences, and per-event mismatch logic all removed from scoring). Kept: `classifyEventsEnergy`, `EnergyProfile`, `parseEnergyProfile`, `colorByEnergy` — still used by hero loop + color tools, unchanged.
+  - **`computeCalendarFit` signature** simplified to `(alignment, priorities, recoveryHistory, todaySleep, totalWorkingHours?)`. `worstMismatchEventId`/`worstMismatchEventTitle` still in `ScoreResult` but always `null` with the new score (hero loop degrades gracefully).
+  - **All callers updated**: `app/api/scores/route.ts`, `app/api/day-plan/route.ts`, `app/api/day-plan/confirm/route.ts`, `app/api/vapi/tool-call/route.ts` (`applyCalendarPlan` handler), `lib/briefing.ts`. Removed `classifyEventsEnergy` + `energyProfile` block from briefing and score routes (not needed for scoring).
+  - 17 new Whoop-based energy score tests. 749/749 green, tsc clean, next build clean.
 - **2026-06-15** — **5-item PM dispatch: email→memory, home page IA, sleep score, EdgeScoreCard data, Fix It button**.
   - **[FEATURE] Email → Memory facts**: `extractAndUpsertFactsFromEmail(userId, emailSignal, userName?)` added to `lib/facts.ts` — one Haiku call on the inbox digest extracts durable facts (e.g. "User is in debt negotiation with CIBC") and upserts them into the facts table. Called fire-and-forget from `lib/briefing.ts` right after the email signal is fetched. Degrades silently when `scopeMissing` or no items.
   - **[FEATURE] Home page IA**: Dashboard default tab changed from Briefings → `home`. New "⚡ Home" tab (first in nav) contains greeting + briefing preview + EdgeScoreCard + FocusRecommendationCard + DayPlanCard — the daily cockpit view. Briefings stays its own tab. Score cards removed from "always visible above all tabs."

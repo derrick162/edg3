@@ -8,6 +8,7 @@ import type { calendar_v3 } from 'googleapis';
 import type { Priority } from './db';
 import type { AlignmentResult } from './alignment';
 import type { EnergySignal } from './energy';
+import type { WhoopRecoveryDay, WhoopSleep } from './whoop';
 
 // ─── Public contract ─────────────────────────────────────────────────────────
 
@@ -269,174 +270,79 @@ export function computeFocusScore(
 // ─── computeEnergyScore ───────────────────────────────────────────────────────
 
 /**
- * Energy Score = % of weighted demand appropriately matched to capacity (0–100).
- * Event weights: high=2, medium=1, low=0.5.
- * Mismatches (full penalty): high-demand on red day; high-demand in trough window.
- * Mismatches (partial penalty ×0.5): medium-demand on red day (draining but not catastrophic).
- * No signal → calibrating (never a fake 50 or 100).
- * Pure — no I/O.
+ * Energy Score = weighted average of Whoop sleep performance + recovery (0–100).
+ * Weight: sleep 60% / recovery 40% over trailing 7 days.
+ * Calibrating when no Whoop data at all. Pure — no I/O.
  */
 export function computeEnergyScore(
-  taggedEvents: TaggedEvent[],
-  energySignal: EnergySignal | null,
-  energyProfile: EnergyProfile | null,
+  recoveryHistory: WhoopRecoveryDay[],
+  todaySleep: WhoopSleep | null,
 ): ScoreResult {
-  // No signal = thin data — tell the user to set it; don't invent a number.
-  if (!energySignal) {
+  const recent7d = recoveryHistory.slice(-7);
+  const hasRecovery = recent7d.length > 0;
+  const hasSleep = todaySleep !== null;
+
+  if (!hasRecovery && !hasSleep) {
     return {
       score: 50,
       calibrating: true,
-      drivers: ["No energy signal yet — Edge will ask during your call, or set it on the dashboard."],
-      topFix: { description: "Set today's energy level (red/yellow/green) to unlock a real Energy Score.", op: 'create' },
+      drivers: ['Connect Whoop to unlock a real Energy Score based on your sleep and recovery data.'],
+      topFix: { description: 'Connect your Whoop to score your energy from real health data.', op: 'create' },
     };
   }
 
-  if (taggedEvents.length === 0) {
-    return {
-      score: 50,
-      calibrating: true,
-      drivers: ['No timed events to classify yet — Energy Score appears once your calendar has events.'],
-      topFix: null,
-    };
+  const avgRecovery = hasRecovery
+    ? Math.round(recent7d.reduce((s, d) => s + d.recoveryScore, 0) / recent7d.length)
+    : null;
+  const sleepScore = hasSleep ? todaySleep!.performancePct : null;
+
+  let score: number;
+  if (hasSleep && hasRecovery) {
+    score = clamp(0, 100, Math.round(sleepScore! * 0.6 + avgRecovery! * 0.4));
+  } else if (hasSleep) {
+    score = clamp(0, 100, sleepScore!);
+  } else {
+    score = clamp(0, 100, avgRecovery!);
   }
-
-  const hasProfile = !!(energyProfile && (energyProfile.peakStart !== null || energyProfile.troughStart !== null));
-  const WEIGHTS: Record<EventDemand, number> = { high: 2, medium: 1, low: 0.5 };
-
-  let totalWeight = 0;
-  let penaltyWeight = 0;
-  let worstMismatch: { event: calendar_v3.Schema$Event; reason: string } | null = null;
-  let lightOnRed = 0;
-
-  for (const { event: ev, tag } of taggedEvents) {
-    const w = WEIGHTS[tag.demand];
-    totalWeight += w;
-
-    if (tag.demand === 'low' && energySignal.level === 'red') lightOnRed++;
-
-    let penaltyFraction = 0; // fraction of event weight to add as penalty
-    let reason = '';
-
-    if (tag.demand === 'high') {
-      if (energySignal.level === 'red') {
-        penaltyFraction = 1;
-        reason = 'High-demand work on a red-recovery day';
-      } else if (hasProfile) {
-        const h = eventStartHour(ev);
-        if (h !== null && inWindow(h, energyProfile!.troughStart, energyProfile!.troughEnd)) {
-          penaltyFraction = 1;
-          reason = 'High-demand work in your trough window';
-        }
-      }
-    } else if (tag.demand === 'medium' && energySignal.level === 'red') {
-      // Medium demand on a red day drains recovery — lighter penalty than high-demand.
-      penaltyFraction = 0.5;
-      reason = 'Medium-demand work on a red-recovery day';
-    }
-
-    if (penaltyFraction > 0) {
-      penaltyWeight += w * penaltyFraction;
-      if (!worstMismatch) worstMismatch = { event: ev, reason };
-    }
-  }
-
-  const score = totalWeight === 0 ? 70 : clamp(0, 100, Math.round((1 - penaltyWeight / totalWeight) * 100));
 
   const drivers: string[] = [];
-
-  if (energySignal.level === 'red') {
-    const highCount = taggedEvents.filter(t => t.tag.demand === 'high').length;
-    if (highCount > 0) {
-      drivers.push(`Red day with ${highCount} high-demand event${highCount > 1 ? 's' : ''} — protect recovery.`);
-    } else if (lightOnRed > 0) {
-      drivers.push("Light schedule protects today's recovery — well matched.");
-    }
-  } else if (energySignal.level === 'yellow') {
-    const highCount = taggedEvents.filter(t => t.tag.demand === 'high').length;
-    if (highCount > 2) {
-      drivers.push(`Yellow day with ${highCount} high-demand events — consider deferring one.`);
-    } else if (highCount > 0 && hasProfile) {
-      const highInPeak = taggedEvents.filter(t => {
-        if (t.tag.demand !== 'high') return false;
-        const h = eventStartHour(t.event);
-        return h !== null && inWindow(h, energyProfile!.peakStart, energyProfile!.peakEnd);
-      }).length;
-      drivers.push(
-        highInPeak === highCount
-          ? 'High-demand work lands in your peak window — good timing for a yellow day.'
-          : 'Yellow day: move high-demand work into your peak window for better fit.'
-      );
-    } else {
-      drivers.push(`Yellow day (${energySignal.source}) — load looks manageable.`);
-    }
+  if (sleepScore !== null) {
+    const tier = sleepScore >= 75 ? 'excellent' : sleepScore >= 50 ? 'good' : 'low';
+    drivers.push(`Last night's sleep score: ${sleepScore}% (${tier}).`);
   } else {
-    // green
-    if (hasProfile) {
-      const highTotal = taggedEvents.filter(t => t.tag.demand === 'high').length;
-      if (highTotal === 0) {
-        drivers.push('Green day — no high-demand blocks scheduled.');
-      } else {
-        const highInPeak = taggedEvents.filter(t => {
-          if (t.tag.demand !== 'high') return false;
-          const h = eventStartHour(t.event);
-          return h !== null && inWindow(h, energyProfile!.peakStart, energyProfile!.peakEnd);
-        }).length;
-        drivers.push(
-          highInPeak === highTotal
-            ? 'High-demand work is in your peak window — excellent energy match.'
-            : 'Green day but some high-demand work is outside your peak window.'
-        );
-      }
-    } else {
-      drivers.push(`Green day (${energySignal.source}) — full capacity.`);
-    }
+    drivers.push('Sleep score unavailable — connect Whoop to see it here.');
   }
-
-  if (worstMismatch) {
-    drivers.push(`${worstMismatch.reason}: "${worstMismatch.event.summary ?? 'event'}"`);
-  }
-
-  if (!hasProfile && energySignal.level !== 'red') {
-    drivers.push('Tell Edge your peak/trough windows to sharpen this score.');
+  if (avgRecovery !== null) {
+    const tier = avgRecovery >= 67 ? 'strong' : avgRecovery >= 34 ? 'moderate' : 'low';
+    drivers.push(`7-day recovery average: ${avgRecovery}% (${tier}).`);
   }
 
   let topFix: ScoreResult['topFix'] = null;
-  if (worstMismatch) {
-    const title = worstMismatch.event.summary ?? 'high-demand event';
-    topFix = energySignal.level === 'red'
-      ? { description: `Move "${title}" to your next green day — today is red and it needs full capacity.`, op: 'move' }
-      : { description: `Reschedule "${title}" to your peak energy window — it's landing in your trough.`, op: 'move' };
-  } else if (!hasProfile) {
-    topFix = {
-      description: 'Tell Edge your peak energy window (e.g. "my peak is 9 to 11") to unlock energy matching.',
-      op: 'create',
-    };
+  if (score < 40) {
+    topFix = { description: 'Your energy is low — protect your sleep and keep today lighter.', op: 'move' };
+  } else if (score < 70 && sleepScore !== null && sleepScore < 60) {
+    topFix = { description: 'Improving sleep quality will raise your energy score the most.', op: 'move' };
+  } else if (score < 70 && avgRecovery !== null && avgRecovery < 50) {
+    topFix = { description: 'Recovery is trending low — consider reducing strain this week.', op: 'move' };
   }
 
-  return {
-    score,
-    drivers,
-    topFix,
-    worstMismatchEventId:    worstMismatch?.event.id    ?? null,
-    worstMismatchEventTitle: worstMismatch?.event.summary ?? null,
-  };
+  return { score, drivers, topFix };
 }
 
 // ─── computeCalendarFit ───────────────────────────────────────────────────────
 
 /** Compute both scores and return the combined CalendarFit with a single Edge Score. Pure. */
 export function computeCalendarFit(
-  taggedEvents: TaggedEvent[],
   alignment: AlignmentResult | null,
   priorities: Priority[],
-  energySignal: EnergySignal | null,
-  energyProfile: EnergyProfile | null,
+  recoveryHistory: WhoopRecoveryDay[],
+  todaySleep: WhoopSleep | null,
   totalWorkingHours = 45,
 ): CalendarFit {
   const focusScore  = computeFocusScore(alignment, priorities, totalWorkingHours);
-  const energyScore = computeEnergyScore(taggedEvents, energySignal, energyProfile);
+  const energyScore = computeEnergyScore(recoveryHistory, todaySleep);
 
-  // Calibrating = energy has thin data (no signal). Edge Score falls back to focus-only.
+  // Calibrating = no Whoop data. Edge Score falls back to focus-only when calibrating.
   const calibrating = energyScore.calibrating === true;
   const edgeScore   = calibrating
     ? focusScore.score

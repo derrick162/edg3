@@ -4,13 +4,13 @@ import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalen
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { checkVapiSecret } from '@/lib/vapi';
-import { computeCalendarFit, classifyEventsEnergy, parseEnergyProfile, colorByEnergy } from '@/lib/calendarScore';
+import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
 import { computeAlignment } from '@/lib/alignment';
 import { deriveEnergySignal } from '@/lib/energy';
-import { getLatestRecovery } from '@/lib/whoop';
+import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, energyProfileQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -1160,28 +1160,15 @@ Query: ${query}` }],
     // Gather today's context — mirrors /api/scores/route.ts so the plan uses the
     // same data the CalendarFitCard already shows the user.
     const priorities = priorityQueries.getMostRecent(userId);
-    const [planTodayEvents, planWeekEvents, planWhoopRec] = await Promise.all([
+    const [planTodayEvents, planWeekEvents, recoveryHistory, todaySleep] = await Promise.all([
       getCalendarEvents(userId).catch(() => [] as calendar_v3.Schema$Event[]),
       getWeekEvents(userId).catch(() => [] as calendar_v3.Schema$Event[]),
-      getLatestRecovery(userId).catch(() => null),
+      getRecoveryHistory(userId, 7).catch(() => []),
+      getLastSleep(userId).catch(() => null),
     ]);
-    const todayEnergyLog = (() => { try { return energyLogQueries.getToday(userId, today); } catch { return undefined; } })();
-    const energySignal   = deriveEnergySignal(todayEnergyLog, planWhoopRec?.recoveryScore ?? null);
-    const [alignment, planTagged] = await Promise.all([
-      computeAlignment(priorities, planWeekEvents, userTz).catch(() => null),
-      classifyEventsEnergy(planTodayEvents).catch(() => []),
-    ]);
-    const dbProfile = (() => { try { return energyProfileQueries.get(userId); } catch { return undefined; } })();
-    const energyProfile = dbProfile
-      ? { peakStart: dbProfile.peak_start, peakEnd: dbProfile.peak_end, troughStart: dbProfile.trough_start, troughEnd: dbProfile.trough_end }
-      : (() => {
-          try {
-            const stmts = factQueries.getAll(userId).filter(f => f.category === 'preference').map(f => f.statement);
-            return parseEnergyProfile(stmts);
-          } catch { return null; }
-        })();
+    const alignment = await computeAlignment(priorities, planWeekEvents, userTz).catch(() => null);
 
-    const fit = computeCalendarFit(planTagged, alignment, priorities, energySignal, energyProfile);
+    const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
     const plan = buildCalendarPlan(planTodayEvents, fit, priorities, today, userTz);
 
     if (plan.actions.length === 0) {
@@ -1272,11 +1259,8 @@ Query: ${query}` }],
         getCalendarEvents(userId).catch(() => planTodayEvents),
         getWeekEvents(userId).catch(() => planWeekEvents),
       ]);
-      const [newAlignment, newTagged] = await Promise.all([
-        computeAlignment(priorities, newWeekEvts, userTz).catch(() => alignment),
-        classifyEventsEnergy(newTodayEvts).catch(() => planTagged),
-      ]);
-      const newFit = computeCalendarFit(newTagged, newAlignment, priorities, energySignal, energyProfile);
+      const newAlignment = await computeAlignment(priorities, newWeekEvts, userTz).catch(() => alignment);
+      const newFit = computeCalendarFit(newAlignment, priorities, recoveryHistory, todaySleep);
       newEdgeScore = newFit.edgeScore;
       try {
         calendarScoreQueries.upsert(userId, today, {

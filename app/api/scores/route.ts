@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server';
 import { format, startOfWeek } from 'date-fns';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { priorityQueries, factQueries, energyLogQueries, effectiveTimezone, energyProfileQueries, calendarScoreQueries, dailyFocusQueries, type Priority } from '@/lib/db';
-import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { getLatestRecovery } from '@/lib/whoop';
-import { deriveEnergySignal } from '@/lib/energy';
+import { priorityQueries, effectiveTimezone, calendarScoreQueries, dailyFocusQueries, type Priority } from '@/lib/db';
+import { getWeekEvents } from '@/lib/calendar';
+import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeAlignment } from '@/lib/alignment';
-import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from '@/lib/calendarScore';
+import { computeCalendarFit } from '@/lib/calendarScore';
 
 export async function GET() {
   const user = await getSession();
@@ -45,39 +44,15 @@ export async function GET() {
     priorities = priorityQueries.getMostRecent(user.id);
   }
 
-  const [todayEvents, weekEvents, whoopRecovery] = await Promise.all([
-    getCalendarEvents(user.id).catch(() => []),
+  const [weekEvents, recoveryHistory, todaySleep] = await Promise.all([
     getWeekEvents(user.id).catch(() => []),
-    getLatestRecovery(user.id).catch(() => null),
+    getRecoveryHistory(user.id, 7).catch(() => []),
+    getLastSleep(user.id).catch(() => null),
   ]);
 
-  const todayEnergyLog = (() => {
-    try { return energyLogQueries.getToday(user.id, today); } catch { return undefined; }
-  })();
-  const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
+  const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
 
-  const [alignment, taggedEvents] = await Promise.all([
-    computeAlignment(priorities, weekEvents, userTimezone).catch(() => null),
-    classifyEventsEnergy(todayEvents).catch(() => []),
-  ]);
-
-  // Structured energy profile from DB; fall back to parsing from preference facts.
-  const dbProfile = (() => { try { return energyProfileQueries.get(user.id); } catch { return undefined; } })();
-  const energyProfile = dbProfile
-    ? {
-        peakStart:   dbProfile.peak_start,
-        peakEnd:     dbProfile.peak_end,
-        troughStart: dbProfile.trough_start,
-        troughEnd:   dbProfile.trough_end,
-      }
-    : (() => {
-        try {
-          const stmts = factQueries.getAll(user.id).filter(f => f.category === 'preference').map(f => f.statement);
-          return parseEnergyProfile(stmts);
-        } catch { return null; }
-      })();
-
-  const fit = computeCalendarFit(taggedEvents, alignment, priorities, energySignal, energyProfile);
+  const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
 
   // Persist today's scores for trend analysis.
   try {

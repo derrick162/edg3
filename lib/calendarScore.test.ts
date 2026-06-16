@@ -1,28 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import type { calendar_v3 } from 'googleapis';
 import type { Priority } from './db';
 import type { AlignmentResult } from './alignment';
 import type { EnergySignal } from './energy';
+import type { WhoopRecoveryDay, WhoopSleep } from './whoop';
 import {
   parseEnergyProfile,
   computeFocusScore,
   computeEnergyScore,
   computeCalendarFit,
   colorByEnergy,
-  type EnergyProfile,
-  type TaggedEvent,
-  type EventType,
   type EventDemand,
 } from './calendarScore';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
-function makeTimedEvent(summary: string, startISO: string, endISO: string): calendar_v3.Schema$Event {
-  return { summary, start: { dateTime: startISO }, end: { dateTime: endISO } };
-}
-function makeAllDay(summary: string, startDate: string, endDate: string): calendar_v3.Schema$Event {
-  return { summary, start: { date: startDate }, end: { date: endDate } };
-}
 function makeP(id: number, text: string, rank: number): Priority {
   return { id, user_id: 1, text, rank, week_of: '2026-06-08', created_at: '2026-06-14T00:00:00', energy_cost: undefined };
 }
@@ -37,15 +28,16 @@ function makeAlign(
     topUnaligned,
   };
 }
-function makeTagged(event: calendar_v3.Schema$Event, type: EventType = 'other', demand: EventDemand = 'medium'): TaggedEvent {
-  return { event, tag: { type, demand } };
+function makeRecovDay(date: string, score: number): WhoopRecoveryDay {
+  return { date, recoveryScore: score };
+}
+function makeSleep(performancePct: number): WhoopSleep {
+  return { durationMs: 28800000, performancePct, efficiencyPct: 85 };
 }
 
 const sigGreen:  EnergySignal = { level: 'green',  source: 'manual' };
 const sigYellow: EnergySignal = { level: 'yellow', source: 'whoop'  };
 const sigRed:    EnergySignal = { level: 'red',    source: 'whoop'  };
-const profilePeakOnly: EnergyProfile = { peakStart: 9, peakEnd: 11, troughStart: null, troughEnd: null };
-const profileFull:     EnergyProfile = { peakStart: 9, peakEnd: 11, troughStart: 14,   troughEnd: 16   };
 
 // ─── parseEnergyProfile ──────────────────────────────────────────────────────
 
@@ -104,7 +96,7 @@ describe('ScoreResult shape (MVP)', () => {
   });
 
   it('energy result has score 0-100, drivers array, topFix', () => {
-    const r = computeEnergyScore([], sigGreen, null);
+    const r = computeEnergyScore([makeRecovDay('2026-06-14', 70)], makeSleep(80));
     expect(r.score).toBeGreaterThanOrEqual(0);
     expect(r.score).toBeLessThanOrEqual(100);
     expect(Array.isArray(r.drivers)).toBe(true);
@@ -272,168 +264,122 @@ describe('computeFocusScore — topFix', () => {
   });
 });
 
-// ─── computeEnergyScore — no signal ──────────────────────────────────────────
+// --- computeEnergyScore -- no data ---
 
-describe('computeEnergyScore — no signal', () => {
-  it('returns calibrating:true, score 50, and "set energy" topFix when signal is null', () => {
-    const r = computeEnergyScore([], null, null);
+describe('computeEnergyScore -- no data', () => {
+  it('calibrating:true, score 50, topFix op create when no whoop data', () => {
+    const r = computeEnergyScore([], null);
     expect(r.calibrating).toBe(true);
     expect(r.score).toBe(50);
-    expect(r.drivers.some(d => d.includes('No energy signal'))).toBe(true);
     expect(r.topFix?.op).toBe('create');
   });
-});
 
-// ─── computeEnergyScore — empty events ───────────────────────────────────────
-
-describe('computeEnergyScore — empty events', () => {
-  it('empty events → calibrating (not a fake score)', () => {
-    const r = computeEnergyScore([], sigRed, null);
-    expect(r.calibrating).toBe(true);
-    expect(r.score).toBe(50);
-  });
-
-  it('empty events on green day → calibrating', () => {
-    const r = computeEnergyScore([], sigGreen, null);
-    expect(r.calibrating).toBe(true);
-    expect(r.score).toBe(50);
-  });
-
-  it('empty events on yellow day → calibrating', () => {
-    const r = computeEnergyScore([], sigYellow, null);
-    expect(r.calibrating).toBe(true);
+  it('driver mentions connecting Whoop', () => {
+    const r = computeEnergyScore([], null);
+    expect(r.drivers.some(d => d.toLowerCase().includes('whoop'))).toBe(true);
   });
 });
 
-// ─── computeEnergyScore — red day penalties ───────────────────────────────────
+// --- computeEnergyScore -- sleep only ---
 
-describe('computeEnergyScore — red day penalties', () => {
-  it('high-demand on red day → score is low, topFix moves it', () => {
-    const ev = makeTimedEvent('Investor pitch', '2026-06-14T10:00:00-04:00', '2026-06-14T12:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meeting', 'high')], sigRed, null);
-    expect(r.score).toBeLessThan(50);
-    expect(r.topFix?.op).toBe('move');
-    expect(r.topFix?.description).toContain('Investor pitch');
+describe('computeEnergyScore -- sleep only', () => {
+  it('uses sleepScore directly when no recovery history', () => {
+    const r = computeEnergyScore([], makeSleep(80));
+    expect(r.calibrating).toBeFalsy();
+    expect(r.score).toBe(80);
+    expect(r.drivers.some(d => d.includes('80%'))).toBe(true);
   });
 
-  it('high-demand on red day → score is 0 (single mismatch at full weight)', () => {
-    const ev = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'deep_work', 'high')], sigRed, null);
-    // penalty=2, total=2 → score = 0
-    expect(r.score).toBe(0);
-  });
-
-  it('low-demand only on red day → score 100', () => {
-    const ev = makeTimedEvent('Lunch', '2026-06-14T12:00:00-04:00', '2026-06-14T13:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meal', 'low')], sigRed, null);
-    expect(r.score).toBe(100);
-  });
-
-  it('mixed: one high + one low on red → score 20 (penalty 2/2.5)', () => {
-    const high = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
-    const low  = makeTimedEvent('Lunch',    '2026-06-14T12:00:00-04:00', '2026-06-14T13:00:00-04:00');
-    const r = computeEnergyScore(
-      [makeTagged(high, 'deep_work', 'high'), makeTagged(low, 'meal', 'low')],
-      sigRed,
-      null,
-    );
-    // high (w=2) penalized, low (w=0.5) not → penalty/total = 2/2.5 = 80% → score = 20
-    expect(r.score).toBe(20);
-  });
-
-  it('medium-demand on red day → partial penalty (×0.5 fraction → score 50)', () => {
-    // medium event: w=1. penalty = 1×0.5 = 0.5. score = 1 - 0.5/1 = 0.5 → 50.
-    const ev = makeTimedEvent('Team meeting', '2026-06-14T10:00:00-04:00', '2026-06-14T11:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meeting', 'medium')], sigRed, null);
-    expect(r.score).toBe(50);
-    expect(r.topFix?.op).toBe('move');
+  it('sleep score 50 -> score 50 with no recovery', () => {
+    expect(computeEnergyScore([], makeSleep(50)).score).toBe(50);
   });
 });
 
-// ─── computeEnergyScore — trough timing ──────────────────────────────────────
+// --- computeEnergyScore -- recovery only ---
 
-describe('computeEnergyScore — trough timing', () => {
-  it('high-demand in trough window → score 0, topFix reschedules', () => {
-    // Event at 2pm, trough 2-4pm
-    const ev = makeTimedEvent('Strategy session', '2026-06-14T14:00:00-04:00', '2026-06-14T15:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meeting', 'high')], sigGreen, profileFull);
-    expect(r.score).toBe(0);
-    expect(r.topFix?.op).toBe('move');
-  });
-
-  it('high-demand in peak window → score 100', () => {
-    // Event at 9am, peak 9-11am
-    const ev = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'deep_work', 'high')], sigGreen, profilePeakOnly);
-    expect(r.score).toBe(100);
-  });
-
-  it('high-demand outside trough (peak-only profile) → score 100', () => {
-    // Event at 2pm, profile has no trough — no mismatch
-    const ev = makeTimedEvent('Meeting', '2026-06-14T14:00:00-04:00', '2026-06-14T15:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meeting', 'high')], sigGreen, profilePeakOnly);
-    expect(r.score).toBe(100);
-  });
-
-  it('no energy profile → no trough penalty, topFix suggests profile setup', () => {
-    const ev = makeTimedEvent('Strategy session', '2026-06-14T14:00:00-04:00', '2026-06-14T15:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meeting', 'high')], sigGreen, null);
-    expect(r.score).toBe(100);
-    expect(r.topFix?.description).toContain('peak energy window');
+describe('computeEnergyScore -- recovery only', () => {
+  it('uses avg recovery when no sleep data', () => {
+    const history = [
+      makeRecovDay('2026-06-09', 80),
+      makeRecovDay('2026-06-10', 60),
+      makeRecovDay('2026-06-11', 70),
+    ];
+    const r = computeEnergyScore(history, null);
+    expect(r.score).toBe(70); // (80+60+70)/3 = 70
+    expect(r.calibrating).toBeFalsy();
+    expect(r.drivers.some(d => d.includes('70%'))).toBe(true);
   });
 });
 
-// ─── computeEnergyScore — green day drivers ───────────────────────────────────
+// --- computeEnergyScore -- weighted blend ---
 
-describe('computeEnergyScore — green day', () => {
-  it('green + profile + all high in peak → excellent match driver', () => {
-    const ev = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'deep_work', 'high')], sigGreen, profilePeakOnly);
-    expect(r.drivers.some(d => d.includes('peak window') && d.includes('excellent'))).toBe(true);
+describe('computeEnergyScore -- weighted blend', () => {
+  it('blends sleep 60% + recovery 40%', () => {
+    const r = computeEnergyScore([makeRecovDay('2026-06-14', 50)], makeSleep(100));
+    // 100x0.6 + 50x0.4 = 80
+    expect(r.score).toBe(80);
+    expect(r.calibrating).toBeFalsy();
   });
 
-  it('green + no profile → "full capacity" driver', () => {
-    const ev = makeTimedEvent('Meeting', '2026-06-14T09:00:00-04:00', '2026-06-14T10:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev)], sigGreen, null);
-    expect(r.drivers.some(d => d.includes('Green day') || d.includes('full capacity'))).toBe(true);
+  it('uses only last 7 of recovery history', () => {
+    const history = [
+      makeRecovDay('2026-06-07', 0), // 8th oldest -- excluded
+      ...Array.from({ length: 7 }, (_, i) => makeRecovDay(`2026-06-${8 + i}`, 100)),
+    ];
+    // All 7 in-window = avg 100; sleep 100 -> score 100
+    expect(computeEnergyScore(history, makeSleep(100)).score).toBe(100);
   });
 
-  it('green + profile + high NOT all in peak → partial-match driver', () => {
-    // Peak is 9-11. Event at 2pm.
-    const ev = makeTimedEvent('Work block', '2026-06-14T14:00:00-04:00', '2026-06-14T15:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'deep_work', 'high')], sigGreen, profilePeakOnly);
-    // No trough penalty (peakOnly has troughStart=null), score=100
-    // But driver should note it's not all in peak
-    expect(r.drivers.some(d => d.includes('outside your peak window'))).toBe(true);
-  });
-});
-
-// ─── computeEnergyScore — yellow day drivers ──────────────────────────────────
-
-describe('computeEnergyScore — yellow day', () => {
-  it('3+ high-demand on yellow → overloaded driver', () => {
-    const events = [
-      makeTimedEvent('Meeting A', '2026-06-14T09:00:00-04:00', '2026-06-14T10:00:00-04:00'),
-      makeTimedEvent('Meeting B', '2026-06-14T10:00:00-04:00', '2026-06-14T11:00:00-04:00'),
-      makeTimedEvent('Meeting C', '2026-06-14T11:00:00-04:00', '2026-06-14T12:00:00-04:00'),
-    ].map(e => makeTagged(e, 'meeting', 'high'));
-    const r = computeEnergyScore(events, sigYellow, null);
-    expect(r.drivers.some(d => d.includes('Yellow day') && d.includes('3 high-demand'))).toBe(true);
+  it('score rounds to integer', () => {
+    // sleep 70, recovery 55 -> 70x0.6 + 55x0.4 = 42+22 = 64
+    const r = computeEnergyScore([makeRecovDay('2026-06-14', 55)], makeSleep(70));
+    expect(Number.isInteger(r.score)).toBe(true);
+    expect(r.score).toBe(64);
   });
 
-  it('1 high-demand on yellow (no profile) → manageable driver', () => {
-    const ev = makeTimedEvent('Meeting', '2026-06-14T09:00:00-04:00', '2026-06-14T10:00:00-04:00');
-    const r = computeEnergyScore([makeTagged(ev, 'meeting', 'high')], sigYellow, null);
-    expect(r.drivers.some(d => d.includes('manageable'))).toBe(true);
+  it('clamps score to 0-100', () => {
+    const r = computeEnergyScore([makeRecovDay('2026-06-14', 100)], makeSleep(100));
+    expect(r.score).toBeLessThanOrEqual(100);
+    expect(r.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it('low score -> topFix protect sleep/recovery', () => {
+    const r = computeEnergyScore([makeRecovDay('2026-06-14', 20)], makeSleep(20));
+    expect(r.score).toBeLessThan(40);
+    expect(r.topFix).not.toBeNull();
   });
 });
 
-// ─── computeCalendarFit ──────────────────────────────────────────────────────
+// --- computeEnergyScore -- drivers ---
+
+describe('computeEnergyScore -- drivers', () => {
+  it('includes sleep score in drivers', () => {
+    const r = computeEnergyScore([], makeSleep(80));
+    expect(r.drivers.some(d => d.includes('80%'))).toBe(true);
+  });
+
+  it('includes 7-day recovery avg in drivers when history present', () => {
+    const r = computeEnergyScore([makeRecovDay('2026-06-14', 75)], null);
+    expect(r.drivers.some(d => d.includes('75%'))).toBe(true);
+  });
+
+  it('marks excellent tier when sleep >= 75', () => {
+    const r = computeEnergyScore([], makeSleep(90));
+    expect(r.drivers.some(d => d.includes('excellent'))).toBe(true);
+  });
+
+  it('marks low tier when sleep < 50', () => {
+    const r = computeEnergyScore([], makeSleep(40));
+    expect(r.drivers.some(d => d.includes('low'))).toBe(true);
+  });
+});
+
+// --- computeCalendarFit ---
 
 describe('computeCalendarFit', () => {
   it('returns CalendarFit with both scores (0-100) and computedAt', () => {
     const priorities = [makeP(1, 'Build', 1)];
-    const fit = computeCalendarFit([], null, priorities, sigGreen, null);
+    const fit = computeCalendarFit(null, priorities, [], null);
     expect(fit.focusScore.score).toBeGreaterThanOrEqual(0);
     expect(fit.focusScore.score).toBeLessThanOrEqual(100);
     expect(fit.energyScore.score).toBeGreaterThanOrEqual(0);
@@ -441,129 +387,73 @@ describe('computeCalendarFit', () => {
     expect(fit.computedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('energy score is 50 and calibrating when no signal is passed', () => {
-    const fit = computeCalendarFit([], null, [], null, null);
-    expect(fit.energyScore.score).toBe(50);
+  it('calibrating:true and energy score 50 when no whoop data', () => {
+    const fit = computeCalendarFit(null, [], [], null);
     expect(fit.energyScore.calibrating).toBe(true);
+    expect(fit.energyScore.score).toBe(50);
     expect(fit.calibrating).toBe(true);
   });
 
   it('focus score is 0 when no priorities', () => {
-    const fit = computeCalendarFit([], null, [], sigGreen, null);
+    const fit = computeCalendarFit(null, [], [makeRecovDay('2026-06-14', 80)], makeSleep(80));
     expect(fit.focusScore.score).toBe(0);
   });
-
-  it('full scenario: 50% focus, red day all light → focus 50, energy 100', () => {
-    const priorities = [makeP(1, 'Build', 1)];
-    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
-    const lunch = makeTimedEvent('Lunch', '2026-06-14T12:00:00-04:00', '2026-06-14T13:00:00-04:00');
-    const fit = computeCalendarFit(
-      [makeTagged(lunch, 'meal', 'low')],
-      alignment,
-      priorities,
-      sigRed,
-      null,
-      45,
-    );
-    expect(fit.focusScore.score).toBe(50);
-    expect(fit.energyScore.score).toBe(100);
-  });
-
-  it('full scenario: 100% focus, red day with high-demand → focus 100, energy 0', () => {
-    const priorities = [makeP(1, 'Build', 1)];
-    const alignment  = makeAlign([{ priority: 'Build', hours: 45 }]);
-    const deep = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
-    const fit = computeCalendarFit(
-      [makeTagged(deep, 'deep_work', 'high')],
-      alignment,
-      priorities,
-      sigRed,
-      null,
-      45,
-    );
-    expect(fit.focusScore.score).toBe(100);
-    expect(fit.energyScore.score).toBe(0);
-  });
-
-  it('all-day events are excluded from energy score (no dateTime)', () => {
-    const allDay = makeAllDay('Conference', '2026-06-14', '2026-06-15');
-    const tagged: TaggedEvent = { event: allDay, tag: { type: 'meeting', demand: 'high' } };
-    const r = computeEnergyScore([tagged], sigRed, null);
-    // Red + high-demand → full penalty regardless of hour
-    expect(r.score).toBe(0);
-  });
 });
 
-// ─── computeEnergyScore — calibrating state ───────────────────────────────────
+// --- computeCalendarFit -- edgeScore ---
 
-describe('computeEnergyScore — calibrating state', () => {
-  it('returns calibrating:true and score 50 when signal is null', () => {
-    const r = computeEnergyScore([], null, null);
-    expect(r.calibrating).toBe(true);
-    expect(r.score).toBe(50);
-    expect(r.drivers.some(d => d.includes('No energy signal'))).toBe(true);
-  });
-
-  it('sets calibrating when signal present but events empty (green)', () => {
-    const r = computeEnergyScore([], sigGreen, null);
-    expect(r.calibrating).toBe(true);
-  });
-
-  it('sets calibrating when signal present but events empty (red)', () => {
-    const r = computeEnergyScore([], sigRed, null);
-    expect(r.calibrating).toBe(true);
-  });
-});
-
-// ─── computeCalendarFit — edge score ─────────────────────────────────────────
-
-describe('computeCalendarFit — edgeScore', () => {
+describe('computeCalendarFit -- edgeScore', () => {
   it('includes edgeScore and calibrating fields', () => {
     const priorities = [makeP(1, 'Build', 1)];
-    const fit = computeCalendarFit([], null, priorities, sigGreen, null);
+    const fit = computeCalendarFit(null, priorities, [], null);
     expect(typeof fit.edgeScore).toBe('number');
     expect(fit.edgeScore).toBeGreaterThanOrEqual(0);
     expect(fit.edgeScore).toBeLessThanOrEqual(100);
     expect(typeof fit.calibrating).toBe('boolean');
   });
 
-  it('calibrating:true when no energy signal — edgeScore equals focusScore', () => {
+  it('calibrating:true when no whoop data -- edgeScore equals focusScore', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
-    const fit = computeCalendarFit([], alignment, priorities, null, null, 45);
+    const fit = computeCalendarFit(alignment, priorities, [], null, 45);
     expect(fit.calibrating).toBe(true);
-    expect(fit.edgeScore).toBe(fit.focusScore.score); // energy doesn't contribute
-  });
-
-  it('calibrating:true when events empty — edgeScore falls back to focusScore only', () => {
-    const priorities = [makeP(1, 'Build', 1)];
-    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
-    const fit = computeCalendarFit([], alignment, priorities, sigGreen, null, 45);
-    expect(fit.calibrating).toBe(true);
-    // energy calibrating → edgeScore = focusScore only (= 50)
     expect(fit.edgeScore).toBe(fit.focusScore.score);
   });
 
   it('edgeScore rounds to integer', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 20 }], 25);
-    // both scores are present (timed event included) → avg; here energy calibrating → focus only
-    const fit = computeCalendarFit([], alignment, priorities, sigGreen, null, 45);
+    const fit = computeCalendarFit(alignment, priorities, [], null, 45);
     expect(Number.isInteger(fit.edgeScore)).toBe(true);
   });
 
-  it('full scenario: 50% focus + red day high-demand → edgeScore is average', () => {
+  it('edgeScore is blend of focus + energy when whoop data present', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 45 }]);
+    // focusScore = 100, energyScore = 80x0.6 + 80x0.4 = 80 -> edgeScore = 90
+    const fit = computeCalendarFit(
+      alignment, priorities,
+      [makeRecovDay('2026-06-14', 80)], makeSleep(80),
+      45,
+    );
+    expect(fit.calibrating).toBe(false);
+    expect(fit.focusScore.score).toBe(100);
+    expect(fit.energyScore.score).toBe(80);
+    expect(fit.edgeScore).toBe(90);
+  });
+
+  it('full scenario: 50% focus + high energy -> edgeScore is average', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
-    const deep = makeTimedEvent('Deep work', '2026-06-14T09:00:00-04:00', '2026-06-14T11:00:00-04:00');
     const fit = computeCalendarFit(
-      [makeTagged(deep, 'deep_work', 'high')],
-      alignment, priorities, sigRed, null, 45,
+      alignment, priorities,
+      [makeRecovDay('2026-06-14', 80)], makeSleep(80),
+      45,
     );
-    // focusScore=50, energyScore=0 → edgeScore=25
+    // focusScore=50, energyScore=80 -> edgeScore=65
     expect(fit.focusScore.score).toBe(50);
-    expect(fit.energyScore.score).toBe(0);
-    expect(fit.edgeScore).toBe(25);
+    expect(fit.energyScore.score).toBe(80);
+    expect(fit.edgeScore).toBe(65);
     expect(fit.calibrating).toBe(false);
   });
 });

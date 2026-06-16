@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, energyProfileQueries, effectiveTimezone, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays } from './calendar';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
@@ -12,7 +12,7 @@ import { computeWhoopCorrelations } from './whoopCorrelations';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
-import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from './calendarScore';
+import { computeCalendarFit } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
 
@@ -310,10 +310,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
   // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
   // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
-  const [alignment, taggedEvents] = await Promise.all([
-    computeAlignment(priorities, weekEvents, userTimezone).catch(() => null),
-    classifyEventsEnergy(calendarEvents).catch(() => []),
-  ]);
+  const alignment = await computeAlignment(priorities, weekEvents, userTimezone).catch(() => null);
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(weekEvents, userTimezone);
   // Call streak: count consecutive days with completed briefings.
@@ -437,14 +434,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
   const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
-  // Calendar Fit scores: Focus + Energy (0–100%).
-  // Use structured DB profile when available; fall back to parsing from preference facts.
-  const dbEnergyProfile = (() => { try { return energyProfileQueries.get(userId); } catch { return undefined; } })();
-  const preferenceStatements = preferencesFacts.map(f => f.statement);
-  const energyProfile = dbEnergyProfile
-    ? { peakStart: dbEnergyProfile.peak_start, peakEnd: dbEnergyProfile.peak_end, troughStart: dbEnergyProfile.trough_start, troughEnd: dbEnergyProfile.trough_end }
-    : parseEnergyProfile(preferenceStatements);
-  const calendarFit = computeCalendarFit(taggedEvents, alignment, priorities, energySignal, energyProfile);
+  // Calendar Fit scores: Focus (alignment) + Energy (Whoop sleep + recovery).
+  const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
 
   // Focus Scoreboard: per-area progress + milestone celebrations.
   const allMilestones = (() => { try { return focusMilestoneQueries.listForUser(userId); } catch { return []; } })();

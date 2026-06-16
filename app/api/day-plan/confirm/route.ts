@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { userQueries, priorityQueries, energyLogQueries, energyProfileQueries, factQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries } from '@/lib/db';
+import { userQueries, priorityQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries } from '@/lib/db';
 import { getOAuthClient, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { getLatestRecovery } from '@/lib/whoop';
-import { deriveEnergySignal } from '@/lib/energy';
-import { classifyEventsEnergy, computeCalendarFit, parseEnergyProfile } from '@/lib/calendarScore';
+import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
+import { computeCalendarFit } from '@/lib/calendarScore';
 import { computeAlignment } from '@/lib/alignment';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { consumeDeleteToken } from '@/lib/idempotency';
@@ -33,31 +32,16 @@ export async function POST(req: NextRequest) {
 
   const priorities = priorityQueries.getMostRecent(user.id);
 
-  const [todayEvents, weekEvents, whoopRec] = await Promise.all([
+  const [todayEvents, weekEvents, recoveryHistory, todaySleep] = await Promise.all([
     getCalendarEvents(user.id).catch(() => []),
     getWeekEvents(user.id).catch(() => []),
-    getLatestRecovery(user.id).catch(() => null),
+    getRecoveryHistory(user.id, 7).catch(() => []),
+    getLastSleep(user.id).catch(() => null),
   ]);
 
-  const todayEnergyLog = (() => { try { return energyLogQueries.getToday(user.id, today); } catch { return undefined; } })();
-  const energySignal = deriveEnergySignal(todayEnergyLog, whoopRec?.recoveryScore ?? null);
+  const alignment = await computeAlignment(priorities, weekEvents, userTz).catch(() => null);
 
-  const [alignment, tagged] = await Promise.all([
-    computeAlignment(priorities, weekEvents, userTz).catch(() => null),
-    classifyEventsEnergy(todayEvents).catch(() => []),
-  ]);
-
-  const dbProfile = (() => { try { return energyProfileQueries.get(user.id); } catch { return undefined; } })();
-  const energyProfile = dbProfile
-    ? { peakStart: dbProfile.peak_start, peakEnd: dbProfile.peak_end, troughStart: dbProfile.trough_start, troughEnd: dbProfile.trough_end }
-    : (() => {
-        try {
-          const stmts = factQueries.getAll(user.id).filter(f => f.category === 'preference').map(f => f.statement);
-          return parseEnergyProfile(stmts);
-        } catch { return null; }
-      })();
-
-  const fit = computeCalendarFit(tagged, alignment, priorities, energySignal, energyProfile);
+  const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
   const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz);
 
   // Build calendar client
@@ -146,11 +130,8 @@ export async function POST(req: NextRequest) {
       getCalendarEvents(user.id).catch(() => todayEvents),
       getWeekEvents(user.id).catch(() => weekEvents),
     ]);
-    const [newAlignment, newTagged] = await Promise.all([
-      computeAlignment(priorities, newWeekEvts, userTz).catch(() => alignment),
-      classifyEventsEnergy(newTodayEvts).catch(() => tagged),
-    ]);
-    const newFit = computeCalendarFit(newTagged, newAlignment, priorities, energySignal, energyProfile);
+    const newAlignment = await computeAlignment(priorities, newWeekEvts, userTz).catch(() => alignment);
+    const newFit = computeCalendarFit(newAlignment, priorities, recoveryHistory, todaySleep);
     newEdgeScore = newFit.edgeScore;
     try {
       calendarScoreQueries.upsert(user.id, today, {
