@@ -3,6 +3,7 @@ import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
+import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
@@ -331,6 +332,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const calendarPatternsBlock = formatCalendarPatternsForBriefing(
     detectCalendarPatterns(pastCalendarHistory, { timezone: userTimezone }),
   );
+  // Time-allocation trends: how time has split across priorities over recent weeks.
+  const allPrioritiesForAllocation = priorities.length > 0 ? priorities : priorityQueries.getMostRecent(userId);
+  const timeAllocationBlock = formatTimeAllocationForBriefing(
+    computeTimeAllocation(pastCalendarHistory, allPrioritiesForAllocation, { weeksBack: 8 }),
+  );
   // Meeting prep: surface related email + facts + open-loops for today's upcoming events.
   const meetingContextBlock = (() => {
     try {
@@ -532,6 +538,9 @@ ${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
+` : ''}${timeAllocationBlock ? `
+${timeAllocationBlock}
+Use TIME ALLOCATION in section 3 (ALIGNMENT CHECK) only — surface the biggest misalignment concretely (e.g. "60% of your calendar time has been going to meetings, while fundraising — your top priority — has only gotten 8% in the last 8 weeks"). One observation max. Do not repeat it elsewhere.
 ` : ''}${focusScoreboardBlock ? `
 ${focusScoreboardBlock}
 ` : ''}${whoopContextBlock}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `

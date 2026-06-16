@@ -12,6 +12,7 @@ import type { EmailSignal, EmailSignalItem } from './gmail';
 import { formatOpenLoopsForBriefing, type OpenLoop } from './openLoops';
 import { enrichEmailSignal, formatEnrichedEmailForPrompt } from './emailIntel';
 import { detectCalendarPatterns, formatPatternsAsEnergyProfile } from './calendarPatterns';
+import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
@@ -156,6 +157,7 @@ export async function recommendFocusAreas(
 
   const calendarThemes = aggregateEventThemes(rawEvents);
   const calendarPatterns = detectCalendarPatterns(rawEvents);
+  const timeAllocation = computeTimeAllocation(rawEvents, opts.anchors ?? [], { weeksBack: 8 });
   const facts = allFacts.map(f => `[${f.category}] ${f.statement}`);
   const memories = recentMemories.map(m => m.content).filter(Boolean).slice(0, 10) as string[];
 
@@ -216,6 +218,13 @@ export async function recommendFocusAreas(
   const patternsProfile = formatPatternsAsEnergyProfile(calendarPatterns);
   if (patternsProfile) {
     sections.push(patternsProfile);
+    sections.push('');
+  }
+
+  const timeAllocationBlock = formatTimeAllocationForBriefing(timeAllocation);
+  if (timeAllocationBlock) {
+    sections.push(timeAllocationBlock);
+    sections.push('Use TIME ALLOCATION to elevate the most under-served anchor — if a stated priority has < 10% of recent calendar time, treat it as the highest-urgency focus area (label it "high" confidence regardless of other signals).');
     sections.push('');
   }
 
