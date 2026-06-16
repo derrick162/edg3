@@ -9,6 +9,7 @@ import type { calendar_v3 } from 'googleapis';
 import { factQueries, memoryQueries, type Priority } from './db';
 import { getPastCalendarEvents } from './calendar';
 import type { EmailSignal, EmailSignalItem } from './gmail';
+import { formatOpenLoopsForBriefing, type OpenLoop } from './openLoops';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ export interface RecommendOpts {
   date?: string;
   /** Inbox digest from getRecentEmailSignal() — caller fetches, passes in */
   emailSignal?: EmailSignal | null;
+  /** Urgent/overdue open loops — fed in by the briefing; surface as focus-area context */
+  openLoops?: OpenLoop[];
 }
 
 // ── Email signal helpers (pure, exported for testing) ─────────────────────────
@@ -227,6 +230,15 @@ export async function recommendFocusAreas(
       sections.push('- If one anchor-relevant thread exists, surface it as its own specific focus area (name the sender/subject in the rationale). Do NOT bundle unrelated emails into one vague bucket.');
       sections.push('- Only claim "runway impact" if the item genuinely affects cash, debt, or financing — not merely because it involves money or a business name.');
       sections.push('- If no email genuinely moves an anchor, ignore the inbox entirely and focus on calendar + goals.');
+      sections.push('');
+    }
+  }
+
+  if (opts.openLoops && opts.openLoops.length > 0) {
+    const loopsBlock = formatOpenLoopsForBriefing(opts.openLoops);
+    if (loopsBlock) {
+      sections.push(loopsBlock);
+      sections.push('Open-loop guidance: if a commitment_made or awaiting_you loop is clearly tied to a priority anchor, surface it as its own focus area (e.g. "Send CIBC proposal"). A deadline loop qualifies only when due today or overdue. Do NOT surface open loops not connected to an anchor as standalone focus areas.');
       sections.push('');
     }
   }

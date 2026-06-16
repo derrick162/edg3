@@ -9,6 +9,24 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **★ Open Loops / Commitment Tracking (flagship)** — "Edge caught the thing you forgot."
+  - **`lib/openLoops.ts`** — full extraction + DB stub + injection layer:
+    - `OpenLoop` type (`id, user_id, description, type, source, due_date, status, created_at, resolved_at`).
+    - `openLoopStubQueries` — self-creates `open_loops` table on first use (swap for Vijay's `openLoopQueries` when migration lands; marker comment in file). CRUD: `insert`, `getOpen`, `getAll`, `resolve`, `dismiss`, `existsSimilar` (dedup by first-80-chars prefix).
+    - `extractOpenLoopsFromText(text, source, today)` — one Haiku call; extracts up to 8 unresolved loops (commitment_made | awaiting_you | deadline) with optional `due_date` from transcripts or email digests.
+    - `extractOpenLoopsFromCalendar(events)` — keyword matching (deadline/due/submit/pay/file/sign/review) on event titles; pure, no LLM.
+    - `extractAndUpsertOpenLoops(userId, { transcript?, emailSignal?, calendarEvents? })` — multi-source extraction; deduplicates against existing open loops; fire-and-forget.
+    - `getUrgentOpenLoops(userId, today)` — returns loops due today/overdue, plus all commitment_made/awaiting_you (always urgent regardless of due date). Capped at 5.
+    - `formatOpenLoopsForBriefing(loops)` — compact block with `[YOU COMMITTED]`, `[AWAITING YOUR RESPONSE]`, `[DEADLINE]` tags + due dates.
+  - **`app/api/open-loops/route.ts`** — `GET` (3 buckets: commitment_made / awaiting_you / deadline, total count) + `POST` (body: `{ id, action: 'resolve' | 'dismiss' }`). Rate-limited (`openLoops` key, 60/hr).
+  - **`lib/briefing.ts`** — wired: (1) email signal triggers `extractAndUpsertOpenLoops` fire-and-forget alongside fact extraction; (2) `urgentLoopsEarly` fetched before focus rec and passed as `openLoops` opt; (3) `openLoopsBlock` injected into user prompt with surfacing guidance (name loop specifically, offer to close it, max 2 in action items/closing, calm not anxiety-inducing).
+  - **`lib/focusRecommendation.ts`** — `RecommendOpts.openLoops?: OpenLoop[]` added; `formatOpenLoopsForBriefing` injected with anchor-link guidance (only surface loop as focus area if tied to a priority anchor and due today/overdue).
+  - **`app/api/vapi/webhook/route.ts`** — `extractAndUpsertOpenLoops` fire-and-forget after each completed briefing call transcript.
+  - **`lib/vapi.ts`** — OPEN LOOPS voice note: Edge surfaces the most pressing loop naturally in section 4 or 6; mid-call commitment tracking note.
+  - **`lib/rateLimit.ts`** — `openLoops` key added (60/hr).
+  - 26 new tests. 813/813 green, tsc clean, next build clean.
+  - ⚠️ **When Vijay's `open_loops` migration lands on master**: merge + swap stub per the comment at the top of `lib/openLoops.ts` (3-step swap: delete `ensureTable`+`stubQueries`, import `openLoopQueries` from `./db`, remove re-exported `OpenLoop` type).
+  - ⚠️ **Cam**: `GET /api/open-loops` returns `{ commitment_made[], awaiting_you[], deadline[], total }`. `POST /api/open-loops` with `{ id, action: 'resolve'|'dismiss' }`. Design the 3-bucket dashboard surface as dispatched.
 - **2026-06-15** — **Memory dedup + Edge Score calibrating fix** (live Derrick feedback — Dispatch 3).
   - **[BUG FIX] Memory screen shows duplicate facts.** Two-part fix: (1) Dedup at write time: `extractFactsFromTranscript` gains optional `existingFacts` 4th param; injected into the Haiku prompt as "Already stored facts — return ONLY net-new facts". `extractAndUpsertFacts` passes `storedFacts` (already fetched for `knownNames`) — no extra DB call. (2) Consolidate existing dupes: new `consolidateFacts(userId)` groups by `(category, LOWER(TRIM(entity)))`, keeps the fact with the longest statement (newest as tiebreaker), calls `updateFact` if the kept statement needs upgrading, `deleteFact` on all duplicates. Called fire-and-forget after every upsert wave. 10 new tests.
   - **[BUG FIX] Edge Score showed "calibrating" with calendar + email connected.** Two-part fix: (1) `computeCalendarFit` now uses renormalizing blend: calibrating/absent components are excluded and remaining weights renormalized to sum to 100. This means Energy calibrating → Focus/Clarity/Momentum share the 100% between them, headline is always a real number once Focus is computable. (2) Top-level `CalendarFit.calibrating` is now `true` only when there is genuinely NO signal (priorities.length===0 AND energy calibrating AND no clarity inputs). Per-component `ScoreResult.calibrating` still preserved for the breakdown display. Fixed `boolean | undefined` tsc error on the `&&` expression. Added `calibrating?: boolean` and `edgeScore?: number` to the UI-side `CalendarFit` interface in `components/ui/CalendarFitCard.tsx`. Dashboard now passes `calibrating={calendarFit?.calibrating === true}` (was `energyScore.calibrating`). 4 test assertions updated. `CalendarFitCard.tsx` interface sync'd.
