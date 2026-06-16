@@ -1585,8 +1585,8 @@ export default function Dashboard() {
               {briefingText && (
                 <div className="glass-card p-6 mb-6" style={{ borderColor: 'var(--edg-accent-20)' }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY&apos;S BRIEFING PREVIEW</h3>
-                    <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
+                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>✦ THIS MORNING&apos;S BRIEFING</h3>
+                    <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ Dismiss</button>
                   </div>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
                     {briefingText}
@@ -1633,6 +1633,12 @@ export default function Dashboard() {
                 />
               </div>
 
+              {/* Section divider */}
+              <div className="flex items-center gap-3 mb-5" style={{ borderTop: '1px solid var(--edg-hairline)', paddingTop: '1.25rem' }}>
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-faint)', letterSpacing: '0.1em' }}>Your day</span>
+                <div className="flex-1" style={{ height: 1, background: 'var(--edg-hairline)' }} />
+              </div>
+
               {/* Focus recommendation — stays visible after confirm (transitions to locked state) */}
               {(!focusRecDismissed || confirmedFocusAreas) && (
                 <div className="mb-6">
@@ -1677,7 +1683,11 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Learn — content cards */}
+              {/* Learn — section label + content cards */}
+              <div className="flex items-center gap-3 mb-4" style={{ borderTop: '1px solid var(--edg-hairline)', paddingTop: '1.25rem' }}>
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-faint)', letterSpacing: '0.1em' }}>Learn</span>
+                <div className="flex-1" style={{ height: 1, background: 'var(--edg-hairline)' }} />
+              </div>
               <div className="mb-6">
                 <ContentSection />
               </div>
