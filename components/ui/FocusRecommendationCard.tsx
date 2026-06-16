@@ -8,6 +8,7 @@ export interface FocusRecommendationArea {
   title: string;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
+  anchor?: string;   // e.g. "Extend runway" — the top-3 priority this focus serves
 }
 
 export interface FocusRecommendation {
@@ -129,9 +130,16 @@ function AreaRow({
           )}
 
           {/* Rationale */}
-          <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs leading-relaxed mb-1.5" style={{ color: 'var(--text-muted)' }}>
             {area.rationale}
           </p>
+
+          {/* Anchor tie-in */}
+          {area.anchor && (
+            <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
+              ↳ {area.anchor}
+            </p>
+          )}
 
           {/* Confidence chip + rank label */}
           <div className="flex items-center gap-2">
@@ -334,9 +342,16 @@ export function FocusRecommendationCard({
               >
                 {i + 1}
               </div>
-              <p className="flex-1 text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
-                {a.title}
-              </p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
+                  {a.title}
+                </p>
+                {a.anchor && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                    ↳ {a.anchor}
+                  </p>
+                )}
+              </div>
               <span className="text-xs flex-shrink-0 font-medium" style={{ color: 'var(--text-faint)' }}>
                 {rankLabels[i]}
               </span>
