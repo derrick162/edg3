@@ -47,6 +47,57 @@ describe('computeTimeAllocation', () => {
     expect(computeTimeAllocation(evts, [], { weeksBack: 8 })).toBeNull();
   });
 
+  it('credits exercise time to a fitness/weight goal (Get to 130 lbs)', () => {
+    // Regression: gym/walks were dumped into 'routine' and "Get to 130 lbs" had
+    // no matchable keyword → goal showed 0h and falsely triggered "neglected".
+    const evts = [
+      event('Gym', 2, 1),
+      event('Gym', 5, 1),
+      event('Morning walk', 1, 1),
+      event('Morning walk', 4, 1),
+      event('Workout', 9, 1.5),
+      event('Team standup', 3, 0.5),
+    ];
+    const result = computeTimeAllocation(evts, [priority('Get to 130 lbs')], { weeksBack: 8 });
+    expect(result).not.toBeNull();
+    const goal = result!.buckets.find(b => b.label === 'Get to 130 lbs');
+    expect(goal).toBeDefined();
+    expect(goal!.hours).toBeGreaterThanOrEqual(5); // 1+1+1+1+1.5
+    // And the false "virtually no calendar time" flag must NOT fire for the goal.
+    expect(result!.biggestMisalignment ?? '').not.toContain('130 lbs');
+  });
+
+  it('does NOT flag an UNMEASURABLE priority as neglected (no keyword, no category)', () => {
+    // "Get to 130" — no fitness keyword (no "lbs"), no usable word ≥4 chars → we
+    // genuinely can't measure it from the calendar, so we must stay silent rather
+    // than emit a false "0% / highest-urgency" nag, even under meeting overload.
+    const evts = [
+      event('Team standup', 2, 1),
+      event('Code review', 3, 1),
+      event('Email triage', 4, 1),
+      event('1:1 with Sam', 5, 1),
+      event('Sprint planning', 6, 1),
+    ];
+    const result = computeTimeAllocation(evts, [priority('Get to 130')], { weeksBack: 8 });
+    expect(result).not.toBeNull();
+    expect(result!.biggestMisalignment).toBeNull();
+  });
+
+  it('still credits exercise to routine when no fitness goal exists', () => {
+    const evts = [
+      event('Gym', 2, 1),
+      event('Morning walk', 1, 1),
+      event('Fundraising pitch prep', 5, 2),
+      event('Fundraising call', 7, 1),
+      event('Team standup', 3, 0.5),
+    ];
+    const result = computeTimeAllocation(evts, [priority('fundraising')], { weeksBack: 8 });
+    expect(result).not.toBeNull();
+    const routine = result!.buckets.find(b => b.label === 'routine');
+    expect(routine).toBeDefined();
+    expect(routine!.hours).toBeGreaterThanOrEqual(2); // gym + walk stay routine
+  });
+
   it('assigns events to matching priority bucket', () => {
     const evts = [
       event('Fundraising pitch prep', 5, 2),

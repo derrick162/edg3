@@ -72,6 +72,49 @@ function priorityScore(eventTitle: string, priorityText: string): number {
   return pWords.filter(w => haystack.includes(w)).length;
 }
 
+// ── Goal categories ─────────────────────────────────────────────────────────
+//
+// Some goals are served by activities we'd otherwise treat as "routine" (a
+// weight goal is advanced by going to the gym and walking), and some goal
+// texts have no keyword the matcher can use ("Get to 130 lbs" → get/130/lbs are
+// all too short or stopwords). Without this, exercise time was dumped into the
+// routine bucket and the goal showed 0% — falsely triggering a "neglected,
+// highest-urgency" flag for a goal the user actively works on.
+//
+// When a PRIORITY matches a category's `priorityRe`, events matching that
+// category's `activityRe` are credited TO the priority instead of routine.
+interface GoalCategory {
+  name: string;
+  priorityRe: RegExp; // matches the priority/anchor text
+  activityRe: RegExp; // matches event titles that serve this goal
+}
+
+const GOAL_CATEGORIES: GoalCategory[] = [
+  {
+    name: 'fitness',
+    priorityRe: /\b(weight|lbs?|kgs?|pounds?|fitness|gym|workout|muscle|strength|lean|physique|bodyweight|cardio|in shape|lose fat)\b/i,
+    activityRe: /\b(gym|workout|work out|lift|lifting|weights?|training|train|cardio|run|running|jog|walk|hike|yoga|pilates|spin|swim|cycle|cycling|ride|exercise|weigh|fitness)\b/i,
+  },
+];
+
+/** True when the event serves the priority via a known goal category. */
+function matchesPriorityCategory(eventTitle: string, priorityText: string): boolean {
+  return GOAL_CATEGORIES.some(c => c.priorityRe.test(priorityText) && c.activityRe.test(eventTitle));
+}
+
+/**
+ * Can this priority's progress actually be measured from calendar titles?
+ * True if it has at least one usable keyword OR belongs to a goal category.
+ * We must NOT flag an unmeasurable priority as "neglected" — that's a false
+ * signal (we simply can't see its work in the calendar), not real neglect.
+ */
+function isMeasurablePriority(priorityText: string): boolean {
+  const hasKeyword = priorityText.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .some(w => w.length >= 4 && !STOP.has(w));
+  const hasCategory = GOAL_CATEGORIES.some(c => c.priorityRe.test(priorityText));
+  return hasKeyword || hasCategory;
+}
+
 // ── Core function ─────────────────────────────────────────────────────────────
 
 /**
@@ -123,21 +166,22 @@ export function computeTimeAllocation(
     if (hours <= 0 || hours > 24) continue;  // skip implausible durations
     totalHours += hours;
 
-    if (isRoutineEvent(title)) {
-      bucketHours.set('routine', (bucketHours.get('routine') ?? 0) + hours);
-      continue;
-    }
-
-    // Assign to the best-matching priority (highest score wins)
+    // Assign to the best-matching priority (highest score wins). Run this BEFORE
+    // the routine catch-all so a fitness goal gets credited for gym/walk time;
+    // events with no priority match still fall through to routine below.
     let bestPriority: string | null = null;
     let bestScore = 0;
     for (const p of priorities) {
-      const score = priorityScore(title, p.text);
+      // Keyword score, plus a strong boost when the event serves the priority's
+      // goal category (e.g. "Gym" → "Get to 130 lbs"), which keyword matching misses.
+      const score = priorityScore(title, p.text) + (matchesPriorityCategory(title, p.text) ? 2 : 0);
       if (score > bestScore) { bestScore = score; bestPriority = p.text; }
     }
 
     if (bestPriority && bestScore > 0) {
       bucketHours.set(bestPriority, (bucketHours.get(bestPriority) ?? 0) + hours);
+    } else if (isRoutineEvent(title)) {
+      bucketHours.set('routine', (bucketHours.get('routine') ?? 0) + hours);
     } else if (isMeetingEvent(title)) {
       bucketHours.set('meetings', (bucketHours.get('meetings') ?? 0) + hours);
     } else {
@@ -157,10 +201,13 @@ export function computeTimeAllocation(
     }))
     .sort((a, b) => b.hours - a.hours);
 
-  // Biggest misalignment: most hours in 'meetings' or 'other' + least hours on a priority
+  // Biggest misalignment: most hours in 'meetings' or 'other' + least hours on a priority.
+  // Only consider MEASURABLE priorities — flagging a goal we can't see in the calendar
+  // (no keyword, no activity category) as "neglected" is a false signal, not real neglect.
   let biggestMisalignment: string | null = null;
-  if (priorities.length > 0) {
-    const lowestPriority = [...priorities]
+  const measurable = priorities.filter(p => isMeasurablePriority(p.text));
+  if (measurable.length > 0) {
+    const lowestPriority = [...measurable]
       .map(p => ({ text: p.text, hours: bucketHours.get(p.text) ?? 0 }))
       .sort((a, b) => a.hours - b.hours)[0];
     const meetingHours = bucketHours.get('meetings') ?? 0;
