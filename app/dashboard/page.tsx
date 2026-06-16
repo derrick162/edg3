@@ -1588,9 +1588,9 @@ export default function Dashboard() {
         {/* Main content */}
         <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4 md:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 md:mb-8">
             <div>
-              <h1 className="text-2xl font-bold">{(() => {
+              <h1 className="text-xl md:text-2xl font-bold">{(() => {
                 const h = new Date().getHours();
                 const g = h >= 18 ? 'Good evening' : h >= 12 ? 'Good afternoon' : 'Good morning';
                 return `${g}, ${user.name.split(' ')[0]}`;
@@ -1599,11 +1599,11 @@ export default function Dashboard() {
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3 flex-shrink-0">
               <button
                 onClick={openCall}
                 disabled={openingCall}
-                className="btn-secondary text-sm py-2 px-4"
+                className="btn-secondary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
                 title="An open conversation — no briefing"
               >
                 {openingCall ? 'Calling…' : '💬 Open call'}
@@ -1611,7 +1611,7 @@ export default function Dashboard() {
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
-                className="btn-primary text-sm py-2 px-4"
+                className="btn-primary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
               >
                 {initiatingCall ? 'Calling…' : '📞 Call me now'}
               </button>
