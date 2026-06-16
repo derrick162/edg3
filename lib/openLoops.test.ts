@@ -193,17 +193,10 @@ describe('extractOpenLoopsFromCalendar', () => {
 
 describe('getUrgentOpenLoops', () => {
   it('returns loops due today or overdue', () => {
-<<<<<<< HEAD
     m.list.mockReturnValue([
       makeLoop({ dueDate: '2026-06-14', type: 'deadline' }),   // overdue
       makeLoop({ id: 2, dueDate: '2026-06-15', type: 'deadline' }), // today
       makeLoop({ id: 3, dueDate: '2026-06-20', type: 'deadline' }), // future — skip
-=======
-    mockAll.mockReturnValue([
-      makeDbLoop({ dueDate: '2026-06-14', type: 'deadline' }),  // overdue
-      makeDbLoop({ id: 2, dueDate: '2026-06-15', type: 'deadline' }), // today
-      makeDbLoop({ id: 3, dueDate: '2026-06-20', type: 'deadline' }), // future — skip
->>>>>>> origin/master
     ]);
     const urgent = getUrgentOpenLoops(1, '2026-06-15');
     expect(urgent).toHaveLength(2);
@@ -222,13 +215,8 @@ describe('getUrgentOpenLoops', () => {
   });
 
   it('caps at 5 urgent loops', () => {
-<<<<<<< HEAD
     const loops = Array.from({ length: 8 }, (_, i) => makeLoop({ id: i, dueDate: '2026-06-10' }));
     m.list.mockReturnValue(loops);
-=======
-    const loops = Array.from({ length: 8 }, (_, i) => makeDbLoop({ id: i, dueDate: '2026-06-10' }));
-    mockAll.mockReturnValue(loops);
->>>>>>> origin/master
     expect(getUrgentOpenLoops(1, '2026-06-15')).toHaveLength(5);
   });
 
@@ -382,13 +370,8 @@ describe('extractAndUpsertOpenLoops', () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([
       { description: 'Send CIBC proposal', type: 'commitment_made', due_date: null },
     ])));
-<<<<<<< HEAD
     // existsSimilar: list returns a loop with matching description prefix
     m.list.mockReturnValue([makeLoop({ description: 'Send CIBC proposal' })]);
-=======
-    // existsSimilar returns true → skip insert
-    mockAll.mockReturnValue([makeDbLoop()]);
->>>>>>> origin/master
     await extractAndUpsertOpenLoops(1, { transcript: 'I said I would send the CIBC proposal next week for sure' });
     expect(m.insert).not.toHaveBeenCalled();
   });
