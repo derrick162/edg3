@@ -408,7 +408,7 @@ export function EdgeScoreCard({
         animation: 'score-rise 0.45s ease both',
       }}
     >
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3">
         {/* Arc gauge */}
         <div className="flex-shrink-0">
           <ArcGauge score={s} color={color} glow={glow} />
