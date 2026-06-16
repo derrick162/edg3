@@ -538,8 +538,8 @@ describe('formatWhoopHistoryForCall', () => {
 
   it('averages sleep duration in spoken hours/minutes', () => {
     const slp = [
-      { date: '2026-06-13', durationMs: 7 * 3600000, performancePct: 80 },
-      { date: '2026-06-14', durationMs: 8 * 3600000, performancePct: 85 },
+      { date: '2026-06-13', durationMs: 7 * 3600000, performancePct: 72 },  // 7h
+      { date: '2026-06-14', durationMs: 8 * 3600000, performancePct: 80 },  // 8h → avg 7h30m
     ];
     expect(formatWhoopHistoryForCall([], slp, [])).toContain('sleep averaged 7 hours 30 minutes');
   });
