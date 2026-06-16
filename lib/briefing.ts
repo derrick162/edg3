@@ -14,6 +14,7 @@ import { focusMilestoneQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
 import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
+import { getRecentEmailSignal } from './gmail';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -249,7 +250,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const recentBriefings = briefingQueries.getRecent(userId, 30);
 
-  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays] = await Promise.all([
+  const [calendarEvents, weekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
     getLatestRecovery(userId).catch(() => null),
@@ -259,6 +260,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getSleepHistory(userId).catch(() => []),
     getStrainHistory(userId).catch(() => []),
     getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
+    getRecentEmailSignal(userId, { days: 14, max: 20 }).catch(() => null),
   ]);
   // Build energy signal from Whoop recovery for focus recommendation modulation.
   const focusEnergySignal = whoopRecovery
@@ -276,6 +278,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     todayEvents: calendarEvents,
     anchors: priorities.length > 0 ? priorities : undefined,
     date: focusDate,
+    emailSignal: emailSignal ?? undefined,
   }).catch(() => null);
   const recoveryHistoryPoints = recoveryHistory.map(d => ({ date: d.date, value: d.recoveryScore }));
   const whoopTrend = computeWhoopTrends(

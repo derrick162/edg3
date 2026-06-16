@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { calendar_v3 } from 'googleapis';
 import { factQueries, memoryQueries, type Priority } from './db';
 import { getPastCalendarEvents } from './calendar';
+import type { EmailSignal, EmailSignalItem } from './gmail';
 
 // ── Public contract ───────────────────────────────────────────────────────────
 
@@ -39,6 +40,33 @@ export interface RecommendOpts {
   anchors?: Priority[];
   /** YYYY-MM-DD representing today in the user's local timezone */
   date?: string;
+  /** Inbox digest from getRecentEmailSignal() — caller fetches, passes in */
+  emailSignal?: EmailSignal | null;
+}
+
+// ── Email signal helpers (pure, exported for testing) ─────────────────────────
+
+const URGENT_SUBJECT_RE = /\b(urgent|action required|overdue|past due|final notice|collector|debt|legal|lawsuit|penalty|delinquent|default|deadline|payment due|response required|demand|credit bureau|collections?|eviction)\b/i;
+const URGENT_SENDER_RE  = /\b(cibc|bmo|td\b|rbc|scotiabank|collections?|recovery|creditor|law firm|attorney|counsel|legal|municipal|irs|cra|revenue canada|bailiff)\b/i;
+
+/** Returns true when an email thread is likely time-sensitive / financial / legal. */
+export function isUrgentEmail(item: Pick<EmailSignalItem, 'sender' | 'subject' | 'isImportant'>): boolean {
+  return item.isImportant || URGENT_SUBJECT_RE.test(item.subject) || URGENT_SENDER_RE.test(item.sender);
+}
+
+/**
+ * Format an inbox digest for inclusion in the focus-recommendation prompt.
+ * Returns '' when scope is missing or no threads available.
+ * Exported for unit testing.
+ */
+export function formatEmailSignalForPrompt(signal: EmailSignal): string {
+  if (signal.scopeMissing || signal.items.length === 0) return '';
+  return signal.items
+    .map(item => {
+      const tag = isUrgentEmail(item) ? ' [URGENT/FINANCIAL]' : item.isUnread ? ' [unread]' : '';
+      return `  • From: ${item.sender} | Subject: ${item.subject}${tag}\n    Snippet: ${item.snippet.slice(0, 120)}`;
+    })
+    .join('\n');
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
@@ -129,6 +157,10 @@ export async function recommendFocusAreas(
   if (opts.energySignal) basedOn.push(`Whoop recovery: ${opts.energySignal.tier} (${opts.energySignal.recoveryScore ?? '?'}%)`);
   if (opts.todayEvents && opts.todayEvents.length > 0) basedOn.push(`today's calendar (${opts.todayEvents.length} events)`);
   if (opts.anchors && opts.anchors.length > 0) basedOn.push(`${opts.anchors.length} overarching priorities`);
+  if (opts.emailSignal && !opts.emailSignal.scopeMissing && opts.emailSignal.items.length > 0) {
+    const urgentCount = opts.emailSignal.items.filter(isUrgentEmail).length;
+    basedOn.push(`email inbox (${opts.emailSignal.items.length} thread${opts.emailSignal.items.length !== 1 ? 's' : ''}${urgentCount > 0 ? `, ${urgentCount} urgent` : ''})`);
+  }
 
   // Degrade on thin data
   const hasSomething = calendarThemes.length >= 3 || facts.length >= 2 || memories.length >= 2;
@@ -180,6 +212,22 @@ export async function recommendFocusAreas(
     sections.push('RECENT CALL NOTES:');
     sections.push(memories.map(m => `  ${m}`).join('\n'));
     sections.push('');
+  }
+
+  if (opts.emailSignal) {
+    const emailBody = formatEmailSignalForPrompt(opts.emailSignal);
+    if (emailBody) {
+      const urgentCount = opts.emailSignal.items.filter(isUrgentEmail).length;
+      sections.push('EMAIL INBOX DIGEST (past 14 days — header + snippet only, no body access):');
+      sections.push(emailBody);
+      sections.push('');
+      if (urgentCount > 0) {
+        sections.push(`INBOX PRIORITY WEIGHTING: ${urgentCount} thread(s) flagged [URGENT/FINANCIAL] — financial, legal, or collection matters. These are HIGHEST-PRIORITY focus candidates for today. An email from a collector, bank, or lawyer about money is always higher priority than a routine calendar block. If such an email is present, propose dealing with it as focus area #1.`);
+      } else {
+        sections.push('INBOX WEIGHTING: Weight unread or marked-important emails toward action items when they represent genuine commitments or time-sensitive matters.');
+      }
+      sections.push('');
+    }
   }
 
   sections.push(
