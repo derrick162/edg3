@@ -11,6 +11,8 @@ export interface RecoveryHistoryPoint {
   date: string;
 }
 
+export type WhoopFlag = 'OVERREACHING' | 'SLEEP_DEBT' | 'HIGH_STRAIN_STREAK' | 'RECOVERY_DECLINING_3D' | 'RECOVERY_LOW_STREAK';
+
 export interface RecoveryCardProps {
   /** 0–100 recovery score from Whoop */
   recoveryScore: number;
@@ -26,6 +28,15 @@ export interface RecoveryCardProps {
   strain?: number;
   /** Up to 14 days of history for sparkline — newest last */
   history?: RecoveryHistoryPoint[];
+  /**
+   * Points above (positive) or below (negative) your 30-day baseline.
+   * Shown when |deviation| ≥ 5. e.g. -18 → "18 pts below your norm".
+   */
+  deviationPts?: number | null;
+  /** Active Whoop intelligence flags — shown as calm chips */
+  flags?: WhoopFlag[];
+  /** Edge's suggested action for today based on recovery context */
+  recoveryAction?: string | null;
   className?: string;
 }
 
@@ -134,6 +145,22 @@ function SparklinePlaceholder() {
   );
 }
 
+const FLAG_CONFIG: Record<WhoopFlag, { label: string; color: string; bg: string }> = {
+  OVERREACHING:           { label: 'Overreaching',     color: 'var(--edg-danger)',  bg: 'rgba(239,68,68,0.08)'  },
+  SLEEP_DEBT:             { label: 'Sleep debt',        color: 'var(--edg-warning)', bg: 'rgba(245,158,11,0.08)' },
+  HIGH_STRAIN_STREAK:     { label: 'High load streak',  color: 'var(--edg-warning)', bg: 'rgba(245,158,11,0.08)' },
+  RECOVERY_DECLINING_3D:  { label: '3-day slide',       color: 'var(--edg-warning)', bg: 'rgba(245,158,11,0.08)' },
+  RECOVERY_LOW_STREAK:    { label: 'Low 3 days',        color: 'var(--edg-danger)',  bg: 'rgba(239,68,68,0.08)'  },
+};
+
+// OVERREACHING subsumes the two flags that make it up — show only the combined label
+function dedupFlags(flags: WhoopFlag[]): WhoopFlag[] {
+  if (flags.includes('OVERREACHING')) {
+    return flags.filter(f => f !== 'HIGH_STRAIN_STREAK' && f !== 'RECOVERY_DECLINING_3D');
+  }
+  return flags;
+}
+
 export function RecoveryCard({
   recoveryScore,
   tier,
@@ -142,6 +169,9 @@ export function RecoveryCard({
   sleepHours,
   strain,
   history,
+  deviationPts,
+  flags,
+  recoveryAction,
   className = '',
 }: RecoveryCardProps) {
   // Sleep score is the hero when available; recovery is secondary.
@@ -273,6 +303,53 @@ export function RecoveryCard({
           : <SparklinePlaceholder />
         }
       </div>
+
+      {/* ── Whoop Intelligence ── */}
+      {(deviationPts != null || (flags && flags.length > 0) || recoveryAction) && (
+        <div style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--edg-hairline)' }}>
+          {/* Deviation from baseline */}
+          {deviationPts != null && Math.abs(deviationPts) >= 5 && (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+              {deviationPts < 0
+                ? `↓ ${Math.abs(deviationPts)} pts below your norm`
+                : `↑ ${deviationPts} pts above your norm`}
+            </p>
+          )}
+
+          {/* Flag chips — calm, not alarmist */}
+          {flags && flags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: recoveryAction ? 8 : 0 }}>
+              {dedupFlags(flags).map(flag => {
+                const cfg = FLAG_CONFIG[flag];
+                return (
+                  <span
+                    key={flag}
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: '2px 7px',
+                      borderRadius: 99,
+                      color: cfg.color,
+                      background: cfg.bg,
+                      border: `1px solid ${cfg.color}33`,
+                    }}
+                  >
+                    {cfg.label}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Recovery action suggestion */}
+          {recoveryAction && (
+            <p style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.5, marginTop: 4 }}>
+              <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Today: </span>
+              {recoveryAction}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

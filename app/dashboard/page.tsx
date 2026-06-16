@@ -816,6 +816,11 @@ export default function Dashboard() {
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
+  const [whoopIntelligence, setWhoopIntelligence] = useState<{
+    deviationPts: number | null;
+    flags: string[];
+    recoveryAction: string | null;
+  } | null>(null);
   const [whoopData, setWhoopData] = useState<{
     recoveryScore: number | null;
     tier: 'high' | 'medium' | 'low' | null;
@@ -916,6 +921,11 @@ export default function Dashboard() {
         fetch('/api/whoop/recovery')
           .then(r => r.ok ? r.json() : null)
           .then(rd => { if (rd && rd.connected) setWhoopData(rd); })
+          .catch(() => {});
+        // Whoop Intelligence (deviation, flags, action) — gracefully 404 until Darren ships endpoint
+        fetch('/api/whoop/intelligence')
+          .then(r => r.ok ? r.json() : null)
+          .then(intel => { if (intel) setWhoopIntelligence(intel); })
           .catch(() => {});
       }
     }).catch(() => {});
@@ -1522,6 +1532,9 @@ export default function Dashboard() {
                       sleepTier={whoopData.sleepTier ?? undefined}
                       strain={whoopData.strain ?? undefined}
                       history={whoopData.history}
+                      deviationPts={whoopIntelligence?.deviationPts ?? null}
+                      flags={(whoopIntelligence?.flags ?? []) as any}
+                      recoveryAction={whoopIntelligence?.recoveryAction ?? null}
                     />
                   </div>
                 )}
