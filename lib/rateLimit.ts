@@ -6,9 +6,14 @@
  * beyond the limit receive a 429 with a Retry-After header.
  *
  * Limits (chosen to accommodate real users while blocking abuse):
- *   login       — 10 per 15 min per IP  (brute-force protection)
- *   signup      — 5  per 60 min per IP  (spam/scraper prevention)
- *   trigger-call — 3  per  5 min per IP  (admin endpoint; costly Vapi call)
+ *   login          — 10 per 15 min per IP    (brute-force protection)
+ *   signup         — 5  per 60 min per IP    (spam/scraper prevention)
+ *   trigger-call   — 3  per  5 min per IP    (admin endpoint; costly Vapi call)
+ *   dayPlan        — 10 per 60 min per user  (LLM plan generation)
+ *   dayPlanConfirm — 5  per 60 min per user  (calendar mutations + LLM)
+ *   focusRecommend — 20 per 60 min per user  (LLM recommendation)
+ *   focusConfirm   — 30 per 60 min per user  (DB write)
+ *   calendarScores — 20 per 60 min per user  (LLM scoring)
  *
  * The NextRequest helper extracts the real client IP from Railway's proxy headers.
  */
@@ -19,10 +24,15 @@ import { rateLimitQueries } from './db';
 // ── Limits ────────────────────────────────────────────────────────────────────
 
 export const LIMITS = {
-  login:        { limit: 10, windowMs: 15 * 60 * 1000 },  // 10 / 15 min
-  signup:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5 / hour
-  triggerCall:  { limit: 3,  windowMs:  5 * 60 * 1000 },  // 3 / 5 min
-  adminApi:     { limit: 60, windowMs: 60 * 1000 },        // 60 / min (CoS agent)
+  login:          { limit: 10, windowMs: 15 * 60 * 1000 },  // 10 / 15 min
+  signup:         { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5 / hour
+  triggerCall:    { limit: 3,  windowMs:  5 * 60 * 1000 },  // 3 / 5 min
+  adminApi:       { limit: 60, windowMs: 60 * 1000 },        // 60 / min (CoS agent)
+  dayPlan:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user
+  dayPlanConfirm: { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user
+  focusRecommend: { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user
+  focusConfirm:   { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user
+  calendarScores: { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

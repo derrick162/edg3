@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { userQueries, priorityQueries, energyLogQueries, energyProfileQueries, factQueries, calendarScoreQueries, effectiveTimezone, calendarQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
+import { userQueries, priorityQueries, energyLogQueries, energyProfileQueries, factQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries } from '@/lib/db';
 import { getOAuthClient, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getLatestRecovery } from '@/lib/whoop';
 import { deriveEnergySignal } from '@/lib/energy';
@@ -15,6 +16,9 @@ import { google } from 'googleapis';
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('dayPlanConfirm', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const body = await req.json().catch(() => ({}));
   const { planId } = body as { planId?: string };
@@ -120,6 +124,16 @@ export async function POST(req: NextRequest) {
   if (undoOps.length) {
     recordUndo(user.id, `day plan — ${doneDescs.length} action${doneDescs.length !== 1 ? 's' : ''}`, undoOps);
   }
+
+  auditLogQueries.record({
+    userId: user.id,
+    action: 'applyDayPlan',
+    argsJson: JSON.stringify({ planId, actionCount: plan.actions.length }),
+    resultText: doneDescs.length > 0
+      ? `Applied ${doneDescs.length} calendar change${doneDescs.length !== 1 ? 's' : ''}: ${doneDescs.slice(0, 3).join('; ')}${doneDescs.length > 3 ? ' …' : ''}`
+      : 'No actions could be executed',
+    ok: doneDescs.length > 0,
+  });
 
   if (doneDescs.length === 0) {
     return NextResponse.json({ ok: false, error: 'No actions could be executed' }, { status: 422 });

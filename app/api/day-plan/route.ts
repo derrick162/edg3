@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { userQueries, priorityQueries, energyLogQueries, energyProfileQueries, factQueries, effectiveTimezone } from '@/lib/db';
 import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getLatestRecovery } from '@/lib/whoop';
@@ -37,6 +38,9 @@ function fmtDate(dateStr: string): string {
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('dayPlan', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const profile = userQueries.findById(user.id);
   const userTz = profile ? effectiveTimezone(profile) : 'UTC';

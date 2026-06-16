@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { recommendFocusAreas, type EnergySignal } from '@/lib/focusRecommendation';
 import { priorityQueries, userQueries } from '@/lib/db';
 import { getCalendarEvents } from '@/lib/calendar';
@@ -8,6 +9,9 @@ import { getLatestRecovery } from '@/lib/whoop';
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('focusRecommend', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   // Read timezone from user profile (default UTC)
   const profile = userQueries.findById(user.id);

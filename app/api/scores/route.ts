@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { format, startOfWeek } from 'date-fns';
 import { getSession } from '@/lib/auth';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { priorityQueries, factQueries, energyLogQueries, effectiveTimezone, energyProfileQueries, calendarScoreQueries, dailyFocusQueries, type Priority } from '@/lib/db';
 import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getLatestRecovery } from '@/lib/whoop';
@@ -11,6 +12,9 @@ import { computeCalendarFit, parseEnergyProfile, classifyEventsEnergy } from '@/
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('calendarScores', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const userTimezone = effectiveTimezone(user);
   const today  = new Date().toLocaleDateString('en-CA', { timeZone: userTimezone });

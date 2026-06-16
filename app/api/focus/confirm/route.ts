@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { dailyFocusQueries, userQueries, type DailyFocusRecord } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
+import { dailyFocusQueries, userQueries, auditLogQueries, type DailyFocusRecord } from '@/lib/db';
 import type { FocusArea } from '@/lib/focusRecommendation';
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('focusConfirm', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const body = await req.json().catch(() => ({}));
   const { areas, date: dateParam } = body as { areas?: unknown; date?: unknown };
@@ -47,6 +51,14 @@ export async function POST(req: NextRequest) {
   const generatedAt = new Date().toISOString();
   dailyFocusQueries.upsert(user.id, date, JSON.stringify(cleaned), generatedAt);
   dailyFocusQueries.confirm(user.id, date);
+
+  auditLogQueries.record({
+    userId: user.id,
+    action: 'confirmFocusAreas',
+    argsJson: JSON.stringify({ date, count: cleaned.length }),
+    resultText: `Saved ${cleaned.length} focus area${cleaned.length !== 1 ? 's' : ''} for ${date}: ${cleaned.map(a => a.title).join(', ')}`,
+    ok: true,
+  });
 
   return NextResponse.json({ ok: true, date, count: cleaned.length });
 }
