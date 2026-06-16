@@ -6,6 +6,10 @@ function recoveryTier(score: number): 'green' | 'yellow' | 'red' {
   return score >= 67 ? 'green' : score >= 34 ? 'yellow' : 'red';
 }
 
+function sleepTier(pct: number): 'green' | 'yellow' | 'red' {
+  return pct >= 75 ? 'green' : pct >= 50 ? 'yellow' : 'red';
+}
+
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -22,7 +26,7 @@ export async function GET() {
   return NextResponse.json({
     connected: true,
     recovery: recoveryRaw ? { score: recoveryRaw.recoveryScore, tier: recoveryTier(recoveryRaw.recoveryScore) } : null,
-    sleep:    sleepRaw    ? { durationMs: sleepRaw.durationMs } : null,
+    sleep:    sleepRaw    ? { durationMs: sleepRaw.durationMs, score: sleepRaw.performancePct, tier: sleepTier(sleepRaw.performancePct) } : null,
     strain:   strainRaw   ? { strain: strainRaw.strain }        : null,
   });
 }

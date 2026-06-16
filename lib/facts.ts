@@ -9,6 +9,7 @@
 
 import { factQueries, type Fact } from './db';
 import type { calendar_v3 } from 'googleapis';
+import type { EmailSignal } from './gmail';
 
 export type ExtractedFact = {
   category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
@@ -140,6 +141,92 @@ export async function extractAndUpsertFacts(
 export function buildPreferencesPrompt(preferences: string[]): string {
   if (!preferences.length) return '';
   return preferences.slice(0, 10).map(p => `- ${p}`).join('\n');
+}
+
+/**
+ * Extract durable facts from an email inbox signal and upsert them for the user.
+ * One Haiku call on the formatted digest. Never blocks the caller — any failure is a no-op.
+ * Requires gmail.readonly to have been granted (caller passes the fetched signal).
+ */
+export async function extractAndUpsertFactsFromEmail(
+  userId: number,
+  emailSignal: EmailSignal,
+  userName?: string,
+): Promise<void> {
+  if (emailSignal.scopeMissing || emailSignal.items.length === 0) return;
+  try {
+    const digest = emailSignal.items
+      .map(item => `From: ${item.sender} | Subject: ${item.subject}\nSnippet: ${item.snippet.slice(0, 120)}`)
+      .join('\n\n');
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const userLine = userName
+      ? `The user's name is "${userName}". Do NOT create a "person" fact about the user themselves.\n`
+      : '';
+
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `Extract up to 5 DURABLE facts about the user's life or situation from this email inbox digest.
+Return ONLY a JSON array — no preamble, no markdown.
+${userLine}
+Each item: {"category":"<category>","statement":"<one clear timeless sentence>","entity":"<name or null>","confidence":"high"|"low"}
+
+Categories: "person" | "project" | "goal" | "preference" | "fact"
+Rules:
+- Focus on DURABLE context: ongoing negotiations, relationships, financial situations, legal matters, projects.
+- Example of good fact: "User is in debt negotiation with CIBC" or "User owes a past-due balance to a collection agency."
+- Statement must be timeless (not "today"/"yesterday"). Entity = company or person name.
+- confidence "low" if name/entity may be garbled; "high" otherwise.
+- Skip: newsletters, promotions, casual social email, meeting invites.
+- Return [] if nothing durable found.
+
+Email digest (header + snippet only):
+${digest}`,
+      }],
+    });
+
+    const raw = res.content
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text?: string }) => b.text ?? '')
+      .join('')
+      .trim();
+
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return;
+
+    const parsed: unknown[] = JSON.parse(match[0]);
+    let stored = 0;
+    for (const f of parsed) {
+      if (
+        typeof f !== 'object' || f === null ||
+        !('category' in f) || !('statement' in f) ||
+        !VALID_CATEGORIES.has((f as ExtractedFact).category) ||
+        typeof (f as ExtractedFact).statement !== 'string' ||
+        !(f as ExtractedFact).statement.trim()
+      ) continue;
+
+      const fact = f as ExtractedFact;
+      factQueries.upsertFact(
+        userId,
+        fact.category,
+        fact.statement.trim(),
+        fact.entity?.trim() || null,
+        fact.confidence === 'low' ? 'low' : 'high',
+        null,
+      );
+      stored++;
+    }
+    if (stored > 0) {
+      console.log(`[facts] Upserted ${stored} facts from email signal for user ${userId}`);
+    }
+  } catch (err) {
+    console.error('[facts] extractAndUpsertFactsFromEmail failed:', err);
+  }
 }
 
 /**

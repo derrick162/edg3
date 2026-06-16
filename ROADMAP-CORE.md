@@ -9,6 +9,13 @@
 > backlog below.
 
 ## Changelog
+- **2026-06-15** — **5-item PM dispatch: email→memory, home page IA, sleep score, EdgeScoreCard data, Fix It button**.
+  - **[FEATURE] Email → Memory facts**: `extractAndUpsertFactsFromEmail(userId, emailSignal, userName?)` added to `lib/facts.ts` — one Haiku call on the inbox digest extracts durable facts (e.g. "User is in debt negotiation with CIBC") and upserts them into the facts table. Called fire-and-forget from `lib/briefing.ts` right after the email signal is fetched. Degrades silently when `scopeMissing` or no items.
+  - **[FEATURE] Home page IA**: Dashboard default tab changed from Briefings → `home`. New "⚡ Home" tab (first in nav) contains greeting + briefing preview + EdgeScoreCard + FocusRecommendationCard + DayPlanCard — the daily cockpit view. Briefings stays its own tab. Score cards removed from "always visible above all tabs."
+  - **[FIX] Sleep score in Whoop APIs**: `/api/whoop/status` and `/api/whoop/recovery` now return `sleepScore` (= `performancePct`, 0–100) and `sleepTier` (≥75=green/high, ≥50=yellow/medium, <50=red/low). `RecoveryCard` accepts optional `sleepScore` + `sleepTier` props. Dashboard passes them through. Color rule: ≥75 → green (Derrick's 78 = green).
+  - **[FIX] EdgeScoreCard calibrating prop wired**: Dashboard now derives `calibrating` + `calibratingHalf` from `calendarFit.energyScore.calibrating` and passes them to EdgeScoreCard. `ScoreResult` type updated to include `calibrating?: boolean`.
+  - **[FIX] Fix It button end-to-end**: `onRequestFix` in EdgeScoreCard now scrolls to the DayPlanCard (via `dayPlanRef`) and re-fetches the plan if it was dismissed. Preview-before-apply flow is fully wired through `DayPlanCard` (shows proposed changes + score delta before Confirm).
+  - 759/759 green, tsc clean, next build clean.
 - **2026-06-15** — **Email signal wired into focus recommendations** (`lib/focusRecommendation.ts`, `lib/briefing.ts`, `app/api/focus/recommend/route.ts`).
   - **`isUrgentEmail(item)`** — pure helper; returns true when `isImportant` OR subject/sender matches financial/legal/collection keywords (CIBC, "overdue", "final notice", "collections", "attorney", etc.). Exported + tested.
   - **`formatEmailSignalForPrompt(signal)`** — formats inbox digest for LLM context: sender, subject, [URGENT/FINANCIAL] or [unread] tag, 120-char snippet. Returns '' on `scopeMissing` or empty. Exported + tested.

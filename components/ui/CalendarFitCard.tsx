@@ -11,6 +11,7 @@ export interface ScoreTopFix {
 
 export interface ScoreResult {
   score: number;         // 1–10
+  calibrating?: boolean; // true = not enough signal to score yet
   drivers: string[];     // 2–4 plain-English reasons
   topFix: ScoreTopFix | null;
 }

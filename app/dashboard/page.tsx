@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
@@ -784,7 +784,7 @@ export default function Dashboard() {
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('briefings');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
@@ -810,6 +810,8 @@ export default function Dashboard() {
     recoveryScore: number | null;
     tier: 'high' | 'medium' | 'low' | null;
     sleepHours: number | null;
+    sleepScore: number | null;
+    sleepTier: 'high' | 'medium' | 'low' | null;
     strain: number | null;
     history: { date: string; score: number }[];
   } | null>(null);
@@ -839,6 +841,7 @@ export default function Dashboard() {
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
+  const dayPlanRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1255,6 +1258,7 @@ export default function Dashboard() {
 
           <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
             {[
+              { id: 'home', label: 'Home', icon: '⚡' },
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'priorities', label: 'Priorities', icon: '🎯' },
               { id: 'activity', label: 'Activity', icon: '⏪' },
@@ -1474,6 +1478,8 @@ export default function Dashboard() {
                       recoveryScore={whoopData.recoveryScore}
                       tier={whoopData.tier}
                       sleepHours={whoopData.sleepHours ?? undefined}
+                      sleepScore={whoopData.sleepScore ?? undefined}
+                      sleepTier={whoopData.sleepTier ?? undefined}
                       strain={whoopData.strain ?? undefined}
                       history={whoopData.history}
                     />
@@ -1549,52 +1555,79 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Generated briefing preview */}
-          {briefingText && (
-            <div className="glass-card p-6 mb-6" style={{ borderColor: 'var(--edg-accent-20)' }}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY'S BRIEFING PREVIEW</h3>
-                <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
-              </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
-                {briefingText}
-              </p>
-            </div>
-          )}
-
-          {/* Score + plan cards — always visible above tab content */}
-          <div className="mb-6">
-            <EdgeScoreCard
-              fit={calendarFit}
-              loading={calendarFitLoading}
-              sparse={priorities.length === 0 || calendarConnected === false}
-              onRequestFix={() => {/* DayPlanCard below handles fixes */}}
-            />
-          </div>
-          {!focusRecDismissed && (
-            <div className="mb-6">
-              <FocusRecommendationCard
-                recommendation={focusRec}
-                loading={focusRecLoading}
-                onConfirm={handleConfirmFocus}
-                onDismiss={() => setFocusRecDismissed(true)}
-              />
-            </div>
-          )}
-          {calendarConnected !== false && (
-            <div className="mb-6">
-              <DayPlanCard
-                plan={dayPlan}
-                loading={dayPlanLoading}
-                onConfirm={handleConfirmDayPlan}
-                onDismiss={() => setDayPlan(null)}
-                applied={dayPlanApplied}
-                appliedScore={dayPlanAppliedScore}
-              />
-            </div>
-          )}
 
           {/* Tab content */}
+          {activeTab === 'home' && (
+            <div>
+              {/* Briefing preview — shown when a briefing was just generated */}
+              {briefingText && (
+                <div className="glass-card p-6 mb-6" style={{ borderColor: 'var(--edg-accent-20)' }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY&apos;S BRIEFING PREVIEW</h3>
+                    <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
+                  </div>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
+                    {briefingText}
+                  </p>
+                </div>
+              )}
+
+              {/* Edge Score */}
+              <div className="mb-6">
+                <EdgeScoreCard
+                  fit={calendarFit}
+                  loading={calendarFitLoading}
+                  sparse={priorities.length === 0 || calendarConnected === false}
+                  calibrating={calendarFit?.energyScore.calibrating === true}
+                  calibratingHalf={
+                    calendarFit?.focusScore.score === 0 && calendarFit?.energyScore.calibrating
+                      ? 'both'
+                      : calendarFit?.energyScore.calibrating
+                      ? 'energy'
+                      : undefined
+                  }
+                  onRequestFix={() => {
+                    setActiveTab('home');
+                    setTimeout(() => {
+                      dayPlanRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 50);
+                    // If the plan was dismissed, re-fetch it
+                    if (!dayPlan && !dayPlanLoading) {
+                      setDayPlanLoading(true);
+                      fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Focus recommendation */}
+              {!focusRecDismissed && (
+                <div className="mb-6">
+                  <FocusRecommendationCard
+                    recommendation={focusRec}
+                    loading={focusRecLoading}
+                    onConfirm={handleConfirmFocus}
+                    onDismiss={() => setFocusRecDismissed(true)}
+                  />
+                </div>
+              )}
+
+              {/* Day plan — Fix It target */}
+              {calendarConnected !== false && (
+                <div ref={dayPlanRef} className="mb-6">
+                  <DayPlanCard
+                    plan={dayPlan}
+                    loading={dayPlanLoading}
+                    onConfirm={handleConfirmDayPlan}
+                    onDismiss={() => setDayPlan(null)}
+                    applied={dayPlanApplied}
+                    appliedScore={dayPlanAppliedScore}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'briefings' && (
             <div>
               <SectionHint

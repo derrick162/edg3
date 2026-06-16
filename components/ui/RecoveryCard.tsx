@@ -18,6 +18,10 @@ export interface RecoveryCardProps {
   tier: RecoveryTier;
   /** Hours slept, e.g. 7.5 */
   sleepHours?: number;
+  /** 0–100 sleep performance score (Whoop performancePct). ≥75=green, ≥50=yellow, <50=red */
+  sleepScore?: number;
+  /** Pre-computed sleep tier — caller derives from sleepScore */
+  sleepTier?: RecoveryTier;
   /** Day strain score from Whoop (0–21 scale) */
   strain?: number;
   /** Up to 14 days of history for sparkline — newest last */

@@ -5,7 +5,7 @@ import { getCalendarEvents, getWeekEvents, formatEventsForBriefing, getFreeTimeS
 import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags } from './alignment';
 import { computeCallStreak } from './streak';
-import { linkEventsToFacts } from './facts';
+import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing } from './whoopTrends';
 import { computeWhoopCorrelations } from './whoopCorrelations';
@@ -273,6 +273,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const focusDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(new Date());
   // Always recommend focus areas — this drives the hero loop on every briefing.
   // When priorities are set, pass them as anchors so each recommendation ladders to a real goal.
+  // Derive durable facts from inbox digest (fire-and-forget — never blocks the briefing).
+  if (emailSignal && !emailSignal.scopeMissing) {
+    extractAndUpsertFactsFromEmail(userId, emailSignal, user.name).catch(() => {});
+  }
+
   const focusRec: FocusRecommendation | null = await recommendFocusAreas(userId, {
     energySignal: focusEnergySignal,
     todayEvents: calendarEvents,

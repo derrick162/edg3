@@ -33,11 +33,18 @@ export async function GET() {
   const tier =
     score === null ? null : score >= 67 ? 'high' : score >= 34 ? 'medium' : 'low';
 
+  const sleepScore = slp ? slp.performancePct : null;
+  const sleepTier = sleepScore !== null
+    ? (sleepScore >= 75 ? 'high' : sleepScore >= 50 ? 'medium' : 'low')
+    : null;
+
   return NextResponse.json({
     connected: true,
     recoveryScore: score,
     tier,
     sleepHours: slp ? Math.round((slp.durationMs / 3600000) * 10) / 10 : null,
+    sleepScore,
+    sleepTier,
     strain: str ? str.strain : null,
     history: hist.map(h => ({ date: h.date, score: h.recoveryScore })),
   });
