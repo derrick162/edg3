@@ -847,6 +847,7 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [focusCandidates, setFocusCandidates] = useState<FocusRecommendationArea[]>([]);
   const [confirmedFocusAreas, setConfirmedFocusAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -899,7 +900,7 @@ export default function Dashboard() {
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
-    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
+    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) { setFocusRec(d); if (d.candidates) setFocusCandidates(d.candidates); } }).catch(() => {}).finally(() => setFocusRecLoading(false));
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
@@ -961,6 +962,22 @@ export default function Dashboard() {
     // Re-fetch Edge Score: Focus component now reads today's confirmed daily_focus,
     // so the score updates live instead of showing a stale pre-confirm value.
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+  }
+
+  async function handleCompleteArea(idOrTitle: string) {
+    await fetch('/api/focus/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idOrTitle }),
+    }).catch(() => {});
+  }
+
+  async function handleDismissArea(idOrTitle: string) {
+    await fetch('/api/focus/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idOrTitle }),
+    }).catch(() => {});
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -1646,8 +1663,11 @@ export default function Dashboard() {
                     recommendation={focusRec}
                     loading={focusRecLoading}
                     confirmedAreas={confirmedFocusAreas ?? undefined}
+                    candidates={focusCandidates}
                     onConfirm={handleConfirmFocus}
                     onDismiss={confirmedFocusAreas ? undefined : () => setFocusRecDismissed(true)}
+                    onCompleteArea={handleCompleteArea}
+                    onDismissArea={handleDismissArea}
                   />
                 </div>
               )}

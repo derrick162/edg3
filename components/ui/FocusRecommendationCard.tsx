@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 // ── Types (contract with Core) ────────────────────────────────────────────────
 
 export interface FocusRecommendationArea {
+  id?: string;       // stable id for complete/dismiss (Darren populates; falls back to title)
   title: string;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
@@ -24,18 +25,21 @@ export interface FocusRecommendationCardProps {
   callsCompleted?: number;
   onConfirm: (areas: FocusRecommendationArea[]) => Promise<void>;
   onDismiss?: () => void;
-  /**
-   * When true, the card fetches /api/focus/recommend on mount and manages its
-   * own data. Passes `recommendation` and `loading` from the parent are ignored
-   * while selfFetch is active. Design uses this on the home tab.
-   */
   selfFetch?: boolean;
   /**
    * Today's already-confirmed focus areas (from /api/focus/confirm GET).
-   * When set, the card skips the proposed state and renders the confirmed view
-   * directly — persists across page reloads.
+   * When set, the card skips the proposed state and renders the confirmed view directly.
    */
   confirmedAreas?: FocusRecommendationArea[];
+  /**
+   * Ranked pool of replacement candidates (from recommendFocusAreas).
+   * When a focus area is dismissed, the next candidate slides in.
+   */
+  candidates?: FocusRecommendationArea[];
+  /** Called when user marks a focus item done. Receives area id or title. */
+  onCompleteArea?: (idOrTitle: string) => Promise<void>;
+  /** Called when user dismisses a focus item. Receives area id or title. */
+  onDismissArea?: (idOrTitle: string) => Promise<void>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -163,6 +167,253 @@ function AreaRow({
   );
 }
 
+// ── Confirmed focus item row (interactive) ────────────────────────────────────
+
+type FocusItemState = 'idle' | 'completing' | 'done' | 'dismissing' | 'replacing';
+
+function ConfirmedFocusItem({
+  area,
+  rank,
+  incoming,
+  onComplete,
+  onDismiss,
+}: {
+  area: FocusRecommendationArea;
+  rank: number;
+  incoming?: boolean;
+  onComplete: () => Promise<void>;
+  onDismiss: () => Promise<void>;
+}) {
+  const [state, setState] = useState<FocusItemState>('idle');
+  const [mounted, setMounted] = useState(!incoming);
+
+  // Slide-in entrance for replacement items
+  useEffect(() => {
+    if (incoming) {
+      const t = setTimeout(() => setMounted(true), 30);
+      return () => clearTimeout(t);
+    }
+  }, [incoming]);
+
+  async function handleComplete() {
+    if (state !== 'idle') return;
+    setState('completing');
+    await onComplete();
+    setState('done');
+  }
+
+  async function handleDismiss() {
+    if (state !== 'idle') return;
+    setState('dismissing');
+    await onDismiss();
+  }
+
+  const isDone      = state === 'done';
+  const isExiting   = state === 'dismissing';
+  const isCelebrate = state === 'completing' || isDone;
+
+  return (
+    <div
+      style={{
+        opacity:   !mounted || isExiting ? 0 : 1,
+        transform: !mounted ? 'translateX(12px)' : isExiting ? 'translateX(-8px)' : 'translateX(0)',
+        transition: 'opacity 0.3s ease, transform 0.3s ease',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        className="flex items-center gap-3 rounded-xl px-3 py-3 transition-all duration-300"
+        style={{
+          background: isDone ? 'rgba(16,185,129,0.06)' : 'var(--rec-area-bg)',
+          border: `1px solid ${isDone ? 'rgba(16,185,129,0.25)' : 'var(--rec-area-border)'}`,
+        }}
+      >
+        {/* Rank / done badge */}
+        <div
+          className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300"
+          style={{
+            background: isDone ? 'rgba(16,185,129,0.18)' : confidenceTint(area.confidence),
+            color: isDone ? 'var(--edg-success)' : confidenceColor(area.confidence),
+            transform: isCelebrate ? 'scale(1.15)' : 'scale(1)',
+          }}
+        >
+          {isDone ? '✓' : rank}
+        </div>
+
+        {/* Title + anchor */}
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-sm font-semibold leading-snug transition-all duration-300"
+            style={{
+              color: isDone ? 'var(--text-faint)' : 'var(--text-strong)',
+              textDecoration: isDone ? 'line-through' : 'none',
+            }}
+          >
+            {area.title}
+          </p>
+          {area.anchor && !isDone && (
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+              ↳ {area.anchor}
+            </p>
+          )}
+          {isDone && (
+            <p className="text-xs mt-0.5" style={{ color: 'var(--edg-success)', animation: 'score-rise 0.3s ease both' }}>
+              Done — nice work.
+            </p>
+          )}
+        </div>
+
+        {/* Actions */}
+        {state === 'idle' && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={handleComplete}
+              className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all active:scale-90"
+              style={{
+                background: 'rgba(16,185,129,0.1)',
+                border: '1px solid rgba(16,185,129,0.25)',
+                color: 'var(--edg-success)',
+              }}
+              title="Mark done"
+              aria-label="Complete"
+            >
+              ✓
+            </button>
+            <button
+              onClick={handleDismiss}
+              className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs transition-opacity hover:opacity-80 active:scale-90"
+              style={{
+                background: 'var(--edg-fill-04)',
+                border: '1px solid var(--edg-hairline)',
+                color: 'var(--text-faint)',
+              }}
+              title="Remove and replace"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {state === 'completing' && (
+          <span className="text-xs flex-shrink-0" style={{ color: 'var(--edg-success)' }}>…</span>
+        )}
+        {isDone && (
+          <span
+            className="text-xl flex-shrink-0"
+            style={{ animation: 'pop-in 0.4s ease both' }}
+          >
+            🎉
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Confirmed focus panel (manages active list + replacements) ────────────────
+
+function ConfirmedFocusPanel({
+  initialAreas,
+  candidates,
+  onCompleteArea,
+  onDismissArea,
+}: {
+  initialAreas: FocusRecommendationArea[];
+  candidates: FocusRecommendationArea[];
+  onCompleteArea?: (idOrTitle: string) => Promise<void>;
+  onDismissArea?: (idOrTitle: string) => Promise<void>;
+}) {
+  // Each slot tracks which area is showing + whether it's an incoming replacement
+  const [slots, setSlots] = useState<{ area: FocusRecommendationArea; incoming: boolean }[]>(
+    initialAreas.map(a => ({ area: a, incoming: false }))
+  );
+  // Pool of candidates not yet used
+  const [pool, setPool] = useState<FocusRecommendationArea[]>(
+    candidates.filter(c => !initialAreas.some(a => (a.id || a.title) === (c.id || c.title)))
+  );
+
+  async function handleComplete(idx: number) {
+    const area = slots[idx].area;
+    if (onCompleteArea) await onCompleteArea(area.id || area.title);
+    // Keep the row visible in done state — handled by ConfirmedFocusItem
+  }
+
+  async function handleDismiss(idx: number) {
+    const area = slots[idx].area;
+    if (onDismissArea) await onDismissArea(area.id || area.title);
+
+    // After exit animation, slot in replacement if available
+    setTimeout(() => {
+      if (pool.length > 0) {
+        const [next, ...rest] = pool;
+        setPool(rest);
+        setSlots(prev => prev.map((s, i) => i === idx ? { area: next, incoming: true } : s));
+      } else {
+        setSlots(prev => prev.filter((_, i) => i !== idx));
+      }
+    }, 350);
+  }
+
+  const rankLabels = ['Primary', 'Secondary', 'Third'];
+
+  return (
+    <div
+      className="glass-card p-5"
+      style={{ background: 'var(--rec-card-bg)', borderColor: 'var(--rec-card-border)', animation: 'score-rise 0.4s ease both' }}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
+            ✦ TODAY&apos;S FOCUS
+          </p>
+          <h3 className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
+            You&apos;re focused on these today.
+          </h3>
+        </div>
+        <span
+          className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+          style={{
+            background: 'var(--edg-accent-08)',
+            border: '1px solid var(--edg-accent-20)',
+            boxShadow: 'var(--shadow-btn-glow)',
+            color: 'var(--text-accent)',
+            animation: 'pop-in 0.45s ease both',
+          }}
+        >
+          ✓
+        </span>
+      </div>
+
+      {/* Active focus items */}
+      <div className="space-y-2 mb-4">
+        {slots.map((slot, i) => (
+          <ConfirmedFocusItem
+            key={`${slot.area.id || slot.area.title}-${i}`}
+            area={slot.area}
+            rank={i + 1}
+            incoming={slot.incoming}
+            onComplete={() => handleComplete(i)}
+            onDismiss={() => handleDismiss(i)}
+          />
+        ))}
+        {slots.length === 0 && (
+          <div className="text-center py-4">
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>All done for today. 🎉</p>
+            <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Edge will have fresh focus areas tomorrow.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Hint */}
+      <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+        ✓ marks it done · ✕ swaps it for something else · Edge scores your calendar against these.
+      </p>
+    </div>
+  );
+}
+
 // ── FocusRecommendationCard ───────────────────────────────────────────────────
 
 export function FocusRecommendationCard({
@@ -173,6 +424,9 @@ export function FocusRecommendationCard({
   onDismiss,
   selfFetch = false,
   confirmedAreas: confirmedAreasProp,
+  candidates = [],
+  onCompleteArea,
+  onDismissArea,
 }: FocusRecommendationCardProps) {
   // selfFetch mode: card owns its own data fetch
   const [fetchedRec, setFetchedRec] = useState<FocusRecommendation | null>(null);
@@ -281,88 +535,18 @@ export function FocusRecommendationCard({
   }
 
   // ── Confirmed state (internal confirm OR parent-passed confirmedAreas from reload)
-  const confirmedList = confirmedAreasProp && confirmedAreasProp.length > 0 ? confirmedAreasProp : (confirmed ? areas : null);
-  if (confirmedList) {
-    const rankLabels = ['Primary', 'Secondary', 'Third'];
+  const initialConfirmed = confirmedAreasProp && confirmedAreasProp.length > 0
+    ? confirmedAreasProp
+    : (confirmed ? areas : null);
+
+  if (initialConfirmed) {
     return (
-      <div
-        className="glass-card p-5"
-        style={{
-          background: 'var(--rec-card-bg)',
-          borderColor: 'var(--rec-card-border)',
-          animation: 'score-rise 0.4s ease both',
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-              ✦ TODAY&apos;S FOCUS
-            </p>
-            <h3 className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-              You&apos;re focused on these today.
-            </h3>
-          </div>
-          <span
-            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-            style={{
-              background: 'var(--edg-accent-08)',
-              border: '1px solid var(--edg-accent-20)',
-              boxShadow: 'var(--shadow-btn-glow)',
-              color: 'var(--text-accent)',
-              animation: 'pop-in 0.45s ease both',
-            }}
-          >
-            ✓
-          </span>
-        </div>
-
-        {/* Locked-in area rows */}
-        <div className="space-y-2 mb-4">
-          {confirmedList.map((a, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 rounded-xl px-3 py-3"
-              style={{
-                background: 'var(--rec-area-bg)',
-                border: '1px solid var(--rec-area-border)',
-                animation: `score-rise 0.35s ${0.06 * i}s ease both`,
-              }}
-            >
-              {/* Rank badge */}
-              <div
-                className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black"
-                style={{ background: confidenceTint(a.confidence), color: confidenceColor(a.confidence) }}
-              >
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
-                  {a.title}
-                </p>
-                {a.anchor && (
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                    ↳ {a.anchor}
-                  </p>
-                )}
-              </div>
-              <span className="text-xs flex-shrink-0 font-medium" style={{ color: 'var(--text-faint)' }}>
-                {rankLabels[i]}
-              </span>
-              <span className="flex-shrink-0 text-xs font-bold" style={{ color: 'var(--text-accent)' }}>✓</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Footer link */}
-        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-          Edge scores your calendar against these — adjust any time in the{' '}
-          <span className="underline cursor-pointer" style={{ color: 'var(--text-muted)' }}>
-            Priorities tab
-          </span>
-          .
-        </p>
-      </div>
+      <ConfirmedFocusPanel
+        initialAreas={initialConfirmed}
+        candidates={candidates}
+        onCompleteArea={onCompleteArea}
+        onDismissArea={onDismissArea}
+      />
     );
   }
 
