@@ -299,7 +299,7 @@ export default function LandingPage() {
         {/* ── Footer ── */}
         <footer className="max-w-5xl mx-auto px-6 md:px-8 py-8 text-center" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
           <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
-            Your data is encrypted at rest and never sold · Disconnect anytime · Built in Canada 🇨🇦
+            Your data is encrypted at rest and never sold · Disconnect anytime
           </p>
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
             Questions? hello@edg3.ai
