@@ -7,6 +7,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { calendar_v3 } from 'googleapis';
 import { factQueries, memoryQueries, type Priority } from './db';
+import { topFacts } from './memorySalience';
 import { getPastCalendarEvents } from './calendar';
 import type { EmailSignal, EmailSignalItem } from './gmail';
 import { formatOpenLoopsForBriefing, type OpenLoop } from './openLoops';
@@ -158,7 +159,9 @@ export async function recommendFocusAreas(
   const calendarThemes = aggregateEventThemes(rawEvents);
   const calendarPatterns = detectCalendarPatterns(rawEvents);
   const timeAllocation = computeTimeAllocation(rawEvents, opts.anchors ?? [], { weeksBack: 8 });
-  const facts = allFacts.map(f => `[${f.category}] ${f.statement}`);
+  // Rank facts by salience before injecting into the prompt — most relevant first.
+  const rankedFacts = topFacts(allFacts, opts.anchors ?? [], date, { max: 15, maxPerCategory: 4 });
+  const facts = rankedFacts.map(f => `[${f.category}] ${f.statement}`);
   const memories = recentMemories.map(m => m.content).filter(Boolean).slice(0, 10) as string[];
 
   const basedOn: string[] = [];
