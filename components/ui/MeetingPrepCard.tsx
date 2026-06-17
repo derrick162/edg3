@@ -161,7 +161,7 @@ export function MeetingPrepCard({ context, onDismiss }: MeetingPrepCardProps) {
               {context.facts.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
-                    What Edge knows
+                    What Edg3 knows
                   </p>
                   <div className="space-y-2">
                     {context.facts.map((f, i) => (
