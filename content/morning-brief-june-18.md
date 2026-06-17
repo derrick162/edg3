@@ -114,6 +114,12 @@ Full content library is committed to `content/`. This morning's additions:
 | `content/content-calendar-july-august.md` | 8-week LinkedIn + Twitter posting plan for Phase 2 waitlist |
 | `content/external-comms-kit.md` | Advisor update template, journalist pitch, Product Hunt copy |
 | `content/beta-user-feedback.md` | Per-user tracking template — create entries as design partners go live |
+| `content/activation-moment-copy.md` | Screen-by-screen copy for the activation flow; waitlist handoff emails; funnel metrics |
+| `content/beta-weekly-health-check.md` | 10-min Monday routine: 3 numbers + 5 questions + recovery scenarios |
+| `content/testimonial-capture-guide.md` | When/how to ask for testimonials + what strong looks like + usage map |
+| `content/design-partner-welcome-call-script.md` | 20-min T+30 call script: expectations, priority review, feedback loop setup |
+| `content/day-7-checkin-script.md` | 20-min interview script: habit signal, trust, day plan, honest assessment |
+| `content/angel-outreach-strategy.md` | Advisor warmup → intro requests → first investor call; pipeline tracker + timing |
 
 ---
 
