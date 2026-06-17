@@ -215,4 +215,56 @@ describe('buildBaselineContext', () => {
     const result = buildBaselineContext(highRecovery, history7, [], 14.9);
     expect(result).not.toContain('COMPOSITE SIGNAL');
   });
+
+  it('adds composite signal when sleep debt + high strain compound (no red recovery)', () => {
+    const okRecovery = { recoveryScore: 50, hrv: 55, restingHeartRate: 60, date: '2026-06-13' };
+    const shortSleep = Array(5).fill(5 * 3_600_000); // 5h — below 6.5h threshold
+    const result = buildBaselineContext(okRecovery, history7, shortSleep, 17.0);
+    expect(result).toContain('COMPOSITE SIGNAL');
+    expect(result).toContain('sleep averaging');
+    expect(result).toContain('high strain yesterday');
+  });
+});
+
+// ── T2-4 Briefing accuracy regression tests ───────────────────────────────────
+// Guard against regressions in brand language, removed features, and prompt structure.
+
+describe('T2-4 briefing accuracy regression', () => {
+  it('fallback briefing never references the removed async note box', () => {
+    const result = buildFallbackBriefing('Good morning', 'Derrick', '9 AM: Call', '1. Fundraising');
+    expect(result).not.toMatch(/chat with edge|async note|send a note|message box/i);
+  });
+
+  it('fallback briefing uses "Edg3" not "Edge" for the assistant brand', () => {
+    const result = buildFallbackBriefing('Good morning', 'Derrick', '', '');
+    // Should not contain the old "Edge" brand (standalone word) — must be "Edg3"
+    // Allow "Edge" only inside "Edg3" (the brand) or in context like "knowledge"
+    const hasOldBrand = /\bEdge\b/.test(result) && !/Edg3/.test(result);
+    expect(hasOldBrand).toBe(false);
+  });
+
+  it('buildWhoopSection formats recovery score as percentage', () => {
+    const result = buildWhoopSection({ recoveryScore: 67, hrv: 60, restingHeartRate: 55 }, null, null);
+    expect(result).toContain('67%');
+    expect(result).not.toContain('67 percent'); // must use % symbol
+  });
+
+  it('buildWhoopSection formats 6h 0m as "6 hours" (no trailing zero minutes)', () => {
+    const result = buildWhoopSection(null, { durationMs: 6 * 3_600_000, performancePct: 85, efficiencyPct: 90 }, null);
+    expect(result).toContain('6 hours');
+    expect(result).not.toContain('6 hours 0 minutes');
+  });
+
+  it('buildBaselineContext always includes today and delta line', () => {
+    const r = { recoveryScore: 72, hrv: 68, restingHeartRate: 52, date: '2026-06-17' };
+    const h = [
+      { date: '2026-06-16', value: 65 },
+      { date: '2026-06-15', value: 70 },
+      { date: '2026-06-14', value: 68 },
+    ];
+    const result = buildBaselineContext(r, h, [], null)!;
+    expect(result).toContain('today 72%');
+    expect(result).toMatch(/7-day avg \d+%/);
+    expect(result).toMatch(/[+-]\d+ pts/);
+  });
 });

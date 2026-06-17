@@ -822,7 +822,7 @@ Query: ${query}` }],
     if (createdIds.length) recordUndo(userId, `copied ${src.length} event(s) to ${targetDates.length} day(s)`, [{ type: 'deleteMany', calId: 'primary', eventIds: createdIds }]);
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
-      : `Couldn't copy events from ${sourceDate}.`;
+      : `Couldn't save the copies from ${sourceDate} — Google didn't confirm them. Want me to try again?`;
 
   } else if (fn === 'draftEmail') {
     // Draft (never send) a personalized outreach email per recipient, optionally proposing the
