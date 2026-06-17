@@ -1990,4 +1990,9 @@ export const episodeQueries = {
       "DELETE FROM episodes WHERE user_id = ? AND occurred_at < ?"
     ).run(userId, cutoff);
   },
+
+  pruneAll: (keepDays = 548): void => {
+    const cutoff = new Date(Date.now() - keepDays * 86_400_000).toISOString().slice(0, 10);
+    getDb().prepare("DELETE FROM episodes WHERE occurred_at < ?").run(cutoff);
+  },
 };
