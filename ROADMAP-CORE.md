@@ -199,6 +199,14 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Night-queue continuation — priority derivation, T3 grounding complete, score truth, activity labels.**
+  - **33 tests for `lib/priorityDerivation.ts` pure helpers** (`normalizeThemeTitle`, `extractCalendarThemes`, `calendarSpanDays`, `buildDerivePrompt`). Fixed 3 test-authoring errors (stop-word set, word-length filter, newline-sanitize assertion). All 33 green.
+  - **T3 grounding complete — `createEvent` now grounds its title.** `createEvent` was the only of the 9 mutation tools that skipped `groundTitle`. Raw STT-transcribed meeting titles (e.g., "Meeting with Pfizer" for Faiza) now go through the phonetic correction pass before being written to Google Calendar. All 9 tools now consistently apply Tier-1 grounding.
+  - **Priority derivation voice integration.** When priorities are absent or stale (>7d), `derivePriorities()` is called during briefing generation and a `DERIVED PRIORITY PROPOSAL` block is injected into the system prompt with 2–3 data-backed candidates + rationale. New `setPriorities` Vapi tool lets Edge write priorities live mid-call when user confirms ("yes, go with those") — no dashboard trip required. Prompt updated accordingly. Activity label added for `setPriorities`.
+  - **`/api/day-plan/confirm` uses full 4-component score.** Both `scoreBefore` and `newScore` in the confirm response were computed with only focus+energy — inconsistent with the dashboard's 4-component Edge Score. Now passes the same `clarityInputs`+`momentumInputs` as `/api/day-plan` GET. Test mock updated.
+  - **Activity labels for `fact_update`, `fact_delete`, `setPriorities`.** All three were falling through to the default label. Now: "Updated {category} — {entity}", "Removed {category} — {entity}", "Set N priorities". Audit records for fact ops now include `entity` for concrete labels. Detail sections added.
+  - **16 tests for `/api/scores` route — score-stability fallback hardened.** No tests existed for this route. Covers: focusReliable=true (persists, fires notif), focusReliable=false/alignment-null (serves last stored score without persisting — avoids corrupting trend with transient 0s), no-history fallback (calibrating=true), confirmed daily focus drives priorities, auth gate, rate limit.
+  - 1218/1218 green, tsc clean, next build clean.
 - **2026-06-18** — **Trust polish — T3 grounding, scoring tests, fact correction, score changelog, hero-loop paths D + recurring.**
   - **T3 — Grounding on live voice path (all `resolveEvent` call sites).**
     `groundTitle(raw)` helper in `executeTool` (`app/api/vapi/tool-call/route.ts`) loads stored
