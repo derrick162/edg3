@@ -5,6 +5,196 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/ui';
 
+// ── Inline SVG icons (Lucide-style, 20px, 1.5 stroke) ─────────────────────
+function IconTarget() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+function IconUsers() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+function IconZap() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
+}
+function IconCheckCircle() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  );
+}
+function IconPhone() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.06 6.06l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+    </svg>
+  );
+}
+function IconCalendar() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+function IconBrain() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-1.66" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-1.66" />
+    </svg>
+  );
+}
+
+// ── Mock calendar SVG — chaotic week → focused week ────────────────────────
+function CalendarVisual() {
+  const accent = 'var(--edg-indigo)';
+  const accentFade = 'rgba(99,102,241,0.18)';
+  const red = 'rgba(239,68,68,0.55)';
+  const muted = 'rgba(255,255,255,0.06)';
+  const border = 'rgba(255,255,255,0.07)';
+
+  return (
+    <div
+      className="mx-auto mt-10 rounded-2xl overflow-hidden"
+      style={{
+        maxWidth: 620,
+        border: '1px solid var(--edg-accent-20)',
+        background: 'var(--surface-card)',
+        boxShadow: '0 0 48px rgba(99,102,241,0.10)',
+      }}
+    >
+      <div className="grid grid-cols-2 divide-x" style={{ borderColor: border }}>
+        {/* BEFORE — chaotic */}
+        <div className="p-4 md:p-6">
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: red }}>Before</p>
+          <div className="space-y-1.5">
+            {[
+              { label: 'Sync with team', w: '90%', c: red },
+              { label: 'Budget review', w: '60%', c: red },
+              { label: '1:1 check-in', w: '45%', c: muted },
+              { label: '1:1 check-in', w: '45%', c: muted },
+              { label: 'Strategy deck', w: '75%', c: red },
+              { label: 'Investor call', w: '80%', c: red },
+              { label: 'Deep work???', w: '40%', c: muted },
+            ].map((b, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div
+                  className="rounded text-xs px-2 py-1 truncate"
+                  style={{ width: b.w, background: b.c, color: 'rgba(255,255,255,0.7)', fontSize: 10, minWidth: 0 }}
+                >{b.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* AFTER — focused */}
+        <div className="p-4 md:p-6">
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: accent }}>After Edg3</p>
+          <div className="space-y-1.5">
+            {[
+              { label: '⚡ Deep work block', w: '90%', c: accentFade, strong: true },
+              { label: 'Strategy deck', w: '75%', c: accentFade, strong: false },
+              { label: '→ Investor call', w: '80%', c: accentFade, strong: false },
+              { label: '↓ Syncs batched', w: '65%', c: 'rgba(99,102,241,0.10)', strong: false },
+              { label: '⚡ Focus block', w: '70%', c: accentFade, strong: true },
+              { label: 'Budget review', w: '55%', c: 'rgba(99,102,241,0.10)', strong: false },
+              { label: '✓ Evening clear', w: '50%', c: 'rgba(34,197,94,0.12)', strong: false },
+            ].map((b, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div
+                  className="rounded text-xs px-2 py-1 truncate"
+                  style={{
+                    width: b.w, background: b.c,
+                    color: b.strong ? 'var(--text-accent)' : 'rgba(255,255,255,0.6)',
+                    fontSize: 10, border: b.strong ? '1px solid var(--edg-accent-20)' : 'none', minWidth: 0,
+                  }}
+                >{b.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Waveform visual for call section ──────────────────────────────────────
+function WaveformVisual() {
+  const bars = [4, 8, 14, 20, 28, 22, 16, 28, 34, 28, 20, 32, 36, 28, 22, 34, 38, 30, 22, 16, 24, 30, 20, 14, 10, 6];
+  return (
+    <div
+      className="mx-auto mt-10 rounded-2xl px-6 py-8 flex flex-col items-center gap-5"
+      style={{
+        maxWidth: 480,
+        border: '1px solid var(--edg-accent-20)',
+        background: 'var(--surface-card)',
+        boxShadow: '0 0 40px rgba(99,102,241,0.10)',
+      }}
+    >
+      {/* Phone + label */}
+      <div className="flex items-center gap-3">
+        <div
+          className="rounded-full flex items-center justify-center"
+          style={{ width: 44, height: 44, background: 'var(--edg-accent-15)', color: 'var(--text-accent)' }}
+        >
+          <IconPhone />
+        </div>
+        <div>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Edg3 · Morning briefing</p>
+          <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Mon–Fri · 5 min · your time</p>
+        </div>
+        <div className="ml-auto">
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.12)', color: 'rgba(134,239,172,0.9)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(134,239,172,0.9)', display: 'inline-block' }} className="animate-pulse" />
+            Live
+          </span>
+        </div>
+      </div>
+      {/* Waveform */}
+      <div className="flex items-end gap-1" style={{ height: 44 }}>
+        {bars.map((h, i) => (
+          <div
+            key={i}
+            className="rounded-full"
+            style={{
+              width: 4,
+              height: h,
+              background: i < 14 ? `rgba(99,102,241,${0.3 + (h / 38) * 0.5})` : 'rgba(255,255,255,0.12)',
+            }}
+          />
+        ))}
+      </div>
+      {/* Transcript snippet */}
+      <div className="w-full space-y-2">
+        <div className="flex gap-2">
+          <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-faint)' }}>Edg3</span>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            Your Edg3 Score is 74 today. Focus is solid — but your deep-work block is sandwiched. Want me to move those meetings?
+          </p>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <p className="text-xs leading-relaxed text-right" style={{ color: 'var(--text-body)' }}>Yes, move them.</p>
+          <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-faint)' }}>You</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-faint)' }}>Edg3</span>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>Done. Deep work is protected 9–11. Have a great one.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
@@ -62,7 +252,7 @@ export default function LandingPage() {
 
       <div className="relative z-10">
         {/* Nav */}
-        <nav className="flex items-center justify-between px-6 md:px-10 py-6 max-w-6xl mx-auto">
+        <nav className="flex items-center justify-between px-4 md:px-10 py-6 max-w-6xl mx-auto">
           <Logo size={22} eyebrow />
           <div className="flex items-center gap-4">
             <Link href="/login" className="btn-secondary text-sm py-2 px-5">Log in</Link>
@@ -71,7 +261,7 @@ export default function LandingPage() {
         </nav>
 
         {/* ── Hero ── */}
-        <section className="max-w-4xl mx-auto px-6 md:px-8 pt-16 pb-14 text-center">
+        <section className="max-w-4xl mx-auto px-4 md:px-8 pt-16 pb-20 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8 text-sm font-medium"
                style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--edg-indigo-bright)', display: 'inline-block' }} className="animate-pulse" />
@@ -85,7 +275,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: 'var(--text-muted)' }}>
-            Edge learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 5 minutes.
+            Edg3 learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 5 minutes.
           </p>
 
           {/* Waitlist form */}
@@ -127,63 +317,68 @@ export default function LandingPage() {
         </section>
 
         {/* ── Problem ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
-          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6 text-center" style={{ color: 'var(--text-strong)' }}>
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             Your calendar is full.<br />The right things aren&apos;t getting done.
           </h2>
-          <p className="text-lg leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            You know what matters. You just can&apos;t seem to get to it.
+          <p className="text-lg text-center" style={{ color: 'var(--text-muted)' }}>
+            You&apos;re busy — but busy isn&apos;t the same as progressing.
           </p>
-          <p className="text-lg leading-relaxed mt-4" style={{ color: 'var(--text-muted)' }}>
-            Between the meetings that could&apos;ve been emails, the reactive days where priorities get buried, and the vague feeling that you&apos;re busy but not progressing — most high-performers are running their week on autopilot.
-          </p>
-          <p className="text-lg mt-4 font-semibold" style={{ color: 'var(--text-body)' }}>
-            And the harder you push, the worse it gets.
-          </p>
+          <CalendarVisual />
         </section>
 
-        {/* ── Solution: 3-column explainer ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
-          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
-            Edge fixes your week in 5 minutes every morning.
+        {/* ── Solution ── */}
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
+            Edg3 fixes your week in 5 minutes every morning.
           </h2>
+          <p className="text-base mb-12 text-center" style={{ color: 'var(--text-muted)' }}>
+            One call. Your calendar reshaped. Your priorities protected.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
+                icon: <IconTarget />,
                 num: '01',
                 title: 'He already knows your priorities.',
-                desc: 'Edge analyzes your calendar history, call memory, and inbox to tell you what matters most today — you don\'t have to figure it out. Just confirm or tweak.',
+                desc: 'Edg3 analyzes your calendar history, call memory, and inbox to surface what matters most today. You confirm or adjust — Edg3 executes.',
               },
               {
+                icon: <IconCalendar />,
                 num: '02',
                 title: 'He reshapes your calendar around them.',
                 desc: 'Mismatched meetings get moved. Focus blocks get protected. High-demand work lands in your highest-energy windows. One "yes" and it\'s done.',
               },
               {
+                icon: <IconBrain />,
                 num: '03',
                 title: 'He gets smarter every day.',
-                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edge how you work. The longer you use it, the better it gets at running the day you need.',
+                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edg3 how you work. The longer you use it, the sharper it gets.',
               },
             ].map(item => (
               <div key={item.num} className="glass-card glass-card-hover p-7">
-                <p className="text-xs font-black mb-3 tracking-widest" style={{ color: 'var(--edg-indigo)' }}>{item.num}</p>
+                <div className="flex items-center gap-3 mb-4">
+                  <div style={{ color: 'var(--text-accent)' }}>{item.icon}</div>
+                  <p className="text-xs font-black tracking-widest" style={{ color: 'var(--edg-indigo)' }}>{item.num}</p>
+                </div>
                 <h3 className="font-bold text-base mb-3" style={{ color: 'var(--text-strong)' }}>{item.title}</h3>
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
               </div>
             ))}
           </div>
+          <WaveformVisual />
         </section>
 
-        {/* ── Edge Score ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+        {/* ── Edg3 Score ── */}
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             One number. Your daily readout.
           </h2>
           <p className="text-base mb-10 max-w-2xl mx-auto text-center" style={{ color: 'var(--text-muted)' }}>
-            Your Edge Score tells you how set up you are for a focused, energized, sustainable day — before it starts.
+            Your Edg3 Score tells you how set up you are for a focused, energized, sustainable day — before it starts.
           </p>
 
-          {/* Product preview — inline Edge Score card */}
+          {/* Product preview — inline Edg3 Score card */}
           <div
             className="glass-card mx-auto"
             style={{
@@ -196,7 +391,7 @@ export default function LandingPage() {
             {/* Header row */}
             <div className="flex items-center justify-between mb-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>Edge Score</p>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>Edg3 Score</p>
                 <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Wednesday — your day ahead</p>
               </div>
               {/* Sparkline */}
@@ -217,35 +412,14 @@ export default function LandingPage() {
             <div className="flex items-center gap-6 mb-5">
               <div style={{ position: 'relative', flexShrink: 0, width: 100, height: 60 }}>
                 <svg width="100" height="60" viewBox="0 0 100 60" aria-hidden="true">
-                  {/* Track */}
-                  <path
-                    d="M 10 54 A 40 40 0 0 1 90 54"
-                    fill="none"
-                    stroke="var(--gauge-bg)"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                  />
-                  {/* Fill — 74% of arc */}
-                  <path
-                    d="M 10 54 A 40 40 0 0 1 90 54"
-                    fill="none"
-                    stroke="var(--gauge-high)"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray="125.6"
-                    strokeDashoffset="32.7"
-                  />
+                  <path d="M 10 54 A 40 40 0 0 1 90 54" fill="none" stroke="var(--gauge-bg)" strokeWidth="8" strokeLinecap="round" />
+                  <path d="M 10 54 A 40 40 0 0 1 90 54" fill="none" stroke="var(--gauge-high)" strokeWidth="8" strokeLinecap="round" strokeDasharray="125.6" strokeDashoffset="32.7" />
                 </svg>
-                {/* Score number */}
-                <div style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  textAlign: 'center', lineHeight: 1,
-                }}>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', lineHeight: 1 }}>
                   <span style={{ fontSize: 28, fontWeight: 900, color: 'var(--gauge-high)', letterSpacing: '-0.03em' }}>74</span>
                 </div>
               </div>
 
-              {/* Component bars */}
               <div className="flex-1 space-y-2">
                 {[
                   { label: 'Focus',    pct: 68, color: 'var(--gauge-high)' },
@@ -266,12 +440,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Diagnosis chip */}
-            <div
-              className="rounded-xl px-3 py-2.5 text-xs leading-snug"
-              style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
-            >
-              <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Edge: </span>
+            <div className="rounded-xl px-3 py-2.5 text-xs leading-snug" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
+              <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Edg3: </span>
               <span style={{ color: 'var(--text-muted)' }}>
                 Focus is solid — but your 9 AM deep-work block is sandwiched between two meetings. Want me to move them?
               </span>
@@ -279,29 +449,29 @@ export default function LandingPage() {
           </div>
 
           <p className="text-sm mt-6 text-center" style={{ color: 'var(--text-faint)' }}>
-            The score isn&apos;t just a number. It&apos;s a diagnosis. And Edge can raise it.
+            The score isn&apos;t just a number. It&apos;s a diagnosis. And Edg3 can raise it.
           </p>
         </section>
 
         {/* ── How it works ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <h2 className="text-3xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
             Three things. Every morning.
           </h2>
-          <div className="flex flex-col gap-6 text-left">
+          <div className="flex flex-col gap-7 max-w-2xl mx-auto text-left">
             {[
-              { step: '1', text: 'Edge calls you. At your chosen time, Monday through Friday. The call is 3–5 minutes.' },
-              { step: '2', text: 'He opens with your Edge Score and the diagnosis. "Focus is a 7, Energy\'s a 4 — here\'s why, and here\'s what I\'d change."' },
-              { step: '3', text: 'You say yes. Edge reshapes your calendar, books the blocks, moves what needs moving. You hang up feeling lighter.' },
+              { icon: <IconPhone />, step: '1', text: 'Edg3 calls you. At your chosen time, Monday through Friday. The call is 3–5 minutes.' },
+              { icon: <IconZap />,   step: '2', text: 'He opens with your Edg3 Score and the diagnosis. "Focus is a 7, Energy\'s a 4 — here\'s why, and here\'s what I\'d change."' },
+              { icon: <IconCalendar />, step: '3', text: 'You say yes. Edg3 reshapes your calendar, books the blocks, moves what needs moving. You hang up feeling lighter.' },
             ].map(item => (
               <div key={item.step} className="flex items-start gap-5">
                 <div style={{
-                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
                   background: 'var(--edg-accent-15)', border: '1px solid var(--edg-accent-20)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 900, color: 'var(--text-accent)',
-                }}>{item.step}</div>
-                <p className="text-base leading-relaxed pt-1" style={{ color: 'var(--text-body)' }}>{item.text}</p>
+                  color: 'var(--text-accent)',
+                }}>{item.icon}</div>
+                <p className="text-base leading-relaxed pt-2" style={{ color: 'var(--text-body)' }}>{item.text}</p>
               </div>
             ))}
             <p className="text-base font-semibold text-center mt-2" style={{ color: 'var(--text-muted)' }}>
@@ -311,29 +481,29 @@ export default function LandingPage() {
         </section>
 
         {/* ── Memory section ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
-          <div className="glass-card p-8 md:p-12">
-            <h2 className="text-3xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
-              Most AI forgets you. Edge remembers.
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
+          <div className="glass-card p-8 md:p-14" style={{ borderColor: 'var(--edg-accent-20)' }}>
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
+              Most AI forgets you.<br />Edg3 remembers.
             </h2>
-            <p className="text-base leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>
-              Every call, every confirmed plan, every priority you name — Edge is building a model of you. Not a profile you fill out once and forget. A living picture that updates every morning.
+            <p className="text-base leading-relaxed mb-3 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
+              Every call, every confirmed plan, every priority you name — Edg3 builds a model of you that updates every morning.
             </p>
-            <p className="text-base leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>
-              That&apos;s why the briefing feels different after two weeks than it did on day one. Edge knows your energy patterns, your recurring bottlenecks, the people who move things and the ones who don&apos;t. It stops asking what matters and starts just knowing.
+            <p className="text-base leading-relaxed mb-3 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
+              It stops asking what matters. It starts just knowing.
             </p>
-            <p className="text-base leading-relaxed mb-10" style={{ color: 'var(--text-muted)' }}>
-              You&apos;re not training a chatbot. You&apos;re building an operating partner that accumulates context the way a great chief of staff does — call by call, week by week.
+            <p className="text-base font-semibold mb-10 max-w-2xl" style={{ color: 'var(--text-body)' }}>
+              You&apos;re not training a chatbot. You&apos;re building an operating partner.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Your goals, as they evolve', icon: '◎' },
-                { label: 'The people in your orbit', icon: '◉' },
-                { label: 'Your energy & patterns', icon: '⬡' },
-                { label: 'Commitments you\'ve made', icon: '◈' },
+                { label: 'Your goals, as they evolve', icon: <IconTarget /> },
+                { label: 'The people in your orbit',   icon: <IconUsers /> },
+                { label: 'Your energy & patterns',     icon: <IconZap /> },
+                { label: 'Commitments you\'ve made',   icon: <IconCheckCircle /> },
               ].map(item => (
-                <div key={item.label} className="rounded-xl px-4 py-5 flex flex-col gap-2" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
-                  <span style={{ fontSize: 20, color: 'var(--text-accent)' }}>{item.icon}</span>
+                <div key={item.label} className="rounded-xl px-4 py-5 flex flex-col gap-3" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
+                  <div style={{ color: 'var(--text-accent)' }}>{item.icon}</div>
                   <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-body)' }}>{item.label}</p>
                 </div>
               ))}
@@ -342,7 +512,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Features ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <h2 className="text-xl font-black tracking-tight mb-8 text-center" style={{ color: 'var(--text-strong)' }}>
             Everything you need. Nothing you don&apos;t.
           </h2>
@@ -351,11 +521,11 @@ export default function LandingPage() {
               'AI-recommended daily focus areas — based on your calendar history, calls, and inbox',
               'Morning voice call — 3–5 min, Monday–Friday, your schedule',
               'Live calendar management — create, move, delete, color-code via conversation',
-              'Edge Score — Focus / Energy / Clarity / Momentum, updated daily',
+              'Edg3 Score — Focus / Energy / Clarity / Momentum, updated daily',
               'Open Loops — surfaces commitments you\'ve mentioned but haven\'t closed',
               'Whoop integration — automatic energy tracking via recovery + sleep scores',
               'Gmail integration — urgent thread detection, reply tracking, inbox triage signal',
-              'Activity log — every change Edge makes, with one-tap undo',
+              'Activity log — every change Edg3 makes, with one-tap undo',
             ].map((feat, i) => (
               <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ background: 'var(--edg-fill-04)' }}>
                 <span style={{ color: 'var(--edg-indigo)', fontSize: 14, flexShrink: 0, marginTop: 2 }}>✦</span>
@@ -366,13 +536,13 @@ export default function LandingPage() {
         </section>
 
         {/* ── Final CTA ── */}
-        <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
+        <section className="max-w-3xl mx-auto px-4 md:px-8 py-24 text-center">
           <div className="glass-card p-6 md:p-10 lg:p-14" style={{ borderColor: 'var(--edg-accent-20)' }}>
             <h2 className="text-3xl font-black tracking-tight mb-4" style={{ color: 'var(--text-strong)' }}>
               Early access is limited. Get on the list.
             </h2>
             <p className="text-base mb-8" style={{ color: 'var(--text-muted)' }}>
-              We&apos;re opening Edge to a small group of beta users before public launch. If you&apos;re a founder, exec, or high-performer who&apos;s serious about focus and energy — we want to hear from you.
+              We&apos;re opening Edg3 to a small group of beta users before public launch. If you&apos;re a founder, exec, or high-performer who&apos;s serious about focus and energy — we want to hear from you.
             </p>
             {submitted ? (
               <div style={{ color: 'var(--text-muted)' }} className="text-sm">You&apos;re on the list — we&apos;ll be in touch soon.</div>
@@ -406,7 +576,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Footer ── */}
-        <footer className="max-w-5xl mx-auto px-6 md:px-8 py-8 text-center" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
+        <footer className="max-w-5xl mx-auto px-4 md:px-8 py-8 text-center" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
           <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
             Your data is encrypted at rest and never sold · Disconnect anytime
           </p>
