@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
@@ -1687,6 +1687,7 @@ export default function Dashboard() {
               { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
               { id: 'profile', label: 'Profile', icon: '👤' },
+              { id: 'help', label: 'Help', icon: '?' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -2802,6 +2803,12 @@ export default function Dashboard() {
 
           {activeTab === 'profile' && (
             <ProfileTab onSettingsSaved={loadData} />
+          )}
+
+          {activeTab === 'help' && (
+            <div className="max-w-2xl mx-auto">
+              <HelpSupportSection />
+            </div>
           )}
         </main>
       </div>
