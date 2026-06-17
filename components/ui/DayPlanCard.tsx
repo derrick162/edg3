@@ -19,6 +19,8 @@ export interface CalendarPlan {
   scoreAfter: number;    // 0–100 projected Edge Score after
   summary: string;       // one-line e.g. "3 moves + 1 block to align your morning"
   planId: string;        // opaque id for the confirm/undo call
+  diagnoses?: string[];  // 1–3 concrete problem sentences (why this plan is needed)
+  wellAligned?: boolean; // true when no actions needed — card shows score + positive state
 }
 
 export interface DayPlanCardProps {
@@ -32,6 +34,8 @@ export interface DayPlanCardProps {
   applied?: boolean;
   /** Score after application (may differ from plan.scoreAfter once real) */
   appliedScore?: number;
+  /** 1–3 concrete diagnoses explaining why the plan is needed */
+  diagnoses?: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -65,6 +69,7 @@ export function DayPlanCard({
   onDismiss,
   applied = false,
   appliedScore,
+  diagnoses,
 }: DayPlanCardProps) {
   const [confirming, setConfirming] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -110,6 +115,31 @@ export function DayPlanCard({
 
   const delta = plan.scoreAfter - plan.scoreBefore;
   const finalScore = applied ? (appliedScore ?? plan.scoreAfter) : plan.scoreAfter;
+
+  // ── Well-aligned / on-track state
+  if (plan.wellAligned && !applied) {
+    return (
+      <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--edg-success)' }}>✦ ON TRACK</p>
+            <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
+              {plan.summary}
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+              Edge will flag it if something shifts.
+            </p>
+          </div>
+          <div className="flex-shrink-0 text-right">
+            <p className="text-3xl font-black tabular-nums leading-none" style={{ color: scoreDeltaColor(12) }}>
+              {plan.scoreBefore}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>EDGE SCORE</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Applied / celebration state
   if (applied) {
@@ -197,6 +227,22 @@ export function DayPlanCard({
           </button>
         )}
       </div>
+
+      {/* Diagnoses — why this plan is needed */}
+      {diagnoses && diagnoses.length > 0 && (
+        <div className="mt-3 mb-1 space-y-1">
+          {diagnoses.map((d, i) => (
+            <div
+              key={i}
+              className="flex items-start gap-2 px-3 py-1.5 rounded-lg"
+              style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)' }}
+            >
+              <span className="flex-shrink-0 text-xs font-bold mt-0.5" style={{ color: 'var(--edg-danger)' }}>!</span>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{d}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Score delta preview */}
       <div className="flex items-center gap-3 mb-4 mt-3">

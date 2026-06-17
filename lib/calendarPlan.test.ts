@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { calendar_v3 } from 'googleapis';
 import type { Priority } from './db';
 import type { CalendarFit, ScoreResult } from './calendarScore';
-import { findFreeSlot, buildCalendarPlan } from './calendarPlan';
+import type { AlignmentResult } from './alignment';
+import type { WhoopRecoveryDay } from './whoop';
+import { findFreeSlot, buildCalendarPlan, buildDiagnoses, findHeaviestDeferrableEvent, patchAlignmentForPlan } from './calendarPlan';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
@@ -160,43 +162,29 @@ describe('buildCalendarPlan', () => {
     expect(plan.actions).toHaveLength(0);
   });
 
-  it('creates a move action when energyScore.topFix.op === move and worstMismatchEventId set', () => {
+  it('does NOT fire a move from energyScore.worstMismatchEventId (that path is intentionally dead — use recovery-based move instead)', () => {
     const fit = makeFit({
       energyTopFix: { description: 'Move "Deep work sprint" to your next green day.', op: 'move' },
       worstId:    'evt-deep-work',
       worstTitle: 'Deep work sprint',
     });
+    // Without recoveryHistory ≤33, no move action should fire even with worstMismatchEventId set
     const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ);
-    expect(plan.actions).toHaveLength(1);
-    const a = plan.actions[0];
-    expect(a.type).toBe('move');
-    expect(a.addresses).toBe('energy');
-    expect(a.eventId).toBe('evt-deep-work');
-    expect(a.eventTitle).toBe('Deep work sprint');
-    expect(a.newDate).toBe('2026-06-16');
+    expect(plan.actions.every(a => a.eventId !== 'evt-deep-work')).toBe(true);
   });
 
-  it('omits move action when worstMismatchEventId is null even if topFix op === move', () => {
+  it('combines focus create + recovery move into a two-action plan', () => {
+    const focusEvents = [timedEvent('Client call', 14, 16, 'evt-client')];
     const fit = makeFit({
-      energyTopFix: { description: 'Move high-demand event.', op: 'move' },
-      worstId: null,
+      focusTopFix: { description: 'Block time for "Fundraising"', op: 'create' },
+      edgeScore:   55,
     });
-    const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ);
-    expect(plan.actions).toHaveLength(0);
-  });
-
-  it('combines focus create + energy move into a two-action plan', () => {
-    const fit = makeFit({
-      focusTopFix:  { description: 'Block time for "Fundraising"', op: 'create' },
-      energyTopFix: { description: 'Move "Deep work sprint"',      op: 'move'   },
-      worstId:    'evt-dws',
-      worstTitle: 'Deep work sprint',
-      edgeScore:  55,
-    });
-    const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ);
+    const recoveryHistory = [recovDay('2026-06-15', 20)]; // low recovery → triggers move
+    const plan = buildCalendarPlan(focusEvents, fit, PRIORITIES, DATE, TZ, null, recoveryHistory);
     expect(plan.actions).toHaveLength(2);
     expect(plan.actions[0].type).toBe('create');
     expect(plan.actions[1].type).toBe('move');
+    expect(plan.actions[1].addresses).toBe('energy');
     expect(plan.summary).toContain('2 moves');
     expect(plan.summary).toContain('55');
   });
@@ -214,5 +202,267 @@ describe('buildCalendarPlan', () => {
     const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ);
     expect(() => new Date(plan.generatedAt)).not.toThrow();
     expect(new Date(plan.generatedAt).toISOString()).toBe(plan.generatedAt);
+  });
+});
+
+// ─── buildDiagnoses ───────────────────────────────────────────────────────────
+
+function makeAlignment(perPriority: { priority: string; hours: number }[]): AlignmentResult {
+  return {
+    perPriority: perPriority.map(p => ({ ...p, blocked: p.hours > 0 })),
+    unalignedHours: 0,
+    routineHours: 0,
+    topUnaligned: [],
+  };
+}
+
+function recovDay(date: string, score: number): WhoopRecoveryDay {
+  return { date, recoveryScore: score };
+}
+
+describe('buildDiagnoses', () => {
+  it('returns empty array when alignment is null and no events or recovery', () => {
+    const result = buildDiagnoses(null, [], [], TZ);
+    expect(result).toEqual([]);
+  });
+
+  it('surfaces a zero-hour priority', () => {
+    const alignment = makeAlignment([
+      { priority: 'Fundraising', hours: 0 },
+      { priority: 'Product', hours: 3 },
+    ]);
+    const result = buildDiagnoses(alignment, [], [], TZ);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('Fundraising');
+    expect(result[0]).toContain('No time blocked');
+  });
+
+  it('surfaces hygiene flag from back-to-back meetings', () => {
+    // 3 meetings with < 15 min gap each
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.1, 11),
+      timedEvent('Meeting C', 11.1, 12),
+    ];
+    const result = buildDiagnoses(null, events, [], TZ);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatch(/back-to-back/i);
+  });
+
+  it('surfaces low recovery when score ≤ 33', () => {
+    const result = buildDiagnoses(null, [], [recovDay('2026-06-15', 28)], TZ);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('28%');
+    expect(result[0]).toMatch(/recovery/i);
+  });
+
+  it('does NOT surface recovery when score > 33', () => {
+    const result = buildDiagnoses(null, [], [recovDay('2026-06-15', 50)], TZ);
+    expect(result).toHaveLength(0);
+  });
+
+  it('picks the most recent recovery day when multiple exist', () => {
+    const history = [
+      recovDay('2026-06-14', 25), // older — low
+      recovDay('2026-06-15', 70), // newest — fine
+    ];
+    const result = buildDiagnoses(null, [], history, TZ);
+    expect(result).toHaveLength(0);
+  });
+
+  it('combines zero-hour priority + hygiene flag — caps at 3', () => {
+    const alignment = makeAlignment([
+      { priority: 'Fundraising', hours: 0 },
+    ]);
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.1, 11),
+      timedEvent('Meeting C', 11.1, 12),
+    ];
+    const recovery = [recovDay('2026-06-15', 20)];
+    const result = buildDiagnoses(alignment, events, recovery, TZ);
+    expect(result.length).toBeLessThanOrEqual(3);
+    expect(result.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('only picks the first zero-hour priority (rank order)', () => {
+    const alignment = makeAlignment([
+      { priority: 'Fundraising', hours: 0 },
+      { priority: 'Product', hours: 0 },
+    ]);
+    const result = buildDiagnoses(alignment, [], [], TZ);
+    // Only one zero-priority diagnosis (the first one)
+    expect(result.filter(d => d.includes('No time blocked'))).toHaveLength(1);
+    expect(result[0]).toContain('Fundraising');
+  });
+});
+
+// ─── findHeaviestDeferrableEvent ─────────────────────────────────────────────
+
+describe('findHeaviestDeferrableEvent', () => {
+  it('returns null for empty list', () => {
+    expect(findHeaviestDeferrableEvent([])).toBeNull();
+  });
+
+  it('returns the longest timed event', () => {
+    const events = [
+      timedEvent('Short meeting', 9, 10),
+      timedEvent('Long deep work', 10, 13),
+    ];
+    const result = findHeaviestDeferrableEvent(events);
+    expect(result?.summary).toBe('Long deep work');
+  });
+
+  it('skips all-day events', () => {
+    const events = [allDayEvent('Conference'), timedEvent('Call', 9, 10)];
+    const result = findHeaviestDeferrableEvent(events);
+    expect(result?.summary).toBe('Call');
+  });
+
+  it('skips routine events (gym, lunch, etc.)', () => {
+    const events = [
+      timedEvent('Gym', 7, 8),
+      timedEvent('Lunch', 12, 13),
+      timedEvent('Client call', 14, 15),
+    ];
+    const result = findHeaviestDeferrableEvent(events);
+    expect(result?.summary).toBe('Client call');
+  });
+
+  it('returns null when only routine events exist', () => {
+    const events = [timedEvent('Gym', 7, 8), timedEvent('Breakfast', 8, 9)];
+    expect(findHeaviestDeferrableEvent(events)).toBeNull();
+  });
+});
+
+// ─── patchAlignmentForPlan ───────────────────────────────────────────────────
+
+describe('patchAlignmentForPlan', () => {
+  it('adds hours to matched priority for create action', () => {
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 0 }]);
+    const action: import('./calendarPlan').PlanAction = {
+      type: 'create',
+      description: 'Block 90 minutes for Fundraising',
+      addresses: 'focus',
+      title: 'Focus — Fundraising',
+      startDateTime: '2026-06-15T09:00:00',
+      endDateTime:   '2026-06-15T10:30:00',
+    };
+    const patched = patchAlignmentForPlan(alignment, [action]);
+    expect(patched.perPriority[0].hours).toBeCloseTo(1.5, 1);
+    expect(patched.perPriority[0].blocked).toBe(true);
+  });
+
+  it('removes event from topUnaligned for move action', () => {
+    const alignment: AlignmentResult = {
+      perPriority: [{ priority: 'Fundraising', hours: 2, blocked: true }],
+      unalignedHours: 3,
+      routineHours: 0,
+      topUnaligned: [{ title: 'Team sync', hours: 3 }],
+    };
+    const action: import('./calendarPlan').PlanAction = {
+      type: 'move',
+      description: 'Move Team sync to tomorrow',
+      addresses: 'focus',
+      eventId: 'evt-1',
+      eventTitle: 'Team sync',
+      newDate: '2026-06-16',
+    };
+    const patched = patchAlignmentForPlan(alignment, [action]);
+    expect(patched.topUnaligned).toHaveLength(0);
+    expect(patched.unalignedHours).toBe(0);
+  });
+
+  it('does not mutate the original alignment', () => {
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 0 }]);
+    const action: import('./calendarPlan').PlanAction = {
+      type: 'create', description: '', addresses: 'focus',
+      title: 'Focus — Fundraising',
+      startDateTime: '2026-06-15T09:00:00', endDateTime: '2026-06-15T10:30:00',
+    };
+    patchAlignmentForPlan(alignment, [action]);
+    expect(alignment.perPriority[0].hours).toBe(0); // original unchanged
+  });
+});
+
+// ─── buildCalendarPlan — new H1 branches ────────────────────────────────────
+
+describe('buildCalendarPlan — H1 new action sources', () => {
+  const DATE = '2026-06-15';
+  const PRIORITIES = [makeP('Fundraising'), makeP('Product roadmap', 2)];
+
+  it('creates a focus block from hygiene flag when focusScore has no topFix', () => {
+    // 3 back-to-back meetings → hygiene flag fires → plan creates a focus block
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.1, 11),
+      timedEvent('Meeting C', 11.1, 12),
+    ];
+    const fit = makeFit({ edgeScore: 75 }); // no topFix
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ);
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0].type).toBe('create');
+    expect(plan.actions[0].description).toMatch(/Fundraising/);
+    expect(plan.actions[0].description).toMatch(/deep-work time/i);
+  });
+
+  it('creates a recovery move when recovery ≤ 33 and deferrable events exist', () => {
+    const events = [timedEvent('Client call', 10, 12)];
+    const fit = makeFit({ edgeScore: 70 });
+    const recoveryHistory = [recovDay('2026-06-15', 25)];
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, null, recoveryHistory);
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0].type).toBe('move');
+    expect(plan.actions[0].addresses).toBe('energy');
+    expect(plan.actions[0].description).toContain('25%');
+    expect(plan.actions[0].eventTitle).toBe('Client call');
+    expect(plan.actions[0].newDate).toBe('2026-06-16');
+  });
+
+  it('does NOT create a recovery move when recovery > 33', () => {
+    const events = [timedEvent('Client call', 10, 12)];
+    const fit = makeFit({ edgeScore: 70 });
+    const recoveryHistory = [recovDay('2026-06-15', 50)];
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, null, recoveryHistory);
+    expect(plan.actions).toHaveLength(0);
+  });
+
+  it('moves biggest unaligned sink when it matches a today event', () => {
+    const events = [timedEvent('Team sync', 9, 12)]; // 3h unaligned event
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 2 }]);
+    alignment.topUnaligned = [{ title: 'Team sync', hours: 3 }];
+    alignment.unalignedHours = 3;
+    const fit = makeFit({ edgeScore: 70 });
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, alignment);
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0].type).toBe('move');
+    expect(plan.actions[0].addresses).toBe('focus');
+    expect(plan.actions[0].description).toContain('Team sync');
+    expect(plan.actions[0].newDate).toBe('2026-06-16');
+  });
+
+  it('does not add alignment gap move when unaligned sink < 1h', () => {
+    const events = [timedEvent('Quick chat', 9, 9.5)]; // 0.5h
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 2 }]);
+    alignment.topUnaligned = [{ title: 'Quick chat', hours: 0.5 }];
+    alignment.unalignedHours = 0.5;
+    const fit = makeFit({ edgeScore: 70 });
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, alignment);
+    expect(plan.actions).toHaveLength(0);
+  });
+
+  it('combines focus block + recovery move (two-action plan)', () => {
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.1, 11),
+      timedEvent('Meeting C', 11.1, 12),
+      timedEvent('Client call', 14, 16, 'evt-client'),
+    ];
+    const fit = makeFit({ edgeScore: 60 });
+    const recoveryHistory = [recovDay('2026-06-15', 20)];
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, null, recoveryHistory);
+    expect(plan.actions.length).toBeGreaterThanOrEqual(2);
+    expect(plan.actions.some(a => a.type === 'create')).toBe(true);
+    expect(plan.actions.some(a => a.type === 'move' && a.addresses === 'energy')).toBe(true);
   });
 });

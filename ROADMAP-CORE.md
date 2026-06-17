@@ -127,6 +127,30 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-17** — **Tickets G + H: Dashboard Hero Loop — diagnose → propose → apply → rescore.**
+  - **G (scaffold + diagnose):** `/api/day-plan` GET now returns `diagnoses: string[]` (1–3 concrete
+    problem sentences from alignment zero-hours, hygiene flags, low recovery). `DayPlanCard` renders
+    them as subtle warning pills above the proposed changes. `buildDiagnoses` pure helper added to
+    `lib/calendarPlan.ts`; 8 new tests. All state/handlers already wired in dashboard from prior work.
+  - **H1 — More plan actions (dead code replaced):** `buildCalendarPlan` extended with 3 action sources:
+    (1) Focus block from `focusScore.topFix` (existing), OR hygiene-flag fallback when no topFix and
+    back-to-back meetings exist; (2) Recovery move — when latest Whoop recovery ≤33%, finds the heaviest
+    deferrable event and proposes moving to tomorrow (replaces the dead `worstMismatchEventId` path that
+    `computeEnergyScore` never set); (3) Alignment gap move — biggest unaligned sink from `topUnaligned`
+    that matches a today event → move to tomorrow. New pure helpers: `findHeaviestDeferrableEvent`,
+    `patchAlignmentForPlan` (exported; used by route for score projection).
+  - **H2 — Real score projection:** `/api/day-plan` GET now computes `scoreBefore` with all 4
+    components (Focus+Energy+Clarity+Momentum) using the same `clarityInputs`/`momentumInputs`
+    pattern as `/api/scores` — the headline score now matches the dashboard exactly. `scoreAfter`
+    computed by patching alignment with plan deltas (`patchAlignmentForPlan`) and recomputing
+    `computeCalendarFit` — no more hardcoded `+12/action` guess.
+  - **H3 — Always say something:** Route never returns null. When no actions: returns
+    `{ wellAligned: true, scoreBefore, scoreAfter: scoreBefore, summary: "well-aligned…" }` so
+    the card always renders. `DayPlanCard` shows an "ON TRACK + score" state for `wellAligned`.
+  - `/api/day-plan/confirm` updated: passes `alignment` + `recoveryHistory` to `buildCalendarPlan`
+    so the plan is deterministic between preview and apply.
+  - 31 new tests. 1036/1036 green, tsc clean, next build clean.
+
 - **2026-06-16** — **Ticket A: Recalibrate Focus Score — ratio×coverage replaces aligned/45.** (`df727a3`)
   - **PROBLEM:** Old formula `aligned/45` made a genuinely focused 15-20h week score ~35-45% — "too harsh."
   - **New formula:** `ratio = aligned / max(committed,1)`; `coverage = min(1, committed/15)`; `score = round(100 * ratio * (0.6 + 0.4*coverage))`. A focused 15-18h week with some meetings now scores 70-85. Zero-priority or meeting-dominated weeks stay low.

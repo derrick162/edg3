@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const alignment = await computeAlignment(priorities, weekEvents, userTz).catch(() => null);
 
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
-  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz);
+  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory);
 
   // Build calendar client
   const tokenRow = calendarQueries.get(user.id);
