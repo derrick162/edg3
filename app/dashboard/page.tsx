@@ -7,6 +7,7 @@ import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection, TimeAllocationViz } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop, TimeAllocationBucket } from '@/components/ui';
+import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -1606,69 +1607,15 @@ export default function Dashboard() {
             {/* Proactive priority derivation card — shown when priorities are empty or stale */}
             {(priorities.length === 0 || prioritiesStale) && !deriveDismissed && (
               deriveLoading ? (
-                <div className="glass-card p-3">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Edge is reading your patterns…
-                  </p>
-                </div>
+                <PriorityDerivationLoadingCard />
               ) : derivedProposal ? (
-                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-accent-20)' }}>
-                  <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-accent)' }}>
-                    Here&apos;s what I think matters
-                  </p>
-                  {derivedProposal.summaryLine && (
-                    <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                      {derivedProposal.summaryLine}
-                    </p>
-                  )}
-                  <ol className="mb-3 space-y-2">
-                    {derivedProposal.priorities.map((p, i) => (
-                      <li key={i}>
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {i + 1}. {p.text}
-                        </p>
-                        {p.rationale && (
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {p.rationale}
-                          </p>
-                        )}
-                        {p.evidenceTags?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {p.evidenceTags.map((tag, j) => (
-                              <span key={j} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-faint)', fontSize: '10px' }}>
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleAcceptDerived}
-                      disabled={acceptingDerived}
-                      className="btn-primary text-xs py-1.5 px-3 flex-1"
-                    >
-                      {acceptingDerived ? 'Saving…' : 'Set as my priorities'}
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('priorities')}
-                      className="text-xs py-1.5 px-2 rounded"
-                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeriveDismissed(true)}
-                      className="text-xs py-1.5 px-2 rounded"
-                      style={{ color: 'var(--text-faint)' }}
-                      aria-label="Dismiss"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+                <PriorityDerivationCard
+                  proposal={derivedProposal}
+                  onAccept={handleAcceptDerived}
+                  onTweak={() => setActiveTab('priorities')}
+                  onDismiss={() => setDeriveDismissed(true)}
+                  accepting={acceptingDerived}
+                />
               ) : prioritiesStale && !prioritiesDismissed ? (
                 // Fallback: no derivation proposal, just show stale nudge
                 <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
