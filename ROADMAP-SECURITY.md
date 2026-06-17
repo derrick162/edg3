@@ -7,6 +7,25 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## 📥 PM DISPATCH — 2026-06-18 (Data consent enforcement — CASA requirement)
+
+> Master at `65c04dd`. Sync master first. Full spec: `specs/data-control-onboarding.md`.
+> Core owns the DB column + onboarding wiring; Design owns the screen. You own making the choice TRUE.
+
+**Your piece (Security — enforcement layer):**
+
+1. **Enforce Privacy Mode in the data pipeline.** When `users.data_consent = 'privacy'`, that user's calls, transcripts, and facts must NEVER enter any training/improvement pathway or be sent to any third party. Audit every outbound data path (any batch export, model fine-tuning pipeline, analytics sink) and add a `data_consent` check. Right now Edg3 doesn't have a training pipeline, so the primary task is: document the enforcement (what this means today = no data leaves except to OpenAI/Anthropic for inference as required to provide the service) and add a sentinel assertion to any future path that would extract training data.
+
+2. **Privacy Mode must be honored in any inference calls.** If a future session-level or user-level fine-tuning path is added, it must check `data_consent = 'improve'` before including the user's data. Add a comment in any LLM-call path flagging this.
+
+3. **Document for CASA.** Add a section to `content/security-audit.md`: "Data consent and Privacy Mode" — describes the two choices, the DB enforcement, what data flows where under each setting, and the audit trail. Google reviewers will look for this.
+
+4. **Data export includes consent setting.** If there is a `/api/account/export` endpoint (or when it's built), include `data_consent` in the export so users can verify their setting.
+
+**Dependency:** wait for Core to add the `users.data_consent` column before enforcing. Coordinate on timing — this is additive.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (S3 — harden the hero-loop apply path)
 
 > Master at `4f68720` (1015 green). S1+S2 shipped ✅. Sync master first.

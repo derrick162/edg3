@@ -8,6 +8,25 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-18 (Data control onboarding screen — CASA requirement)
+
+> Master at `65c04dd`. Sync master first. Full spec: `specs/data-control-onboarding.md`.
+> This is required for Google CASA verification. Three-lane build — Cam owns the screen, Vijay
+> owns enforcement, you own the onboarding step wiring + settings.
+
+**Your piece (Core):**
+1. Add a `data_consent` column to the `users` table: `TEXT DEFAULT 'privacy'` — values `'improve'` or `'privacy'`. Additive, no migration drama.
+2. Wire a new onboarding step between profile and call-time: show Cam's screen, capture the choice, persist via `UPDATE users SET data_consent = ? WHERE id = ?`.
+3. Add a Settings toggle ("Help improve Edg3" on/off) that reads and updates `data_consent`. Reuse the existing settings page.
+4. Expose `data_consent` from `/api/profile` so the Settings toggle can read initial state.
+
+**Do NOT ship** without Security confirming the enforcement is in place (their task below). The UI must not lie about Privacy Mode being honored.
+
+**Files:** `lib/db.ts` (column), `app/onboarding/**` (new step), `app/api/profile/route.ts`, Settings page.
+**Coordinate:** Cam (screen, claim onboarding in Status Board). Vijay (enforcement — let them merge first, then wire).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (★ FLAGSHIP — First-run Activation Moment, flow + data)
 
 > Master at `a3053cb`. Sync master first. Full spec: `specs/activation-moment.md`.
