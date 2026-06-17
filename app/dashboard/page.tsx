@@ -659,14 +659,14 @@ function ActivityTab() {
     <div>
       <SectionHint
         id="activity"
-        text="Every change Edge made to your calendar. Review or undo anything."
+        text="Every change Edg3 made to your calendar. Review or undo anything."
       />
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-lg font-bold">Edge&apos;s actions</h2>
+        <h2 className="text-lg font-bold">Edg3&apos;s actions</h2>
         <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
       </div>
       <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
-        Every change Edge makes appears here — review it, undo it, or just keep the audit trail.
+        Every change Edg3 makes appears here — review it, undo it, or just keep the audit trail.
       </p>
 
       {undoError && (
@@ -795,7 +795,7 @@ function ActivityTab() {
                             return (
                               <div className="mt-3">
                                 <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)', letterSpacing: '0.04em' }}>
-                                  Threads Edge reviewed
+                                  Threads Edg3 reviewed
                                 </p>
                                 {state === 'loading' ? (
                                   <div className="space-y-1.5 animate-pulse">
@@ -831,7 +831,7 @@ function ActivityTab() {
                                         <p className="pt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more threads</p>
                                       )}
                                       <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                                        Subject lines only — Edge never reads message content.
+                                        Edg3 reads subject lines only — never message content.
                                       </p>
                                     </div>
                                   );
