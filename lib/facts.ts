@@ -173,12 +173,19 @@ export async function extractAndUpsertFacts(
     }
     if (stored > 0) {
       console.log(`[facts] Upserted ${stored} structured facts for user ${userId}`);
-      maybeCreateFactLearnedNotif(userId, stored);
     }
     // Consolidate near-duplicate facts (same category + similar entity) after each write.
     const removed = consolidateFacts(userId);
     if (removed > 0) {
       console.log(`[facts] Consolidated ${removed} duplicate facts for user ${userId}`);
+    }
+    // Notify ONLY on genuinely NEW facts the user will actually see in the memory tab —
+    // the net row increase after upserts (which UPDATE existing facts, not just insert) AND
+    // consolidation (which removes near-dups). Counting raw upserts overstated "6 new" when the
+    // memory tab showed nothing new — a trust bug. netNew matches exactly what's rendered.
+    const netNew = factQueries.getAll(userId).length - storedFacts.length;
+    if (netNew > 0) {
+      maybeCreateFactLearnedNotif(userId, netNew);
     }
   } catch (err) {
     console.error('[facts] extractAndUpsertFacts failed:', err);
