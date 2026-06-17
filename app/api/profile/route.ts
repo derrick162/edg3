@@ -16,6 +16,7 @@ export async function GET() {
     call_time: fullUser?.call_time || '07:00',
     timezone: fullUser?.timezone || 'America/Vancouver',
     current_timezone: isValidTimeZone(fullUser?.current_timezone) ? fullUser!.current_timezone : null,
+    data_consent: fullUser?.data_consent ?? 'privacy',
   });
 }
 

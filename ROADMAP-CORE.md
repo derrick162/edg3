@@ -304,6 +304,11 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Compliance gate — `data_consent` DB column + consent endpoint (unblocks CASA).**
+  - `lib/db.ts`: added `"ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))"` to the migrations list. Added `userQueries.setDataConsent(id, consent)` to persist the user's choice.
+  - `GET /api/profile`: now returns `data_consent` (defaults to `'privacy'` when null — Privacy Mode is the safe default).
+  - `POST /api/onboarding/consent` (new endpoint): auth + rate-limited; validates `data_consent` is `'improve'` or `'privacy'`; calls `setDataConsent`; returns `{ ok: true }`. Both the onboarding `ConsentStep` and dashboard `DataConsentToggle` already POST to this URL — they are now wired.
+  - 7 new tests (401, 429, invalid JSON, missing field, invalid value, privacy, improve). 1320/1320 green, tsc clean, next build clean.
 - **2026-06-18** — **Trust Bug T2 — prefer event-title spelling in fact extraction.**
   - `extractAndUpsertFacts` now auto-fetches today's calendar events when `calendarEventTitles`
     is not supplied (call site in the webhook is unchanged). Event-title names are combined
