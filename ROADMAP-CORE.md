@@ -259,6 +259,20 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Trust Bug T2 — prefer event-title spelling in fact extraction.**
+  - `extractAndUpsertFacts` now auto-fetches today's calendar events when `calendarEventTitles`
+    is not supplied (call site in the webhook is unchanged). Event-title names are combined
+    with stored person facts and passed to BOTH the Tier-1 `groundProperNouns` pre-pass AND
+    the Haiku `knownNamesLine` hint, so the model uses the exact event spelling (e.g. "Jim" from
+    "1:1 Jim") rather than the STT re-transcription when they're a phonetic near-miss.
+  - 1246/1246 green, tsc clean.
+- **2026-06-18** — **Activation loading — 5 s minimum hold + 300 ms post-return buffer.**
+  - `ActivationStep` in `app/onboarding/page.tsx`: tracks derivation start time; delays the
+    transition to the reveal by `max(5000 − elapsed, 300)` ms so the loading orb is always
+    visible for at least 5 seconds and the reveal never snaps immediately even on a fast network.
+  - Prevents the jarring "blink" when `derivePriorities` returns in < 300 ms.
+  - Thin-data path (null proposal) advances immediately (no point holding for 5 s on nothing).
+  - 1240/1240 green, tsc clean.
 - **2026-06-18** — **T4 — STT transcript canonicalization (3 write paths).**
   - **`canonicalNamesFromProfile(userName)`** pure helper added to `lib/grounding.ts`. Splits a
     user's profile name ("Derrick Fung") into proper-noun tokens for use as canonical names in
