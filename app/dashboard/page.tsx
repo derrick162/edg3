@@ -1206,6 +1206,7 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
@@ -1303,12 +1304,22 @@ export default function Dashboard() {
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    const prevScore = calendarFit?.edgeScore ?? null;
     await fetch('/api/focus/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ areas }),
     });
     setFocusRecDismissed(true);
+    // Refetch Edge Score; if it rose, trigger the spark celebration
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+      if (!s) return;
+      setCalendarFit(s);
+      if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
+        setEdgeScoreCelebrating(true);
+        setTimeout(() => setEdgeScoreCelebrating(false), 1500);
+      }
+    }).catch(() => {});
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -2015,6 +2026,7 @@ export default function Dashboard() {
                 fit={calendarFit}
                 loading={calendarFitLoading}
                 sparse={priorities.length === 0 || calendarConnected === false}
+                celebrating={edgeScoreCelebrating}
                 onRequestFix={() => {/* DayPlanCard below handles fixes */}}
               />
               {/* Today's focus recommendations */}
