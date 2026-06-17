@@ -255,6 +255,10 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | LLM-extracted task text capped at 500 chars (2 paths) | `app/api/vapi/webhook/route.ts` — `extractTasksFromBriefing` + `extractTasksFromTranscript` |
 | LLM-extracted memory note (missed promises) capped at 2000 chars | `lib/verifyPromises.ts` `memoryQueries.create` call |
 
+### Email Header Injection Fix
+
+`lib/gmail.ts` `buildRawMessage`: `to`, `cc`, `bcc`, and `subject` values are now passed through `sh()` which strips `\r\n\t` before interpolation into MIME headers. Without this guard, a value like `"victim@example.com\r\nBcc: attacker@evil.com"` would inject a real `Bcc:` header. The sanitized value keeps the attacker's text on the same line (not a separate header). Test added: `strips CRLF from header fields (header injection prevention)`.
+
 ### Error Leak Fixes
 
 Removed internal error details (`err.message`, `String(err).slice(0,120)`) from user-facing responses; replaced with safe generic messages. Internal details still logged to console for ops diagnosis.

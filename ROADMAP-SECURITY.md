@@ -50,6 +50,14 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Round 6: email header injection fix + remaining LLM-output storage caps (1201 green).**
+
+  1. **Email header injection** — `lib/gmail.ts` `buildRawMessage`: `to`/`cc`/`bcc`/`subject` now strip `\r\n\t` via `sh()` before interpolation into MIME headers. A CRLF in `to` could inject extra headers (e.g. `Bcc:`). Security owns this primitive; the fix ensures no LLM-generated or user-supplied value can split into a separate header. 1 new test.
+  2. **`lib/briefing.ts` `analyzeUserResponse` task path** — LLM-extracted task text now capped at 500 chars before `taskQueries.create` (3rd instance; webhook.ts had 2 already).
+  3. **`app/api/onboarding/priorities`** — priority text now capped at 200 chars (`.slice(0, 200)`) to match `derive/accept` route's existing `MAX_PRIORITY_TEXT`. Ensures user-submitted priorities don't store unbounded content and the priority-change memory note stays bounded.
+  4. **Security audit doc** — email header injection section added.
+  1201/1201 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Round 4: LLM-output storage caps — task text + missed-promises memory note (1200 green).**
 
   Closed two remaining paths where LLM-extracted content was written to the DB without a length cap.
