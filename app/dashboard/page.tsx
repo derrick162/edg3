@@ -544,7 +544,27 @@ function ActivityTab() {
     if (action.includes('email') || action.includes('Email') || action.includes('draft') || action.includes('Draft')) return '✉';
     if (action.includes('research') || action.includes('Research')) return '🔍';
     if (action.includes('edit') || action.includes('Edit') || action.includes('update') || action.includes('Update')) return '✎';
+    if (action.includes('reply') || action.includes('Reply') || action.includes('inbox') || action.includes('Inbox')) return '📬';
     return '📅';
+  }
+
+  function isInboxRead(item: ActivityItem): boolean {
+    return item.label.toLowerCase().includes('inbox') || item.action.toLowerCase().includes('checkreplies') || item.action.toLowerCase().includes('inbox');
+  }
+
+  // Collapse consecutive identical-label items into one with a count
+  interface DedupedItem { item: ActivityItem; count: number }
+  function dedupeItems(raw: ActivityItem[]): DedupedItem[] {
+    const out: DedupedItem[] = [];
+    for (const item of raw) {
+      const prev = out[out.length - 1];
+      if (prev && prev.item.label === item.label && prev.item.action === item.action) {
+        prev.count += 1;
+      } else {
+        out.push({ item, count: 1 });
+      }
+    }
+    return out;
   }
 
   if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
@@ -597,11 +617,11 @@ function ActivityTab() {
                 {group.day}
               </p>
               <div className="space-y-1.5">
-                {group.items.map(item => {
+                {dedupeItems(group.items).map(({ item, count }) => {
                   const isExpanded = expandedId === item.id;
                   const isUndone = item.undone === 1;
-                  const canUndo = item.undoId !== null && !isUndone;
-                  const hasDetail = !!item.detail;
+                  const canUndo = item.undoId !== null && !isUndone && count === 1;
+                  const hasDetail = !!item.detail || isInboxRead(item);
                   return (
                     <div
                       key={item.id}
@@ -626,12 +646,22 @@ function ActivityTab() {
 
                         {/* Label + time */}
                         <div className="flex-1 min-w-0">
-                          <p
-                            className="text-sm leading-snug"
-                            style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-body)' }}
-                          >
-                            {item.label}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p
+                              className="text-sm leading-snug"
+                              style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-body)' }}
+                            >
+                              {item.label}
+                            </p>
+                            {count > 1 && (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+                                style={{ background: 'var(--edg-fill-hover)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}
+                              >
+                                ×{count}
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
                               {relativeTime(item.created_at)}
@@ -673,12 +703,53 @@ function ActivityTab() {
                       </div>
 
                       {/* Expanded detail panel */}
-                      {isExpanded && item.detail && (
+                      {isExpanded && (item.detail || isInboxRead(item)) && (
                         <div
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
                         >
-                          {item.detail.sections.length > 0 && (
+                          {/* Inbox receipt — subjects list */}
+                          {isInboxRead(item) && (() => {
+                            const subjects = item.detail?.sections.filter(s => s.label.toLowerCase().includes('subject') || s.label.toLowerCase().includes('thread')) ?? [];
+                            return (
+                              <div className="mt-3">
+                                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>
+                                  THREADS EDGE REVIEWED
+                                </p>
+                                {subjects.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {subjects.map((s, i) => (
+                                      <p key={i} className="text-xs px-2 py-1.5 rounded" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
+                                        {s.value}
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>
+                                    Subject details will appear here once Core wires the data.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                          {item.detail && item.detail.sections.filter(s => !s.label.toLowerCase().includes('subject') && !s.label.toLowerCase().includes('thread')).length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {item.detail.sections.filter(s => !s.label.toLowerCase().includes('subject') && !s.label.toLowerCase().includes('thread')).map((sec, i) => (
+                                <div key={i} className="flex gap-3">
+                                  <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: 'var(--text-faint)' }}>
+                                    {sec.label}
+                                  </span>
+                                  <span
+                                    className="text-sm flex-1"
+                                    style={{ color: 'var(--text-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                  >
+                                    {sec.value}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {!isInboxRead(item) && item.detail && item.detail.sections.length > 0 && (
                             <div className="mt-3 space-y-2">
                               {item.detail.sections.map((sec, i) => (
                                 <div key={i} className="flex gap-3">
@@ -957,12 +1028,12 @@ export default function Dashboard() {
   }
 
   async function saveFact(id: number, statement: string) {
-    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
+    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement, confidence: null } : f));
     setEditingFactId(null);
     await fetch(`/api/memory/facts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statement }),
+      body: JSON.stringify({ statement, confidence: null }),
     });
   }
 
