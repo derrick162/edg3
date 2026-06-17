@@ -1275,7 +1275,13 @@ export default function Dashboard() {
                 body: n.body,
                 read: !!n.read,
                 createdAt: n.created_at,
-                actions: [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }],
+                // "Book a time" belongs ONLY on reply notifications (its whole purpose:
+                // schedule with whoever replied). It was wrongly attached to EVERY
+                // notification — incl. Edge Score changes — which read as nonsensical.
+                // Gate it to reply notifications (their title contains "replied").
+                actions: (n.title || '').includes('replied')
+                  ? [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }]
+                  : undefined,
               }))}
               onDismiss={() => {}}
             />
