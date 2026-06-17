@@ -237,7 +237,9 @@ function initSchema(db: Database.Database) {
       confidence         TEXT NOT NULL DEFAULT 'high' CHECK(confidence IN ('high','low')),
       source_briefing_id INTEGER REFERENCES briefings(id),
       valid_from         TEXT NOT NULL DEFAULT (datetime('now')),
-      valid_until        TEXT
+      valid_until        TEXT,
+      confidence_score   REAL NOT NULL DEFAULT 1.0,
+      last_confirmed_at  TEXT DEFAULT (datetime('now'))
     );
 
     -- Whoop OAuth tokens (health data PII — encrypted at rest).
@@ -430,6 +432,18 @@ function initSchema(db: Database.Database) {
       flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop')),
       expires_at TEXT NOT NULL
     );
+
+    -- Pre-warmed briefing context generated nightly before the user's morning call.
+    -- Reduces cold-start latency. One row per user per day; upsert on regeneration.
+    -- context_pack encrypted at rest (contains memory content).
+    CREATE TABLE IF NOT EXISTS briefing_context_packs (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id),
+      pack_date    TEXT NOT NULL,
+      context_pack TEXT NOT NULL,
+      generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, pack_date)
+    );
   `);
 
   // Indexes for performance
@@ -455,6 +469,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
     CREATE INDEX IF NOT EXISTS idx_episodes_user_occurred ON episodes(user_id, occurred_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_context_packs_user_date ON briefing_context_packs(user_id, pack_date);
   `);
 
   // Migrations for existing databases
@@ -481,6 +496,9 @@ function initSchema(db: Database.Database) {
     // Round 5 — bi-temporal facts (Graphiti model)
     "ALTER TABLE facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT (datetime('now'))",
     "ALTER TABLE facts ADD COLUMN valid_until TEXT",
+    // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
+    "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
+    "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1297,6 +1315,10 @@ export interface Fact {
   // Optional in the TS type because existing test fixtures predate the columns; DB always populates both.
   valid_from?: string;
   valid_until?: string | null;
+  // Confidence decay (Round 6 T2): starts at 1.0, decays weekly by category tier.
+  // Below 0.3 = unverified, surfaced for reconfirmation. Optional: DB always populates; tests predate columns.
+  confidence_score?: number;
+  last_confirmed_at?: string | null;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -1451,6 +1473,24 @@ export const factQueries = {
       ).run(userId, 'goal', encryptField(text), null, 'high', 'priority-sync');
     }
   },
+
+  // Reset confidence_score to 1.0 when a fact is reconfirmed (mentioned again or user doesn't correct it).
+  // User-scoped; only applies to active (non-retired) facts.
+  confirmFact: (userId: number, factId: number): void => {
+    getDb().prepare(
+      "UPDATE facts SET confidence_score = 1.0, last_confirmed_at = datetime('now') WHERE id = ? AND user_id = ? AND valid_until IS NULL"
+    ).run(factId, userId);
+  },
+
+  // Decay confidence_score for active facts in the given categories by `amount` (floored at 0.0).
+  // Called weekly by the scheduler: volatile categories decay 0.1/week, stable decay 0.02/week.
+  decayByCategories: (categories: string[], amount: number): void => {
+    if (!categories.length) return;
+    const placeholders = categories.map(() => '?').join(', ');
+    getDb().prepare(
+      `UPDATE facts SET confidence_score = MAX(0.0, confidence_score - ?) WHERE valid_until IS NULL AND category IN (${placeholders})`
+    ).run(amount, ...categories);
+  },
 };
 
 export interface FocusMilestone {
@@ -1500,6 +1540,34 @@ export const focusMilestoneQueries = {
     return getDb().prepare(
       'DELETE FROM focus_milestones WHERE id = ? AND user_id = ?'
     ).run(id, userId);
+  },
+};
+
+// Nightly pre-warmed briefing context. One row per user per day; upserted on regeneration.
+// context_pack is AES-256-GCM encrypted (contains memory content). Pruned after 7 days.
+export const briefingContextPackQueries = {
+  upsert: (userId: number, packDate: string, contextPack: string): void => {
+    getDb().prepare(
+      `INSERT INTO briefing_context_packs (user_id, pack_date, context_pack)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, pack_date) DO UPDATE SET
+         context_pack = excluded.context_pack,
+         generated_at = datetime('now')`
+    ).run(userId, packDate, encryptField(contextPack));
+  },
+
+  get: (userId: number, packDate: string): string | null => {
+    const row = getDb().prepare(
+      'SELECT context_pack FROM briefing_context_packs WHERE user_id = ? AND pack_date = ?'
+    ).get(userId, packDate) as { context_pack: string } | undefined;
+    if (!row) return null;
+    return decryptField(row.context_pack);
+  },
+
+  prune: (): void => {
+    getDb().prepare(
+      "DELETE FROM briefing_context_packs WHERE generated_at < datetime('now', '-7 days')"
+    ).run();
   },
 };
 

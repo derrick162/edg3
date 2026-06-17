@@ -210,6 +210,20 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Round 6 — Predictive context loading + confidence decay schema (1553 green).**
+  - **Ticket 1 — Predictive context loading (11pm nightly cron):**
+    - `briefing_context_packs` table added to `lib/db.ts`: `(id, user_id, pack_date, context_pack encrypted, generated_at, UNIQUE(user_id, pack_date))`. Index on `(user_id, pack_date)`.
+    - `briefingContextPackQueries`: `upsert(userId, packDate, contextPack)` (encrypt + ON CONFLICT upsert), `get(userId, packDate)` (decrypt on read), `prune()` (DELETE rows >7 days).
+    - `runNightlyContextPacks(now?)` in `lib/scheduler.ts`: queries all active users, computes "tomorrow" in user's local timezone, calls `buildBriefingContextPack(userId)` (dynamic runtime check — activates automatically when Core/Darren exports the fn from `lib/briefing.ts`, no-ops with log until then). Encrypts + upserts result. Privacy Mode: pack cached (user's own data), content details not logged. Prunes stale packs after each run.
+    - Cron: `'0 23 * * *'` (11pm UTC daily) in `startScheduler()`.
+  - **Ticket 2 — Confidence decay schema:**
+    - DDL: `confidence_score REAL NOT NULL DEFAULT 1.0` + `last_confirmed_at TEXT DEFAULT (datetime('now'))` added to `facts` table. Migrations: two `ALTER TABLE facts ADD COLUMN` entries (additive, safe rollout).
+    - `factQueries.confirmFact(userId, factId)`: resets `confidence_score = 1.0` + `last_confirmed_at = datetime('now')`; user-scoped; active-only guard.
+    - `factQueries.decayByCategories(categories, amount)`: `UPDATE facts SET confidence_score = MAX(0.0, confidence_score - ?) WHERE valid_until IS NULL AND category IN (...)`. No-op on empty categories.
+    - `decayFactConfidenceScores()` in `lib/scheduler.ts`: volatile tier (priorities, projects, current_focus) −0.1/week; stable tier (personality, working_style, relationships) −0.02/week. Facts below 0.3 = "unverified" — Core's reconfirmation trigger reads this queue.
+    - Cron: `'0 4 * * 0'` (4am UTC every Sunday) in `startScheduler()`.
+  - **Tests:** `lib/scheduler.round6.test.ts` — 24 tests: briefingContextPackQueries (encrypt/decrypt/upsert SQL/prune), factQueries.confirmFact (SQL/user-scoped/valid_until guard), factQueries.decayByCategories (MAX floor/categories/active-only/no-op), runNightlyContextPacks (graceful degradation/user processing/prune), decayFactConfidenceScores (two-tier/amounts/categories). 80 test files / 1553 tests total.
+  - **Coordination note for Darren (Core):** `buildBriefingContextPack(userId: number): Promise<string>` — export from `lib/briefing.ts` when ready; the 11pm cron activates automatically. `factQueries.confirmFact(userId, factId)` ready for the reconfirmation trigger to call when a user confirms a fact mid-call. `confidence_score < 0.3` is the unverified threshold to surface.
 - **2026-06-18** — **Email signal quality fix — exclude Promotions/Social/Forums from inbox signal (1529 green).**
   - `lib/gmail.ts` `getRecentEmailSignal`: two-layer filter stops marketing/newsletter mail from entering fact extraction, meeting-prep, and priority derivation pipelines.
     1. **Query filter (primary):** `q` now appends `-category:promotions -category:social -category:forums` — keeps Primary + Updates (transactional/meeting signal); drops bulk marketing tabs using Gmail's own classifier. No third-party API.
