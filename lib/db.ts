@@ -402,6 +402,22 @@ function initSchema(db: Database.Database) {
       computed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- Episode store (episodic memory tier).
+    -- content_raw is the preserved call transcript (or lightly-processed record for email/calendar).
+    -- Encrypted at rest — this is the rawest PII we hold; never leaks cross-user.
+    -- topics + commitments are JSON string[] — tagged at write time; used for briefing recall.
+    -- Retention: rows older than 18 months may be pruned; episodeQueries.prune() handles it.
+    CREATE TABLE IF NOT EXISTS episodes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source       TEXT NOT NULL CHECK(source IN ('call', 'calendar', 'email')),
+      occurred_at  TEXT NOT NULL,
+      content_raw  TEXT NOT NULL,
+      topics       TEXT,
+      commitments  TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- OAuth CSRF state tokens — one-time-use, short-lived (10 min).
     -- Generated in /api/[calendar|whoop]/connect; consumed (verified + deleted) in /api/[...]/callback.
     CREATE TABLE IF NOT EXISTS oauth_state (
@@ -433,6 +449,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_calendar_plan_executions_user ON calendar_plan_executions(user_id, plan_id);
     CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
+    CREATE INDEX IF NOT EXISTS idx_episodes_user_occurred ON episodes(user_id, occurred_at DESC);
   `);
 
   // Migrations for existing databases
@@ -1880,5 +1897,97 @@ export const calendarPlanQueries = {
     getDb().prepare(
       "UPDATE calendar_plan_executions SET status = 'reverted', reverted_at = datetime('now') WHERE user_id = ? AND plan_id = ?"
     ).run(userId, planId);
+  },
+};
+
+// ── Episode store (episodic memory tier) ──────────────────────────────────────
+// Raw source = call transcript (or calendar/email signal). Encrypted at rest.
+// topics + commitments are JSON string[] for quick briefing-time recall.
+
+export type EpisodeSource = 'call' | 'calendar' | 'email';
+
+export interface Episode {
+  id:           number;
+  userId:       number;
+  source:       EpisodeSource;
+  occurredAt:   string;        // ISO datetime
+  contentRaw:   string;        // decrypted
+  topics:       string[];      // parsed from JSON
+  commitments:  string[];      // parsed from JSON
+  createdAt:    string;
+}
+
+interface EpisodeRow {
+  id:          number;
+  user_id:     number;
+  source:      string;
+  occurred_at: string;
+  content_raw: string;         // encrypted
+  topics:      string | null;
+  commitments: string | null;
+  created_at:  string;
+}
+
+function decryptEpisodeRow(r: EpisodeRow): Episode {
+  return {
+    id:          r.id,
+    userId:      r.user_id,
+    source:      r.source as EpisodeSource,
+    occurredAt:  r.occurred_at,
+    contentRaw:  decryptField(r.content_raw),
+    topics:      safeJsonArray(r.topics),
+    commitments: safeJsonArray(r.commitments),
+    createdAt:   r.created_at,
+  };
+}
+
+function safeJsonArray(v: string | null): string[] {
+  if (!v) return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+
+export const episodeQueries = {
+  insert: (
+    userId: number,
+    source: EpisodeSource,
+    occurredAt: string,
+    contentRaw: string,
+    topics: string[],
+    commitments: string[],
+  ): void => {
+    getDb().prepare(
+      `INSERT INTO episodes (user_id, source, occurred_at, content_raw, topics, commitments)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(userId, source, occurredAt, encryptField(contentRaw), JSON.stringify(topics), JSON.stringify(commitments));
+  },
+
+  recent: (userId: number, limit = 10): Episode[] => {
+    return (getDb().prepare(
+      'SELECT * FROM episodes WHERE user_id = ? ORDER BY occurred_at DESC LIMIT ?'
+    ).all(userId, limit) as EpisodeRow[]).map(decryptEpisodeRow);
+  },
+
+  search: (userId: number, opts: { topics?: string[]; since?: string; limit?: number }): Episode[] => {
+    const limit = opts.limit ?? 20;
+    let sql = 'SELECT * FROM episodes WHERE user_id = ?';
+    const params: (string | number)[] = [userId];
+    if (opts.since) { sql += ' AND occurred_at >= ?'; params.push(opts.since); }
+    sql += ' ORDER BY occurred_at DESC LIMIT ?';
+    params.push(limit);
+    const rows = getDb().prepare(sql).all(...params) as EpisodeRow[];
+    const episodes = rows.map(decryptEpisodeRow);
+    if (!opts.topics?.length) return episodes;
+    const needle = opts.topics.map(t => t.toLowerCase());
+    return episodes.filter(ep =>
+      ep.topics.some(t => needle.some(n => t.toLowerCase().includes(n) || n.includes(t.toLowerCase())))
+    );
+  },
+
+  prune: (userId: number, keepDays = 548): void => {
+    const cutoff = new Date(Date.now() - keepDays * 86_400_000).toISOString().slice(0, 10);
+    getDb().prepare(
+      "DELETE FROM episodes WHERE user_id = ? AND occurred_at < ?"
+    ).run(userId, cutoff);
   },
 };

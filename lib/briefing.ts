@@ -32,6 +32,7 @@ import {
   formatPatternForBriefing,
 } from './patternMemory';
 import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction } from './accountabilityMemory';
+import { buildEpisodeMemoryBlock } from './episodeStore';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -511,6 +512,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     ? Math.floor((Date.now() - new Date(prioritiesWeekOf + 'T00:00:00Z').getTime()) / 86400000)
     : 0;
 
+  // Episode Memory: past episodes whose topics overlap with today's priorities or events.
+  const episodeMemoryBlock = (() => {
+    try {
+      const todayTitles = calendarEvents.map(e => e.summary ?? '').filter(Boolean);
+      return buildEpisodeMemoryBlock(userId, latestPriorities.map(p => p.text), todayTitles);
+    } catch { return ''; }
+  })();
+
   // Derived priority proposal: run when priorities are absent or stale (>7d).
   // Non-blocking: a null from derivePriorities just means the section is omitted.
   const needsDerival = latestPriorities.length === 0 || prioritiesStaleAge > 7;
@@ -715,6 +724,8 @@ ${accountabilityInstruction}
 ` : edg3Commitment ? `
 YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said they'd do it):
 - ${edg3Commitment.text}
+` : ''}${episodeMemoryBlock ? `
+${episodeMemoryBlock}
 ` : ''}${openLoopsBlock ? `
 ${openLoopsBlock}
 When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.

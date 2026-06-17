@@ -304,6 +304,16 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Episode Store — episodic memory tier (M5).**
+  - **`lib/db.ts`** — `episodes` table (id, user_id, source, occurred_at, content_raw encrypted, topics JSON, commitments JSON, created_at). Index on `(user_id, occurred_at DESC)`. `EpisodeSource` type, `Episode` interface, `episodeQueries` (insert/recent/search/prune).
+  - **`lib/episodeStore.ts`** (new, pure ingestion + query):
+    - `tagTopicsFromTranscript(transcript, priorityTexts)` — keyword-based tagging matching priority texts + domain vocabulary (fundraising, runway, fitness, hiring, product, launch, revenue, customers). Zero LLM cost. Caps at 10 tags.
+    - `tagCommitmentsFromTasks(taskTexts)` — reuses already-extracted task texts; caps at 10.
+    - `persistCallEpisode(userId, transcript, occurredAt, priorityTexts, taskTexts)` — write path; skips if transcript < 50 chars.
+    - `buildEpisodeMemoryBlock(userId, priorityTexts, todayEventTitles)` — query path; fetches last 5 episodes (last 30 days) matching current topic overlap; formats EPISODIC MEMORY block for briefing prompt. Returns '' when no relevant episodes.
+  - **`app/api/vapi/webhook/route.ts`** — fire-and-forget `persistCallEpisode` after open-loop extraction; dynamic import so webhook path never blocked on episode failure.
+  - **`lib/briefing.ts`** — imports `buildEpisodeMemoryBlock`; computes episode block after `latestPriorities` declaration; injects EPISODIC MEMORY section into briefing prompt when non-empty.
+  - **`lib/episodeStore.test.ts`** (new) — 11 tests for `tagTopicsFromTranscript` + `tagCommitmentsFromTasks`. 1418/1418 green, tsc clean, next build clean.
 - **2026-06-18** — **M4 Accountability Memory — commitment outcome tracking + briefing reflection.**
   - **`lib/accountabilityMemory.ts`** (new, pure, zero I/O):
     - `buildAccountabilitySnapshot(tasks, openLoops, today, lookbackDays=7)` — takes edg3-source tasks
