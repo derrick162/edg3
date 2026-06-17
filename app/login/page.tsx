@@ -44,7 +44,7 @@ export default function LoginPage() {
           <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>Welcome back</p>
         </div>
 
-        <div className="glass-card p-8">
+        <div className="glass-card p-5 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="login-email" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Email</label>

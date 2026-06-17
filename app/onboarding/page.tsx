@@ -354,7 +354,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
         </p>
       </div>
 
-      <button onClick={onSkip} className="w-full text-xs py-2.5 text-center transition-opacity hover:opacity-80" style={{ color: 'var(--text-faint)' }}>
+      <button onClick={onSkip} className="w-full text-xs py-3 text-center transition-opacity hover:opacity-80" style={{ color: 'var(--text-faint)' }}>
         Skip for now — I&apos;ll connect later
       </button>
     </StepFade>
@@ -689,7 +689,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label htmlFor="onboard-call-time" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
               Call time
