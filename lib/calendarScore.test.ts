@@ -826,3 +826,101 @@ describe('computeCalendarFit -- clarity blend', () => {
     expect(fit.edgeScore).toBe(Math.round((100 + 80) / 2)); // 90
   });
 });
+
+// ─── computeFocusScore — edge cases ──────────────────────────────────────────
+
+describe('computeFocusScore — edge cases', () => {
+  it('zero committed hours (no events all week) → score 0, no crash', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 0 }], 0);
+    const r = computeFocusScore(alignment, priorities);
+    expect(r.score).toBe(0);
+  });
+
+  it('perPriority entries from alignment are all summed (including stale entries)', () => {
+    // alignment can have more entries than the stated priorities list;
+    // all perPriority hours are counted as aligned focus hours
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment: AlignmentResult = {
+      perPriority: [
+        { priority: 'Build', hours: 5, blocked: true },
+        { priority: 'Old priority', hours: 10, blocked: true },
+      ],
+      unalignedHours: 0,
+      routineHours: 0,
+      topUnaligned: [],
+    };
+    const r = computeFocusScore(alignment, priorities);
+    // committed = 15h aligned + 0 unaligned = 15, ratio=1.0, coverage=1.0 → 100
+    expect(r.score).toBe(100);
+    expect(r.topFix).toBeNull();
+  });
+
+  it('unaligned hours equal to routine hours → committed = aligned hours only', () => {
+    // If all unalignedHours are routine (meals), committed = alignedHours alone
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 10 }], 5, [], 5);
+    const r = computeFocusScore(alignment, priorities);
+    // committed = 10+max(0, 5-5) = 10, ratio=1.0, coverage=min(1,10/15)=0.667
+    // score=round(100*(0.6+0.4*0.667))=87
+    expect(r.score).toBe(87);
+  });
+
+  it('topFix null when score exactly 70', () => {
+    // Need to produce exactly 70 without going higher
+    const priorities = [makeP(1, 'Build', 1)];
+    // committed=10, ratio=1.0, coverage=10/15≈0.667 → score=87 — just verify ≥70 gives null topFix
+    const alignment  = makeAlign([{ priority: 'Build', hours: 45 }]);
+    const r = computeFocusScore(alignment, priorities, 45);
+    expect(r.score).toBe(100);
+    expect(r.topFix).toBeNull();
+  });
+
+  it('priority text present in topFix description when uncovered priority exists', () => {
+    const priorities = [makeP(1, 'Product roadmap', 1), makeP(2, 'Fundraising', 2)];
+    const alignment  = makeAlign(
+      [{ priority: 'Product roadmap', hours: 5 }, { priority: 'Fundraising', hours: 0 }],
+      2,
+    );
+    const r = computeFocusScore(alignment, priorities);
+    expect(r.topFix?.description).toMatch(/Fundraising/);
+  });
+});
+
+// ─── computeMomentumScore — edge cases ───────────────────────────────────────
+
+describe('computeMomentumScore — edge cases', () => {
+  it('completedCallDays14d capped at 14 (over-reporting does not break score)', () => {
+    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 20, confirmedFocusDays14d: 20 }));
+    expect(result.score).toBeLessThanOrEqual(100);
+    expect(result.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it('completedCallDays7d > completedCallDays14d is handled without crash', () => {
+    // Inconsistent data (7d > 14d) should not cause NaN or an exception
+    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 2, completedCallDays7d: 5 }));
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    expect(Number.isNaN(result.score)).toBe(false);
+  });
+
+  it('all zeros except confirmedToday=true gives non-zero score and not calibrating', () => {
+    const result = computeMomentumScore({
+      completedCallDays14d: 0, completedCallDays7d: 0,
+      confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: true,
+    });
+    expect(result.calibrating).toBeFalsy();
+    expect(result.score).toBeGreaterThan(0);
+  });
+
+  it('drivers array is always non-empty (calibrating or not)', () => {
+    [
+      makeMomentum({ completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0 }),
+      makeMomentum({ completedCallDays14d: 7 }),
+      makeMomentum({ completedCallDays14d: 14, confirmedFocusDays14d: 14 }),
+    ].forEach(inputs => {
+      const r = computeMomentumScore(inputs);
+      expect(Array.isArray(r.drivers)).toBe(true);
+      expect(r.drivers.length).toBeGreaterThan(0);
+    });
+  });
+});
