@@ -58,8 +58,8 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
-| `DELETE /api/account` | ✅ | — | Explicit confirm phrase required | Full cascade + session clear |
-| `GET /api/account/export` | ✅ | — | — | User-scoped; omits pw_hash + OAuth tokens; decrypts PII |
+| `DELETE /api/account` | ✅ | **ADDED** 3/hr | Explicit confirm phrase required | Full cascade + session clear |
+| `GET /api/account/export` | ✅ | **ADDED** 5/hr | — | User-scoped; omits pw_hash + OAuth tokens; decrypts PII |
 
 ### Activity Routes
 
@@ -152,7 +152,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `POST /api/onboarding/call-time` | ✅ | — | **FIXED**: HH:MM format + isValidTimeZone + phone len | |
 | `GET,POST /api/onboarding/priorities` | ✅ | — | Array check; text trimmed | Priority-sync to facts |
 | `POST /api/onboarding/profile` | ✅ | — | Trim + empty check | |
-| `GET /api/onboarding/suggest-priorities` | ✅ | — | — | LLM parses JSON array; output sanitized |
+| `GET /api/onboarding/suggest-priorities` | ✅ | **ADDED** 5/hr | — | LLM call; rate-limited to prevent cost abuse |
 
 ### Priorities Routes
 
@@ -229,6 +229,9 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `notifications` | 30/hr/user | `POST /api/notifications` |
 | `tasksWrite` | 60/hr/user | `POST /api/tasks`, `PATCH/DELETE /api/tasks/[id]`, `POST /api/tasks/complete-all` |
 | `undoPost` | 20/hr/user | `POST /api/undo` |
+| `suggestPriorities` | 5/hr/user | `GET /api/onboarding/suggest-priorities` |
+| `accountDelete` | 3/hr/user | `DELETE /api/account` |
+| `accountExport` | 5/hr/user | `GET /api/account/export` |
 
 ### Input Validation Fixes
 
@@ -251,7 +254,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 - **Authentication:** JWT cookie with `session_version` (logout invalidates tokens immediately)
 - **Authorization:** Every route gates on `getSession()` and scopes all DB queries to `user.id` — no cross-user data leakage
-- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (28 rate-limit types total)
+- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (31 rate-limit types total)
 - **Parameterized SQL:** No raw string interpolation in queries (better-sqlite3 prepared statements everywhere)
 - **Prompt injection defense:** `sanitize()` strips `\r\n\t` on calendar event titles in `lib/alignment.ts`; newline-strip in `lib/calendar.ts` `formatEventsForBriefing`
 - **Input validation:** length caps, type checks, enum validation on all mutation endpoints
