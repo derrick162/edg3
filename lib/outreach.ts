@@ -157,6 +157,9 @@ export async function composeOutreachEmail(opts: {
   const fallback = buildOutreachBody({ recipientName: opts.recipient.name, senderName: opts.senderName, ask: opts.ask, slots: opts.slots, userTimezone: opts.userTimezone });
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    // DATA CONSENT SENTINEL: sends recipient/ask details to Anthropic for inference only.
+    // Any future fine-tuning path must gate on user.data_consent === 'improve'.
+    // See content/security-audit.md §"Data consent and Privacy Mode".
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const tzNote = opts.userTimezone && opts.slots.length ? ` All times are in ${tzAbbrev(opts.userTimezone)}.` : '';
     const slotBlock = opts.slots.length

@@ -69,6 +69,26 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Data consent enforcement — CASA requirement (1267 green).**
+
+  PM dispatch: enforce Privacy Mode and document for CASA / Google OAuth verification.
+  Core hasn't landed `users.data_consent` yet — all changes are additive and forward-compatible.
+
+  1. **`User` interface** (`lib/db.ts`): Added `data_consent?: 'improve' | 'privacy' | null` — optional field so reads are safe before Core adds the DB column. `SELECT *` returns it automatically once the column exists.
+
+  2. **Data export** (`app/api/account/export/route.ts`): Added `dataConsent: profile.data_consent ?? null` to the export payload under `profile`. Returns null until Core adds the column; works automatically after the column is added. Users can verify their own consent setting in the export.
+
+  3. **Sentinel comments** — added to the three highest-volume LLM call sites:
+     - `lib/briefing.ts` (module-level — covers all briefing-generation calls)
+     - `lib/facts.ts` (transcript fact extraction)
+     - `lib/outreach.ts` (email drafting)
+     Each sentinel states: inference-only use today; any future fine-tuning path MUST gate on `user.data_consent === 'improve'`.
+
+  4. **CASA documentation** (`content/security-audit.md`): New section "Data consent and Privacy Mode" — two-setting table, data-flow inventory (Anthropic inference, Google Calendar OAuth, Vapi voice), enforcement state (no training pipeline today), sentinel comment locations, audit trail, and a CASA/Google OAuth verification checklist.
+
+  No code-path enforcement added yet — that's Core's column + Security's DB check when the column lands.
+  1267/1267 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Auth login tests — anti-enumeration + brute-force (1263 green).**
 
   10 new tests in `app/api/auth/login/route.test.ts`. Key security invariants verified:

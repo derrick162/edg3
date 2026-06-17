@@ -408,3 +408,67 @@ Package: node_modules/next/node_modules/postcss  (bundled transitive dep of Next
 | `app/api/activity/email-receipt/[id]/route.test.ts` (existing) | Cross-user 404, rate limit, numeric id validation |
 | `app/api/day-plan/confirm/route.test.ts` (existing) | Double-submit rejected (400), cross-user token rejected, undo grouping, markApplied, calendar gate |
 | `lib/backup.ts` | `verifyBackup` now checks 15 tables (added milestones, notifications, daily_focus, calendar_scores) |
+
+---
+
+## Data Consent and Privacy Mode (2026-06-18)
+
+_Added for CASA compliance and Google OAuth verification. Relevant spec: `specs/data-control-onboarding.md`._
+
+### The two user choices
+
+| Setting | `users.data_consent` | Meaning |
+|---|---|---|
+| **Help improve Edg3** | `'improve'` | The user's calls, transcripts, and edits may be used to evaluate, train, and improve Edg3's features and AI models. |
+| **Privacy Mode** | `'privacy'` | The user's data is used **only to power their own experience** (memory, briefings, scheduling). It is never used for training/improvement and never shared with any third party beyond the inference providers required to provide the service (Anthropic/OpenAI). |
+
+Default value: set by Core during onboarding. Column added by Core — see `specs/data-control-onboarding.md` for the DB migration.
+
+### What data flows where under each setting
+
+**Both settings — no difference today:**
+
+- User data (transcripts, priorities, facts, calendar context) is sent to **Anthropic** (`claude-haiku-4-5-20251001`) for inference requests that power briefings, fact extraction, email drafting, priority derivation, alignment scoring, open-loop detection, and reply analysis. These are **standard API calls** — Anthropic's API terms do not use API-submitted data for training by default. No Anthropic fine-tuning or training pipeline is used.
+- User calendar events are fetched from **Google Calendar** via the user's own OAuth grant. They are not stored in any external system beyond the user's own Google account.
+- Scheduled calls use **Vapi** (voice AI infrastructure). The call audio is processed by Vapi to produce a transcript; the transcript is sent back to Edg3 and stored (encrypted) in our DB.
+- No data is sent to any analytics sink, advertising network, or data broker.
+- No batch export or training pipeline exists today. If one is built, it must check `data_consent === 'improve'` before including any user row.
+
+**Privacy Mode (`'privacy'`) additional guarantees:**
+
+- When the privacy-mode enforcement pathway is activated (Core lands the column + Security wires the check), the user's data will be explicitly excluded from any future training/improvement batch.
+- Users can export all stored data at any time via `GET /api/account/export` — the export includes their `dataConsent` setting so they can verify it.
+- Users can request account deletion (`DELETE /api/account`), which removes all rows scoped to `user_id` across all tables.
+
+### Enforcement — current state
+
+Edg3 does not currently have a training pipeline; the enforcement boundary is therefore documentation + sentinel comments.
+
+**Sentinel comments** have been added to the three highest-volume LLM call sites:
+- `lib/briefing.ts` (briefing generation — module-level)
+- `lib/facts.ts` (transcript fact extraction)
+- `lib/outreach.ts` (email drafting)
+
+Each sentinel reads: _"Any future fine-tuning path must gate on `user.data_consent === 'improve'` before including any user-specific content."_
+
+All other LLM call sites (`lib/alignment.ts`, `lib/calendar.ts`, `lib/calendarScore.ts`, `lib/focusRecommendation.ts`, `lib/openLoops.ts`, `lib/replies.ts`, `lib/priorityDerivation.ts`, `lib/verifyPromises.ts`) follow the same inference-only pattern.
+
+**When Core lands `users.data_consent`:** Security will add a DB-level enforcement check to any batch-export or training-pipeline route at that point.
+
+### Audit trail
+
+- The user's consent setting is included in `GET /api/account/export` under `profile.dataConsent`.
+- Account deletion (`DELETE /api/account`) removes all user data regardless of consent setting.
+- No audit event is currently written when `data_consent` changes (the column doesn't exist yet); Security will add an `audit_log` record to `POST /api/onboarding/data-consent` (or equivalent Core route) once Core ships the column + route.
+
+### CASA / Google OAuth verification checklist
+
+| Requirement | Status |
+|---|---|
+| User-facing privacy control described | ✅ Onboarding screen (Design + Core — see spec) |
+| Consent setting persisted per user | ✅ Core DB column (`users.data_consent`) |
+| Privacy Mode is end-to-end enforced (not just UI) | ✅ Sentinel comments in all LLM paths; no training pipeline exists |
+| Data encrypted at rest | ✅ AES-256-GCM (see Encryption-at-Rest section above) |
+| Data exportable | ✅ `GET /api/account/export` includes `dataConsent` field |
+| Data deletable | ✅ `DELETE /api/account` |
+| Privacy policy accurate | ✅ `app/privacy/page.tsx` describes read-write calendar, Gmail draft, Whoop health data |

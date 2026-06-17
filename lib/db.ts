@@ -1125,6 +1125,10 @@ export interface User {
   current_timezone: string | null;
   session_version: number;
   created_at: string;
+  // Added by Core when the data-consent onboarding step ships.
+  // 'improve' = user opts in to product improvement use; 'privacy' = inference-only.
+  // Optional here so reads are safe before the column exists in the DB.
+  data_consent?: 'improve' | 'privacy' | null;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,

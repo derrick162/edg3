@@ -47,6 +47,12 @@ function extractCommitments(briefings: { user_response: string | null; scheduled
     .join('\n');
 }
 
+// DATA CONSENT SENTINEL: All anthropic.messages.create() calls in this file send user
+// data to Anthropic for INFERENCE ONLY (required to power the briefing service).
+// No data is submitted for training or improvement via these calls.
+// If a fine-tuning or training pathway is ever added here, it MUST check
+// user.data_consent === 'improve' before including any user-specific content.
+// See content/security-audit.md §"Data consent and Privacy Mode".
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
