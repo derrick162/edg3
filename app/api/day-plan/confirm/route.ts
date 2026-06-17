@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { userQueries, priorityQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries, calendarPlanQueries } from '@/lib/db';
+import { userQueries, priorityQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries, calendarPlanQueries, openLoopQueries } from '@/lib/db';
 import { getOAuthClient, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeCalendarFit } from '@/lib/calendarScore';
@@ -41,8 +41,16 @@ export async function POST(req: NextRequest) {
 
   const alignment = await computeAlignment(priorities, weekEvents, userTz).catch(() => null);
 
+  const openLoopsDueToday = (() => {
+    try {
+      return openLoopQueries.list(user.id, 'open')
+        .filter(l => l.dueDate === today)
+        .map(l => l.description);
+    } catch { return []; }
+  })();
+
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
-  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory);
+  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday);
 
   // Build calendar client
   const tokenRow = calendarQueries.get(user.id);

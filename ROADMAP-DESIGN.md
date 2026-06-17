@@ -25,6 +25,30 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-18 (T2 — Expandable inbox receipts in Activity tab)
+
+> Master at `9c2ed83` (1051 green). Sync master first. Full spec in `specs/trust-features.md §T2`.
+> **Fully unblocked** — backend is done (S4, Vijay). This is pure UI work.
+
+**T2 — Expandable "Read N inbox threads" rows in the Activity tab.** Currently `email_signal_fetch`
+entries show as a flat non-interactive row. Users (especially privacy-sensitive design partners) need
+to see WHICH emails Edge reviewed — this is the "Show Your Work" flagship for email.
+
+- Make `email_signal_fetch` activity rows **expandable** (same ▼/▲ chevron pattern as other rows).
+- On expand, lazy-fetch `GET /api/activity/email-receipt/[id]` (already live, returns
+  `{ subjects: string[] }`). Show the decrypted subject list, grouped by signal type if possible
+  (urgent / financial+legal / outreach reply / other). Max 10 shown; "+ N more" if over.
+- If any subjects contain strong signals (URGENT, invoice, legal, etc.), surface them in a subtle
+  "flagged" section above the rest.
+- Footer line: _"Edge reads subject lines only — never message content."_
+- Empty state: "No subjects stored for this scan" (can happen if scan returned 0 threads).
+- Loading state while fetch is in flight.
+
+Do NOT change the Activity tab query or the backend — UI only. The endpoint is at
+`app/api/activity/email-receipt/[id]/route.ts`. Coordinate with Darren if you hit query issues.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 LATE (UNBLOCKED work — your trust UI tickets are dependency-blocked)
 
 > Master at `9629aa4` (1051 green). `git merge master` first (gets Ticket H + tonight's work).

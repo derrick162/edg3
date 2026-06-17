@@ -14,6 +14,8 @@
  *   focusRecommend — 20 per 60 min per user  (LLM recommendation)
  *   focusConfirm   — 30 per 60 min per user  (DB write)
  *   calendarScores — 20 per 60 min per user  (LLM scoring)
+ *   factEdit       — 20 per 60 min per user  (fact corrections/deletions)
+ *   emailReceipt   — 60 per 60 min per user  (Activity receipt reads)
  *
  * The NextRequest helper extracts the real client IP from Railway's proxy headers.
  */
@@ -39,6 +41,8 @@ export const LIMITS = {
   briefingCall:   { limit: 3,  windowMs: 10 * 60 * 1000 },  // 3  / 10 min per user (manual call + retry)
   support:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user
   waitlist:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per IP (public signup, anti-spam)
+  factEdit:       { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (fact corrections)
+  emailReceipt:   { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (Activity receipt reads)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

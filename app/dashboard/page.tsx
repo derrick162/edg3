@@ -478,6 +478,7 @@ interface ActivityItem {
   undoId: number | null;
   undoLabel: string | null;
   undone: number | null;
+  emailReceiptId?: number | null;
 }
 
 function ActivityTab() {
@@ -486,7 +487,8 @@ function ActivityTab() {
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [receiptSubjects, setReceiptSubjects] = useState<Record<number, string[] | 'loading' | null>>({});
+  // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error'
+  const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error'>>({});
 
   async function load() {
     setLoading(true);
@@ -498,6 +500,26 @@ function ActivityTab() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function handleExpandItem(item: ActivityItem) {
+    const isExpanded = expandedId === item.id;
+    setExpandedId(isExpanded ? null : item.id);
+    // Eagerly load email subjects when expanding an email receipt row.
+    if (!isExpanded && item.emailReceiptId && emailSubjects[item.emailReceiptId] === undefined) {
+      setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'loading' }));
+      try {
+        const r = await fetch(`/api/activity/email-receipt/${item.emailReceiptId}`);
+        if (r.ok) {
+          const d = await r.json();
+          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: d.subjects ?? [] }));
+        } else {
+          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
+        }
+      } catch {
+        setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
+      }
+    }
+  }
 
   async function handleUndo(undoId: number) {
     setUndoingId(undoId);
@@ -514,17 +536,6 @@ function ActivityTab() {
     } else {
       setUndoError(d.error || 'Could not undo — please check your calendar.');
       setTimeout(() => setUndoError(null), 4000);
-    }
-  }
-
-  async function fetchReceipt(id: number) {
-    setReceiptSubjects(prev => ({ ...prev, [id]: 'loading' }));
-    try {
-      const r = await fetch(`/api/activity/email-receipt/${id}`);
-      const d = r.ok ? await r.json().catch(() => ({})) : {};
-      setReceiptSubjects(prev => ({ ...prev, [id]: d.subjects ?? null }));
-    } catch {
-      setReceiptSubjects(prev => ({ ...prev, [id]: null }));
     }
   }
 
@@ -643,14 +654,7 @@ function ActivityTab() {
                       <div
                         className="px-4 py-3 flex items-center gap-3"
                         style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-                        onClick={() => {
-                          if (!hasDetail) return;
-                          const next = !isExpanded;
-                          setExpandedId(next ? item.id : null);
-                          if (next && isInboxRead(item) && receiptSubjects[item.id] === undefined) {
-                            fetchReceipt(item.id);
-                          }
-                        }}
+                        onClick={() => hasDetail && handleExpandItem(item)}
                         role={hasDetail ? 'button' : undefined}
                         aria-expanded={hasDetail ? isExpanded : undefined}
                       >
@@ -727,50 +731,61 @@ function ActivityTab() {
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
                         >
-                          {/* Inbox receipt — fetched subjects from S4 endpoint */}
-                          {isInboxRead(item) && (() => {
-                            const fetched = receiptSubjects[item.id];
+                          {/* Email receipt — lazy-fetched via handleExpandItem */}
+                          {item.emailReceiptId && (() => {
+                            const state = emailSubjects[item.emailReceiptId];
+                            const SIGNAL_KEYWORDS = ['urgent', 'invoice', 'legal', 'contract', 'overdue', 'payment', 'lawsuit', 'agreement'];
+                            const isFlagged = (s: string) => SIGNAL_KEYWORDS.some(k => s.toLowerCase().includes(k));
                             return (
                               <div className="mt-3">
                                 <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>
                                   THREADS EDGE REVIEWED
                                 </p>
-                                {fetched === 'loading' ? (
+                                {state === 'loading' ? (
                                   <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Loading…</p>
-                                ) : fetched && fetched.length > 0 ? (
-                                  <div className="space-y-1">
-                                    {fetched.map((subject, i) => (
-                                      <p key={i} className="text-xs px-2 py-1.5 rounded" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
-                                        {subject}
+                                ) : state === 'error' ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
+                                ) : Array.isArray(state) && state.length === 0 ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>No subjects stored for this scan.</p>
+                                ) : Array.isArray(state) ? (() => {
+                                  const flagged = state.filter(isFlagged);
+                                  const rest = state.filter(s => !isFlagged(s));
+                                  const visible = [...flagged, ...rest].slice(0, 10);
+                                  const overflow = state.length - 10;
+                                  return (
+                                    <>
+                                      {flagged.length > 0 && (
+                                        <div className="mb-2 space-y-1">
+                                          {flagged.slice(0, 10).map((s, i) => (
+                                            <p key={i} className="text-xs px-2 py-1.5 rounded flex items-center gap-2"
+                                               style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)', borderLeft: '2px solid var(--edg-warning)' }}>
+                                              <span style={{ color: 'var(--edg-warning)' }}>⚑</span>{s}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="space-y-1">
+                                        {rest.slice(0, Math.max(0, 10 - flagged.length)).map((s, i) => (
+                                          <p key={i} className="text-xs px-2 py-1.5 rounded"
+                                             style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
+                                            {s}
+                                          </p>
+                                        ))}
+                                      </div>
+                                      {overflow > 0 && (
+                                        <p className="mt-1 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more</p>
+                                      )}
+                                      <p className="mt-2 text-xs italic" style={{ color: 'var(--text-faint)' }}>
+                                        Edge reads subject lines only — never message content.
                                       </p>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>
-                                    No subject details available.
-                                  </p>
-                                )}
+                                    </>
+                                  );
+                                })() : null}
                               </div>
                             );
                           })()}
-                          {item.detail && item.detail.sections.filter(s => !s.label.toLowerCase().includes('subject') && !s.label.toLowerCase().includes('thread')).length > 0 && (
-                            <div className="mt-3 space-y-2">
-                              {item.detail.sections.filter(s => !s.label.toLowerCase().includes('subject') && !s.label.toLowerCase().includes('thread')).map((sec, i) => (
-                                <div key={i} className="flex gap-3">
-                                  <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: 'var(--text-faint)' }}>
-                                    {sec.label}
-                                  </span>
-                                  <span
-                                    className="text-sm flex-1"
-                                    style={{ color: 'var(--text-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                                  >
-                                    {sec.value}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {!isInboxRead(item) && item.detail && item.detail.sections.length > 0 && (
+                          {/* Generic detail sections for non-receipt rows */}
+                          {!item.emailReceiptId && item.detail && item.detail.sections.length > 0 && (
                             <div className="mt-3 space-y-2">
                               {item.detail.sections.map((sec, i) => (
                                 <div key={i} className="flex gap-3">

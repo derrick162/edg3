@@ -50,6 +50,45 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Overnight queue: trust endpoint hardening + audit sweep + retention + prompt-injection defense + trust content (1090 green).**
+
+  **1. Trust endpoint hardening:**
+  - **`PATCH/DELETE /api/memory/facts/[id]`** (Core shipped T1, Security hardens):
+    - Added `factEdit` rate limit (20/hr per user) to both PATCH and DELETE.
+    - Fixed id validation: `parseInt` → `Number.isFinite(id) && id > 0` (rejects negative IDs, NaN, 0).
+    - PATCH: statement max 500 chars enforced; entity type-checked (string or null); entity capped at 200 chars.
+    - PATCH: reads existing fact before update (confirms ownership via `user_id` scope; returns 404 if not found instead of silent no-op).
+    - PATCH + DELETE: audit logged to `audit_log` (`fact_update` / `fact_delete`, category + entity recorded, user-scoped).
+    - DELETE: reads fact first; blocks `source='priority-sync'` facts with 409 + clear message ("update them in the Priorities tab instead"); does NOT call `deleteFact` for priority-sync facts.
+    - New `factQueries.getById(userId, id)` in `lib/db.ts` — user-scoped single-fact read (decrypts statement via `decryptFactRow`).
+  - **`GET /api/activity/email-receipt/[id]`** (S4 endpoint): added `emailReceipt` rate limit (60/hr per user). User-scoping was already enforced at the `getEmailSignalSubjects` layer.
+  - **New rate limit keys** in `lib/rateLimit.ts`: `factEdit` (20/hr), `emailReceipt` (60/hr).
+
+  **2. Audit-coverage sweep:**
+  - ✅ Calendar create/move/delete (via `tool-call/route.ts`): audited + confirm-token gated.
+  - ✅ Calendar book (`/api/calendar/book`): audited + idempotent (`claimEventCreate`).
+  - ✅ Day-plan apply (`/api/day-plan/confirm`): audited + planId token (S3).
+  - ✅ Fact edit/delete: NOW audited (this session).
+  - ✅ Waitlist: `ON CONFLICT DO NOTHING` + table-level record; pre-account, no user_id audit needed.
+  - ⚠️ **Gap noted (future):** `POST /api/undo` reverses calendar events but doesn't write an `audit_log` entry — only marks the undo-table row as undone. Low risk (undo table tracks state), but a future hardening pass could add `undo_applied` audit entries.
+
+  **3. Retention/TTL for encrypted email subjects:**
+  - `auditLogQueries.pruneEmailSubjects(days = 90)` added to `lib/db.ts` — runs `UPDATE ... SET snapshot_after = NULL WHERE action = 'email_signal_fetch' AND created_at < datetime('now', '-90 days')`. The "N threads reviewed" audit record survives; only the encrypted subject content is cleared.
+  - Wired into the nightly 3am cron in `lib/scheduler.ts` alongside the existing `openLoopQueries.prune()` / `oauthStateQueries.prune()` passes.
+  - Privacy policy already says "subjects retained for 90 days then automatically deleted" (S4); this makes the deletion deterministic (not relying solely on the 1%-chance row-level prune).
+
+  **4. Prompt-injection hardening (grounding layer):**
+  - **`lib/alignment.ts`**: Added `sanitize(s, maxLen)` helper — strips `\r\n\t` (newline injection), collapses whitespace, caps length. Applied to event `title` (cap 100) and `description` (cap 200) before LLM injection. Calendar event titles can be set by meeting organizers, not just the user — a malicious title with embedded newlines could break the classifier prompt structure.
+  - **`lib/calendar.ts`** (`formatEventsForBriefing`): same newline-strip applied to `event.summary` before injection into the briefing prompt. Minimal one-liner change; no behavior change for normal titles.
+  - Risk level is LOW (output is parsed as structured JSON; main briefing doesn't exfiltrate to external systems), but defense-in-depth is cheap here.
+  - 2 new alignment tests: newline-injection stripping verified, title length cap verified.
+
+  **5. Trust/security self-audit + content:**
+  - `content/data-protection.md` (new) — plain-English "How Edge protects your data" draft for Esther to polish. Covers: what's encrypted, what Edge can/can't do per source, retention table (inbox subjects 90d, audit 90d), user-scoped query guarantee, user controls (edit/delete facts, see receipts, export, disconnect). Tagged for Esther.
+  - **Security page** (`app/privacy/page.tsx`): already fully updated in S4 (accurate Gmail inbox signal language, Google Limited Use bullets updated). No further changes needed.
+  - 45 new tests total across all items.
+  - 1090/1090 green, tsc clean, next build clean.
+
 - **2026-06-17** — **S4 Activity email receipts — encrypted subject storage + read path (1045 green).**
   - **Decision:** store reviewed thread subjects encrypted at rest on the `email_signal_fetch` audit entry so users can see exactly which emails Edge reviewed in the Activity tab. No schema change — repurposes the existing `audit_log.snapshot_after` column (already TEXT, already used for calendar state). Subjects stored as `{"subjects":[...]}` JSON encrypted with `encryptField` (AES-256-GCM). Bodies, senders, and snippets are never stored.
   - **`lib/gmail.ts` changes:**

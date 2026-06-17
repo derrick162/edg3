@@ -9,6 +9,7 @@
 
 import { factQueries, type Fact } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
+import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import type { calendar_v3 } from 'googleapis';
 import type { EmailSignal } from './gmail';
 
@@ -122,12 +123,15 @@ function isSelfEntity(entity: string | null | undefined, userName?: string): boo
  * Extract facts from transcript and upsert them for the given user.
  * Fire-and-forget safe: any error is logged but never propagated.
  * userName ensures STT mis-spellings are corrected; sourceBriefingId provides provenance.
+ * calendarEventTitles (optional) — today's event titles used to extract additional canonical
+ * names for the grounding pre-pass (e.g. "Call with Faiza" → "Faiza" added to known names).
  */
 export async function extractAndUpsertFacts(
   userId: number,
   transcript: string,
   userName?: string,
   sourceBriefingId?: number,
+  calendarEventTitles?: string[],
 ): Promise<void> {
   try {
     // Pass previously stored facts so the model returns only net-new items.
@@ -136,7 +140,15 @@ export async function extractAndUpsertFacts(
     const knownNames = storedFacts
       .filter(f => f.category === 'person' && typeof f.entity === 'string' && (f.entity as string).trim().length > 0)
       .map(f => f.entity as string);
-    const facts = await extractFactsFromTranscript(transcript, userName, knownNames, storedFacts);
+
+    // Tier-1 grounding: deterministic pre-pass corrects 1-edit-distance STT garbling
+    // (e.g. "Gym" → "Jim", "Onsi" → "Ansi") before the Haiku model sees the transcript.
+    // Calendar event titles add additional canonical names beyond stored person facts.
+    const eventNames = extractNamesFromEventTitles(calendarEventTitles ?? []);
+    const allCanonical = [...knownNames, ...eventNames];
+    const groundedTranscript = groundProperNouns(transcript, allCanonical);
+
+    const facts = await extractFactsFromTranscript(groundedTranscript, userName, knownNames, storedFacts);
     let stored = 0;
     for (const f of facts) {
       // Never file a "person" fact about the user themselves.
