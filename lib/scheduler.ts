@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -191,6 +191,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
       }
     } catch (err) {
       console.error(`[scheduler] Context pack failed for user ${user.id}:`, err);
+      backgroundJobFailureQueries.record('nightly_context_packs', user.id, String(err));
     }
   }
 
@@ -214,6 +215,7 @@ export function decayFactConfidenceScores(): void {
     console.log('[scheduler] Weekly confidence decay applied');
   } catch (e) {
     console.error('[scheduler] Confidence decay failed:', e);
+    backgroundJobFailureQueries.record('decay_fact_confidence', null, String(e));
   }
 }
 
@@ -235,7 +237,16 @@ export function startScheduler() {
     try { oauthStateQueries.prune(); } catch (e) { console.error('[scheduler] oauthStateQueries.prune failed:', e); }
     try { auditLogQueries.pruneEmailSubjects(); } catch (e) { console.error('[scheduler] pruneEmailSubjects failed:', e); }
     try { episodeQueries.pruneAll(); } catch (e) { console.error('[scheduler] episodeQueries.pruneAll failed:', e); }
+    try { failedWebhookQueries.prune(); } catch (e) { console.error('[scheduler] failedWebhookQueries.prune failed:', e); }
+    try { backgroundJobFailureQueries.prune(); } catch (e) { console.error('[scheduler] backgroundJobFailureQueries.prune failed:', e); }
     maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
+    // Health check: log warnings if any failures accumulated in the last 24h.
+    try {
+      const webhookFails = failedWebhookQueries.recentCount(24);
+      const jobFails = backgroundJobFailureQueries.recentCount(24);
+      if (webhookFails > 0) console.error(`[health] WARN: ${webhookFails} webhook(s) in dead-letter queue in last 24h — check Railway logs`);
+      if (jobFails > 0) console.error(`[health] WARN: ${jobFails} background job failure(s) in last 24h — check Railway logs`);
+    } catch (e) { console.error('[scheduler] daily health check failed:', e); }
   });
 
   // Nightly at 11pm UTC: pre-warm tomorrow's briefing context for all active users.
@@ -328,6 +339,8 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       await scheduleBriefingCall(row.user_id, { force: true });
     } catch (err) {
       console.error(`[scheduler] DB-flagged retry failed for briefing ${row.id} (user ${row.user_id}):`, err);
+      // Write to dead-letter queue — all retries exhausted for this briefing.
+      failedWebhookQueries.record(row.user_id, null, row.id, String(err));
     }
   }
 }

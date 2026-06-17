@@ -216,6 +216,20 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T1-1 + T1-3 — Dead-letter queue + background job failure logging (1594 green).**
+  - **T1-1 — Webhook dead-letter queue:**
+    - `failed_webhooks` table in `lib/db.ts`: `(id, user_id, vapi_call_id, briefing_id, failed_at, error)`. Index on `failed_at DESC`.
+    - `failedWebhookQueries`: `record(userId, vapiCallId, briefingId, error)` — never throws, truncates error to 2000 chars; `recentCount(sinceHours)` — for daily health check; `prune(keepDays=30)`.
+    - `checkAndInitiateCalls` retry catch: if the DB-flagged retry also fails, writes to `failed_webhooks` dead-letter so the failure is preserved for diagnosis.
+    - 3am cron: calls `failedWebhookQueries.prune()` + daily health check logs `[health] WARN: N webhook(s) in dead-letter queue` if any exist in last 24h.
+  - **T1-3 — Background job failure logging:**
+    - `background_job_failures` table in `lib/db.ts`: `(id, job, user_id, failed_at, error, consecutive)`. Index on `(job, user_id, failed_at DESC)`.
+    - `backgroundJobFailureQueries`: `record(job, userId, error)` — reads prior consecutive count, increments, logs `ALERT` when ≥3 consecutive failures; `recentCount(sinceHours)`; `maxConsecutive(job)`; `prune(keepDays=30)`.
+    - `runNightlyContextPacks` per-user catch now calls `backgroundJobFailureQueries.record('nightly_context_packs', userId, err)`.
+    - `decayFactConfidenceScores` catch now calls `backgroundJobFailureQueries.record('decay_fact_confidence', null, err)`.
+    - 3am cron: calls `backgroundJobFailureQueries.prune()` + daily health check logs warn if any failures in last 24h.
+  - **Tests:** `lib/failure-logging.test.ts` (NEW, 20 tests): `failedWebhookQueries.record` (insert SQL, arg passing, null userId, error truncation), `.recentCount`, `.prune`; `backgroundJobFailureQueries.record` (insert SQL, args, null userId, consecutive=1 on first fail, increment on prior row), `.recentCount`, `.maxConsecutive` (returns 0 when null), `.prune`. Scheduler test mock + hardening test mock updated to include both new query objects.
+  - 82 test files / 1594 tests total.
 - **2026-06-18** — **Overnight hardening — DB durability + encryption graceful degradation + durable retry (1574 green).**
   - **DB Durability (#1):**
     - `lib/backup.ts`: `pushBackupToObjectStorage(info)` — dependency-free off-box backup to any S3-compatible endpoint (AWS S3, Cloudflare R2). Manual AWS Signature V4 via `node:crypto` (no SDK). Activated by setting `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` env vars on Railway. Returns `{ ok, message }` — silently skips when not configured.

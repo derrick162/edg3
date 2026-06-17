@@ -445,6 +445,30 @@ function initSchema(db: Database.Database) {
       generated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, pack_date)
     );
+
+    -- Dead-letter queue for webhook calls that failed even after retry.
+    -- Populated by lib/scheduler.ts when the DB-flagged retry also fails.
+    -- Daily check logs a warning to Railway if any rows exist in the last 24h.
+    CREATE TABLE IF NOT EXISTS failed_webhooks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      vapi_call_id TEXT,
+      briefing_id INTEGER REFERENCES briefings(id) ON DELETE SET NULL,
+      failed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      error       TEXT NOT NULL
+    );
+
+    -- Structured failure log for background cron jobs (sleep-time consolidation,
+    -- pattern detection, predictive context loading, etc.). Populated by the cron
+    -- runners in lib/scheduler.ts. Retained for 30 days; pruned on each daily run.
+    CREATE TABLE IF NOT EXISTS background_job_failures (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job         TEXT NOT NULL,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      failed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      error       TEXT NOT NULL,
+      consecutive INTEGER NOT NULL DEFAULT 1
+    );
   `);
 
   // Indexes for performance
@@ -471,6 +495,8 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
     CREATE INDEX IF NOT EXISTS idx_episodes_user_occurred ON episodes(user_id, occurred_at DESC);
     CREATE INDEX IF NOT EXISTS idx_context_packs_user_date ON briefing_context_packs(user_id, pack_date);
+    CREATE INDEX IF NOT EXISTS idx_failed_webhooks_failed_at ON failed_webhooks(failed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_bg_job_failures_job_user ON background_job_failures(job, user_id, failed_at DESC);
   `);
 
   // Migrations for existing databases
@@ -1091,6 +1117,73 @@ export const auditLogQueries = {
          AND snapshot_after IS NOT NULL
          AND created_at < datetime('now', ?)`
     ).run(`-${days} days`);
+  },
+};
+
+// Failed webhook dead-letter queue
+export const failedWebhookQueries = {
+  record: (userId: number | null, vapiCallId: string | null, briefingId: number | null, error: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO failed_webhooks (user_id, vapi_call_id, briefing_id, error) VALUES (?, ?, ?, ?)'
+      ).run(userId, vapiCallId, briefingId, error.slice(0, 2000));
+    } catch { /* best effort — never block the caller */ }
+  },
+
+  recentCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM failed_webhooks WHERE failed_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM failed_webhooks WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// Background job failure log — structured error records for cron jobs
+export const backgroundJobFailureQueries = {
+  record: (job: string, userId: number | null, error: string): void => {
+    try {
+      // Count consecutive failures for this job+user pair to surface persistent problems.
+      const prev = getDb().prepare(
+        `SELECT consecutive FROM background_job_failures WHERE job = ? AND (user_id = ? OR (user_id IS NULL AND ? IS NULL)) ORDER BY failed_at DESC LIMIT 1`
+      ).get(job, userId, userId) as { consecutive: number } | undefined;
+      const consecutive = (prev?.consecutive ?? 0) + 1;
+      getDb().prepare(
+        'INSERT INTO background_job_failures (job, user_id, error, consecutive) VALUES (?, ?, ?, ?)'
+      ).run(job, userId, error.slice(0, 2000), consecutive);
+      if (consecutive >= 3) {
+        console.error(`[job-failures] ALERT: job="${job}" userId=${userId} has failed ${consecutive} consecutive times`);
+      }
+    } catch { /* best effort */ }
+  },
+
+  recentCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM background_job_failures WHERE failed_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+
+  maxConsecutive: (job: string, sinceHours = 168): number => {
+    const row = getDb().prepare(
+      `SELECT MAX(consecutive) AS m FROM background_job_failures WHERE job = ? AND failed_at >= datetime('now', ?)`
+    ).get(job, `-${sinceHours} hours`) as { m: number | null };
+    return row.m ?? 0;
+  },
+
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM background_job_failures WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
   },
 };
 

@@ -57,6 +57,8 @@ vi.mock('./db', () => ({
   priorityQueries:  { getThisWeek: vi.fn(() => []), getMostRecent: vi.fn(() => []) },
   factQueries:      { getByCategory: vi.fn(() => []) },
   memoryQueries:    { getRecent: vi.fn(() => []) },
+  failedWebhookQueries: { record: vi.fn(), recentCount: vi.fn(() => 0), prune: vi.fn() },
+  backgroundJobFailureQueries: { record: vi.fn(), recentCount: vi.fn(() => 0), prune: vi.fn() },
   effectiveTimezone: (u: { timezone?: string }) => u.timezone ?? 'America/Vancouver',
 }));
 
