@@ -117,7 +117,16 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
     onSettingsSaved?.();
   }
 
-  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
+  if (loading) return (
+    <div className="space-y-4 mt-2 animate-pulse">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="glass-card p-5">
+          <div className="h-3 rounded w-1/4 mb-4" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="h-9 rounded" style={{ background: 'var(--edg-fill-04)' }} />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-8">
@@ -408,7 +417,8 @@ function PrioritiesTab({
                               </span>
                               <button
                                 onClick={() => onMilestoneDelete?.(m.id)}
-                                className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
+                                aria-label="Remove milestone"
+                                className="opacity-30 group-hover:opacity-100 focus:opacity-100 text-xs transition-opacity p-1"
                                 style={{ color: 'var(--edg-danger)' }}
                               >
                                 ×
@@ -574,7 +584,17 @@ function ActivityTab() {
     return '📅';
   }
 
-  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
+  if (loading) return (
+    <div className="space-y-3 mt-2">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="glass-card p-4 animate-pulse">
+          <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="h-4 rounded w-3/4 mb-2" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="h-3 rounded w-1/2" style={{ background: 'var(--edg-fill-04)' }} />
+        </div>
+      ))}
+    </div>
+  );
 
   // Group items by day
   const groups: { day: string; items: ActivityItem[] }[] = [];
@@ -705,41 +725,62 @@ function ActivityTab() {
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
                         >
-                          {/* Email receipt: show thread subjects when loaded */}
+                          {/* Email receipt — lazy-fetched via handleExpandItem */}
                           {item.emailReceiptId && (() => {
                             const state = emailSubjects[item.emailReceiptId];
-                            if (state === 'loading') return (
-                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>Loading emails…</p>
-                            );
-                            if (state === 'error') return (
-                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
-                            );
-                            if (state === 'none') return (
-                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>
-                                Edge didn&apos;t record the subjects for this earlier scan — newer scans will show them here.
-                              </p>
-                            );
-                            if (Array.isArray(state) && state.length === 0) return (
-                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>No subjects recorded for this scan.</p>
-                            );
-                            if (Array.isArray(state) && state.length > 0) return (
+                            const SIGNAL_KEYWORDS = ['urgent', 'invoice', 'legal', 'contract', 'overdue', 'payment', 'lawsuit', 'agreement'];
+                            const isFlagged = (s: string) => SIGNAL_KEYWORDS.some(k => s.toLowerCase().includes(k));
+                            return (
                               <div className="mt-3">
-                                <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-faint)' }}>
-                                  Emails Edge reviewed
+                                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>
+                                  THREADS EDGE REVIEWED
                                 </p>
-                                <div className="space-y-1">
-                                  {state.map((subject, i) => (
-                                    <p key={i} className="text-xs px-2 py-1 rounded" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)' }}>
-                                      {subject}
-                                    </p>
-                                  ))}
-                                </div>
+                                {state === 'loading' ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Loading…</p>
+                                ) : state === 'error' ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
+                                ) : state === 'none' ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Edge didn&apos;t record subjects for this earlier scan — newer scans will show them here.</p>
+                                ) : Array.isArray(state) && state.length === 0 ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>No subjects stored for this scan.</p>
+                                ) : Array.isArray(state) ? (() => {
+                                  const flagged = state.filter(isFlagged);
+                                  const rest = state.filter(s => !isFlagged(s));
+                                  const overflow = state.length - 10;
+                                  return (
+                                    <>
+                                      {flagged.length > 0 && (
+                                        <div className="mb-2 space-y-1">
+                                          {flagged.slice(0, 10).map((s, i) => (
+                                            <p key={i} className="text-xs px-2 py-1.5 rounded flex items-center gap-2"
+                                               style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)', borderLeft: '2px solid var(--edg-warning)' }}>
+                                              <span style={{ color: 'var(--edg-warning)' }}>⚑</span>{s}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="space-y-1">
+                                        {rest.slice(0, Math.max(0, 10 - flagged.length)).map((s, i) => (
+                                          <p key={i} className="text-xs px-2 py-1.5 rounded"
+                                             style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
+                                            {s}
+                                          </p>
+                                        ))}
+                                      </div>
+                                      {overflow > 0 && (
+                                        <p className="mt-1 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more</p>
+                                      )}
+                                      <p className="mt-2 text-xs italic" style={{ color: 'var(--text-faint)' }}>
+                                        Edge reads subject lines only — never message content.
+                                      </p>
+                                    </>
+                                  );
+                                })() : null}
                               </div>
                             );
-                            return null;
                           })()}
-                          {/* Only show generic detail sections for non-email-receipt rows */}
-                          {!item.emailReceiptId && item.detail.sections.length > 0 && (
+                          {/* Generic detail sections for non-receipt rows */}
+                          {!item.emailReceiptId && item.detail && item.detail.sections.length > 0 && (
                             <div className="mt-3 space-y-2">
                               {item.detail.sections.map((sec, i) => (
                                 <div key={i} className="flex gap-3">
@@ -930,6 +971,13 @@ export default function Dashboard() {
   const [activationFacts, setActivationFacts] = useState<string[]>([]);
   const [activationDismissed, setActivationDismissed] = useState(false);
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [derivedProposal, setDerivedProposal] = useState<{
+    priorities: { text: string; rationale: string; evidenceTags: string[] }[];
+    summaryLine: string;
+  } | null>(null);
+  const [deriveLoading, setDeriveLoading] = useState(false);
+  const [deriveDismissed, setDeriveDismissed] = useState(false);
+  const [acceptingDerived, setAcceptingDerived] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1149,6 +1197,38 @@ export default function Dashboard() {
     fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
   }
 
+  // Lazy derivation: fetch Edge's proposed priorities when the user has none or stale ones.
+  const shouldDerive = (priorities.length === 0 || prioritiesStale) && !deriveDismissed && !derivedProposal && !deriveLoading;
+  useEffect(() => {
+    if (!user || !shouldDerive) return;
+    setDeriveLoading(true);
+    fetch('/api/priorities/derive')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.proposal) setDerivedProposal(d.proposal); })
+      .catch(() => {})
+      .finally(() => setDeriveLoading(false));
+  // shouldDerive is derived from priorities/prioritiesStale/dismiss/loading — stable deps are user
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, shouldDerive]);
+
+  async function handleAcceptDerived() {
+    if (!derivedProposal) return;
+    setAcceptingDerived(true);
+    const texts = derivedProposal.priorities.map(p => p.text);
+    await fetch('/api/priorities/derive/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priorities: texts }),
+    }).catch(() => {});
+    // Reload priorities
+    fetch('/api/onboarding/priorities')
+      .then(r => r.ok ? r.json() : { priorities: [] })
+      .then(d => setPriorities(d.priorities || []))
+      .catch(() => {});
+    setDerivedProposal(null);
+    setAcceptingDerived(false);
+  }
+
   // Day-1 preview: once we know the user is onboarded and has no real briefings, fetch the preview.
   // The API generates it once and caches it — subsequent calls return instantly.
   useEffect(() => {
@@ -1327,7 +1407,7 @@ export default function Dashboard() {
           }}
         />
         {notifOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto' }}>
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 'calc(100vw - 32px)', maxWidth: 340, maxHeight: 420, overflowY: 'auto' }}>
             <NotificationCenter
               notifications={notifs.map(n => ({
                 id: n.id,
@@ -1411,8 +1491,9 @@ export default function Dashboard() {
             ].map(tab => (
               <button
                 key={tab.id}
+                aria-label={tab.label}
                 onClick={() => setActiveTab(tab.id as any)}
-                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
+                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
                   color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
@@ -1424,6 +1505,30 @@ export default function Dashboard() {
               </button>
             ))}
           </nav>
+
+          {/* Mobile: compact Next Call strip */}
+          <div className="flex md:hidden items-center justify-between px-1 py-2 mt-1 border-t" style={{ borderColor: 'var(--edg-hairline)' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Next call</span>
+              <span className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>
+                {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
+              </span>
+              {callStreak >= 2 && (
+                <span className="text-xs" style={{ color: 'var(--edg-warning)' }}>🔥 {callStreak}d</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {calendarConnected && (
+                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>● Cal</span>
+              )}
+              {whoopConnected && (
+                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>● Whoop</span>
+              )}
+              {todayCallStatus?.status === 'completed' && (
+                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>✓ Done</span>
+              )}
+            </div>
+          </div>
 
           <div className="hidden md:flex md:flex-col mt-6 space-y-3">
             <div
@@ -1498,29 +1603,97 @@ export default function Dashboard() {
                 ) : null}
               </div>
             </div>
-            {prioritiesStale && !prioritiesDismissed && (
-              <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
-                <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                  Still your top priorities this week?
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setActiveTab('priorities')}
-                    className="text-xs py-1 px-2 rounded flex-1"
-                    style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
-                  >
-                    Update
-                  </button>
-                  <button
-                    onClick={handleKeepPriorities}
-                    disabled={keepingPriorities}
-                    className="text-xs py-1 px-2 rounded flex-1"
-                    style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
-                  >
-                    {keepingPriorities ? '…' : 'Keep'}
-                  </button>
+            {/* Proactive priority derivation card — shown when priorities are empty or stale */}
+            {(priorities.length === 0 || prioritiesStale) && !deriveDismissed && (
+              deriveLoading ? (
+                <div className="glass-card p-3">
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Edge is reading your patterns…
+                  </p>
                 </div>
-              </div>
+              ) : derivedProposal ? (
+                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-accent-20)' }}>
+                  <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-accent)' }}>
+                    Here&apos;s what I think matters
+                  </p>
+                  {derivedProposal.summaryLine && (
+                    <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                      {derivedProposal.summaryLine}
+                    </p>
+                  )}
+                  <ol className="mb-3 space-y-2">
+                    {derivedProposal.priorities.map((p, i) => (
+                      <li key={i}>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {i + 1}. {p.text}
+                        </p>
+                        {p.rationale && (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                            {p.rationale}
+                          </p>
+                        )}
+                        {p.evidenceTags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {p.evidenceTags.map((tag, j) => (
+                              <span key={j} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-faint)', fontSize: '10px' }}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAcceptDerived}
+                      disabled={acceptingDerived}
+                      className="btn-primary text-xs py-1.5 px-3 flex-1"
+                    >
+                      {acceptingDerived ? 'Saving…' : 'Set as my priorities'}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('priorities')}
+                      className="text-xs py-1.5 px-2 rounded"
+                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setDeriveDismissed(true)}
+                      className="text-xs py-1.5 px-2 rounded"
+                      style={{ color: 'var(--text-faint)' }}
+                      aria-label="Dismiss"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ) : prioritiesStale && !prioritiesDismissed ? (
+                // Fallback: no derivation proposal, just show stale nudge
+                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                    Still your top priorities this week?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setActiveTab('priorities')}
+                      className="text-xs py-1 px-2 rounded flex-1"
+                      style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
+                    >
+                      Update
+                    </button>
+                    <button
+                      onClick={handleKeepPriorities}
+                      disabled={keepingPriorities}
+                      className="text-xs py-1 px-2 rounded flex-1"
+                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
+                    >
+                      {keepingPriorities ? '…' : 'Keep'}
+                    </button>
+                  </div>
+                </div>
+              ) : null
             )}
             {/* Energy OS — daily energy logger */}
             <div className="glass-card p-3">
@@ -1687,7 +1860,7 @@ export default function Dashboard() {
               <button
                 onClick={openCall}
                 disabled={openingCall}
-                className="btn-secondary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
+                className="btn-secondary text-sm py-2.5 sm:py-2 px-3 sm:px-4 flex-1 sm:flex-none"
                 title="An open conversation — no briefing"
               >
                 {openingCall ? 'Calling…' : '💬 Open call'}
@@ -1695,7 +1868,7 @@ export default function Dashboard() {
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
-                className="btn-primary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
+                className="btn-primary text-sm py-2.5 sm:py-2 px-3 sm:px-4 flex-1 sm:flex-none"
               >
                 {initiatingCall ? 'Calling…' : '📞 Call me now'}
               </button>
@@ -2100,9 +2273,10 @@ export default function Dashboard() {
                 {/* Collapsible categories */}
                 {catEntries.length > 0 && (
                   <div className="space-y-1.5 mb-6">
-                    {catEntries.map(([cat, catItems]) => {
+                    {catEntries.map(([cat, catItems], catIdx) => {
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
-                      const isSectionOpen = expandedMemorySections.has(cat);
+                      // Auto-open first category when nothing is explicitly expanded yet
+                      const isSectionOpen = expandedMemorySections.size === 0 ? catIdx === 0 : expandedMemorySections.has(cat);
                       const isShowAll = expandedFactCats.has(cat);
                       const visible = isShowAll ? catItems : catItems.slice(0, CAT_PREVIEW);
                       const toggleSection = () => setExpandedMemorySections(prev => {
@@ -2117,6 +2291,8 @@ export default function Dashboard() {
                           {/* Category header — always visible, click to expand */}
                           <button
                             onClick={toggleSection}
+                            aria-expanded={isSectionOpen}
+                            aria-label={`${meta.label} — ${catItems.length} facts`}
                             className="w-full flex items-center justify-between px-4 py-3 text-left transition-opacity hover:opacity-80"
                           >
                             <div className="flex items-center gap-2">
@@ -2228,7 +2404,7 @@ export default function Dashboard() {
                                               <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(f.learned_at), 'MMM d')}</span>
                                             )}
                                           </div>
-                                          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                          <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                             <button
                                               title="Edit"
                                               onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}

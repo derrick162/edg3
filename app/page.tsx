@@ -67,7 +67,7 @@ export default function LandingPage() {
             Early access — limited spots
           </div>
 
-          <h1 className="text-5xl md:text-6xl font-black tracking-tight mb-6 leading-tight">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-6 leading-tight">
             <span style={{ color: 'var(--text-strong)' }}>Your AI chief of staff for</span>
             <br />
             <span className="logo-text">focus and energy.</span>
@@ -263,7 +263,7 @@ export default function LandingPage() {
 
         {/* ── Final CTA ── */}
         <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
-          <div className="glass-card p-10 md:p-14" style={{ borderColor: 'var(--edg-accent-20)' }}>
+          <div className="glass-card p-6 md:p-10 lg:p-14" style={{ borderColor: 'var(--edg-accent-20)' }}>
             <h2 className="text-3xl font-black tracking-tight mb-4" style={{ color: 'var(--text-strong)' }}>
               Early access is limited. Get on the list.
             </h2>

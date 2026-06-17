@@ -195,7 +195,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         </label>
         <textarea
           className="input"
-          style={{ minHeight: '180px', fontSize: 13 }}
+          style={{ minHeight: 'clamp(120px, 30vw, 180px)', fontSize: 13 }}
           placeholder="Paste your full ChatGPT summary here — goals, strengths, current challenges, what you're working toward…"
           value={summary}
           onChange={e => setSummary(e.target.value)}
@@ -543,6 +543,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             <input
               className="input flex-1"
               type="tel"
+              inputMode="tel"
               placeholder="(555) 000-0000"
               value={phone}
               onChange={e => {
