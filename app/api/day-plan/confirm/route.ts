@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
   const scoreBefore = fit.edgeScore;
-  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday);
+  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday, new Date().toISOString());
 
   // Build calendar client
   const tokenRow = calendarQueries.get(user.id);
