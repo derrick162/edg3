@@ -57,7 +57,8 @@ Ship small / green / full preflight / log changelog.
   3. **Session/auth hardening review — PASS** — JWT fail-closed, bcrypt cost 12, session versioning with logout invalidation, cookie flags (httpOnly + secure + sameSite:lax), brute-force RL, OAuth CSRF state tokens. No gaps found.
   4. **npm audit — 2 moderate transitive vulns (accepted)** — `postcss <8.5.10` in Next.js's internal build tooling; fix requires downgrading Next.js to 9.3.3 (breaking change). Build-time-only exposure; not pre-beta blocker. Documented in `content/security-audit.md`.
   5. **`content/data-protection.md` updated** — added missing encrypted fields (email draft recipients/subjects, notification messages, daily focus plans, open loops) to the "What's encrypted at rest" section. Ready for Esther's copy polish.
-  1133/1133 green, tsc clean, next build clean.
+  6. **New Core route hardened on merge** — `POST /api/priorities/derive/accept` was missing a rate limit and per-priority text length cap. Added `priorityAccept` (20/hr) to `lib/rateLimit.ts`; capped priority text at 200 chars. `GET /api/priorities/derive` was already clean.
+  1156/1156 green, tsc clean, next build clean.
 
 - **2026-06-17** — **Flagship: full pre-beta security audit + hardening — all 78 routes reviewed (1133 green).**
 
