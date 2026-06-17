@@ -2,25 +2,35 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ActivationLoading, ActivationReveal, DerivedProposal } from '@/components/ui/ActivationReveal';
+import { ActivationHeroCard, ActivationHeroAligned, HeroSuggestion } from '@/components/ui/ActivationHeroCard';
 
-type Step = 'profile' | 'calendar' | 'priorities' | 'calltime' | 'done';
+type Step = 'profile' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'done';
 
-const STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime'];
+const STEPS: Step[] = ['profile', 'calendar', 'activation', 'hero', 'priorities', 'calltime'];
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
-const STEP_META: { label: string; icon: string }[] = [
+// Activation + hero are hidden "wow" beats — shown as progress inside the
+// calendar step node, not as separate indicator steps.
+const INDICATOR_STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime'];
+const INDICATOR_META: { label: string; icon: string }[] = [
   { label: 'About you',  icon: '👤' },
   { label: 'Calendar',   icon: '📅' },
   { label: 'Focus',      icon: '🎯' },
   { label: 'Your call',  icon: '📞' },
 ];
 
+function indicatorIdx(step: Step): number {
+  if (step === 'activation' || step === 'hero') return 1;
+  return INDICATOR_STEPS.indexOf(step);
+}
+
 function StepIndicator({ current }: { current: Step }) {
-  const idx = STEPS.indexOf(current);
+  const idx = indicatorIdx(current);
   return (
     <div className="flex items-center gap-0 mb-8">
-      {STEPS.map((s, i) => (
+      {INDICATOR_STEPS.map((s, i) => (
         <div key={s} className="flex items-center flex-1 last:flex-none">
           {/* Node */}
           <div className="flex flex-col items-center gap-1">
@@ -39,17 +49,17 @@ function StepIndicator({ current }: { current: Step }) {
                 boxShadow: i === idx ? '0 0 0 4px var(--edg-accent-08)' : 'none',
               }}
             >
-              {i < idx ? '✓' : STEP_META[i].icon}
+              {i < idx ? '✓' : INDICATOR_META[i].icon}
             </div>
             <span
               className="text-xs hidden sm:block text-center"
               style={{ color: i === idx ? 'var(--text-accent)' : 'var(--text-faint)', fontWeight: i === idx ? 600 : 400 }}
             >
-              {STEP_META[i].label}
+              {INDICATOR_META[i].label}
             </span>
           </div>
           {/* Connector */}
-          {i < STEPS.length - 1 && (
+          {i < INDICATOR_STEPS.length - 1 && (
             <div
               className="flex-1 h-px mx-2 transition-all duration-500"
               style={{ background: i < idx ? 'var(--edg-indigo)' : 'var(--edg-hairline)', marginBottom: 18 }}
@@ -435,6 +445,139 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
   );
 }
 
+// ── Step 3a: Activation — loading + reveal ────────────────────────────────────
+
+function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: () => void }) {
+  const [proposal, setProposal] = useState<DerivedProposal | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [accepting, setAccepting] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/priorities/derive')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.proposal) setProposal(d.proposal); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleAccept() {
+    if (!proposal) return;
+    setAccepting(true);
+    try {
+      await fetch('/api/priorities/derive/accept', { method: 'POST' });
+    } catch {
+      // accept is best-effort; still advance
+    }
+    setAccepting(false);
+    onAccept();
+  }
+
+  if (loading || !proposal) {
+    // Still fetching OR thin-data (no proposal) — show loading, then skip to manual
+    if (!loading && !proposal) {
+      // No proposal returned — silently advance to manual priorities
+      onTweak();
+      return null;
+    }
+    return (
+      <StepFade>
+        <ActivationLoading />
+      </StepFade>
+    );
+  }
+
+  return (
+    <StepFade>
+      <ActivationReveal
+        proposal={proposal}
+        onAccept={handleAccept}
+        onTweak={onTweak}
+        accepting={accepting}
+      />
+    </StepFade>
+  );
+}
+
+// ── Step 3b: Hero loop ────────────────────────────────────────────────────────
+
+function HeroStep({ onContinue }: { onContinue: () => void }) {
+  const [suggestion, setSuggestion] = useState<HeroSuggestion | null>(null);
+  const [edgeScore, setEdgeScore] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [aligned, setAligned] = useState(false);
+
+  useEffect(() => {
+    // Fetch day-plan suggestion + current edge score in parallel
+    Promise.all([
+      fetch('/api/day-plan').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/edge-score').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([plan, score]) => {
+      if (plan?.suggestion) {
+        setSuggestion(plan.suggestion);
+      } else {
+        setAligned(true);
+      }
+      if (score?.clarityScore != null) setEdgeScore(score.clarityScore);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  async function handleApply() {
+    if (!suggestion) return;
+    setApplying(true);
+    try {
+      await fetch('/api/day-plan/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestion }),
+      });
+      // Refresh edge score after apply
+      const s = await fetch('/api/edge-score').then(r => r.ok ? r.json() : null).catch(() => null);
+      if (s?.clarityScore != null) setEdgeScore(s.clarityScore);
+    } catch {
+      // best-effort
+    }
+    setApplying(false);
+    setApplied(true);
+  }
+
+  if (loading) {
+    return (
+      <StepFade>
+        <div className="py-8 space-y-4">
+          <div className="h-6 w-40 rounded-lg animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="rounded-xl p-5 animate-pulse" style={{ background: 'var(--edg-fill-04)', height: 120 }} />
+          <div className="h-11 rounded-xl animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
+        </div>
+      </StepFade>
+    );
+  }
+
+  // No suggestion and no score — skip this beat entirely
+  if (!suggestion && !aligned) {
+    onContinue();
+    return null;
+  }
+
+  return (
+    <StepFade>
+      {aligned ? (
+        <ActivationHeroAligned edgeScore={edgeScore} onContinue={onContinue} />
+      ) : (
+        <ActivationHeroCard
+          suggestion={suggestion!}
+          edgeScore={edgeScore}
+          onApply={handleApply}
+          onSkip={onContinue}
+          applying={applying}
+          applied={applied}
+        />
+      )}
+    </StepFade>
+  );
+}
+
 // ── Step 4: Call time ─────────────────────────────────────────────────────────
 
 function CallTimeStep({ onNext }: { onNext: () => void }) {
@@ -596,7 +739,8 @@ function OnboardingContent() {
   function advance() {
     const idx = STEPS.indexOf(step);
     if (idx < STEPS.length - 1) {
-      setStep(STEPS[idx + 1]);
+      const next = STEPS[idx + 1];
+      setStep(next);
     } else {
       sessionStorage.setItem('edg3_welcome', '1');
       router.push('/dashboard');
@@ -607,8 +751,6 @@ function OnboardingContent() {
     router.push('/dashboard');
     return null;
   }
-
-  const stepIdx = STEPS.indexOf(step);
 
   return (
     <div
@@ -623,17 +765,24 @@ function OnboardingContent() {
         <div className="text-center mb-6">
           <span className="logo-text text-2xl">EDG3</span>
           <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-            Step {stepIdx + 1} of {STEPS.length}
+            Step {Math.min(indicatorIdx(step) + 1, INDICATOR_STEPS.length)} of {INDICATOR_STEPS.length}
           </p>
         </div>
 
         <div className="glass-card p-5 md:p-8">
           <StepIndicator current={step} />
 
-          {step === 'profile'   && <ProfileStep   onNext={advance} />}
-          {step === 'calendar'  && <CalendarStep  onNext={advance} onSkip={advance} />}
-          {step === 'priorities'&& <PrioritiesStep onNext={advance} />}
-          {step === 'calltime'  && <CallTimeStep  onNext={advance} />}
+          {step === 'profile'    && <ProfileStep    onNext={advance} />}
+          {step === 'calendar'   && <CalendarStep   onNext={advance} onSkip={advance} />}
+          {step === 'activation' && (
+            <ActivationStep
+              onAccept={() => setStep('hero')}
+              onTweak={() => setStep('priorities')}
+            />
+          )}
+          {step === 'hero'       && <HeroStep onContinue={() => setStep('calltime')} />}
+          {step === 'priorities' && <PrioritiesStep onNext={() => setStep('calltime')} />}
+          {step === 'calltime'   && <CallTimeStep   onNext={advance} />}
         </div>
 
         {/* Bottom reassurance */}

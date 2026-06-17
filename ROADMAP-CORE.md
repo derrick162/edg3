@@ -8,6 +8,45 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-18 (★ FLAGSHIP — First-run Activation Moment, flow + data)
+
+> Master at `a3053cb`. Sync master first. Full spec: `specs/activation-moment.md`.
+> Esther owns copy (`content/activation-moment-copy.md`). Cam owns screens. You own flow + data.
+
+**What to build:** New onboarding step(s) that fire immediately after calendar connect.
+
+1. **Priority derivation reveal.** Call `/api/priorities/derive` right after OAuth. Show loading
+   state ("Edge is reading your last few months…") for ≥ 5s visible time (hold if faster so
+   the reveal isn't jarring). On success: pass derived anchors + evidence rationale to Cam's
+   reveal screen. On thin data (< 2 anchors with confidence): show Screen 3b (two quick
+   questions) — answers write to fact store same as call preferences.
+
+2. **Accept / tweak flow.** "These look right" → call `/api/priorities/derive/accept` (existing
+   endpoint). "Let me adjust" → show editable fields pre-filled with derived anchors → save via
+   the same accept endpoint. Both paths write anchors + priorities.
+
+3. **First hero-loop.** After priorities are written, call `/api/day-plan` with the new priorities
+   context. Show 1–3 plan actions (truncate to 3 in onboarding — don't overwhelm). "Make it happen"
+   → call `/api/day-plan/confirm` → calendar changes → Edge Score appears (post-apply, Screen 5).
+   Positive state (Screen 5b) when no actions needed.
+
+4. **Loading state timing:** Hold loading screen for minimum 300ms AFTER derivation returns (don't
+   snap straight to reveal). Makes the transition feel intentional.
+
+5. **Edge Score post-apply:** Score must be available after confirm in onboarding context. Show
+   even if some components still calibrating — use what we have.
+
+**Files:** `app/onboarding/**`, reuse `lib/priorityDerivation.ts`, `/api/priorities/derive` +
+`/api/priorities/derive/accept`, `/api/day-plan`, `/api/day-plan/confirm`.
+
+**Coordinate:** Cam (screens + motion) on shared `app/onboarding/**` files — claim Status Board
+before touching. Esther's copy doc has data dependencies for Darren noted at the bottom.
+
+**Thin-data questions write to:** preference facts (same as call memory). These feed the first
+morning call.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (T4 — clean call transcript/notes against canonical sources)
 
 > From Derrick's live morning call. Master at HEAD. The SPOKEN call is fine (Edge addresses
