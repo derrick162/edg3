@@ -309,8 +309,8 @@ describe('factQueries.deleteFact', () => {
 
 // ── consolidateFacts ──────────────────────────────────────────────────────────
 
-function makeFact(id: number, category: Fact['category'], entity: string | null, statement: string, learned_at = '2026-06-01'): Fact {
-  return { id, user_id: 1, category, entity, statement, learned_at, confidence: 'high', source_briefing_id: null };
+function makeFact(id: number, category: Fact['category'], entity: string | null, statement: string, learned_at = '2026-06-01', confidence: 'high' | 'low' = 'high'): Fact {
+  return { id, user_id: 1, category, entity, statement, learned_at, confidence, source_briefing_id: null };
 }
 
 describe('consolidateFacts', () => {
@@ -386,6 +386,31 @@ describe('consolidateFacts', () => {
     const removed = consolidateFacts(1);
     expect(removed).toBe(2); // one dup per group
     expect(factQueries.deleteFact).toHaveBeenCalledTimes(2);
+  });
+
+  it('prefers high-confidence fact over longer low-confidence fact', () => {
+    // low-confidence has a longer statement but user-corrected high-confidence wins
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'person', 'Jim', 'Jim is a person who trains people at a local gym in Vancouver', '2026-06-10', 'low'),
+      makeFact(2, 'person', 'Jim', 'Jim Smith is my personal trainer', '2026-06-12', 'high'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(1);
+    // high-confidence fact (id=2) is kept as the primary; id=1 (low confidence, longer) is deleted
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 1);
+    // no updateFact call — the high-confidence statement is already on the keeper (id=2)
+    expect(factQueries.updateFact).not.toHaveBeenCalled();
+  });
+
+  it('both high-confidence → falls back to length then recency', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'person', 'Sarah', 'Sarah is the CFO', '2026-06-10', 'high'),
+      makeFact(2, 'person', 'Sarah', 'Sarah Green is the Chief Financial Officer and board observer', '2026-06-12', 'high'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(1);
+    // id=2 is longer (>20 char diff) → kept; id=1 deleted
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 1);
   });
 });
 

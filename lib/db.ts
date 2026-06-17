@@ -1295,22 +1295,28 @@ export const factQueries = {
     let existingId: number | undefined;
     let existingStatement: string | undefined;
 
+    let existingConfidence: 'high' | 'low' | undefined;
     if (entity) {
       const row = db.prepare(
-        'SELECT id, statement FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
-      ).get(userId, category, entity) as { id: number; statement: string } | undefined;
-      if (row) { existingId = row.id; existingStatement = decryptField(row.statement); }
+        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
+      ).get(userId, category, entity) as { id: number; statement: string; confidence: 'high' | 'low' } | undefined;
+      if (row) { existingId = row.id; existingStatement = decryptField(row.statement); existingConfidence = row.confidence; }
     } else {
       const cands = db.prepare(
-        'SELECT id, statement FROM facts WHERE user_id=? AND category=? AND entity IS NULL'
-      ).all(userId, category) as Array<{ id: number; statement: string }>;
+        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL'
+      ).all(userId, category) as Array<{ id: number; statement: string; confidence: 'high' | 'low' }>;
       const match = cands.find(
         r => decryptField(r.statement).toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
       );
-      if (match) { existingId = match.id; existingStatement = decryptField(match.statement); }
+      if (match) { existingId = match.id; existingStatement = decryptField(match.statement); existingConfidence = match.confidence; }
     }
 
     if (existingId !== undefined) {
+      // User-corrected facts (confidence='high') are not overwritten by new extractions.
+      // The user's explicit edit wins over any subsequent STT/LLM extraction.
+      if (existingConfidence === 'high') {
+        return;
+      }
       if (existingStatement!.toLowerCase() !== statement.toLowerCase()) {
         db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=?")
           .run(encryptField(statement), existingId);

@@ -383,6 +383,88 @@ describe('patchAlignmentForPlan', () => {
     patchAlignmentForPlan(alignment, [action]);
     expect(alignment.perPriority[0].hours).toBe(0); // original unchanged
   });
+
+  it('empty actions list returns a structural clone (no mutations)', () => {
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 3 }]);
+    const patched = patchAlignmentForPlan(alignment, []);
+    expect(patched.perPriority[0].hours).toBe(3);
+    expect(patched).not.toBe(alignment); // new object
+  });
+
+  it('accumulates hours from two create actions on the same priority', () => {
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 1 }]);
+    const block = (start: string, end: string): import('./calendarPlan').PlanAction => ({
+      type: 'create', description: '', addresses: 'focus',
+      title: 'Focus — Fundraising',
+      startDateTime: start, endDateTime: end,
+    });
+    const patched = patchAlignmentForPlan(alignment, [
+      block('2026-06-15T09:00:00', '2026-06-15T10:30:00'), // +1.5h
+      block('2026-06-15T14:00:00', '2026-06-15T15:00:00'), // +1.0h
+    ]);
+    expect(patched.perPriority[0].hours).toBeCloseTo(3.5, 1); // 1 + 1.5 + 1.0
+  });
+
+  it('matches priority case-insensitively via partial substring', () => {
+    const alignment = makeAlignment([{ priority: 'fundraising', hours: 0 }]);
+    const action: import('./calendarPlan').PlanAction = {
+      type: 'create', description: '', addresses: 'focus',
+      title: 'Focus — FUNDRAISING deep work',
+      startDateTime: '2026-06-15T09:00:00', endDateTime: '2026-06-15T10:00:00',
+    };
+    const patched = patchAlignmentForPlan(alignment, [action]);
+    expect(patched.perPriority[0].hours).toBeCloseTo(1, 1);
+    expect(patched.perPriority[0].blocked).toBe(true);
+  });
+
+  it('create action with unrecognized title does not crash and leaves hours unchanged', () => {
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 2 }]);
+    const action: import('./calendarPlan').PlanAction = {
+      type: 'create', description: '', addresses: 'focus',
+      title: 'Commitments — clear open loops',
+      startDateTime: '2026-06-15T09:00:00', endDateTime: '2026-06-15T10:00:00',
+    };
+    const patched = patchAlignmentForPlan(alignment, [action]);
+    expect(patched.perPriority[0].hours).toBe(2); // unchanged
+  });
+
+  it('move action for event not in topUnaligned is a no-op (no crash)', () => {
+    const alignment: AlignmentResult = {
+      perPriority: [{ priority: 'Fundraising', hours: 2, blocked: true }],
+      unalignedHours: 1,
+      routineHours: 0,
+      topUnaligned: [{ title: 'Existing event', hours: 1 }],
+    };
+    const action: import('./calendarPlan').PlanAction = {
+      type: 'move', description: '', addresses: 'focus',
+      eventId: 'not-there', eventTitle: 'Nonexistent event', newDate: '2026-06-16',
+    };
+    const patched = patchAlignmentForPlan(alignment, [action]);
+    expect(patched.topUnaligned).toHaveLength(1);
+    expect(patched.unalignedHours).toBe(1); // unchanged
+  });
+
+  it('two different priorities each get their block hours independently', () => {
+    const alignment = makeAlignment([
+      { priority: 'Fundraising', hours: 0 },
+      { priority: 'Product', hours: 0 },
+    ]);
+    const actions: import('./calendarPlan').PlanAction[] = [
+      {
+        type: 'create', description: '', addresses: 'focus',
+        title: 'Focus — Fundraising',
+        startDateTime: '2026-06-15T09:00:00', endDateTime: '2026-06-15T10:00:00',
+      },
+      {
+        type: 'create', description: '', addresses: 'focus',
+        title: 'Focus — Product',
+        startDateTime: '2026-06-15T11:00:00', endDateTime: '2026-06-15T12:00:00',
+      },
+    ];
+    const patched = patchAlignmentForPlan(alignment, actions);
+    expect(patched.perPriority.find(p => p.priority === 'Fundraising')!.hours).toBeCloseTo(1, 1);
+    expect(patched.perPriority.find(p => p.priority === 'Product')!.hours).toBeCloseTo(1, 1);
+  });
 });
 
 // ─── buildCalendarPlan — new H1 branches ────────────────────────────────────

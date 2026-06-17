@@ -172,8 +172,9 @@ export async function extractAndUpsertFacts(
 
 /**
  * Consolidate near-duplicate facts for a user.
- * Groups by (category, LOWER(TRIM(entity))); keeps the fact with the longest statement
- * (most recent as tiebreaker) and deletes the rest. Returns the count of removed rows.
+ * Groups by (category, LOWER(TRIM(entity))); keeps the fact with the highest confidence
+ * (user-corrected high > auto-extracted low), then longest statement, then most recent.
+ * Merges the best available statement onto the keeper before deleting duplicates.
  * Entity-null facts are never merged — they can't be reliably matched.
  */
 export function consolidateFacts(userId: number): number {
@@ -191,17 +192,23 @@ export function consolidateFacts(userId: number): number {
   for (const group of groups.values()) {
     if (group.length <= 1) continue;
 
+    // Sort priority: confidence high > low, then longest statement (>20 char diff), then recency.
     const sorted = [...group].sort((a, b) => {
+      const confA = a.confidence === 'high' ? 1 : 0;
+      const confB = b.confidence === 'high' ? 1 : 0;
+      if (confB !== confA) return confB - confA; // high confidence first
       const lenDiff = b.statement.length - a.statement.length;
       if (Math.abs(lenDiff) > 20) return lenDiff;
       return (b.learned_at ?? '').localeCompare(a.learned_at ?? '');
     });
 
     const keep = sorted[0];
-    const bestStatement = sorted.reduce(
-      (best, f) => f.statement.length > best.length ? f.statement : best,
-      sorted[0].statement,
-    );
+    // Best statement: prefer the high-confidence one if present; otherwise the longest.
+    const highConf = sorted.find(f => f.confidence === 'high');
+    const bestStatement = highConf
+      ? highConf.statement
+      : sorted.reduce((best, f) => f.statement.length > best.length ? f.statement : best, sorted[0].statement);
+
     if (bestStatement !== keep.statement) {
       factQueries.updateFact(userId, keep.id, bestStatement, keep.entity ?? null);
     }
