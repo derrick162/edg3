@@ -5,7 +5,10 @@
 
 import type { calendar_v3 } from 'googleapis';
 import type { CalendarFit } from './calendarScore';
+import type { AlignmentResult } from './alignment';
+import { detectHygieneFlags } from './alignment';
 import type { Priority } from './db';
+import type { WhoopRecoveryDay } from './whoop';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -132,15 +135,93 @@ export function findFreeSlot(
   return null;
 }
 
+// ─── findHeaviestDeferrableEvent ─────────────────────────────────────────────
+
+const ROUTINE_PLAN = new Set([
+  'breakfast','lunch','dinner','coffee','gym','workout','morning walk','evening walk',
+  'meal prep','sleep','commute','transit','shower',
+]);
+
+function isRoutinePlanTitle(title: string): boolean {
+  const t = title.toLowerCase().trim();
+  return [...ROUTINE_PLAN].some(r => t.includes(r));
+}
+
+/**
+ * Return the longest timed non-routine event in today's list.
+ * Candidate for the "move to tomorrow on low recovery" action.
+ */
+export function findHeaviestDeferrableEvent(
+  events: calendar_v3.Schema$Event[],
+): calendar_v3.Schema$Event | null {
+  return (
+    events
+      .filter(e => e.start?.dateTime && e.end?.dateTime && !isRoutinePlanTitle(e.summary ?? ''))
+      .sort((a, b) => {
+        const durA = new Date(a.end!.dateTime!).getTime() - new Date(a.start!.dateTime!).getTime();
+        const durB = new Date(b.end!.dateTime!).getTime() - new Date(b.start!.dateTime!).getTime();
+        return durB - durA;
+      })[0] ?? null
+  );
+}
+
+// ─── patchAlignmentForPlan ────────────────────────────────────────────────────
+
+/**
+ * Apply plan deltas to alignment for real score projection (H2).
+ * - create: adds block duration to the matching priority's hours
+ * - move: removes the event from topUnaligned and reduces unalignedHours
+ * Pure — returns a new AlignmentResult; does not mutate input.
+ */
+export function patchAlignmentForPlan(
+  alignment: AlignmentResult,
+  actions: PlanAction[],
+): AlignmentResult {
+  const patched: AlignmentResult = {
+    perPriority: alignment.perPriority.map(p => ({ ...p })),
+    unalignedHours: alignment.unalignedHours,
+    routineHours: alignment.routineHours,
+    topUnaligned: [...alignment.topUnaligned],
+  };
+
+  const norm = (s: string) => s.toLowerCase().trim();
+
+  for (const action of actions) {
+    if (action.type === 'create' && action.startDateTime && action.endDateTime && action.title) {
+      const durationH =
+        (new Date(action.endDateTime).getTime() - new Date(action.startDateTime).getTime()) / 3600000;
+      const priorityName = norm(action.title.replace(/^Focus\s*[—\-–]\s*/i, ''));
+      const p = patched.perPriority.find(
+        pp =>
+          norm(pp.priority).includes(priorityName) ||
+          priorityName.includes(norm(pp.priority)),
+      );
+      if (p) {
+        p.hours = Math.round((p.hours + durationH) * 10) / 10;
+        p.blocked = true;
+      }
+    } else if (action.type === 'move' && action.eventTitle) {
+      const idx = patched.topUnaligned.findIndex(u => norm(u.title) === norm(action.eventTitle!));
+      if (idx >= 0) {
+        const hrs = patched.topUnaligned[idx].hours;
+        patched.topUnaligned.splice(idx, 1);
+        patched.unalignedHours = Math.max(0, Math.round((patched.unalignedHours - hrs) * 10) / 10);
+      }
+    }
+  }
+
+  return patched;
+}
+
 // ─── buildCalendarPlan ────────────────────────────────────────────────────────
 
 /**
- * Compose a 1–2 action plan to address today's Focus + Energy gaps.
+ * Compose 1–3 deterministic actions to improve today's day.
  *
- * Focus action  — if focusScore.topFix.op === 'create': find the first free
- *                 90-minute slot and plan to create a focus block.
- * Energy action — if energyScore.topFix.op === 'move' and worstMismatchEventId
- *                 is set: plan to move that event to tomorrow (same wall time).
+ * Action sources (in priority order, cap 3):
+ *   1. Focus block — focusScore.topFix says create, OR hygiene flag says no deep-work time
+ *   2. Recovery move — latest recovery ≤33% → move heaviest deferrable event to tomorrow
+ *   3. Alignment gap move — biggest unaligned sink today → move to tomorrow
  *
  * Pure — no I/O. Deterministic given the same inputs.
  */
@@ -150,20 +231,21 @@ export function buildCalendarPlan(
   priorities: Priority[],
   date: string,
   tz: string,
+  alignment?: AlignmentResult | null,
+  recoveryHistory?: WhoopRecoveryDay[],
 ): CalendarPlan {
   const actions: PlanAction[] = [];
 
-  // ── Focus: create a 90-minute focus block ──────────────────────────────────
+  // ── 1. Focus block ─────────────────────────────────────────────────────────
+  // Path A: score engine says "create a block for a zero-hour priority"
   if (fit.focusScore.topFix?.op === 'create') {
     const slot = findFreeSlot(todayEvents, date, 1.5, tz);
     if (slot) {
-      // Extract priority name from topFix description: 'Block time for "Fundraising" — ...'
       const match = fit.focusScore.topFix.description.match(/"([^"]+)"/);
       const priorityName = match?.[1] ?? priorities[0]?.text ?? 'your top priority';
       const startDecimalH =
         parseInt(slot.startDateTime.slice(11, 13), 10) +
         parseInt(slot.startDateTime.slice(14, 16), 10) / 60;
-
       actions.push({
         type: 'create',
         description: `Block 90 minutes for "${priorityName}" at ${formatWallHour(startDecimalH)}`,
@@ -174,24 +256,74 @@ export function buildCalendarPlan(
       });
     }
   }
-
-  // ── Energy: move worst mismatch event to tomorrow ──────────────────────────
-  if (
-    fit.energyScore.topFix?.op === 'move' &&
-    fit.energyScore.worstMismatchEventId
-  ) {
-    const eventTitle = fit.energyScore.worstMismatchEventTitle ?? 'high-demand event';
-    actions.push({
-      type: 'move',
-      description: `Move "${eventTitle}" to tomorrow — too draining for today`,
-      addresses: 'energy',
-      eventId:    fit.energyScore.worstMismatchEventId,
-      eventTitle: fit.energyScore.worstMismatchEventTitle ?? undefined,
-      newDate:    nextDateString(date),
-    });
+  // Path B: hygiene flag (back-to-back OR no deep-work) and priorities exist → create a slot
+  else if (priorities.length > 0) {
+    const hygieneFlag = detectHygieneFlags(todayEvents, tz);
+    if (hygieneFlag) {
+      const slot = findFreeSlot(todayEvents, date, 1.5, tz);
+      if (slot) {
+        const priorityName = priorities[0].text;
+        const startDecimalH =
+          parseInt(slot.startDateTime.slice(11, 13), 10) +
+          parseInt(slot.startDateTime.slice(14, 16), 10) / 60;
+        actions.push({
+          type: 'create',
+          description: `Block 90 minutes for "${priorityName}" at ${formatWallHour(startDecimalH)} — protect deep-work time`,
+          addresses: 'focus',
+          title: `Focus — ${priorityName}`,
+          startDateTime: slot.startDateTime,
+          endDateTime:   slot.endDateTime,
+        });
+      }
+    }
   }
 
-  // ── Build spoken summary ────────────────────────────────────────────────────
+  // ── 2. Recovery move ───────────────────────────────────────────────────────
+  // Replaces the dead worstMismatchEventId path (computeEnergyScore never sets that field).
+  if (actions.length < 3 && recoveryHistory && recoveryHistory.length > 0) {
+    const latestRec = [...recoveryHistory].sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (latestRec && latestRec.recoveryScore <= 33) {
+      const heaviest = findHeaviestDeferrableEvent(todayEvents);
+      if (heaviest && heaviest.id) {
+        actions.push({
+          type: 'move',
+          description: `Move "${heaviest.summary ?? 'event'}" to tomorrow — recovery is ${latestRec.recoveryScore}%, protect your energy today`,
+          addresses: 'energy',
+          eventId:    heaviest.id,
+          eventTitle: heaviest.summary ?? undefined,
+          newDate:    nextDateString(date),
+        });
+      }
+    }
+  }
+
+  // ── 3. Alignment gap move ──────────────────────────────────────────────────
+  if (actions.length < 3 && alignment && alignment.topUnaligned.length > 0) {
+    const topSink = alignment.topUnaligned[0];
+    if (topSink.hours >= 1) {
+      const norm = (s: string) => s.toLowerCase().trim();
+      const alreadyTargeted = new Set(actions.filter(a => a.type === 'move').map(a => a.eventId));
+      const match = todayEvents.find(
+        e =>
+          e.start?.dateTime &&
+          e.id &&
+          !alreadyTargeted.has(e.id) &&
+          norm(e.summary ?? '') === norm(topSink.title),
+      );
+      if (match && match.id) {
+        actions.push({
+          type: 'move',
+          description: `Move "${match.summary}" to tomorrow — ${topSink.hours}h that isn't aligned to your priorities`,
+          addresses: 'focus',
+          eventId:    match.id,
+          eventTitle: match.summary ?? undefined,
+          newDate:    nextDateString(date),
+        });
+      }
+    }
+  }
+
+  // ── Summary ────────────────────────────────────────────────────────────────
   let summary: string;
   if (actions.length === 0) {
     summary = `Your Edge Score is ${fit.edgeScore} — calendar looks good. Nothing to reshape right now.`;
@@ -203,4 +335,42 @@ export function buildCalendarPlan(
   }
 
   return { actions, summary, generatedAt: new Date().toISOString() };
+}
+
+// ─── buildDiagnoses ───────────────────────────────────────────────────────────
+
+/**
+ * Derive 1–3 concrete problem sentences from already-computed data.
+ * Used by /api/day-plan to explain WHY a plan is needed before showing changes.
+ * Pure — no I/O.
+ */
+export function buildDiagnoses(
+  alignment: AlignmentResult | null,
+  weekEvents: calendar_v3.Schema$Event[],
+  recoveryHistory: WhoopRecoveryDay[],
+  tz: string,
+): string[] {
+  const out: string[] = [];
+
+  // 1. Zero-hour priority (first in rank order = most important)
+  const zeroP = alignment?.perPriority.find(p => p.hours === 0);
+  if (zeroP) {
+    out.push(`No time blocked for "${zeroP.priority}" this week`);
+  }
+
+  // 2. Calendar hygiene flag (back-to-back meetings or no focus blocks)
+  if (out.length < 3) {
+    const flag = detectHygieneFlags(weekEvents, tz);
+    if (flag) out.push(flag);
+  }
+
+  // 3. Low recovery (Whoop red tier ≤33%)
+  if (out.length < 3 && recoveryHistory.length > 0) {
+    const latest = [...recoveryHistory].sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (latest && latest.recoveryScore <= 33) {
+      out.push(`Recovery is at ${latest.recoveryScore}% today — protect your energy`);
+    }
+  }
+
+  return out;
 }

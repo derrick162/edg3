@@ -1678,6 +1678,7 @@ export default function Dashboard() {
                   onDismiss={dayPlan ? () => setDayPlan(null) : undefined}
                   applied={dayPlanApplied}
                   appliedScore={dayPlanAppliedScore}
+                  diagnoses={dayPlan?.diagnoses}
                 />
               </div>
 
