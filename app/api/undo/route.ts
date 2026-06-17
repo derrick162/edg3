@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { calendarQueries, undoQueries } from '@/lib/db';
+import { calendarQueries, undoQueries, auditLogQueries } from '@/lib/db';
 import { getOAuthClient } from '@/lib/calendar';
 import { executeUndo, parseUndoOps } from '@/lib/undo';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { google, calendar_v3 } from 'googleapis';
 
 async function getCal(userId: number): Promise<calendar_v3.Calendar | null> {
@@ -38,6 +39,9 @@ export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const rl = checkRateLimit('undoPost', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   let id: number | undefined;
   try {
     const body = await req.json();
@@ -55,5 +59,16 @@ export async function POST(req: NextRequest) {
 
   const ok = await executeUndo(cal, parseUndoOps(entry.payload));
   undoQueries.markUndone(entry.id);
+
+  auditLogQueries.record({
+    userId: user.id,
+    action: 'undo_applied',
+    argsJson: JSON.stringify({ undoId: entry.id, label: entry.label }),
+    resultText: ok
+      ? `Undid: ${entry.label}`
+      : `Undo failed (partial): ${entry.label}`,
+    ok,
+  });
+
   return NextResponse.json({ success: ok, label: entry.label });
 }

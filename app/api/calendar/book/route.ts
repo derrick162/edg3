@@ -4,6 +4,7 @@ import { createCalendarEvent } from '@/lib/calendar';
 import { notificationQueries, auditLogQueries } from '@/lib/db';
 import { bookEventTimes } from '@/lib/time';
 import { claimEventCreate, buildEventDedupeKey } from '@/lib/idempotency';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 // Create a calendar event from the web (used by the notification "Book it" quick-form).
 // The user confirms title/date/time/duration before this is called — we never auto-book
@@ -11,6 +12,9 @@ import { claimEventCreate, buildEventDedupeKey } from '@/lib/idempotency';
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('calendarBook', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: { title?: string; date?: string; time?: string; durationMins?: number; notificationId?: number };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }); }

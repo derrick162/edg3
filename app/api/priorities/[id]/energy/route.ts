@@ -10,7 +10,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id: idStr } = await params;
   const id = parseInt(idStr, 10);
-  if (!id) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
   let body: { energy_cost?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

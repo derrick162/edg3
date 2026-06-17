@@ -971,6 +971,13 @@ export default function Dashboard() {
   const [activationFacts, setActivationFacts] = useState<string[]>([]);
   const [activationDismissed, setActivationDismissed] = useState(false);
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [derivedProposal, setDerivedProposal] = useState<{
+    priorities: { text: string; rationale: string; evidenceTags: string[] }[];
+    summaryLine: string;
+  } | null>(null);
+  const [deriveLoading, setDeriveLoading] = useState(false);
+  const [deriveDismissed, setDeriveDismissed] = useState(false);
+  const [acceptingDerived, setAcceptingDerived] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1188,6 +1195,38 @@ export default function Dashboard() {
     setPrioritiesDismissed(true);
     // Reload priorities so week_of is fresh
     fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
+  }
+
+  // Lazy derivation: fetch Edge's proposed priorities when the user has none or stale ones.
+  const shouldDerive = (priorities.length === 0 || prioritiesStale) && !deriveDismissed && !derivedProposal && !deriveLoading;
+  useEffect(() => {
+    if (!user || !shouldDerive) return;
+    setDeriveLoading(true);
+    fetch('/api/priorities/derive')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.proposal) setDerivedProposal(d.proposal); })
+      .catch(() => {})
+      .finally(() => setDeriveLoading(false));
+  // shouldDerive is derived from priorities/prioritiesStale/dismiss/loading — stable deps are user
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, shouldDerive]);
+
+  async function handleAcceptDerived() {
+    if (!derivedProposal) return;
+    setAcceptingDerived(true);
+    const texts = derivedProposal.priorities.map(p => p.text);
+    await fetch('/api/priorities/derive/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priorities: texts }),
+    }).catch(() => {});
+    // Reload priorities
+    fetch('/api/onboarding/priorities')
+      .then(r => r.ok ? r.json() : { priorities: [] })
+      .then(d => setPriorities(d.priorities || []))
+      .catch(() => {});
+    setDerivedProposal(null);
+    setAcceptingDerived(false);
   }
 
   // Day-1 preview: once we know the user is onboarded and has no real briefings, fetch the preview.
@@ -1564,29 +1603,97 @@ export default function Dashboard() {
                 ) : null}
               </div>
             </div>
-            {prioritiesStale && !prioritiesDismissed && (
-              <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
-                <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                  Still your top priorities this week?
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setActiveTab('priorities')}
-                    className="text-xs py-1 px-2 rounded flex-1"
-                    style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
-                  >
-                    Update
-                  </button>
-                  <button
-                    onClick={handleKeepPriorities}
-                    disabled={keepingPriorities}
-                    className="text-xs py-1 px-2 rounded flex-1"
-                    style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
-                  >
-                    {keepingPriorities ? '…' : 'Keep'}
-                  </button>
+            {/* Proactive priority derivation card — shown when priorities are empty or stale */}
+            {(priorities.length === 0 || prioritiesStale) && !deriveDismissed && (
+              deriveLoading ? (
+                <div className="glass-card p-3">
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Edge is reading your patterns…
+                  </p>
                 </div>
-              </div>
+              ) : derivedProposal ? (
+                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-accent-20)' }}>
+                  <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-accent)' }}>
+                    Here&apos;s what I think matters
+                  </p>
+                  {derivedProposal.summaryLine && (
+                    <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                      {derivedProposal.summaryLine}
+                    </p>
+                  )}
+                  <ol className="mb-3 space-y-2">
+                    {derivedProposal.priorities.map((p, i) => (
+                      <li key={i}>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {i + 1}. {p.text}
+                        </p>
+                        {p.rationale && (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                            {p.rationale}
+                          </p>
+                        )}
+                        {p.evidenceTags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {p.evidenceTags.map((tag, j) => (
+                              <span key={j} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-faint)', fontSize: '10px' }}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAcceptDerived}
+                      disabled={acceptingDerived}
+                      className="btn-primary text-xs py-1.5 px-3 flex-1"
+                    >
+                      {acceptingDerived ? 'Saving…' : 'Set as my priorities'}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('priorities')}
+                      className="text-xs py-1.5 px-2 rounded"
+                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setDeriveDismissed(true)}
+                      className="text-xs py-1.5 px-2 rounded"
+                      style={{ color: 'var(--text-faint)' }}
+                      aria-label="Dismiss"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ) : prioritiesStale && !prioritiesDismissed ? (
+                // Fallback: no derivation proposal, just show stale nudge
+                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                    Still your top priorities this week?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setActiveTab('priorities')}
+                      className="text-xs py-1 px-2 rounded flex-1"
+                      style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
+                    >
+                      Update
+                    </button>
+                    <button
+                      onClick={handleKeepPriorities}
+                      disabled={keepingPriorities}
+                      className="text-xs py-1 px-2 rounded flex-1"
+                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
+                    >
+                      {keepingPriorities ? '…' : 'Keep'}
+                    </button>
+                  </div>
+                </div>
+              ) : null
             )}
             {/* Energy OS — daily energy logger */}
             <div className="glass-card p-3">

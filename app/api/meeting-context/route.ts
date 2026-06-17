@@ -4,6 +4,7 @@ import { factQueries, openLoopQueries } from '@/lib/db';
 import { getCalendarEvents } from '@/lib/calendar';
 import { getRecentEmailSignal } from '@/lib/gmail';
 import { buildMeetingContexts } from '@/lib/meetingContext';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 // GET /api/meeting-context?date=YYYY-MM-DD
 // Returns meeting prep context for today's upcoming events.
@@ -11,6 +12,9 @@ import { buildMeetingContexts } from '@/lib/meetingContext';
 export async function GET(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('meetingContext', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const { searchParams } = new URL(req.url);
   const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
