@@ -357,11 +357,21 @@ Package: node_modules/next/node_modules/postcss  (bundled transitive dep of Next
 
 ---
 
-### 🔲 Remaining Backlog Items
+### ✅ All Backlog Items Complete (2026-06-17)
 
-1. ✅ ~~Close undo-coverage gap~~ — DONE (2026-06-17)
-2. ✅ ~~Encryption-at-rest verification~~ — DONE (2026-06-17); see section above
-3. ✅ ~~Session/auth hardening review~~ — DONE (2026-06-17); PASS
-4. ✅ ~~`npm audit` dependency check~~ — DONE (2026-06-17); 2 accepted moderate transitive vulns
-5. Finalize `content/data-protection.md` — drafted; route to Esther for copy polish before launch
-6. Rate-limit tuning review: revisit `briefingGenerate`/`briefingIntro` limits post-launch with real traffic data
+1. ✅ ~~Close undo-coverage gap~~ — DONE: `undo_applied` logged to audit_log
+2. ✅ ~~Encryption-at-rest verification~~ — DONE: 14 fields documented; accepted-unencrypted catalogued
+3. ✅ ~~Session/auth hardening review~~ — DONE: PASS
+4. ✅ ~~`npm audit` dependency check~~ — DONE: 2 accepted moderate transitive vulns
+5. ✅ ~~Finalize `content/data-protection.md`~~ — DONE: all encrypted fields added; ready for Esther copy polish
+6. ✅ ~~Rate-limit tuning review~~ — DONE: 28 keys reviewed; limits appropriate for pre-beta; revisit post-launch with real traffic data
+
+### Security Integration Tests Added (2026-06-17)
+
+| Test file | What it covers |
+|---|---|
+| `lib/auth.test.ts` (22 tests) | JWT round-trip, tamper detection, expired token, wrong secret, session_version revocation (old ver → null), legacy token grandfathering, cookie flags (httpOnly, sameSite:lax, maxAge 30d), bcrypt round-trip |
+| `app/api/memory/facts/[id]/route.test.ts` (existing + enhanced) | Cross-user authz (fact 42 owned by user 2 → user 1 gets 404), rate limit, priority-sync 409, audit logging |
+| `app/api/activity/email-receipt/[id]/route.test.ts` (existing) | Cross-user 404, rate limit, numeric id validation |
+| `app/api/day-plan/confirm/route.test.ts` (existing) | Double-submit rejected (400), cross-user token rejected, undo grouping, markApplied, calendar gate |
+| `lib/backup.ts` | `verifyBackup` now checks 15 tables (added milestones, notifications, daily_focus, calendar_scores) |

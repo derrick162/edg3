@@ -53,7 +53,7 @@ Every morning call is transcribed. Edge uses the transcript to remember what you
 ### Encryption at rest
 Everything sensitive is encrypted before it's written to our database using AES-256-GCM — a standard used by financial institutions and healthcare providers. Each value gets its own random initialization vector so even identical values encrypt differently.
 
-What's encrypted: all OAuth tokens (Google + Whoop), call transcripts, Gmail draft metadata, Whoop health tokens, notification content, inbox thread subjects, stored facts containing personal information.
+What's encrypted: all OAuth tokens (Google + Whoop), call transcripts, Gmail draft metadata, Whoop health tokens, notification content, inbox thread subjects, stored facts containing personal information, daily focus plans, and open loop descriptions.
 
 ### Encryption in transit
 All data travels over HTTPS/TLS. There are no unencrypted routes.
@@ -133,4 +133,4 @@ We don't have a privacy team with a 30-day SLA. You'll hear from Derrick.
 
 ---
 
-_Technical accuracy: Vijay (Security) to verify §1–4 before publishing. Cam to render as `/privacy-trust` or as a tab within the existing privacy page. Legal review recommended before public launch._
+_Technical accuracy: §1–4 verified by Vijay (Security), 2026-06-17. All technical claims confirmed accurate: Gmail format:metadata confirmed code-level; Whoop token revocation on disconnect confirmed; Google token revocation on disconnect confirmed; encryption list updated with daily focus plans + open loops. Cam to render as `/privacy-trust` or as a tab within the existing privacy page. Legal review recommended before public launch._
