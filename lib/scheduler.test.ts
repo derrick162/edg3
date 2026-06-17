@@ -33,6 +33,10 @@ vi.mock('./db', () => ({
   getDb: () => ({
     prepare: (sql: string) => {
       if (sql.includes('SELECT * FROM users')) return { all: h.prepareAll };
+      // DB-flagged retry pickup query — no pending retries by default in existing tests
+      if (sql.includes('retry_after IS NOT NULL')) return { all: vi.fn(() => []) };
+      // UPDATE retry_after = NULL — no-op mock
+      if (sql.includes('retry_after = NULL')) return { run: vi.fn() };
       return { get: h.prepareGet };
     },
   }),

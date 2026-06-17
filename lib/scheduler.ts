@@ -309,6 +309,27 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
     }
   }
+
+  // DB-flagged retries: missed calls whose retry_after timestamp has now passed.
+  // This is the durable retry path — survives server restarts unlike the old in-memory setTimeout.
+  const pendingRetries = db.prepare(`
+    SELECT id, user_id FROM briefings
+    WHERE status = 'missed'
+    AND retry_attempted = 1
+    AND retry_after IS NOT NULL
+    AND retry_after <= datetime('now')
+  `).all() as Array<{ id: number; user_id: number }>;
+
+  for (const row of pendingRetries) {
+    try {
+      // Clear retry_after first so we don't double-fire on the next tick.
+      db.prepare('UPDATE briefings SET retry_after = NULL WHERE id = ?').run(row.id);
+      console.log(`[scheduler] Firing DB-flagged retry for briefing ${row.id} (user ${row.user_id})`);
+      await scheduleBriefingCall(row.user_id, { force: true });
+    } catch (err) {
+      console.error(`[scheduler] DB-flagged retry failed for briefing ${row.id} (user ${row.user_id}):`, err);
+    }
+  }
 }
 
 export async function scheduleBriefingCall(userId: number, opts: { force?: boolean } = {}) {

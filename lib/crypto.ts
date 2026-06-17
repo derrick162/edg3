@@ -82,3 +82,24 @@ export function decryptNullable(v: string | null | undefined): string | null {
 export function encryptionEnabled(): boolean {
   return resolveKey() !== null;
 }
+
+// Safe read for content fields in the briefing path. Logs the error prominently
+// but returns empty string instead of throwing, so a missing/rotated key produces
+// an empty fact/memory rather than a crashed 7am call. Do NOT use for auth secrets
+// (OAuth tokens) — those should still throw to surface misconfiguration clearly.
+export function safeDecryptField(value: string, field = 'unknown'): string {
+  try { return decryptField(value); }
+  catch (err) {
+    console.error(`[crypto] DECRYPT_FAILURE field="${field}" — DATA_ENCRYPTION_KEY missing or rotated? ${err}`);
+    return '';
+  }
+}
+
+export function safeDecryptNullable(value: string | null | undefined, field = 'unknown'): string | null {
+  if (value == null) return null;
+  try { return decryptField(value); }
+  catch (err) {
+    console.error(`[crypto] DECRYPT_FAILURE field="${field}" (nullable) — DATA_ENCRYPTION_KEY missing or rotated? ${err}`);
+    return null;
+  }
+}

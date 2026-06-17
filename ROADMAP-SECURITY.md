@@ -216,6 +216,25 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Overnight hardening — DB durability + encryption graceful degradation + durable retry (1574 green).**
+  - **DB Durability (#1):**
+    - `lib/backup.ts`: `pushBackupToObjectStorage(info)` — dependency-free off-box backup to any S3-compatible endpoint (AWS S3, Cloudflare R2). Manual AWS Signature V4 via `node:crypto` (no SDK). Activated by setting `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` env vars on Railway. Returns `{ ok, message }` — silently skips when not configured.
+    - `maybeDailyBackup()` now calls `pushBackupToObjectStorage` after every snapshot AND for fresh existing snapshots (in case prior push failed). Backup call removed from webhook trigger — now solely on 3am cron.
+    - `busy_timeout = 5000` added to `getDb()` to prevent SQLite write-contention errors under concurrent requests.
+    - Restore steps documented in `lib/backup.ts` comment for Kevin's emergency runbook.
+    - ⚠️ **Kevin action required:** set `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` on Railway to activate off-box backup.
+  - **Encryption key graceful degradation (#2):**
+    - `safeDecryptField(value, field)` + `safeDecryptNullable(value, field)` added to `lib/crypto.ts`: catch→log `[crypto] DECRYPT_FAILURE`→return empty string/null instead of throwing. Do NOT use for OAuth tokens (those should still throw to surface misconfiguration).
+    - All content-path read functions in `lib/db.ts` updated to use safe variants: `decryptMemoryRow`, `decryptFactRow`, `upsertFact` conflict detection, `patternCacheQueries.get`, `briefingContextPackQueries.get`, `decryptEpisodeRow`. Auth token reads left as throwing — deliberate.
+  - **Durable retry (#3a):**
+    - `app/api/vapi/webhook/route.ts`: replaced in-memory `retryCall()` (with `setTimeout(10min)`) with synchronous `scheduleRetry(db, briefingId, userId)` that stamps `retry_after = datetime('now', '+10 minutes')` in the DB. Survives server restarts.
+    - `lib/scheduler.ts` `checkAndInitiateCalls()`: new loop after the per-user call block queries `briefings WHERE status='missed' AND retry_after IS NOT NULL AND retry_after <= datetime('now')`, clears `retry_after = NULL` before firing, calls `scheduleBriefingCall(userId, { force: true })`. Errors are caught per-row — one failed retry does not block others.
+  - **Tests:** 27 new tests across 3 files:
+    - `lib/crypto.test.ts` (+11): `safeDecryptField` — normal decrypt, missing-key degrades to empty string, rotated-key degrades, plaintext passthrough, empty input. `safeDecryptNullable` — null/undefined passthrough, normal decrypt, missing-key degrades to null.
+    - `lib/backup.test.ts` (+11): `pushBackupToObjectStorage` — not configured returns ok=false; file missing returns ok=false; valid config makes PUT with AWS4-HMAC-SHA256 Authorization; S3 403 returns ok=false; network error returns ok=false; BACKUP_S3_PREFIX respected.
+    - `lib/scheduler.hardening.test.ts` (NEW, 5 tests): retry pickup fires when row exists, clears retry_after before firing, no-op when no rows, handles multiple users, error in one retry doesn't block others.
+    - Crypto mock updated in `db.bitemporal.test.ts`, `episodes.test.ts`, `db.encryption.test.ts`, `scheduler.round6.test.ts` to include `safeDecryptField`/`safeDecryptNullable`. `scheduler.test.ts` mock updated to handle `retry_after IS NOT NULL` query.
+  - 81 test files / 1574 tests total.
 - **2026-06-18** — **Round 6 — Predictive context loading + confidence decay schema (1553 green).**
   - **Ticket 1 — Predictive context loading (11pm nightly cron):**
     - `briefing_context_packs` table added to `lib/db.ts`: `(id, user_id, pack_date, context_pack encrypted, generated_at, UNIQUE(user_id, pack_date))`. Index on `(user_id, pack_date)`.
