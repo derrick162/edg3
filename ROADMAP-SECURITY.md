@@ -119,6 +119,20 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Round 5 — Bi-temporal fact schema + M2/M3 encryption audit (1527 green).**
+  - **Ticket 1 — Bi-temporal columns on `facts`:**
+    - DDL: added `valid_from TEXT NOT NULL DEFAULT (datetime('now'))` + `valid_until TEXT` to `facts` table; `CREATE INDEX idx_facts_active ON facts(user_id, category, valid_until)`.
+    - Migrations: two `ALTER TABLE facts ADD COLUMN` entries; safe additive rollout — no migration drama.
+    - `factQueries.retire(userId, factId)`: sets `valid_until = datetime('now')`; user-scoped (`AND user_id = ?`); guards against double-retiring (`AND valid_until IS NULL`). NEVER hard-deletes.
+    - `factQueries.getAll` + `getByCategory`: active-only filter (`valid_until IS NULL`) by default; `{ includeRetired: true }` flag exposes full history for pattern detection. Additive — zero callers broken.
+    - `factQueries.upsertFact`: conflict-detection SELECT queries now filter `AND valid_until IS NULL` so retired history never interferes with new-fact dedup.
+    - `Fact` interface: `valid_from?` + `valid_until?` added (optional in TS — DB always populates; tests predate columns).
+  - **Ticket 2 — M2/M3/M4/episode encryption audit:**
+    - **M2 `people_profiles`**: user-scoped ✅; `canonical_name` + `email` unencrypted (needed for `LOWER()` lookup, same tier as `users.name`/`users.email`) — documented as accepted gap.
+    - **M3 `pattern_cache`**: `patterns` column now **encrypted at rest** via `encryptField`/`decryptField`. Behavioral data (peak/trough patterns, calendar habits) is personal PII. Legacy plaintext rows pass through transparently.
+    - **M4 accountability**: pure module — reads from `tasks` + `open_loops` (both user-scoped). No DB table, no encryption action needed. ✅
+    - **Episodes**: `content_raw` encrypted ✅; user-scoped ✅; consent JSDoc in `episodeQueries.insert` + `persistCallEpisode` corrected — episodes store data for the user's OWN experience (valid under all consent modes); improvement/training pipelines gate at consumption side.
+  - **Tests:** `lib/db.bitemporal.test.ts` — 15 new tests (retire guards, active-only filters, upsert conflict-detection SQL, pattern_cache encrypt/decrypt, legacy passthrough). 79 test files / 1527 tests total.
 - **2026-06-18** — **Round 4 — Audit log coverage + rate-limit sweep (1501 green).**
   - **Ticket 1 — Audit log coverage:** Added `auditLogQueries.record(...)` to 12 previously-ungapped routes: `calendar/disconnect` (ok+fail), `whoop/disconnect` (ok+fail), `calendar/reminder` DELETE + POST (ok+fail), `onboarding/call-time`, `onboarding/profile`, `profile/timezone`, `priorities/[id]/energy`, `priorities/[id]/milestones` POST, `milestones/[id]` PATCH (complete/uncomplete) + DELETE. Full coverage map updated in `content/security-audit.md`.
   - **Ticket 2 — Rate-limit sweep:** Added 6 new `LIMITS` entries to `lib/rateLimit.ts`: `calendarDisconnect` (5/hr), `whoopDisconnect` (5/hr), `calendarReminder` (10/hr), `profileTimezone` (20/hr), `priorityEnergy` (30/hr), `milestoneWrite` (60/hr). Applied to all corresponding routes. Rate-limit inventory in `content/security-audit.md` updated to 42 total keys.

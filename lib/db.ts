@@ -225,6 +225,8 @@ function initSchema(db: Database.Database) {
 
     -- Structured, durable facts extracted from call transcripts (compounding memory).
     -- Deduplicated by (category, entity) so facts evolve instead of accumulating noise.
+    -- Bi-temporal: valid_from/valid_until enable conflict retirement without hard-delete.
+    -- Retired facts (valid_until IS NOT NULL) are historical record; active = valid_until IS NULL.
     CREATE TABLE IF NOT EXISTS facts (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id            INTEGER NOT NULL REFERENCES users(id),
@@ -233,7 +235,9 @@ function initSchema(db: Database.Database) {
       entity             TEXT,
       learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
       confidence         TEXT NOT NULL DEFAULT 'high' CHECK(confidence IN ('high','low')),
-      source_briefing_id INTEGER REFERENCES briefings(id)
+      source_briefing_id INTEGER REFERENCES briefings(id),
+      valid_from         TEXT NOT NULL DEFAULT (datetime('now')),
+      valid_until        TEXT
     );
 
     -- Whoop OAuth tokens (health data PII — encrypted at rest).
@@ -440,6 +444,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
+    CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(user_id, category, valid_until);
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
@@ -473,6 +478,9 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
     "ALTER TABLE people_profiles ADD COLUMN email TEXT",
+    // Round 5 — bi-temporal facts (Graphiti model)
+    "ALTER TABLE facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT (datetime('now'))",
+    "ALTER TABLE facts ADD COLUMN valid_until TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1284,6 +1292,11 @@ export interface Fact {
   confidence: 'high' | 'low';
   source_briefing_id: number | null;
   source?: string | null;
+  // Bi-temporal columns (Graphiti model): valid_from = when fact became true; valid_until = when retired (null = current).
+  // Retired facts are never hard-deleted — they feed pattern detection and historical queries.
+  // Optional in the TS type because existing test fixtures predate the columns; DB always populates both.
+  valid_from?: string;
+  valid_until?: string | null;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -1337,13 +1350,16 @@ function decryptFactRow(r: Fact): Fact {
 }
 
 export const factQueries = {
-  getAll: (userId: number): Fact[] => {
-    return (getDb().prepare(
-      'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at DESC'
-    ).all(userId) as Fact[]).map(decryptFactRow);
+  // Active facts only by default. Pass includeRetired:true to include history (e.g. pattern detection).
+  getAll: (userId: number, opts?: { includeRetired?: boolean }): Fact[] => {
+    const sql = opts?.includeRetired
+      ? 'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at DESC'
+      : 'SELECT * FROM facts WHERE user_id = ? AND valid_until IS NULL ORDER BY category, learned_at DESC';
+    return (getDb().prepare(sql).all(userId) as Fact[]).map(decryptFactRow);
   },
 
   // Upsert: dedupe by (category, entity) when entity present; by (category, first-80-chars-statement) otherwise.
+  // Conflict detection only considers ACTIVE facts (valid_until IS NULL) — retired history is ignored.
   // statement is encrypted at rest; no-entity dedup compares decrypted values in app (SQL SUBSTR
   // cannot match ciphertext).
   upsertFact: (
@@ -1361,12 +1377,12 @@ export const factQueries = {
     let existingConfidence: 'high' | 'low' | undefined;
     if (entity) {
       const row = db.prepare(
-        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
+        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?) AND valid_until IS NULL'
       ).get(userId, category, entity) as { id: number; statement: string; confidence: 'high' | 'low' } | undefined;
       if (row) { existingId = row.id; existingStatement = decryptField(row.statement); existingConfidence = row.confidence; }
     } else {
       const cands = db.prepare(
-        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL'
+        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL AND valid_until IS NULL'
       ).all(userId, category) as Array<{ id: number; statement: string; confidence: 'high' | 'low' }>;
       const match = cands.find(
         r => decryptField(r.statement).toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
@@ -1391,10 +1407,20 @@ export const factQueries = {
     }
   },
 
-  getByCategory: (userId: number, category: string): Fact[] => {
-    return (getDb().prepare(
-      'SELECT * FROM facts WHERE user_id=? AND category=? ORDER BY learned_at DESC'
-    ).all(userId, category) as Fact[]).map(decryptFactRow);
+  // Retire a fact: sets valid_until = now(). NEVER hard-deletes — retired facts are historical record.
+  // Called by Darren's conflict-resolution logic in lib/facts.ts when a newer contradicting fact arrives.
+  retire: (userId: number, factId: number): void => {
+    getDb().prepare(
+      "UPDATE facts SET valid_until = datetime('now') WHERE id = ? AND user_id = ? AND valid_until IS NULL"
+    ).run(factId, userId);
+  },
+
+  // Active facts only by default. Pass includeRetired:true to include history (e.g. pattern detection).
+  getByCategory: (userId: number, category: string, opts?: { includeRetired?: boolean }): Fact[] => {
+    const sql = opts?.includeRetired
+      ? 'SELECT * FROM facts WHERE user_id=? AND category=? ORDER BY learned_at DESC'
+      : 'SELECT * FROM facts WHERE user_id=? AND category=? AND valid_until IS NULL ORDER BY learned_at DESC';
+    return (getDb().prepare(sql).all(userId, category) as Fact[]).map(decryptFactRow);
   },
 
   updateFact: (userId: number, id: number, statement: string, entity: string | null): void => {
@@ -1521,17 +1547,18 @@ export const peopleProfileQueries = {
 };
 
 // Pattern cache queries — one row per user, refreshed on each briefing.
+// patterns column is encrypted at rest (behavioral PII — peak/trough patterns, calendar habits).
 export const patternCacheQueries = {
   get: (userId: number): string | null => {
     const row = getDb().prepare('SELECT patterns FROM pattern_cache WHERE user_id = ?').get(userId) as { patterns: string } | undefined;
-    return row?.patterns ?? null;
+    return row ? decryptField(row.patterns) : null;
   },
   upsert: (userId: number, patternsJson: string) => {
     getDb().prepare(`
       INSERT INTO pattern_cache (user_id, patterns, computed_at)
       VALUES (?, ?, datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET patterns = excluded.patterns, computed_at = datetime('now')
-    `).run(userId, patternsJson);
+    `).run(userId, encryptField(patternsJson));
   },
 };
 
@@ -1956,9 +1983,10 @@ function decryptEpisodeRow(r: EpisodeRow): Episode {
 }
 
 export const episodeQueries = {
-  /** Insert a new episode. Callers MUST verify isImproveConsented(user) before calling —
-   *  episodes hold the rawest PII and must not be stored for Privacy Mode users.
-   *  Returns the new episode's row id. */
+  /** Insert a new episode. Episodes serve the user's OWN experience (recall, pattern detection)
+   *  and are stored regardless of data_consent setting. Do NOT gate insertion on isImproveConsented.
+   *  Any future improvement/training pipeline that reads episodes MUST check isImproveConsented
+   *  at the consumption side. Returns the new episode's row id. */
   insert: (
     userId: number,
     source: EpisodeSource,
