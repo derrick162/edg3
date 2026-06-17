@@ -92,7 +92,7 @@ export function verifyBackup(fileName: string): VerifyResult {
     const integrityOk = integrityRow.integrity_check === 'ok';
 
     // Row counts on key tables — gives a sanity-check signal for restore viability.
-    const tables = ['users', 'briefings', 'calendar_tokens', 'whoop_tokens', 'priorities', 'memories', 'tasks', 'facts', 'open_loops', 'audit_log'];
+    const tables = ['users', 'briefings', 'calendar_tokens', 'whoop_tokens', 'priorities', 'memories', 'tasks', 'facts', 'open_loops', 'audit_log', 'waitlist'];
     const rowCounts: Record<string, number> = {};
     for (const t of tables) {
       try {

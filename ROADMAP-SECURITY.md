@@ -7,6 +7,25 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## 📥 PM DISPATCH — 2026-06-17 (S3 — harden the hero-loop apply path)
+
+> Master at `4f68720` (1015 green). S1+S2 shipped ✅. Sync master first.
+
+**S3 — Audit + harden the hero-loop APPLY path.** Core (Ticket H) is deepening the hero loop —
+the one-click **Apply** executes a batch of real calendar mutations (create/move) via
+`/api/day-plan/confirm`. As it gets richer + more prominent, that path must be safe:
+1. **Idempotency / double-apply** — `/api/day-plan/confirm` uses a `planId` (`issueDeleteToken`).
+   Verify a double-click / retry can't apply the same plan twice (duplicate events / double moves).
+   Confirm the token is consumed atomically and reuse is rejected.
+2. **Undo grouping** — a multi-action plan must be undoable as a unit (recordUndo per action, grouped
+   by planId). Verify the undo path covers every applied action.
+3. **Rate limit** — confirm `dayPlanConfirm` limit is sane for one-click use.
+4. **Authz** — a planId issued for user A must not be applicable by user B (user-scoped).
+Coordinate with Darren (he's editing `/api/day-plan/**` for H). Tests. Ship small / green /
+full preflight / log changelog.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-16 EVENING (Vijay)
 
 > Master at `2c73f5b` (997 green). Sync master first. Two contained tasks:
@@ -31,6 +50,19 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-16** — **S1 waitlist hardening + S2 CSP decision closed (1015 green).**
+  - **[S1] `/api/waitlist` audit + hardening — COMPLETE:**
+    - Audited rate-limiting (5/hr per IP via `waitlist` key, rightmost XFF — spoofing-resistant), email validation (254-char cap, `EMAIL_RE`, header-injection characters blocked by the regex), and idempotency (`ON CONFLICT DO NOTHING` + generic `{ ok: true }` on duplicate — no enumeration leak). All clean; no additional hardening required.
+    - `waitlist` added to `verifyBackup()` table list in `lib/backup.ts` (alongside existing 10 tables) — snapshots now cover the waitlist.
+    - `waitlist` intentionally **excluded** from `/api/account/export`: entries are pre-account (no `user_id`), so there's nothing user-specific to export.
+    - 18 new tests in `app/api/waitlist/route.test.ts`: valid email → 200, trimming, source truncation at 60 chars, duplicate → 200 (no enumeration), DB-throw → 200 (graceful degrade), invalid emails (missing, empty, no-@, no-domain, >254 chars, non-string, newline header-injection), rate-limit → 429, non-JSON body → 400.
+  - **[S2] CSP decision — FORMALLY CLOSED:**
+    - Tested locally: `next build && next start --port 3999`; curled the served HTML. **Confirmed: Turbopack emits `nonce="$undefined"` in RSC JSON and NO nonce attribute on actual `<script>` tags** in the page HTML. Under `'strict-dynamic'`, this blocks every framework script → blank page (exactly the production failure).
+    - **Accepted pre-beta baseline: `script-src 'self' 'unsafe-inline'`.** Cross-origin script injection is blocked; same-origin scripts run. `'unsafe-inline'` is required for Next.js bootstrap chunks until Turbopack gains nonce emission.
+    - `proxy.ts` comment updated: follow-up TODO removed; decision documented with test evidence and revisit conditions (re-attempt only if Turbopack adds `experimental.nonce` support AND browser-verified).
+    - See prior hotfix entry below for root-cause detail.
+  - 1015/1015 green, tsc clean, next build clean.
+
 - **2026-06-16** — **CSP decision: park strict nonce; `'self' 'unsafe-inline'` is the right baseline. Audit of new Core routes — all clean.**
   - **CSP decision (final, no code change):**
     - PM hotfix (`e2370e3`) reverted `'strict-dynamic'` nonce to `script-src 'self' 'unsafe-inline'` after production-down incident.
@@ -56,7 +88,7 @@ Ship small / green / full preflight / log changelog.
   - **Symptom:** `https://www.edg3.ai` rendered HTML but never hydrated (blank page) after the CSP-nonce deploy.
   - **Root cause:** `script-src 'self' 'nonce-…' 'strict-dynamic'` was set, but **Next.js 16 + Turbopack did NOT emit the per-request nonce onto its framework `<script>` tags.** Under `'strict-dynamic'` the browser ignores `'self'`, so every un-nonced script was blocked → no JS ran. The "Next 16 auto-propagates the nonce" assumption in the original comment was false for this Turbopack build.
   - **Fix (PM, `e2370e3`):** `proxy.ts` reverted to `script-src 'self' 'unsafe-inline'` (same-origin scripts + Next's inline bootstrap; blocks cross-origin injection). Removed nonce/strict-dynamic + the `x-nonce` request-header plumbing. Verified live: CSP updated, `/` and `/dashboard` both 200, scripts now allowed. 989 green.
-  - **🔒 Vijay follow-up (do NOT re-deploy strict CSP until verified):** if we still want nonce-based strict CSP, first reproduce locally with `next build && next start` (NOT dev), curl the HTML, and **confirm the `<script>` tags actually carry `nonce="…"`** before shipping. If Turbopack won't emit nonces, either (a) stay on `'self' 'unsafe-inline'` (acceptable — same-origin only, our real exposure is low), or (b) move CSP to a hashed-script approach. Browser-verify enforcement, not just the header.
+  - **✅ Vijay follow-up (CLOSED 2026-06-16):** Reproduced locally with `next build && next start`, curled the HTML — confirmed Turbopack does NOT emit nonces on framework `<script>` tags. Decision: `'self' 'unsafe-inline'` is the accepted pre-beta baseline. See S1/S2 changelog entry above.
 - **2026-06-16** — **H3 OAuth CSRF state, M7 session revocation, CSP nonce, FAQ §3 accuracy, backup + prune coverage (989 green).**
   - **[H3] OAuth CSRF state — COMPLETE:**
     - New `oauth_state` table (`initSchema`): `state TEXT PK`, `user_id`, `flow (calendar|whoop)`, `expires_at` (10-min TTL).

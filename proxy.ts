@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Set a Content-Security-Policy header.
 //
-// NOTE (2026-06-16, PM hotfix): the previous strict nonce + 'strict-dynamic'
-// policy broke production — Next.js 16 + Turbopack did NOT propagate the
-// per-request nonce onto its framework <script> tags, so 'strict-dynamic'
-// caused the browser to block every script (HTML rendered but nothing
-// hydrated → blank page). Reverted to a still-meaningful same-origin policy:
-// script-src 'self' 'unsafe-inline' allows the app's own chunks + Next's
-// inline bootstrap scripts while blocking any cross-origin script injection.
+// CSP DECISION (2026-06-16, closed):
+//   Strict nonce + 'strict-dynamic' was tested locally with `next build &&
+//   next start`. curl of the served HTML confirmed that Next.js 16 + Turbopack
+//   outputs nonce="$undefined" in RSC JSON and emits NO nonce attribute on
+//   the actual <script> tags. Under 'strict-dynamic', 'self' is ignored, so
+//   every script was blocked → blank page in production.
 //
-// Security follow-up: re-introduce nonce-based strict CSP only after verifying
-// in a real browser that Next emits the nonce on its script tags (see
-// ROADMAP-SECURITY). 'unsafe-eval' added in dev for Turbopack HMR.
+//   ACCEPTED PRE-BETA BASELINE: `script-src 'self' 'unsafe-inline'`.
+//   This is strictly better than no CSP: cross-origin script injection is
+//   blocked; only same-origin scripts run. 'unsafe-inline' is necessary for
+//   Next.js's inline bootstrap chunks until Turbopack gains nonce emission.
+//
+//   Revisit strict nonce only if Turbopack adds `experimental.nonce` support
+//   (track: nextjs.org/docs) AND we can browser-verify enforcement end-to-end.
+//   'unsafe-eval' is added in dev for Turbopack HMR only.
 export function proxy(request: NextRequest) {
   const isDev = process.env.NODE_ENV === 'development';
 
