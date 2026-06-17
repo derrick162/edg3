@@ -32,6 +32,19 @@ for the user to CORRECT a fact in the "What Edge knows" tab, not just delete it 
 updates the fact + clears the ⚠ verify flag). Accuracy + user-correctable facts is a core trust
 pillar. (Coordinate any People/fact UI with Design.)
 
+**T3 — Calendar/memory GROUNDING layer (generalizes T2; Derrick's idea — high value).** Root class:
+Edge trusts the STT transcript over the canonical source. Live example — a call note says "shorten
+**Jim's** appointment" when Derrick clearly said **Gym**; also Onsi→Ansi, Faiza→Pfizer. Derrick's
+insight: *if Edge already knows which event the user means and that event's title is literally on the
+calendar, pull the name from the CALENDAR, not the transcript.* **Build a grounding pass** that, before
+saving any fact / call note / event reference, cross-references transcribed proper nouns against (a)
+the user's actual calendar event titles (today + this week) and (b) known contacts/facts in memory,
+and CORRECTS near-matches to the canonical spelling (fuzzy match — "Jim"≈"Gym", "Ansi"≈"Onsi"). Apply
+in the transcript→facts and transcript→notes extraction paths (lib/facts.ts, briefing summary). When
+a transcribed token closely matches a calendar title or known name, prefer the canonical form; only
+keep the transcript spelling when there's no calendar/memory match. This kills the whole misread class
+at the source. Tests with the Gym/Jim, Onsi/Ansi, Faiza/Pfizer cases.
+
 ---
 
 ## 📥 PM DISPATCH — 2026-06-17 (Ticket H — DEEPEN the hero loop; supersedes G)
