@@ -17,7 +17,10 @@ Every piece of sensitive data stored on our servers is encrypted using **AES-256
 - Your Whoop health tokens (recovery, sleep, strain data)
 - Call transcripts and briefing notes
 - Facts Edge has learned about you (your goals, preferences, priorities)
+- Email draft recipients and subjects logged in your activity history
 - The email subject lines Edge reviewed during inbox scans
+- Notification messages sent to your dashboard
+- Daily focus plans and open loop descriptions generated for you
 
 "Encrypted at rest" means that even if someone gained unauthorized access to our database, they would see random bytes — not your data.
 

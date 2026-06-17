@@ -20,6 +20,15 @@ export async function POST(req: NextRequest) {
     if (password.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
+    if (password.length > 128) {
+      return NextResponse.json({ error: 'Password must be 128 characters or fewer' }, { status: 400 });
+    }
+    if (name.length > 100) {
+      return NextResponse.json({ error: 'Name must be 100 characters or fewer' }, { status: 400 });
+    }
+    if (email.length > 254) {
+      return NextResponse.json({ error: 'Email must be 254 characters or fewer' }, { status: 400 });
+    }
 
     const existing = userQueries.findByEmail(email);
     if (existing) {

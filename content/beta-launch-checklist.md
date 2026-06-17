@@ -1,5 +1,5 @@
 # Edge — Beta Launch Checklist
-_Pull the trigger when all ✅ gates are clear. Last updated: June 2026._
+_Pull the trigger when all ✅ gates are clear. Last updated: June 18, 2026._
 
 ---
 
@@ -20,10 +20,12 @@ Work through the gates in order. Don't invite beta users until all HARD GATES ar
 
 ### Core product
 - [ ] **Morning call works end-to-end** — Twilio live, call initiates, Edge reads calendar, proposes changes, executes on approval.
-- [ ] **Twilio A2P registration approved** — follow up if still pending; escalate if no response after follow-up.
+- [ ] **Twilio A2P registration approved** — follow-up email ready in `content/twilio-followup-email.md`; send today if not done.
 - [ ] **Onboarding flow works** — new user can complete setup (calendar connect → focus areas → call time) without errors. Test on a fresh account.
 - [ ] **Edge Score displays for new users** — all 4 components show or show "calibrating" correctly. No broken states.
 - [ ] **Calendar changes are undoable** — Activity tab shows Edge's actions; undo works.
+- [ ] **Fact correction UI works** — "What Edge knows" tab allows inline edit and delete of facts. T1 API live ✅; Cam's UI in progress.
+- [ ] **Inbox receipts expandable** — Activity tab "Read N threads" rows expand to show subject list. T2 backend live ✅; Cam's UI in progress.
 - [ ] **Whoop connect works for new users** — test full OAuth flow: connect → callback → status shows connected.
 
 ### Content & comms
@@ -77,18 +79,23 @@ Work through the gates in order. Don't invite beta users until all HARD GATES ar
 
 | Gate | Status | Owner | Notes |
 |---|---|---|---|
-| Privacy policy accurate | 🟡 Review needed | Security + Derrick | Needs Derrick sign-off |
-| FAQ privacy reviewed | 🟡 Review needed | Derrick | `content/faq.md` |
+| Privacy policy accurate | 🟡 Review needed | Security + Derrick | Vijay to verify §1–4 of `how-edge-protects-you.md` |
+| FAQ privacy reviewed | 🟡 Review needed | Derrick | `content/faq.md` §privacy |
 | DATA_ENCRYPTION_KEY on Railway | ✅ Set | PM | Done 2026-06-09 |
-| Account deletion works | ✅ Shipped | Security | `DELETE /api/account` |
+| Account deletion works | ✅ Shipped | Security | `DELETE /api/account` — 19 tables |
 | Google disconnect revokes token | ✅ Shipped | Security | `lib/calendar.ts:disconnectCalendar()` |
-| Morning call end-to-end | 🔴 Twilio pending | Derrick | Awaiting A2P approval; follow up sent? |
-| Onboarding flow | 🟡 Needs test | Core | Cam's flow in progress |
-| Edge Score new users | 🟡 Needs test | Core | All 4 components need verify |
+| AES-256-GCM encryption at rest | ✅ Shipped | Security | All tokens, transcripts, email subjects, health data |
+| STT grounding (no more Jim/Gym) | ✅ Shipped | Core | `lib/grounding.ts` — proper nouns corrected against calendar |
+| Fact correction API (PATCH/DELETE) | ✅ Shipped | Security+Core | `app/api/memory/facts/[id]/route.ts` |
+| Fact correction UI | 🟡 In progress | Design | Cam wiring inline-edit; T1 API live |
+| Inbox receipts expandable UI | 🟡 In progress | Design | T2 backend live; Cam building UI |
+| Hero loop deep (real score, always-on) | ✅ Shipped | Core | Ticket H — 4-component projection, no fake +12 |
+| Morning call end-to-end | 🔴 Twilio pending | Derrick | Follow-up email ready: `content/twilio-followup-email.md` |
+| Onboarding flow | 🟡 In progress | Design | Cam's flow; needs end-to-end test |
+| Edge Score new users | 🟡 Needs test | Core | All 4 components need verify on fresh account |
 | Whoop connect new users | 🟡 Needs test | Security | |
 | FAQ live in-app | 🔴 Not yet | Design/Core | Content ready; needs rendering |
-| Support channel | 🟡 Check | Core | `/api/support` — verify routing |
-| Design partner names | 🔴 Pending | Derrick | |
-| Pricing confirmed | 🔴 Pending | Derrick | |
-| Founding story post | 🔴 Pending | Derrick | Drafts ready |
-| Demo video | 🔴 Not recorded | Derrick | Shot-list ready |
+| Design partner names | 🔴 Pending | Derrick | Outreach kit ready: `content/design-partner-outreach-kit.md` |
+| Pricing confirmed | 🔴 Pending | Derrick | Analysis in `content/pricing-analysis.md` |
+| Founding story post | 🔴 Pending | Derrick | Drafts in `content/founding-story-post.md` |
+| Demo video | 🔴 Not recorded | Derrick | Script ready: `content/google-casa-video-script.md` |

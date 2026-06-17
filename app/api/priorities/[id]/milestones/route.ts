@@ -10,7 +10,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { id: idStr } = await params;
   const priorityId = parseInt(idStr, 10);
-  if (!priorityId) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  if (!Number.isFinite(priorityId) || priorityId < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
   const milestones = focusMilestoneQueries.listForPriority(user.id, priorityId);
   return NextResponse.json({ milestones });
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { id: idStr } = await params;
   const priorityId = parseInt(idStr, 10);
-  if (!priorityId) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  if (!Number.isFinite(priorityId) || priorityId < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
   let body: { title?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

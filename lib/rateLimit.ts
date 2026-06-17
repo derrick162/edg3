@@ -41,9 +41,18 @@ export const LIMITS = {
   briefingCall:   { limit: 3,  windowMs: 10 * 60 * 1000 },  // 3  / 10 min per user (manual call + retry)
   support:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user
   waitlist:       { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per IP (public signup, anti-spam)
-  factEdit:        { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (fact corrections)
-  emailReceipt:    { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (Activity receipt reads)
-  priorityDerive:  { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (LLM synthesis)
+  factEdit:          { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (fact corrections)
+  emailReceipt:      { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (Activity receipt reads)
+  briefingGenerate:  { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (LLM briefing gen)
+  briefingIntro:     { limit: 3,  windowMs: 60 * 60 * 1000 },  // 3  / hour per user (Vapi intro call)
+  calendarBook:      { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (web calendar create)
+  energyToday:       { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (energy log write)
+  meetingContext:    { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (Google + facts read)
+  notifications:     { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (check/markRead)
+  tasksWrite:        { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (create / complete)
+  undoPost:          { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (calendar mutations)
+  priorityDerive:    { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (LLM synthesis)
+  priorityAccept:    { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (accept proposed priorities)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
