@@ -31,7 +31,7 @@ Work through the gates in order. Don't invite beta users until all HARD GATES ar
 ### Content & comms
 - [ ] **FAQ live in-app** — `content/faq.md` rendered and accessible to users (Cam to confirm).
 - [ ] **Support channel working** — `/api/support` endpoint routes feedback to admin dashboard. Test it.
-- [ ] **Derrick's email set up** — `derrick@deltaedg3.com` sending and receiving reliably.
+- [ ] **Derrick's email set up** — `derrick@edg3.ai` sending and receiving reliably.
 
 ---
 
