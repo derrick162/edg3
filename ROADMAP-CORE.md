@@ -18,11 +18,17 @@ After every ticket:
 3. If preflight fails → fix it (up to 2 attempts) → if still failing, note the blocker in the Status Board and move to the next ticket if it's independent; only stop if you are fully blocked
 
 **Only stop if:**
-- All tickets in the current dispatch are complete and preflight is clean, OR
+- All tickets in the current dispatch AND the pillar backlogs are exhausted AND the QA checklist is complete, OR
 - You hit a genuine blocker that requires PM input (note it clearly in the Status Board), OR
 - Preflight has failed 3+ times and you cannot identify the root cause
 
 **In all other cases: keep going.** You do not need PM approval between tickets. You do not need to wait for a response. Commit small, run preflight, move to the next ticket.
+
+**When the dispatch is exhausted → move to the pillars:**
+1. Read `PILLAR-MEMORY.md` — work through items in order, highest tier first
+2. Read `PILLAR-TRUST.md` — pick up any Trust items tagged (Core) that aren't done
+3. When both pillars are exhausted → run the QA checklists in `PILLAR-MEMORY.md` and `PILLAR-TRUST.md`
+4. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay + outcome-weighted memory)
 
