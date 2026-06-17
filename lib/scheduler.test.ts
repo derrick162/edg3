@@ -147,6 +147,20 @@ describe('scheduler catch-up window', () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 8, 59));
     expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
+
+  // DC1-3 — cold-start accuracy: app restarts a few minutes after call_time and
+  // the scheduler catches up on the first tick (within the 120-minute grace window).
+  it('DC1-3: fires 2 minutes late when app cold-starts after call_time', async () => {
+    // App starts at 07:02 — the scheduler fires on the first cron tick.
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 2));
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
+  });
+
+  it('DC1-3: fires at call_time + 1 minute (one missed cron tick)', async () => {
+    // If the exact 07:00 tick was missed (e.g. server load spike), 07:01 catches it.
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 1));
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ── 2. CallError classification ───────────────────────────────────────────────

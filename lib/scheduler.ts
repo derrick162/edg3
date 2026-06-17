@@ -376,7 +376,11 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
 
       if (alreadyCalled) continue;
 
-      console.log(`[scheduler] Calling user ${user.id} (${user.name}) at ${userCurrentTime} ${timezone}`);
+      const deltaMins = userMinutes - callMinutes;
+      console.log(
+        `[scheduler] Calling user ${user.id} (${user.name}) — scheduled ${user.call_time} ${timezone}` +
+        (deltaMins > 0 ? `, ${deltaMins}min late (cold-start/missed-tick catch-up)` : ' (on time)'),
+      );
       const scheduledFor = `${userToday}T${user.call_time}:00`;
       await scheduleBriefingCall(user.id);
       callAttemptQueries.record(user.id, scheduledFor, 'connected');

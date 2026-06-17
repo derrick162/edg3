@@ -217,6 +217,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-DAILY-CALL DC1-3 — Scheduled call time accuracy audit (1662 green).**
+  - **Audit result:** calls fire within 0–60 seconds of scheduled time (cron granularity) + briefing generation overhead (typically 5–20s). The 120-minute grace window handles cold-starts correctly — if Railway restarts after call_time, the first cron tick fires the call within 1 minute of restart.
+  - **Timing delta log added** to `checkAndInitiateCalls`: `[scheduler] Calling user X — scheduled HH:MM TZ, Nmin late (cold-start/missed-tick catch-up)` or `(on time)`. Visible in Railway logs.
+  - **2 new DC1-3 tests:** cold-start at call_time+2min fires, missed-tick at call_time+1min fires. 1662 total.
 - **2026-06-18** — **PILLAR-TRUST T4-2 + DC1-2 — Vapi pre-call health check + retry at T+5min (1660 green).**
   - **T4-2 — Vapi pre-call health check with dashboard notification:**
     - `pingVapiHealth()` private fn in `lib/scheduler.ts`: lightweight GET to `https://api.vapi.ai/phone-number` (8s timeout, no-op when `VAPI_API_KEY` unset → returns true). Returns true on 2xx/404, false on error/timeout.
