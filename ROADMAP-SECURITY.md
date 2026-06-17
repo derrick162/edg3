@@ -95,6 +95,34 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **CASA consent enforcement wired — Privacy Mode now blocks improvement-data storage (1368 green).**
+
+  PM dispatch (Kevin — Round 4 continuation): wire `isImproveConsented(user)` into the actual LLM improvement paths.
+
+  **What changed:**
+
+  1. **`lib/briefing.ts` — enforcement gate.** `analyzeUserResponse()` now gates the two post-call memory writes on `isImproveConsented(user)`:
+     - `memoryQueries.create(userId, 'transcript', ...)` — raw grounded call transcript
+     - `memoryQueries.create(userId, 'insight', ...)` — LLM-extracted insight from the call
+     - Both are omitted for Privacy Mode users. The briefing generation itself (all Anthropic inference calls) still runs for both modes — the product still works. Only the long-term improvement-data corpus is gated.
+     - Added `import { isImproveConsented } from './consent'` to briefing.ts imports.
+     - Updated the module-level comment to document that enforcement is now live at `analyzeUserResponse`.
+
+  2. **`lib/facts.ts` + `lib/outreach.ts` — sentinel comments clarified.** Both were carrying "DATA CONSENT SENTINEL" markers left by the prior session. Replaced with clear explanatory comments: these paths are inference-only (no improvement-data storage), so there's nothing to gate here. The sentinel meaning is preserved (future callers who store must check consent), but the ambiguous language is gone.
+
+  3. **`lib/briefing.consent.test.ts`** — 6 new tests proving the gate works:
+     - Privacy Mode (`data_consent: 'privacy'`) → `transcript` + `insight` memory NOT written
+     - Null consent (new-user default) → same as Privacy Mode (opt-IN required)
+     - Undefined consent → same as Privacy Mode
+     - Improve-consented (`data_consent: 'improve'`) → BOTH memories ARE written
+     - Improve-consented → transcript content matches the grounded user response
+     - Privacy Mode + tasks → tasks still extracted (tasks are not improvement data; gate is narrow)
+     - Key fix discovered: vitest mock paths must match the actual import specifier used in the tested module (`'./db'` not `'@/lib/db'` for relative imports in `lib/briefing.ts`).
+
+  **Privacy Mode trade-off (documented):** Privacy Mode users still receive a full briefing — all LLM inference runs, the `facts` table still accumulates structured knowledge, and all calendar/task operations still work. The only difference: their raw call transcripts and extracted insights are not written to the `memories` table. Edge's in-context memory of past calls is slightly less rich for Privacy Mode users, but the product remains fully functional.
+
+  1368/1368 green, tsc clean, next build clean.
+
 - **2026-06-18** — **Audit log coverage sweep — Round 4 Ticket 1 complete (1362 green).**
 
   PM dispatch: verify audit_log covers every user-triggered mutation and close gaps.

@@ -37,9 +37,8 @@ export async function extractFactsFromTranscript(
 ): Promise<ExtractedFact[]> {
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    // DATA CONSENT SENTINEL: sends user call transcript to Anthropic for inference only.
-    // Any future fine-tuning path must gate on user.data_consent === 'improve'.
-    // See content/security-audit.md §"Data consent and Privacy Mode".
+    // Inference only — transcript sent to Anthropic to extract structured facts.
+    // This function returns facts but does not persist anything; callers persist.
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const userLine = userName
