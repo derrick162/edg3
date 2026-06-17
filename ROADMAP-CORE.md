@@ -8,6 +8,22 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## ⚡ Standing order — read this before every ticket
+
+**Do not stop between tickets.** Your job is not done when one ticket is done — it is done when the entire current dispatch is complete and preflight is green.
+
+After every ticket:
+1. Run `npm run preflight` from `C:\Users\Derrick\edg3-core`
+2. If green → commit with a clear message → immediately start the next ticket in this dispatch
+3. If preflight fails → fix it (up to 2 attempts) → if still failing, note the blocker in the Status Board and move to the next ticket if it's independent; only stop if you are fully blocked
+
+**Only stop if:**
+- All tickets in the current dispatch are complete and preflight is clean, OR
+- You hit a genuine blocker that requires PM input (note it clearly in the Status Board), OR
+- Preflight has failed 3+ times and you cannot identify the root cause
+
+**In all other cases: keep going.** You do not need PM approval between tickets. You do not need to wait for a response. Commit small, run preflight, move to the next ticket.
+
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay + outcome-weighted memory)
 
 > Master at `c7d2515`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`

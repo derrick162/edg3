@@ -7,6 +7,22 @@
 > the same commit that ships work, and claim Shared page-UI files in the constitution's
 > Status Board (§6) before editing them.
 
+## ⚡ Standing order — read this before every ticket
+
+**Do not stop between tickets.** Your job is not done when one ticket is done — it is done when the entire current dispatch is complete and preflight is green.
+
+After every ticket:
+1. Run `npm run preflight` from `C:\Users\Derrick\edg3-design`
+2. If green → commit with a clear message → immediately start the next ticket in this dispatch
+3. If preflight fails → fix it (up to 2 attempts) → if still failing, note the blocker in the Status Board and move to the next independent ticket; only stop if fully blocked
+
+**Only stop if:**
+- All tickets in the current dispatch are complete and preflight is clean, OR
+- You hit a genuine blocker that requires PM input (note it clearly in the Status Board), OR
+- Preflight has failed 3+ times and you cannot identify the root cause
+
+**In all other cases: keep going.** You do not need PM approval between tickets. Commit small, run preflight, move to the next ticket.
+
 ## Mandate
 Own the **design system** (`app/globals.css`) and the **visual/UX** of the app. Improve
 trust + usability for the **early-September launch** — polish and consolidate what exists;
