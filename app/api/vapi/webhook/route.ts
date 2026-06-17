@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, Briefing } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
@@ -157,6 +157,18 @@ export async function POST(req: NextRequest) {
           // Extract open loops / commitments from the call transcript.
           import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
             .catch(err => console.error('[webhook] Open loops extraction failed:', err));
+          // Episode store: persist the raw (grounded) transcript for episodic recall.
+          import('@/lib/episodeStore').then(m => {
+            const priorities = (() => { try { return priorityQueries.getMostRecent(briefing.user_id); } catch { return []; } })();
+            const taskTexts = (() => { try { return taskQueries.getRecent(briefing.user_id, 1).map(t => t.text); } catch { return []; } })();
+            m.persistCallEpisode(
+              briefing.user_id,
+              transcript,
+              briefing.scheduled_for ?? new Date().toISOString(),
+              priorities.map(p => p.text),
+              taskTexts,
+            );
+          }).catch(err => console.error('[webhook] Episode store failed:', err));
         }
 
         // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and

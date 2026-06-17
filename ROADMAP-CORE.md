@@ -304,6 +304,29 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Briefing V2 + Episode dashboard surface.**
+  - **Briefing V2 prompt improvements** (`lib/briefing.ts` + `lib/vapi.ts`):
+    - **#1 — Recovery tied to specific events.** Green recovery now encourages pushing hard on a NAMED calendar event, not a generic "solid day ahead." Red recovery names the heaviest deferrable block and offers to move it.
+    - **#4/#5 — Afternoon free-slot + goal choice.** When FREE TIME SLOTS shows an open afternoon window and multiple priorities exist, PART 2 offers a choice: "Would you rather push on [A] or [B]?" Proactive, not passive.
+    - **#7 — Forward-look to tomorrow.** PART 3 adds one forward-looking sentence about tomorrow's meaningful events or free windows (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work.").
+    - **#8 — Personal all-day event warmth.** PART 1 now acknowledges birthdays/anniversaries in a warm sentence with a small offer. `lib/vapi.ts` voice guidance added for mid-call recognition.
+  - **Episode dashboard surface** (`app/api/episodes/route.ts` + `app/dashboard/page.tsx`):
+    - `GET /api/episodes` (new): returns last 10 episodes in 90-day window. Auth + rate-limited via `meetingContext`.
+    - Memory tab: new "Call history Edge remembers" section — each episode shows date, topics (up to 4), first commitment + overflow count. Renders below the "Past commitments" section.
+  - **Episode retention** (`lib/db.ts` + `lib/scheduler.ts`):
+    - `episodeQueries.pruneAll(keepDays=548)` — global retention variant for scheduler.
+    - Wired into nightly 3am UTC prune cron alongside open_loops, watched_threads, oauth_state, and email subjects.
+  - 1418/1418 green, tsc clean, next build clean.
+- **2026-06-18** — **Episode Store — episodic memory tier (M5).**
+  - **`lib/db.ts`** — `episodes` table (id, user_id, source, occurred_at, content_raw encrypted, topics JSON, commitments JSON, created_at). Index on `(user_id, occurred_at DESC)`. `EpisodeSource` type, `Episode` interface, `episodeQueries` (insert/recent/search/prune).
+  - **`lib/episodeStore.ts`** (new, pure ingestion + query):
+    - `tagTopicsFromTranscript(transcript, priorityTexts)` — keyword-based tagging matching priority texts + domain vocabulary (fundraising, runway, fitness, hiring, product, launch, revenue, customers). Zero LLM cost. Caps at 10 tags.
+    - `tagCommitmentsFromTasks(taskTexts)` — reuses already-extracted task texts; caps at 10.
+    - `persistCallEpisode(userId, transcript, occurredAt, priorityTexts, taskTexts)` — write path; skips if transcript < 50 chars.
+    - `buildEpisodeMemoryBlock(userId, priorityTexts, todayEventTitles)` — query path; fetches last 5 episodes (last 30 days) matching current topic overlap; formats EPISODIC MEMORY block for briefing prompt. Returns '' when no relevant episodes.
+  - **`app/api/vapi/webhook/route.ts`** — fire-and-forget `persistCallEpisode` after open-loop extraction; dynamic import so webhook path never blocked on episode failure.
+  - **`lib/briefing.ts`** — imports `buildEpisodeMemoryBlock`; computes episode block after `latestPriorities` declaration; injects EPISODIC MEMORY section into briefing prompt when non-empty.
+  - **`lib/episodeStore.test.ts`** (new) — 11 tests for `tagTopicsFromTranscript` + `tagCommitmentsFromTasks`. 1418/1418 green, tsc clean, next build clean.
 - **2026-06-18** — **M4 Accountability Memory — commitment outcome tracking + briefing reflection.**
   - **`lib/accountabilityMemory.ts`** (new, pure, zero I/O):
     - `buildAccountabilitySnapshot(tasks, openLoops, today, lookbackDays=7)` — takes edg3-source tasks

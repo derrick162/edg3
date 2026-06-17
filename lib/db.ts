@@ -402,6 +402,22 @@ function initSchema(db: Database.Database) {
       computed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- Episode store (episodic memory tier).
+    -- content_raw is the preserved call transcript (or lightly-processed record for email/calendar).
+    -- Encrypted at rest — this is the rawest PII we hold; never leaks cross-user.
+    -- topics + commitments are JSON string[] — tagged at write time; used for briefing recall.
+    -- Retention: rows older than 18 months may be pruned; episodeQueries.prune() handles it.
+    CREATE TABLE IF NOT EXISTS episodes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source       TEXT NOT NULL CHECK(source IN ('call', 'calendar', 'email')),
+      occurred_at  TEXT NOT NULL,
+      content_raw  TEXT NOT NULL,
+      topics       TEXT,
+      commitments  TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- OAuth CSRF state tokens — one-time-use, short-lived (10 min).
     -- Generated in /api/[calendar|whoop]/connect; consumed (verified + deleted) in /api/[...]/callback.
     CREATE TABLE IF NOT EXISTS oauth_state (
@@ -1904,42 +1920,49 @@ export const calendarPlanQueries = {
 // ── Episode store (episodic memory tier) ─────────────────────────────────────
 // Ground-truth episode records: preserved call/calendar/email events, encrypted
 // at rest, user-scoped, consent-gated, retention-bounded.
+// topics + commitments are JSON string[] for quick briefing-time recall.
 // See specs/episode-store.md for the research rationale and build plan.
 
 export type EpisodeSource = 'call' | 'calendar' | 'email';
 
 export interface Episode {
-  id: number;
-  userId: number;
-  source: EpisodeSource;
-  occurredAt: string;
-  contentRaw: string;
-  topics: string[];
-  commitments: string[];
-  createdAt: string;
+  id:           number;
+  userId:       number;
+  source:       EpisodeSource;
+  occurredAt:   string;        // ISO datetime
+  contentRaw:   string;        // decrypted
+  topics:       string[];      // parsed from JSON
+  commitments:  string[];      // parsed from JSON
+  createdAt:    string;
 }
 
 interface EpisodeRow {
-  id: number;
-  user_id: number;
-  source: string;
+  id:          number;
+  user_id:     number;
+  source:      string;
   occurred_at: string;
-  content_raw: string;
-  topics: string;
-  commitments: string;
-  created_at: string;
+  content_raw: string;         // encrypted
+  topics:      string | null;
+  commitments: string | null;
+  created_at:  string;
+}
+
+function safeJsonArray(v: string | null): string[] {
+  if (!v) return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; }
+  catch { return []; }
 }
 
 function decryptEpisodeRow(r: EpisodeRow): Episode {
   return {
-    id:           r.id,
-    userId:       r.user_id,
-    source:       r.source as EpisodeSource,
-    occurredAt:   r.occurred_at,
-    contentRaw:   decryptField(r.content_raw),
-    topics:       r.topics ? (JSON.parse(r.topics) as string[]) : [],
-    commitments:  r.commitments ? (JSON.parse(r.commitments) as string[]) : [],
-    createdAt:    r.created_at,
+    id:          r.id,
+    userId:      r.user_id,
+    source:      r.source as EpisodeSource,
+    occurredAt:  r.occurred_at,
+    contentRaw:  decryptField(r.content_raw),
+    topics:      safeJsonArray(r.topics),
+    commitments: safeJsonArray(r.commitments),
+    createdAt:   r.created_at,
   };
 }
 
@@ -1970,11 +1993,13 @@ export const episodeQueries = {
   },
 
   /** Filtered episode search for a user. All filters are AND-combined; all optional.
-   *  topic filters post-SQL (JSON array search). since/unresolvedCommitments filter in SQL. */
+   *  Accepts both `topic` (single string) and `topics` (string[]) — topic filtering is
+   *  post-SQL (JSON array search); since/unresolvedCommitments filter in SQL. */
   search: (
     userId: number,
     opts: {
       topic?: string;
+      topics?: string[];
       since?: string;
       unresolvedCommitments?: boolean;
       limit?: number;
@@ -1993,19 +2018,29 @@ export const episodeQueries = {
     const rows = (getDb().prepare(
       `SELECT * FROM episodes WHERE ${clauses.join(' AND ')} ORDER BY occurred_at DESC LIMIT ?`
     ).all(...params) as EpisodeRow[]).map(decryptEpisodeRow);
-    if (opts.topic) {
-      const needle = opts.topic.toLowerCase();
-      return rows.filter(e => e.topics.some(t => t.toLowerCase().includes(needle)));
+    const needles: string[] = [];
+    if (opts.topic) needles.push(opts.topic.toLowerCase());
+    if (opts.topics?.length) needles.push(...opts.topics.map(t => t.toLowerCase()));
+    if (needles.length) {
+      return rows.filter(e =>
+        e.topics.some(t => needles.some(n => t.toLowerCase().includes(n) || n.includes(t.toLowerCase())))
+      );
     }
     return rows;
   },
 
-  /** Prune episodes whose occurred_at is older than retentionDays.
-   *  Default 365 days — run periodically to bound storage while preserving the year of history
-   *  that constitutes the switching-cost moat. */
+  /** Prune episodes whose occurred_at is older than retentionDays (all users).
+   *  Default 365 days — run periodically to bound storage while preserving the year of
+   *  history that constitutes the switching-cost moat. */
   prune: (retentionDays = 365): void => {
     getDb().prepare(
       "DELETE FROM episodes WHERE occurred_at < datetime('now', ? || ' days')"
     ).run(`-${retentionDays}`);
+  },
+
+  /** Prune episodes older than keepDays across all users (scheduler entry point). */
+  pruneAll: (keepDays = 548): void => {
+    const cutoff = new Date(Date.now() - keepDays * 86_400_000).toISOString().slice(0, 10);
+    getDb().prepare("DELETE FROM episodes WHERE occurred_at < ?").run(cutoff);
   },
 };
