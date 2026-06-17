@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { priorityQueries, memoryQueries, factQueries } from '@/lib/db';
+import { priorityQueries, memoryQueries, factQueries, auditLogQueries } from '@/lib/db';
 import { getWeekOf } from '@/lib/briefing';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -42,6 +42,17 @@ export async function POST(req: NextRequest) {
   );
 
   try { factQueries.syncPriorityFacts(user.id, texts); } catch { /* non-fatal */ }
+
+  auditLogQueries.record({
+    userId: user.id,
+    briefingId: null,
+    action: 'priorities_accepted',
+    argsJson: JSON.stringify({ priorities: texts }),
+    resultText: `Accepted ${texts.length} Edge-proposed priorit${texts.length === 1 ? 'y' : 'ies'}`,
+    ok: true,
+    snapshotBefore: null,
+    snapshotAfter: null,
+  });
 
   return NextResponse.json({ ok: true });
 }

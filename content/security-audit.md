@@ -289,7 +289,7 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 - **OAuth CSRF:** `oauthStateQueries` crypto state tokens for calendar + Whoop flows
 - **Vapi webhook integrity:** `checkVapiSecret` + fail-closed `VAPI_SECRET_ENFORCE` + admin mismatch monitoring
 - **Idempotency:** calendar book, day-plan confirm, event dedupe keys prevent double-execution
-- **Audit logging:** All calendar + fact mutations logged to `audit_log`; undo_applied events logged; 90-day retention with email-subject pruning
+- **Audit logging:** Calendar + fact + focus + day-plan mutations logged to `audit_log`; undo_applied events logged; priorities_set + priorities_accepted + loop resolve/dismiss/snooze + consent_update added 2026-06-18; 90-day retention with email-subject pruning. See "Audit Log Coverage" section for full inventory.
 - **Admin auth:** Separate HMAC-derived cookie; shared brute-force rate limit; admin secret header for CoS-agent routes
 - **Session expiry:** 7-day JWT; logout bumps `session_version`
 - **Error responses:** No stack traces or internal error strings in user-facing responses
@@ -299,7 +299,7 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 - **`memories.content` encrypted at rest (FIXED 2026-06-18):** Previously stored as plaintext — now encrypted via `encryptField` in `memoryQueries.create`; all read paths decrypted. Legacy plaintext rows pass through transparently on read (no migration needed).
 - **Consent helper:** `lib/consent.ts` — `isImproveConsented(user)` / `isPrivacyMode(user)`. Safe default: null/undefined consent → Privacy Mode (opt-IN required for improvement use). Ready for wiring once Core adds `users.data_consent` column.
 - **Memory authz:** `GET /api/memory` user-scoped to `user.id`; cross-user leakage tests confirm one user cannot read another's memories or facts.
-- **Test coverage:** 61 test files, 1331 tests. Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout. Lib-level: auth/JWT, crypto, idempotency, backup path traversal, vapi secret, consent helper.
+- **Test coverage:** 64 test files, 1362 tests (2026-06-18). Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout+consent. Lib-level: auth/JWT, crypto, idempotency, backup path traversal + table coverage (20 tables), vapi secret, consent helper.
 
 ### ⚠️ Known Gaps (Accepted / Tracked)
 
@@ -415,6 +415,64 @@ Package: node_modules/next/node_modules/postcss  (bundled transitive dep of Next
 
 ---
 
+## Audit Log Coverage (2026-06-18)
+
+_PM dispatch: verify audit_log covers every user-triggered mutation and close gaps._
+
+The `audit_log` table feeds Core's Activity tab and provides the security/compliance audit trail. Every row is user-scoped (`user_id`) and retained for 90 days.
+
+### ✅ Routes with audit_log.record() — verified covered
+
+| Route | Action recorded | Notes |
+|---|---|---|
+| `POST /api/vapi/tool-call` (calendar mutations) | `createEvent`, `moveEvent`, `deleteEvent`, `editEvent`, `colorEvent`, `researchToEvent`, `cleanupEvents`, `cleanupDuplicates`, `draftEmail` | Core calendar/email tools; every tool call result logged |
+| `POST /api/undo` | `undo_applied` | Fixed 2026-06-17; includes undo of calendar mutations and email drafts |
+| `PATCH /api/memory/facts/[id]` | `fact_update` | Per-fact audit on edit |
+| `DELETE /api/memory/facts/[id]` | `fact_delete` | Per-fact audit on delete |
+| `POST /api/focus/confirm` | `confirmFocusAreas` | Focus areas accepted by user |
+| `POST /api/focus/complete` | `completeFocusArea` | Individual focus area marked done |
+| `POST /api/day-plan/confirm` | `applyDayPlan` | Calendar plan batch executed |
+| `POST /api/calendar/book` | `createEvent` (web) | Web-triggered calendar create |
+| `POST /api/auth/consent` | `consent_update` | Data consent setting changed; includes prev + new value |
+| `POST /api/priorities/derive/accept` | `priorities_accepted` | **Added 2026-06-18** — Edge-proposed priorities accepted |
+| `POST /api/onboarding/priorities` | `priorities_set` | **Added 2026-06-18** — User sets/updates priorities |
+| `POST /api/open-loops` (resolve/dismiss/snooze) | `loop_resolve`, `loop_dismiss`, `loop_snooze` | **Added 2026-06-18** — Loop state changes |
+
+### Intentionally NOT logged (with justification)
+
+| Route | Reason omitted |
+|---|---|
+| `DELETE /api/account` | **GDPR compliance** — the cascade deletes `audit_log WHERE user_id = ?` as part of the deletion. Logging before deletion would be immediately erased. Server-side `console.log` provides operator visibility. |
+| `POST /api/auth/login`, `logout`, `signup` | Authentication events, not data mutations. Session table (`session_version`) tracks invalidation. Not useful for the Activity tab. |
+| `POST /api/notifications` (markRead) | Read-state toggle — no user data is created or deleted. |
+| `POST /api/onboarding/consent` | Consent changes are now logged via `POST /api/auth/consent` (which is the settings-level endpoint with audit). Both routes call `setDataConsent`; the auth/consent route is the one with audit logging. |
+| `POST /api/priorities/keep` | Refreshes `week_of` timestamp only — no text changes. Cosmetic operation; no meaningful data change to audit. |
+| `PATCH /api/priorities/[id]/energy` | Energy-cost annotation — low-sensitivity tag change. |
+| `POST /api/priorities/[id]/milestones` | Sub-tasks of priorities. Low-risk creation; volume would dilute Activity tab. |
+| `PATCH,DELETE /api/milestones/[id]` | Same as above — milestone completion/deletion. |
+| `POST,DELETE /api/calendar/reminder` | Google Calendar setup operation. Edg3-managed recurring event, not a user data mutation. |
+| `POST /api/calendar/disconnect`, `/api/whoop/disconnect` | Connectivity changes. OAuth tokens are deleted; no user content data modified. |
+| `POST /api/energy/today` | Energy level log entry — informational, low-sensitivity. |
+| `POST /api/profile`, `/api/profile/timezone` | Profile meta-data updates. |
+| `POST /api/briefing/**` (call triggers) | Operational voice-call initiation. The resulting briefing is already recorded in the `briefings` table. |
+| `POST /api/tasks`, `PATCH/DELETE /api/tasks/**` | Task lifecycle managed via the vapi tool-call path; those mutations ARE in audit_log. Web-side task endpoints are low-priority; task deletions are minor. |
+| `POST /api/support` | Support message submission — goes to the `support_messages` table, not user data. |
+| `POST /api/waitlist` | Public endpoint; pre-auth; not user data. |
+| Admin routes (`/api/admin/**`) | Operator-tier; gated by `checkAdminAuth`. Admin actions are tracked by `vapi_auth_log` and server logs, not the user-facing audit trail. |
+
+### Rate-limit coverage (Ticket 2 check)
+
+New routes added since the Round 3 sweep: `/api/auth/consent`, `/api/onboarding/consent` (Core), `/api/scoreboard` (Core). Spot-check:
+
+| Route | Rate limit | Status |
+|---|---|---|
+| `POST /api/auth/consent` | `consentUpdate` 10/hr/user | ✅ Added this session |
+| `POST /api/onboarding/consent` | via Core's dispatch | ✅ Core added `onboardingConsent` RL key |
+| `GET /api/scoreboard` | — | ✅ Read-only; no rate limit needed |
+| `PATCH /api/milestones/[id]` | No rate limit | ⚠️ Low risk (authenticated, no external API calls) — acceptable for pre-beta |
+
+---
+
 ## Data Consent and Privacy Mode (2026-06-18)
 
 _Added for CASA compliance and Google OAuth verification. Relevant spec: `specs/data-control-onboarding.md`._
@@ -463,7 +521,7 @@ All other LLM call sites (`lib/alignment.ts`, `lib/calendar.ts`, `lib/calendarSc
 
 - The user's consent setting is included in `GET /api/account/export` under `profile.dataConsent`.
 - Account deletion (`DELETE /api/account`) removes all user data regardless of consent setting.
-- No audit event is currently written when `data_consent` changes (the column doesn't exist yet); Security will add an `audit_log` record to `POST /api/onboarding/data-consent` (or equivalent Core route) once Core ships the column + route.
+- Consent changes are logged: `POST /api/auth/consent` writes a `consent_update` audit entry with `prev` and `new` consent values. The `data_consent` column is now live (migration added 2026-06-18).
 
 ### CASA / Google OAuth verification checklist
 

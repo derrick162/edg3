@@ -94,9 +94,11 @@ export function verifyBackup(fileName: string): VerifyResult {
     // Row counts on key tables — gives a sanity-check signal for restore viability.
     const tables = [
       'users', 'briefings', 'calendar_tokens', 'whoop_tokens',
-      'priorities', 'milestones', 'memories', 'tasks', 'facts',
+      'priorities', 'focus_milestones', 'memories', 'tasks', 'facts',
       'open_loops', 'notifications', 'daily_focus', 'calendar_scores',
       'audit_log', 'waitlist',
+      'energy_profile', 'event_energy_tags', 'calendar_plan_executions',
+      'undo_log', 'gmail_drafts_log',
     ];
     const rowCounts: Record<string, number> = {};
     for (const t of tables) {

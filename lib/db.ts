@@ -410,6 +410,17 @@ function initSchema(db: Database.Database) {
       flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop')),
       expires_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS episodes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id),
+      source       TEXT NOT NULL CHECK(source IN ('call', 'calendar', 'email')),
+      occurred_at  TEXT NOT NULL,
+      content_raw  TEXT NOT NULL,
+      topics       TEXT NOT NULL DEFAULT '[]',
+      commitments  TEXT NOT NULL DEFAULT '[]',
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -433,6 +444,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_calendar_plan_executions_user ON calendar_plan_executions(user_id, plan_id);
     CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
+    CREATE INDEX IF NOT EXISTS idx_episodes_user_occurred ON episodes(user_id, occurred_at DESC);
   `);
 
   // Migrations for existing databases
@@ -1421,23 +1433,27 @@ export interface FocusMilestone {
   completed_at: string | null;
 }
 
+function decryptFocusMilestoneRow(r: FocusMilestone): FocusMilestone {
+  return { ...r, title: decryptField(r.title) };
+}
+
 export const focusMilestoneQueries = {
   // All milestones for a user, grouped by focus area then sort order.
   listForUser: (userId: number): FocusMilestone[] => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM focus_milestones WHERE user_id = ? ORDER BY priority_id, sort_order, id'
-    ).all(userId) as FocusMilestone[];
+    ).all(userId) as FocusMilestone[]).map(decryptFocusMilestoneRow);
   },
   // Milestones for a single focus area, ordered for display.
   listForPriority: (userId: number, priorityId: number): FocusMilestone[] => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM focus_milestones WHERE user_id = ? AND priority_id = ? ORDER BY sort_order, id'
-    ).all(userId, priorityId) as FocusMilestone[];
+    ).all(userId, priorityId) as FocusMilestone[]).map(decryptFocusMilestoneRow);
   },
   create: (userId: number, priorityId: number, title: string) => {
     return getDb().prepare(
       'INSERT INTO focus_milestones (user_id, priority_id, title) VALUES (?, ?, ?)'
-    ).run(userId, priorityId, title);
+    ).run(userId, priorityId, encryptField(title));
   },
   markDone: (id: number, userId: number) => {
     return getDb().prepare(
@@ -1832,15 +1848,17 @@ export const supportMessageQueries = {
   insert: (userId: number, type: 'feedback' | 'question' | 'issue', message: string): void => {
     getDb().prepare(
       'INSERT INTO support_messages (user_id, type, message) VALUES (?, ?, ?)'
-    ).run(userId, type, message);
+    ).run(userId, type, encryptField(message));
   },
 
+  /** Admin-only — returns all users' messages. NEVER call from user-facing routes.
+   *  Messages are decrypted inline; the DB stores them encrypted at rest. */
   list: (opts: { limit?: number } = {}): Array<{ id: number; userId: number; type: string; message: string; status: string; createdAt: string }> => {
     const limit = opts.limit ?? 100;
     const rows = getDb().prepare(
       'SELECT id, user_id, type, message, status, created_at FROM support_messages ORDER BY created_at DESC LIMIT ?'
     ).all(limit) as Array<{ id: number; user_id: number; type: string; message: string; status: string; created_at: string }>;
-    return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: r.message, status: r.status, createdAt: r.created_at }));
+    return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: decryptField(r.message), status: r.status, createdAt: r.created_at }));
   },
 };
 
@@ -1880,5 +1898,114 @@ export const calendarPlanQueries = {
     getDb().prepare(
       "UPDATE calendar_plan_executions SET status = 'reverted', reverted_at = datetime('now') WHERE user_id = ? AND plan_id = ?"
     ).run(userId, planId);
+  },
+};
+
+// ── Episode store (episodic memory tier) ─────────────────────────────────────
+// Ground-truth episode records: preserved call/calendar/email events, encrypted
+// at rest, user-scoped, consent-gated, retention-bounded.
+// See specs/episode-store.md for the research rationale and build plan.
+
+export type EpisodeSource = 'call' | 'calendar' | 'email';
+
+export interface Episode {
+  id: number;
+  userId: number;
+  source: EpisodeSource;
+  occurredAt: string;
+  contentRaw: string;
+  topics: string[];
+  commitments: string[];
+  createdAt: string;
+}
+
+interface EpisodeRow {
+  id: number;
+  user_id: number;
+  source: string;
+  occurred_at: string;
+  content_raw: string;
+  topics: string;
+  commitments: string;
+  created_at: string;
+}
+
+function decryptEpisodeRow(r: EpisodeRow): Episode {
+  return {
+    id:           r.id,
+    userId:       r.user_id,
+    source:       r.source as EpisodeSource,
+    occurredAt:   r.occurred_at,
+    contentRaw:   decryptField(r.content_raw),
+    topics:       r.topics ? (JSON.parse(r.topics) as string[]) : [],
+    commitments:  r.commitments ? (JSON.parse(r.commitments) as string[]) : [],
+    createdAt:    r.created_at,
+  };
+}
+
+export const episodeQueries = {
+  /** Insert a new episode. Callers MUST verify isImproveConsented(user) before calling —
+   *  episodes hold the rawest PII and must not be stored for Privacy Mode users.
+   *  Returns the new episode's row id. */
+  insert: (
+    userId: number,
+    source: EpisodeSource,
+    occurredAt: string,
+    contentRaw: string,
+    topics: string[] = [],
+    commitments: string[] = [],
+  ): number => {
+    const info = getDb().prepare(
+      'INSERT INTO episodes (user_id, source, occurred_at, content_raw, topics, commitments) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, source, occurredAt, encryptField(contentRaw), JSON.stringify(topics), JSON.stringify(commitments));
+    return Number((info as { lastInsertRowid: number | bigint }).lastInsertRowid);
+  },
+
+  /** Most-recent N episodes for a user, newest first.
+   *  User-scoped: WHERE user_id = ? enforced at the SQL level. */
+  recent: (userId: number, limit = 20): Episode[] => {
+    return (getDb().prepare(
+      'SELECT * FROM episodes WHERE user_id = ? ORDER BY occurred_at DESC LIMIT ?'
+    ).all(userId, limit) as EpisodeRow[]).map(decryptEpisodeRow);
+  },
+
+  /** Filtered episode search for a user. All filters are AND-combined; all optional.
+   *  topic filters post-SQL (JSON array search). since/unresolvedCommitments filter in SQL. */
+  search: (
+    userId: number,
+    opts: {
+      topic?: string;
+      since?: string;
+      unresolvedCommitments?: boolean;
+      limit?: number;
+    } = {},
+  ): Episode[] => {
+    const clauses: string[] = ['user_id = ?'];
+    const params: unknown[] = [userId];
+    if (opts.since) {
+      clauses.push('occurred_at >= ?');
+      params.push(opts.since);
+    }
+    if (opts.unresolvedCommitments) {
+      clauses.push("commitments IS NOT NULL AND commitments != '[]'");
+    }
+    params.push(opts.limit ?? 50);
+    const rows = (getDb().prepare(
+      `SELECT * FROM episodes WHERE ${clauses.join(' AND ')} ORDER BY occurred_at DESC LIMIT ?`
+    ).all(...params) as EpisodeRow[]).map(decryptEpisodeRow);
+    if (opts.topic) {
+      const needle = opts.topic.toLowerCase();
+      return rows.filter(e => e.topics.some(t => t.toLowerCase().includes(needle)));
+    }
+    return rows;
+  },
+
+  /** Prune episodes whose occurred_at is older than retentionDays.
+   *  Default 365 days — run periodically to bound storage while preserving the year of history
+   *  that constitutes the switching-cost moat. */
+  prune: (retentionDays = 365): void => {
+    getDb().prepare(
+      "DELETE FROM episodes WHERE occurred_at < datetime('now', ? || ' days')"
+    ).run(`-${retentionDays}`);
   },
 };
