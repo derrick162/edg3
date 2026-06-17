@@ -14,7 +14,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 ### UX-1 — No stale or wrong UI copy anywhere (Core + Design)
 **Known bugs (log here as found):**
 - ~~`'📅 Book a time'` button on every notification~~ — **FIXED f1e1943** (removed hardcoded action)
-- Landing page copy says "5 minutes" — should be "3 minutes" to match the actual call
+- Landing page copy says "5 minutes" — should be "3 minutes" to match the actual call (or whatever the agreed number is)
+- Landing page uses "Edge" not "Edg3" in multiple places — brand name must always be **Edg3** on public-facing surfaces (Derrick flagged 2026-06-17)
 - Any other copy that describes a feature we removed or changed (e.g., references to the async note box)
 - **Process:** when Derrick flags a copy bug, fix it same-session. No ticket needed. Copy bugs are trust destroyers.
 
