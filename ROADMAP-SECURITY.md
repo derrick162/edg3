@@ -216,6 +216,14 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T1-5 + T3-4 + T4-3 — Rate limit sweep clean + account deletion completeness + WAL (1596 green).**
+  - **T1-5 — Rate limit sweep:** Full scan of all 37 user-facing POST/PATCH/DELETE routes in `app/api/`. All mutation routes are protected with `checkRateLimit()`. No gaps found. `vapi/webhook` and `vapi/verify-promises` use Vapi secret auth (correct — no user session on these paths). No code changes needed.
+  - **T4-3 — WAL + busy_timeout:** Already confirmed in overnight hardening commit: `db.pragma('journal_mode = WAL')` was pre-existing; `db.pragma('busy_timeout = 5000')` added. ✅ Complete.
+  - **T3-4 — Account deletion completeness (BUG FIX):**
+    - **Bug found:** `briefing_context_packs` has no `ON DELETE CASCADE` on its `user_id` FK. With `foreign_keys = ON` active (confirmed in `getDb()`), deleting the `users` row would throw a FK constraint error for any user with context packs — account deletion would 500.
+    - **Fix:** `app/api/account/route.ts` — added explicit `DELETE FROM briefing_context_packs WHERE user_id = ?` before the `users` delete. Also added explicit deletes for `episodes`, `people_profiles`, `pattern_cache`, `failed_webhooks`, `background_job_failures` (belt-and-suspenders; these have CASCADE but weren't in the list).
+    - **Tests:** `app/api/account/account.test.ts` — updated mock to capture `preparedSqls`; added 3 tests: total DELETE count ≥ 30, explicit `briefing_context_packs` delete present, explicit `episodes` delete present. Updated stale "≥ 17" assertion to "≥ 30".
+  - 82 test files / 1596 tests total.
 - **2026-06-18** — **PILLAR-TRUST T1-4 — Encryption audit + coverage map in content/data-protection.md.**
   - Full audit of all 28 tables in `lib/db.ts`: verified encrypt-on-write and decrypt-on-read call sites for each table.
   - 14 tables confirmed encrypted at rest (AES-256-GCM): briefings, calendar_tokens, whoop_tokens, episodes, briefing_context_packs, memories, facts, pattern_cache, focus_milestones, open_loops, notifications, daily_focus, gmail_drafts_log, watched_threads.
