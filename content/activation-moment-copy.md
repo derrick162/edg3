@@ -74,25 +74,31 @@ _The wow moment. Priorities appear one by one with rationale. This is the first 
 
 **Header:** Here's what I already know about you.
 
-**Subheader (small, muted):** From your last [N] months of calendar history.
+**Subheader (small, muted):** `[summaryLine from derivation]`
+— e.g., "Based on 12 weeks of calendar data + 8 email threads + 3 stated goals"
+The `summaryLine` field comes directly from `DerivedPriorityProposal.summaryLine`. Use it verbatim — it's already formatted honestly by the engine.
 
 **Priority cards (appear one by one, ~200ms stagger):**
 
 Each card shows:
-- **Priority label** — e.g., "Extending your runway"
-- **Evidence line** — e.g., "You've had 14 financial review blocks in the last 3 months"
-- Optional: category badge (Work / Life / Health / etc.)
+- **Priority text** — `DerivedPriority.text`, verb-first, ≤60 chars. e.g., "Extend your runway"
+- **Evidence chips** — `DerivedPriority.evidenceTags[]`, 2–3 compact tags rendered as pills.
+  e.g., `[14 financial blocks]` `[2 open commitments]` `[stated goal]`
+- **Rationale** — `DerivedPriority.rationale`, shown below chips in muted text. 1–2 sentences.
 
-**Example reveal sequence:**
+**Example reveal sequence (based on actual engine output format):**
 
-> **1. Extending your runway**
-> _You've had 14 financial review blocks in the last 3 months_
+> **Extend your runway**
+> `[14 financial blocks]` `[2 open loops]` `[stated goal]`
+> _You've consistently blocked financial review time — and have two unresolved commitments in that area._
 
-> **2. Building Edge**
-> _Your longest uninterrupted focus blocks consistently land on product and engineering topics_
+> **Ship the activation moment**
+> `[highest calendar hours]` `[open commitment]`
+> _Product and engineering sessions account for your most focused blocks over the past 3 months._
 
-> **3. Health and recovery**
-> _You've protected gym and sleep time even in high-demand weeks_
+> **Protect recovery and training**
+> `[18 gym blocks]` `[preference stated]`
+> _You've defended exercise time even in high-demand weeks — a pattern worth reinforcing._
 
 **Footer copy (below all priority cards):**
 > These are based on your calendar, not a questionnaire. Edge will use them to frame every morning call and score your week.
@@ -107,7 +113,7 @@ Each card shows:
 
 ### Screen 3b — THIN DATA FALLBACK
 
-_Triggered when derivation returns < 2 anchors with confidence (sparse calendar — less than ~3 months of meaningful events, or fewer than ~10 events total)._
+_Triggered when `derivePriorities()` returns `null` (no signal at all — no calendar events, no goal/project facts, no email signal), OR when the returned `priorities.length < 2` (engine found signal but not enough confidence for a full reveal). Darren: wire this exactly to those two conditions._
 
 **Header:** Your calendar is pretty clear.
 
@@ -381,8 +387,8 @@ _Per-user checklist for Derrick to run after each design partner completes onboa
 - [ ] **ACTIVATED ✅** (all 5 above checked)
 
 **Derivation quality check (ask on day-7 call):**
-- [ ] "Were the 3 priorities Edge showed you accurate?" → note their answer
-- [ ] If NO: what was wrong? (wrong anchor, missing anchor, or just the label wording?)
+- [ ] "Were the 2–3 priorities Edge showed you accurate?" → note their answer
+- [ ] If NO: what was wrong? (wrong priority entirely, missing key one, or just the wording?)
 
 **First call quality:**
 - [ ] First call connected (check Vapi dashboard — status: `ended`, duration ≥ 2 min)
@@ -412,7 +418,11 @@ _Per-user checklist for Derrick to run after each design partner completes onboa
 
 1. **Loading copy rotation:** Screen 2 rotates 3 lines of subtext. You'll need to expose a loading state that stays live for at least ~5s — if derivation is faster, hold on the loading screen briefly (300ms minimum after derivation completes) so the transition to the reveal doesn't feel jarring.
 
-2. **Thin-data threshold:** The spec says "sparse calendar → ask 1–2 questions instead of fabricating." Copy assumes < 2 anchors with confidence. Confirm what confidence threshold triggers the fallback — I've written the thin-data path to match that behavior.
+2. **Thin-data threshold (verified against `lib/priorityDerivation.ts`):** Show Screen 3b when
+   `derivePriorities()` returns `null` (all-empty signal: `!hasCalendar && !hasFacts && !emailSignal`)
+   OR when the returned `priorities.length < 2`. Both conditions mean the engine doesn't have
+   enough to show a credible multi-priority reveal. DO NOT show Screen 3 with a single priority —
+   one card doesn't convey "Edge understands you," it just looks like a guess.
 
 3. **First hero-loop in onboarding context:** The plan cards (Screen 5) show 1–3 items. If `/api/day-plan` returns more, truncate to 3 for onboarding — don't overwhelm. The rest appear on the dashboard after activation.
 
@@ -424,7 +434,13 @@ _Per-user checklist for Derrick to run after each design partner completes onboa
 
 ## Notes for Cam (Design — screens + motion)
 
-1. **The priorities reveal is the ★ moment.** Priorities appear one by one with ~200ms stagger. Respect `prefers-reduced-motion` (show all at once, no animation). Each card: priority label (large) + evidence line (muted, smaller).
+1. **The priorities reveal is the ★ moment.** Priorities appear one by one with ~200ms stagger.
+   Respect `prefers-reduced-motion` (show all at once, no animation). Each card has three layers:
+   - **Priority text** (`DerivedPriority.text`) — large, verb-first, e.g. "Extend your runway"
+   - **Evidence chips** (`DerivedPriority.evidenceTags[]`) — 2–3 small pill/badge elements;
+     compact and specific, e.g. `[14 financial blocks]` `[2 open loops]`
+   - **Rationale** (`DerivedPriority.rationale`) — muted paragraph below chips; 1–2 sentences
+   The chips are what makes it feel *earned*, not invented. Size them accordingly.
 
 2. **"These look right" is the primary CTA on Screen 3.** "Let me adjust" is secondary. Size accordingly — 80% of users will tap the primary.
 
