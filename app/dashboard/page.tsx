@@ -508,6 +508,7 @@ interface ActivityItem {
 function ActivityTab() {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -516,10 +517,15 @@ function ActivityTab() {
 
   async function load() {
     setLoading(true);
-    const r = await fetch('/api/activity');
-    if (!r.ok) { setLoading(false); return; }
-    const d = await r.json();
-    setItems(d.items || []);
+    setFetchError(false);
+    try {
+      const r = await fetch('/api/activity');
+      if (!r.ok) { setFetchError(true); setLoading(false); return; }
+      const d = await r.json();
+      setItems(d.items || []);
+    } catch {
+      setFetchError(true);
+    }
     setLoading(false);
   }
 
@@ -583,6 +589,17 @@ function ActivityTab() {
           <div className="h-3 rounded w-1/2" style={{ background: 'var(--edg-fill-04)' }} />
         </div>
       ))}
+    </div>
+  );
+
+  if (fetchError) return (
+    <div className="glass-card p-8 text-center mt-2">
+      <p className="text-2xl mb-3" role="img" aria-label="warning">⚠</p>
+      <p className="font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Couldn&apos;t load your activity</p>
+      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+        This is usually a temporary blip.
+      </p>
+      <button onClick={load} className="btn-secondary text-sm py-2 px-5">Try again</button>
     </div>
   );
 
