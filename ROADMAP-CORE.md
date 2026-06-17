@@ -448,6 +448,11 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Learning pipeline reliability — per-call learning status.**
+  - **`lib/db.ts`**: `"ALTER TABLE briefings ADD COLUMN learning_status TEXT"` migration. `briefingQueries.updateLearningStatus(briefingId, update)` — read-merge-write JSON patch; non-fatal try/catch (observability only).
+  - **`app/api/vapi/webhook/route.ts`**: Each fire-and-forget (fact extraction, sleep-time consolidation, open loops, episode store, briefing task extraction) now calls `updateLearningStatus` on `.then()` with `{ facts_ok: true }` and on `.catch()` with `{ facts_ok: false, facts_error: String(err).slice(0,200) }`. Failure still console.errors — learning status is additive, not a retry mechanism.
+  - **`app/api/admin/briefings/route.ts`**: Added `learning_status` to SELECT. New `?failed=1` query param filters to briefings with any `_ok":false` in `learning_status` — allows admin to surface any call where learning failed silently.
+  - 1523/1523 green, tsc clean, next build clean.
 - **2026-06-18** — **Edge Score Transparency — `change` field in GET /api/scores.**
   - **`lib/scoreChange.ts`** (new, pure, 0 I/O): `summarizeScoreChange(currentTotal, currentComponents, prevSnapshot, today)` → `ScoreChangeSummary { delta, direction, sinceLabel, reason, asOf }` | null. Diffs today's score vs the most-recent prior `calendar_scores` snapshot. Picks the component that moved most (focus vs energy — DB only persists these two; clarity/momentum excluded from dominance). Phrases one plain-English reason: up → first driver of dominant component; down → topFix.description if available, else first driver. `sinceLabel` is "since yesterday" / "since N days ago" / "since Mon DD" depending on gap. Returns null when no prior snapshot, same-date snapshot, or prior has no `edge_score`. 13 new tests in `lib/scoreChange.test.ts`.
   - **`lib/db.ts`**: `calendarScoreQueries.getPrior(userId, beforeDate)` — fetches the most recent row with `date < beforeDate` (used to avoid same-day self-diff).

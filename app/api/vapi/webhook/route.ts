@@ -145,34 +145,56 @@ export async function POST(req: NextRequest) {
         ).get(briefing.user_id, tomorrowStr) as { count: number };
         if (existingTasks.count === 0) {
           extractTasksFromBriefing(briefing.user_id, briefing.content, user.timezone)
-            .catch(err => console.error('Task extraction failed:', err));
+            .then(() => briefingQueries.updateLearningStatus(briefing.id, { tasks_ok: true }))
+            .catch(err => {
+              console.error('Task extraction failed:', err);
+              briefingQueries.updateLearningStatus(briefing.id, { tasks_ok: false, tasks_error: String(err).slice(0, 200) });
+            });
         }
         if (transcript) {
           extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
           // Compounding memory: extract durable structured facts and deduplicate against
           // existing ones. Fire-and-forget — never blocks the webhook response.
+          const briefingId = briefing.id;
           import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
-            .catch(err => console.error('[webhook] Fact extraction failed:', err));
+            .then(() => briefingQueries.updateLearningStatus(briefingId, { facts_ok: true }))
+            .catch(err => {
+              console.error('[webhook] Fact extraction failed:', err);
+              briefingQueries.updateLearningStatus(briefingId, { facts_ok: false, facts_error: String(err).slice(0, 200) });
+            });
           // Sleep-time consolidation: one Haiku call resolves contradictions between the
           // transcript and stored facts via the bi-temporal retire+insert pipeline.
           import('@/lib/facts').then(m => m.runSleepTimeConsolidation(briefing.user_id, transcript, user.name))
-            .catch(err => console.error('[webhook] Sleep-time consolidation failed:', err));
+            .then(() => briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: true }))
+            .catch(err => {
+              console.error('[webhook] Sleep-time consolidation failed:', err);
+              briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: false, consolidation_error: String(err).slice(0, 200) });
+            });
           // Extract open loops / commitments from the call transcript.
           import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
-            .catch(err => console.error('[webhook] Open loops extraction failed:', err));
+            .then(() => briefingQueries.updateLearningStatus(briefingId, { loops_ok: true }))
+            .catch(err => {
+              console.error('[webhook] Open loops extraction failed:', err);
+              briefingQueries.updateLearningStatus(briefingId, { loops_ok: false, loops_error: String(err).slice(0, 200) });
+            });
           // Episode store: persist the raw (grounded) transcript for episodic recall.
           import('@/lib/episodeStore').then(m => {
             const priorities = (() => { try { return priorityQueries.getMostRecent(briefing.user_id); } catch { return []; } })();
             const taskTexts = (() => { try { return taskQueries.getRecent(briefing.user_id, 1).map(t => t.text); } catch { return []; } })();
-            m.persistCallEpisode(
+            return m.persistCallEpisode(
               briefing.user_id,
               transcript,
               briefing.scheduled_for ?? new Date().toISOString(),
               priorities.map(p => p.text),
               taskTexts,
             );
-          }).catch(err => console.error('[webhook] Episode store failed:', err));
+          })
+            .then(() => briefingQueries.updateLearningStatus(briefingId, { episode_ok: true }))
+            .catch(err => {
+              console.error('[webhook] Episode store failed:', err);
+              briefingQueries.updateLearningStatus(briefingId, { episode_ok: false, episode_error: String(err).slice(0, 200) });
+            });
         }
 
         // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and

@@ -476,6 +476,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
     "ALTER TABLE users ADD COLUMN voice_preference TEXT NOT NULL DEFAULT 'daniel'",
     "ALTER TABLE people_profiles ADD COLUMN email TEXT",
+    "ALTER TABLE briefings ADD COLUMN learning_status TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -690,6 +691,16 @@ export const briefingQueries = {
     const values = entries.map(([k, v]) => (ENCRYPTED_BRIEFING_FIELDS.has(k) && typeof v === 'string') ? encryptField(v) : v);
     return getDb().prepare(`UPDATE briefings SET ${fields} WHERE id = ?`).run(...values, id);
   },
+  updateLearningStatus: (briefingId: number, update: Record<string, unknown>): void => {
+    try {
+      const row = getDb().prepare('SELECT learning_status FROM briefings WHERE id = ?').get(briefingId) as { learning_status: string | null } | undefined;
+      let current: Record<string, unknown> = {};
+      try { if (row?.learning_status) current = JSON.parse(row.learning_status); } catch { /* ok */ }
+      getDb().prepare('UPDATE briefings SET learning_status = ? WHERE id = ?')
+        .run(JSON.stringify({ ...current, ...update }), briefingId);
+    } catch { /* non-fatal — learning status is observability only */ }
+  },
+
   getRecent: (userId: number, limit = 10) => {
     return (getDb().prepare(
       'SELECT * FROM briefings WHERE user_id = ? ORDER BY scheduled_for DESC LIMIT ?'
