@@ -304,6 +304,21 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Focus Scoreboard — outcome layer + 4-week trend (Ticket 2).**
+  - **`computeWeeklyBreakdown(events, priorities, numWeeks)` pure helper** added to `lib/timeAllocation.ts`.
+    Splits calendar events into weekly Sun–Sat buckets going back `numWeeks` weeks. For each bucket, applies the
+    same keyword + goal-category matching as `computeTimeAllocation` (fitness goals get exercise credit).
+    Returns `WeeklyBucket[]` oldest-first: `weekLabel` ("Jun 9"), `weekStart` (ISO), `perPriority`, `otherHours`.
+    7 new tests in `lib/timeAllocation.test.ts`.
+  - **`GET /api/scoreboard`** new endpoint: fetches current week events + past 4 weeks of calendar events in
+    parallel; runs keyword-based `computeWeeklyBreakdown` for the trend (no LLM cost); returns per-priority
+    `{ hoursThisWeek, weeklyAvgHours, milestoneDone, milestoneTotal, milestones[], weeklyTrend }`.
+    7 tests in `app/api/scoreboard/route.test.ts`.
+  - **`FocusScoreboardPanel`** component added to `app/dashboard/page.tsx` (self-contained, fetches
+    `/api/scoreboard` on mount). Renders at the top of the Priorities tab — above the `PrioritiesTab` edit form.
+    Shows: per-priority cards with hours bar + avg marker + trend arrow (↑/↓) + milestone count + energy cost
+    badge; 4-week trend table (hours per priority per week). Degrades to null when no priorities or loading.
+  - 1335/1335 green, tsc clean, next build clean.
 - **2026-06-18** — **Compliance gate — `data_consent` DB column + consent endpoint (unblocks CASA).**
   - `lib/db.ts`: added `"ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))"` to the migrations list. Added `userQueries.setDataConsent(id, consent)` to persist the user's choice.
   - `GET /api/profile`: now returns `data_consent` (defaults to `'privacy'` when null — Privacy Mode is the safe default).

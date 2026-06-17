@@ -14,6 +14,13 @@ import type { calendar_v3 } from 'googleapis';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface WeeklyBucket {
+  weekLabel: string;    // "Jun 9" (Sunday start of that week, UTC)
+  weekStart: string;    // ISO date YYYY-MM-DD of week start (Sunday)
+  perPriority: { [priorityText: string]: number };  // hours per priority in this week
+  otherHours: number;   // hours not attributed to any priority
+}
+
 export interface TimeAllocationBucket {
   label: string;          // bucket name: priority text OR 'meetings' / 'routine' / 'other'
   hours: number;          // total hours across the analysis window
@@ -244,6 +251,85 @@ export function formatTimeAllocationForBriefing(result: TimeAllocationResult | n
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Break `events` into `numWeeks` consecutive Sun–Sat weekly buckets ending this week,
+ * and for each bucket compute hours attributed to each priority (keyword + goal-category
+ * matching, same as computeTimeAllocation) plus unattributed "other" hours.
+ *
+ * Returns buckets oldest-first. The last bucket is the current (in-progress) week,
+ * so its hours reflect time invested so far this week, not the full week.
+ *
+ * Pure function — no I/O. Uses Date.now() (mockable via vi.setSystemTime in tests).
+ */
+export function computeWeeklyBreakdown(
+  events: calendar_v3.Schema$Event[],
+  priorities: { text: string }[],
+  numWeeks: number,
+): WeeklyBucket[] {
+  if (numWeeks < 1 || priorities.length === 0) return [];
+
+  // Find the start of the current week (most recent Sunday 00:00 UTC).
+  const now = Date.now();
+  const nowDate = new Date(now);
+  const dayOfWeek = nowDate.getUTCDay(); // 0=Sun, …, 6=Sat
+  const currentWeekStartMs = now - dayOfWeek * 86400000 - (nowDate.getUTCHours() * 3600000 + nowDate.getUTCMinutes() * 60000 + nowDate.getUTCSeconds() * 1000 + nowDate.getUTCMilliseconds());
+
+  const buckets: WeeklyBucket[] = [];
+  for (let i = numWeeks - 1; i >= 0; i--) {
+    const weekStartMs = currentWeekStartMs - i * 7 * 86400000;
+    const weekEndMs   = weekStartMs + 7 * 86400000;
+    const weekStartDate = new Date(weekStartMs);
+
+    const weekLabel = weekStartDate.toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', timeZone: 'UTC',
+    });
+    const weekStart = weekStartDate.toISOString().slice(0, 10);
+
+    const perPriority: { [text: string]: number } = {};
+    for (const p of priorities) perPriority[p.text] = 0;
+    let otherHours = 0;
+
+    for (const e of events) {
+      const startStr = e.start?.dateTime ?? e.start?.date;
+      if (!startStr) continue;
+      const t = new Date(startStr).getTime();
+      if (t < weekStartMs || t >= weekEndMs) continue;
+
+      const title = (e.summary ?? '').trim();
+      if (!title) continue;
+      const hours = eventDurationHours(e);
+      if (hours <= 0 || hours > 24) continue;
+
+      let bestPriority: string | null = null;
+      let bestScore = 0;
+      for (const p of priorities) {
+        const score = priorityScore(title, p.text) + (matchesPriorityCategory(title, p.text) ? 2 : 0);
+        if (score > bestScore) { bestScore = score; bestPriority = p.text; }
+      }
+
+      if (bestPriority && bestScore > 0) {
+        perPriority[bestPriority] = (perPriority[bestPriority] ?? 0) + hours;
+      } else {
+        otherHours += hours;
+      }
+    }
+
+    // Round to 1 decimal
+    for (const key of Object.keys(perPriority)) {
+      perPriority[key] = Math.round(perPriority[key] * 10) / 10;
+    }
+
+    buckets.push({
+      weekLabel,
+      weekStart,
+      perPriority,
+      otherHours: Math.round(otherHours * 10) / 10,
+    });
+  }
+
+  return buckets;
 }
 
 /**
