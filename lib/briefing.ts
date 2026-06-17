@@ -822,7 +822,7 @@ Tasks:`
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
         for (const text of tasks.slice(0, 5)) {
-          if (text?.trim()) taskQueries.create(userId, text.trim(), tomorrowStr, 'edg3');
+          if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), tomorrowStr, 'edg3');
         }
       }
     } catch {

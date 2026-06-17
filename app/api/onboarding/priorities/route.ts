@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   // Capture old priorities before overwriting
   const oldPriorities = priorityQueries.getThisWeek(user.id, weekOf);
   const oldTexts = oldPriorities.map(p => p.text);
-  const newTexts = priorities.slice(0, 3).map((t: string) => t?.trim()).filter(Boolean);
+  const newTexts = priorities.slice(0, 3).map((t: string) => t?.trim().slice(0, 200)).filter(Boolean);
 
   priorityQueries.deleteThisWeek(user.id, weekOf);
   newTexts.forEach((text: string, i: number) => {
