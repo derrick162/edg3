@@ -733,48 +733,50 @@ function ActivityTab() {
                             const isFlagged = (s: string) => SIGNAL_KEYWORDS.some(k => s.toLowerCase().includes(k));
                             return (
                               <div className="mt-3">
-                                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>
-                                  THREADS EDGE REVIEWED
+                                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)', letterSpacing: '0.04em' }}>
+                                  Threads Edge reviewed
                                 </p>
                                 {state === 'loading' ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Loading…</p>
+                                  <div className="space-y-1.5 animate-pulse">
+                                    {[80, 65, 75].map((w, i) => (
+                                      <div key={i} className="h-7 rounded" style={{ background: 'var(--edg-fill-04)', width: `${w}%` }} />
+                                    ))}
+                                  </div>
                                 ) : state === 'error' ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
-                                ) : state === 'none' ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Edge didn&apos;t record subjects for this earlier scan — newer scans will show them here.</p>
-                                ) : Array.isArray(state) && state.length === 0 ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>No subjects stored for this scan.</p>
+                                  <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)' }}>
+                                    Couldn&apos;t load subjects for this scan.
+                                  </p>
+                                ) : (state === 'none' || (Array.isArray(state) && state.length === 0)) ? (
+                                  <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)' }}>
+                                    No subject lines recorded — newer scans will show them here.
+                                  </p>
                                 ) : Array.isArray(state) ? (() => {
                                   const flagged = state.filter(isFlagged);
                                   const rest = state.filter(s => !isFlagged(s));
-                                  const overflow = state.length - 10;
+                                  const SHOW = 10;
+                                  const overflow = state.length - SHOW;
                                   return (
-                                    <>
-                                      {flagged.length > 0 && (
-                                        <div className="mb-2 space-y-1">
-                                          {flagged.slice(0, 10).map((s, i) => (
-                                            <p key={i} className="text-xs px-2 py-1.5 rounded flex items-center gap-2"
-                                               style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)', borderLeft: '2px solid var(--edg-warning)' }}>
-                                              <span style={{ color: 'var(--edg-warning)' }}>⚑</span>{s}
-                                            </p>
-                                          ))}
+                                    <div className="space-y-1">
+                                      {flagged.slice(0, SHOW).map((s, i) => (
+                                        <div key={`f${i}`} className="flex items-start gap-2 text-xs px-2.5 py-1.5 rounded-lg"
+                                             style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)' }}>
+                                          <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--edg-warning)' }}>⚑</span>
+                                          <span className="leading-snug">{s}</span>
                                         </div>
-                                      )}
-                                      <div className="space-y-1">
-                                        {rest.slice(0, Math.max(0, 10 - flagged.length)).map((s, i) => (
-                                          <p key={i} className="text-xs px-2 py-1.5 rounded"
-                                             style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
-                                            {s}
-                                          </p>
-                                        ))}
-                                      </div>
+                                      ))}
+                                      {rest.slice(0, Math.max(0, SHOW - flagged.length)).map((s, i) => (
+                                        <div key={`r${i}`} className="text-xs px-2.5 py-1.5 rounded-lg leading-snug"
+                                             style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)' }}>
+                                          {s}
+                                        </div>
+                                      ))}
                                       {overflow > 0 && (
-                                        <p className="mt-1 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more</p>
+                                        <p className="pt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more threads</p>
                                       )}
-                                      <p className="mt-2 text-xs italic" style={{ color: 'var(--text-faint)' }}>
-                                        Edge reads subject lines only — never message content.
+                                      <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                                        Subject lines only — Edge never reads message content.
                                       </p>
-                                    </>
+                                    </div>
                                   );
                                 })() : null}
                               </div>
