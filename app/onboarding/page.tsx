@@ -645,23 +645,20 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">When should Edge call?</h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Pick a time when you&apos;re awake and have 3 minutes. Edge calls you every morning with what matters today.
+      <h2 className="text-2xl font-bold mb-1">When should Edge call you?</h2>
+      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+        Edge calls you every morning — Monday through Friday. Pick the time that fits before you start work.
       </p>
 
-      {/* Preview of what the call is */}
+      {/* Suggested times note (Esther's copy) */}
       <div
-        className="rounded-xl p-4 mb-6 flex items-start gap-3"
-        style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}
+        className="rounded-xl px-4 py-3 mb-5 flex items-start gap-2"
+        style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
       >
-        <span className="text-xl flex-shrink-0">📞</span>
-        <div>
-          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>What to expect</p>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-            A 3-minute voice call. Edge reviews your day, flags what needs attention, and can move or create calendar events while you talk. You can call Edge anytime too.
-          </p>
-        </div>
+        <span className="text-xs mt-0.5 flex-shrink-0" style={{ color: 'var(--text-accent)' }}>✦</span>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Most design partners pick 7:30 or 8:00 AM — early enough to reshape the day before it starts.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -737,7 +734,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
         </p>
 
         <button type="submit" className="btn-primary w-full" disabled={loading || phone.length < 10}>
-          {loading ? 'Setting up your account…' : "I'm ready — let's go →"}
+          {loading ? 'Setting up your account…' : 'Set call time →'}
         </button>
       </form>
     </StepFade>
