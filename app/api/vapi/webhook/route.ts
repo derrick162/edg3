@@ -251,6 +251,19 @@ async function saveCallSummaryToCalendar(briefing: { id: number; user_id: number
     const labels = summarizeUserFacingActions(ta);
     if (labels.length) toolSummary = labels.map(l => `- ${l}`).join('\n');
   } catch { /* ignore */ }
+
+  // Apply Tier-1 grounding before summarization: correct STT near-miss names (Gym→Jim, Onsi→Ansi).
+  let transcript = briefing.transcript ?? '';
+  try {
+    const { factQueries } = await import('@/lib/db');
+    const { groundProperNouns } = await import('@/lib/grounding');
+    const storedFacts = factQueries.getAll(briefing.user_id);
+    const knownNames = storedFacts
+      .filter(f => f.category === 'person' && f.entity?.trim())
+      .map(f => f.entity as string);
+    transcript = groundProperNouns(transcript, knownNames);
+  } catch { /* grounding is best-effort */ }
+
   const firstName = (user.name || 'the user').split(' ')[0];
   const res = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -264,7 +277,7 @@ Edge's action items: short dash bullets of what Edge (the assistant) did or will
 Your action items: short dash bullets of what ${firstName} personally agreed to do. If none, write "None".
 
 TRANSCRIPT:
-${briefing.transcript}
+${transcript}
 
 TOOL ACTIONS EDGE EXECUTED:
 ${toolSummary}`,

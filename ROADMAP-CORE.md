@@ -166,6 +166,32 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-17** — **T3 — Transcript grounding layer: deterministic STT proper-noun correction.**
+  - **Root cause:** Edge trusts the STT transcript over canonical sources → misread names propagate
+    into facts and call summaries. Examples: "Gym's appointment" stored instead of "Jim's", "Onsi"
+    stored as "Ansi" despite the calendar spelling it correctly.
+  - **`lib/grounding.ts` (new, pure, 0 I/O):**
+    - `editDistance(a, b)` — pure Levenshtein.
+    - `normalizeForPhonetics(s)` — normalizes common STT confusion patterns before distance comparison:
+      `\bgy` → `ji` (gym/jim are homophones: /dʒɪm/), `ph` → `f`, `ck` → `k`, `\bpf` → `f`.
+    - `groundProperNouns(text, canonicalNames)` — for each capitalized word (≥ 3 chars) in text,
+      computes normalized edit distance to all canonical names; replaces if distance ≤ 1. Skips
+      tokens immediately preceded by articles/prepositions ("the Gym" → not a person → no-op).
+      Preserves possessives ("Gym's" → "Jim's"). Exact matches are always no-ops.
+    - `extractNamesFromEventTitles(titles)` — strips meeting prefixes + stop words, returns
+      capitalized candidate name tokens for the canonical list.
+  - **`lib/facts.ts` — Tier-1 grounding in `extractAndUpsertFacts`:**
+    - Adds optional `calendarEventTitles?: string[]` param.
+    - Pre-corrects the transcript via `groundProperNouns` before the Haiku classification call.
+    - Calendar event title names added to the canonical set (beyond stored person-entity facts).
+    - Tier-2 Haiku `knownNamesLine` hint still handles harder phonetic cases (Pfizer→Faiza).
+  - **`app/api/vapi/webhook/route.ts` — Grounding in `saveCallSummaryToCalendar`:**
+    - Loads stored person-entity facts, applies `groundProperNouns` to transcript before the
+      Haiku summarization call → call summaries saved to calendar also use corrected names.
+  - **30 new tests** in `lib/grounding.test.ts`: editDistance, normalizeForPhonetics,
+    groundProperNouns (Gym/Jim ✓, Onsi/Ansi ✓, Pfizer/Faiza stays ✓, article-preceded skip ✓,
+    possessive ✓, multi-correction ✓), extractNamesFromEventTitles.
+  - 1081/1081 green, tsc clean, next build clean.
 - **2026-06-17** — **Tickets G + H: Dashboard Hero Loop — diagnose → propose → apply → rescore.**
   - **G (scaffold + diagnose):** `/api/day-plan` GET now returns `diagnoses: string[]` (1–3 concrete
     problem sentences from alignment zero-hours, hygiene flags, low recovery). `DayPlanCard` renders
