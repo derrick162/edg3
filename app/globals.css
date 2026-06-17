@@ -572,6 +572,21 @@ select:focus-visible {
   backdrop-filter: var(--blur-glass);
 }
 
+/* Cursor affordances — pointer on all interactive elements, not-allowed on disabled */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+label[for],
+summary,
+select,
+.clickable {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Accessibility — respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
