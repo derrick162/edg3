@@ -448,6 +448,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T2-2 — stale fact hedging in briefings.**
+  - `lib/briefing.ts` `linkedMemory` formatter: facts with `learned_at` > 90 days ago are now marked `[UNCONFIRMED >90d]` in the EVENT-LINKED MEMORY block. Added instruction line telling the model to preface marked facts with "last I heard…" when spoken. No change to other sections — the hedge fires only in the event-linked memory path where facts are surfaced as statements. 1523/1523 green.
 - **2026-06-18** — **PILLAR-MEMORY M1-3 + M1-4 — fact freshness + fact_history audit trail.**
   - **M1-3 fact freshness** (`lib/db.ts` `upsertFact`): On exact-match (same statement already active), now updates `learned_at=datetime('now')` regardless of confidence. Prevents facts seen repeatedly from drifting toward "stale" classification. High-confidence + different statement still silently skips (user edit wins). Low-confidence + same statement → learned_at refreshed.
   - **M1-4 fact_history audit table** (`lib/db.ts`): `fact_history` table (id, fact_id, user_id, statement encrypted, entity, category, retired_at, reason). `snapshotFactToHistory()` internal helper — copies raw encrypted statement byte-for-byte, non-fatal try/catch. `factHistoryQueries.getForFact(factId, userId)` + `getRecentForUser(userId, limit)` exported. Snapshot fires in: `retire()` (reason='retired'), `updateFact()` (reason='user-edit'), `upsertFact` bi-temporal path (reason='extraction-update').

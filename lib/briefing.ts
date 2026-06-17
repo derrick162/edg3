@@ -766,9 +766,14 @@ Use DERIVED PRIORITY PROPOSAL when priorities are missing or stale: say "I looke
 PRIORITY DRIFT ALERT: Priorities were last set ${prioritiesStaleAge} days ago. Add ONE gentle nudge at the END of the closing section: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"
 ` : ''}${linkedMemory.length > 0 ? `
 EVENT-LINKED MEMORY (real events from the calendar annotated with relevant structured facts — use to make ONE sharp dot-connecting moment; NEVER invent events; NEVER use this to claim an event is on the calendar unless it also appears in TODAY'S CALENDAR or UPCOMING THIS WEEK above):
+Facts marked [UNCONFIRMED >90d] should be prefaced with "last I heard…" when spoken — they may be outdated.
 ${linkedMemory.map(lm => {
-  const learnedDate = lm.fact.learned_at ? new Date(lm.fact.learned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-  return `- "${lm.eventTitle}" → ${lm.fact.statement} (${lm.fact.category}${learnedDate ? `, learned ${learnedDate}` : ''})`;
+  const learnedAt = lm.fact.learned_at ? new Date(lm.fact.learned_at) : null;
+  const daysOld = learnedAt ? Math.round((Date.now() - learnedAt.getTime()) / 86_400_000) : 0;
+  const stale = daysOld > 90;
+  const learnedDate = learnedAt ? learnedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const staleMark = stale ? ' [UNCONFIRMED >90d]' : '';
+  return `- "${lm.eventTitle}" → ${lm.fact.statement}${staleMark} (${lm.fact.category}${learnedDate ? `, learned ${learnedDate}` : ''})`;
 }).join('\n')}
 ` : ''}
 MEMORY & PRIOR CONVERSATIONS:
