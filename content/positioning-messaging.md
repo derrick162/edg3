@@ -188,8 +188,8 @@ means being transparent about what it does, not hiding failures.
 ### LinkedIn (founding story / product announcement)
 Lead with the human story (burnout). The product is the solution. End with the vision.
 
-See `content/founding-story-post.md` for three full drafts. Draft C (ADHD angle) recommended
-for the first post.
+See `content/founding-story-post.md` for four drafts. Draft D (ADHD + burnout combined,
+~200 words) recommended for the first post.
 
 ### Twitter / X
 Short, specific, honest. Examples:
@@ -201,7 +201,8 @@ Short, specific, honest. Examples:
 Personal, warm, specific to the person. See `content/design-partner-outreach-kit.md`.
 
 ### Waitlist page
-Feature benefit + trust. No jargon. Clear CTA. See `content/landing-page-copy.md`.
+Feature benefit + trust. No jargon. Clear CTA. Landing page copy to be written when waitlist opens
+(wave 2 scope — not needed for the 5 design partners).
 
 ### Onboarding (first-time user)
 Reassuring, confirming, specific. "Here's what I already know." See `content/onboarding-copy.md`.
@@ -226,6 +227,6 @@ The product voice IS the brand. Every morning call is a marketing touchpoint.
 
 ---
 
-_This doc feeds the landing page (`content/landing-page-copy.md`), the founding story
-(`content/founding-story-post.md`), and the onboarding copy (`content/onboarding-copy.md`).
+_This doc feeds the founding story (`content/founding-story-post.md`), the onboarding copy
+(`content/onboarding-copy.md`), and the demo script (`content/demo-script.md`).
 Review with Derrick before any public-facing use._

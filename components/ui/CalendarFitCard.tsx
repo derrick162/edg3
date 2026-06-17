@@ -11,22 +11,15 @@ export interface ScoreTopFix {
 
 export interface ScoreResult {
   score: number;         // 1–10
-  calibrating?: boolean; // true = not enough signal to score yet
   drivers: string[];     // 2–4 plain-English reasons
   topFix: ScoreTopFix | null;
 }
 
 export interface CalendarFit {
-  edgeScore?: number;      // headline blend (may be absent on old API responses)
-  calibrating?: boolean;   // true when there is genuinely no signal (no priorities + no Whoop + no clarity inputs)
   focusScore: ScoreResult;
   energyScore: ScoreResult;
-  /** How clear a picture Edge has of you — connected sources + accumulated facts/calls. */
-  clarityScore?: ScoreResult;
-  /** How consistently you show up — calls + engagement, trailing 7–14d. Calibrating day 1. */
-  momentumScore?: ScoreResult;
-  /** Trailing Edge Score history (oldest→newest) for the 7-day trend sparkline. */
-  history?: { date: string; score: number }[];
+  /** How much memory + context Edge has of the user. Optional until Core ships it. */
+  intelligenceScore?: ScoreResult;
   computedAt: string;
 }
 

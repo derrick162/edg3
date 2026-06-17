@@ -1,23 +1,16 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, ActivationCard, ContentSection, OpenLoopsSection, HelpSupportSection, TimeAllocationViz } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop, TimeAllocationBucket } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
+import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
-// SQLite stores timestamps as "2026-06-16 01:20:00" (space, no 'Z') — V8 parses that as LOCAL
-// time, shifting dates by the UTC offset (e.g. shows "Tuesday" at 9 PM ET when it's still Monday).
-// Normalise to ISO 8601 with an explicit 'Z' so the Date is correctly interpreted as UTC,
-// then displayed in the user's local timezone by the browser.
-function parseUTC(ts: string): Date {
-  return new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
-}
-
 // for DISPLAY only, correct capitalized words that are clearly a mishearing of the user's first
 // name (same first 3 letters, similar length). Conservative: leaves all other words untouched.
 function correctName(text: string, firstName: string): string {
@@ -417,8 +410,7 @@ function PrioritiesTab({
                               </span>
                               <button
                                 onClick={() => onMilestoneDelete?.(m.id)}
-                                aria-label="Remove milestone"
-                                className="opacity-30 group-hover:opacity-100 focus:opacity-100 text-xs transition-opacity p-1"
+                                className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
                                 style={{ color: 'var(--edg-danger)' }}
                               >
                                 ×
@@ -497,8 +489,7 @@ function ActivityTab() {
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error'
-  // 'none' = this (older) scan predates subject-recording — not an error, just nothing to show.
+  // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error' | 'none'
   const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error' | 'none'>>({});
 
   async function load() {
@@ -511,29 +502,6 @@ function ActivityTab() {
   }
 
   useEffect(() => { load(); }, []);
-
-  async function handleExpandItem(item: ActivityItem) {
-    const isExpanded = expandedId === item.id;
-    setExpandedId(isExpanded ? null : item.id);
-    // Eagerly load email subjects when expanding an email receipt row.
-    if (!isExpanded && item.emailReceiptId && emailSubjects[item.emailReceiptId] === undefined) {
-      setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'loading' }));
-      try {
-        const r = await fetch(`/api/activity/email-receipt/${item.emailReceiptId}`);
-        if (r.ok) {
-          const d = await r.json();
-          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: d.subjects ?? [] }));
-        } else if (r.status === 404) {
-          // Older scan from before Edge started recording subjects — graceful, not an error.
-          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'none' }));
-        } else {
-          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
-        }
-      } catch {
-        setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
-      }
-    }
-  }
 
   async function handleUndo(undoId: number) {
     setUndoingId(undoId);
@@ -554,7 +522,7 @@ function ActivityTab() {
   }
 
   function relativeTime(created_at: string): string {
-    const ms = Date.now() - parseUTC(created_at).getTime();
+    const ms = Date.now() - new Date(created_at).getTime();
     const s = Math.floor(ms / 1000);
     if (s < 60) return 'just now';
     const m = Math.floor(s / 60);
@@ -566,7 +534,7 @@ function ActivityTab() {
   }
 
   function dayLabel(created_at: string): string {
-    const d = parseUTC(created_at);
+    const d = new Date(created_at);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
@@ -658,7 +626,22 @@ function ActivityTab() {
                       <div
                         className="px-4 py-3 flex items-center gap-3"
                         style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-                        onClick={() => hasDetail && handleExpandItem(item)}
+                        onClick={() => {
+                          if (!hasDetail) return;
+                          const next = isExpanded ? null : item.id;
+                          setExpandedId(next);
+                          // Eagerly load email subjects when expanding an email receipt row.
+                          if (next && item.emailReceiptId && emailSubjects[item.emailReceiptId] === undefined) {
+                            setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'loading' }));
+                            fetch(`/api/activity/email-receipt/${item.emailReceiptId}`)
+                              .then(r => r.ok ? r.json() : null)
+                              .then(d => {
+                                if (d?.subjects?.length > 0) setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: d.subjects }));
+                                else setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'none' }));
+                              })
+                              .catch(() => setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' })));
+                          }
+                        }}
                         role={hasDetail ? 'button' : undefined}
                         aria-expanded={hasDetail ? isExpanded : undefined}
                       >
@@ -725,62 +708,59 @@ function ActivityTab() {
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
                         >
-                          {/* Email receipt — lazy-fetched via handleExpandItem */}
+                          {/* Email receipt — lazy-fetched on expand */}
                           {item.emailReceiptId && (() => {
                             const state = emailSubjects[item.emailReceiptId];
                             const SIGNAL_KEYWORDS = ['urgent', 'invoice', 'legal', 'contract', 'overdue', 'payment', 'lawsuit', 'agreement'];
                             const isFlagged = (s: string) => SIGNAL_KEYWORDS.some(k => s.toLowerCase().includes(k));
                             return (
                               <div className="mt-3">
-                                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>
-                                  THREADS EDGE REVIEWED
+                                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)', letterSpacing: '0.04em' }}>
+                                  Threads Edge reviewed
                                 </p>
                                 {state === 'loading' ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Loading…</p>
-                                ) : state === 'error' ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
-                                ) : state === 'none' ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Edge didn&apos;t record subjects for this earlier scan — newer scans will show them here.</p>
-                                ) : Array.isArray(state) && state.length === 0 ? (
-                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>No subjects stored for this scan.</p>
+                                  <div className="space-y-1.5 animate-pulse">
+                                    {[80, 65, 75].map((w, i) => (
+                                      <div key={i} className="h-7 rounded" style={{ background: 'var(--edg-fill-04)', width: `${w}%` }} />
+                                    ))}
+                                  </div>
+                                ) : (state === 'error' || state === 'none' || (Array.isArray(state) && state.length === 0)) ? (
+                                  <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)' }}>
+                                    {state === 'error' ? "Couldn't load subjects for this scan." : 'No subject lines recorded — newer scans will show them here.'}
+                                  </p>
                                 ) : Array.isArray(state) ? (() => {
                                   const flagged = state.filter(isFlagged);
                                   const rest = state.filter(s => !isFlagged(s));
-                                  const overflow = state.length - 10;
+                                  const SHOW = 10;
+                                  const overflow = state.length - SHOW;
                                   return (
-                                    <>
-                                      {flagged.length > 0 && (
-                                        <div className="mb-2 space-y-1">
-                                          {flagged.slice(0, 10).map((s, i) => (
-                                            <p key={i} className="text-xs px-2 py-1.5 rounded flex items-center gap-2"
-                                               style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)', borderLeft: '2px solid var(--edg-warning)' }}>
-                                              <span style={{ color: 'var(--edg-warning)' }}>⚑</span>{s}
-                                            </p>
-                                          ))}
+                                    <div className="space-y-1">
+                                      {flagged.slice(0, SHOW).map((s, i) => (
+                                        <div key={`f${i}`} className="flex items-start gap-2 text-xs px-2.5 py-1.5 rounded-lg"
+                                             style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)' }}>
+                                          <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--edg-warning)' }}>⚑</span>
+                                          <span className="leading-snug">{s}</span>
                                         </div>
-                                      )}
-                                      <div className="space-y-1">
-                                        {rest.slice(0, Math.max(0, 10 - flagged.length)).map((s, i) => (
-                                          <p key={i} className="text-xs px-2 py-1.5 rounded"
-                                             style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
-                                            {s}
-                                          </p>
-                                        ))}
-                                      </div>
+                                      ))}
+                                      {rest.slice(0, Math.max(0, SHOW - flagged.length)).map((s, i) => (
+                                        <div key={`r${i}`} className="text-xs px-2.5 py-1.5 rounded-lg leading-snug"
+                                             style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)' }}>
+                                          {s}
+                                        </div>
+                                      ))}
                                       {overflow > 0 && (
-                                        <p className="mt-1 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more</p>
+                                        <p className="pt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more threads</p>
                                       )}
-                                      <p className="mt-2 text-xs italic" style={{ color: 'var(--text-faint)' }}>
-                                        Edge reads subject lines only — never message content.
+                                      <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                                        Subject lines only — Edge never reads message content.
                                       </p>
-                                    </>
+                                    </div>
                                   );
                                 })() : null}
                               </div>
                             );
                           })()}
-                          {/* Generic detail sections for non-receipt rows */}
-                          {!item.emailReceiptId && item.detail && item.detail.sections.length > 0 && (
+                          {item.detail.sections.length > 0 && (
                             <div className="mt-3 space-y-2">
                               {item.detail.sections.map((sec, i) => (
                                 <div key={i} className="flex gap-3">
@@ -894,11 +874,9 @@ export default function Dashboard() {
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
-  const [expandedMemorySections, setExpandedMemorySections] = useState<Set<string>>(new Set());
-  const [callNotesExpanded, setCallNotesExpanded] = useState(false);
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
@@ -918,22 +896,10 @@ export default function Dashboard() {
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
-  const [whoopIntelligence, setWhoopIntelligence] = useState<{
-    deviationPts: number | null;
-    flags: string[];
-    recoveryAction: string | null;
-  } | null>(null);
-  const [timeAllocation, setTimeAllocation] = useState<{
-    buckets: TimeAllocationBucket[];
-    periodWeeks: number;
-    biggestMisalignment: string | null;
-  } | null>(null);
   const [whoopData, setWhoopData] = useState<{
     recoveryScore: number | null;
     tier: 'high' | 'medium' | 'low' | null;
     sleepHours: number | null;
-    sleepScore: number | null;
-    sleepTier: 'high' | 'medium' | 'low' | null;
     strain: number | null;
     history: { date: string; score: number }[];
   } | null>(null);
@@ -956,28 +922,13 @@ export default function Dashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
   const [calendarFitLoading, setCalendarFitLoading] = useState(false);
-  const [celebrateFromScore, setCelebrateFromScore] = useState<number | null>(null);
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
-  const [focusCandidates, setFocusCandidates] = useState<FocusRecommendationArea[]>([]);
-  const [confirmedFocusAreas, setConfirmedFocusAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
-  const dayPlanRef = useRef<HTMLDivElement>(null);
-
-  const [activationFacts, setActivationFacts] = useState<string[]>([]);
-  const [activationDismissed, setActivationDismissed] = useState(false);
-  const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
-  const [derivedProposal, setDerivedProposal] = useState<{
-    priorities: { text: string; rationale: string; evidenceTags: string[] }[];
-    summaryLine: string;
-  } | null>(null);
-  const [deriveLoading, setDeriveLoading] = useState(false);
-  const [deriveDismissed, setDeriveDismissed] = useState(false);
-  const [acceptingDerived, setAcceptingDerived] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1020,13 +971,10 @@ export default function Dashboard() {
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
-    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) { setFocusRec(d); if (d.candidates) setFocusCandidates(d.candidates); } }).catch(() => {}).finally(() => setFocusRecLoading(false));
+    fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
-    fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => { if (d?.recentFacts) setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement)); }).catch(() => {});
-    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
-    fetch('/api/focus/confirm').then(r => r.ok ? r.json() : null).then(d => { if (d?.confirmed && d.areas?.length) setConfirmedFocusAreas(d.areas); }).catch(() => {});
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
@@ -1037,18 +985,8 @@ export default function Dashboard() {
           .then(r => r.ok ? r.json() : null)
           .then(rd => { if (rd && rd.connected) setWhoopData(rd); })
           .catch(() => {});
-        // Whoop Intelligence (deviation, flags, action) — gracefully 404 until Darren ships endpoint
-        fetch('/api/whoop/intelligence')
-          .then(r => r.ok ? r.json() : null)
-          .then(intel => { if (intel) setWhoopIntelligence(intel); })
-          .catch(() => {});
       }
     }).catch(() => {});
-    // Time allocation (gracefully absent until Core ships /api/time-allocation)
-    fetch('/api/time-allocation')
-      .then(r => r.ok ? r.json() : null)
-      .then(ta => { if (ta?.buckets?.length) setTimeAllocation(ta); })
-      .catch(() => {});
   }, [router]);
 
   async function addDailyCallReminder() {
@@ -1082,44 +1020,15 @@ export default function Dashboard() {
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
-    const oldScore = typeof calendarFit?.edgeScore === 'number' ? calendarFit.edgeScore : null;
     await fetch('/api/focus/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ areas }),
     });
-    // Transition card to confirmed state (don't dismiss — the locked view fills the slot)
-    setConfirmedFocusAreas(areas);
-    // Re-fetch Edge Score — Momentum bonus fires on confirm so the number rises.
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
-      if (s) {
-        setCalendarFit(s);
-        // Trigger celebration animation when score genuinely rose
-        if (oldScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > oldScore) {
-          setCelebrateFromScore(oldScore);
-        }
-      }
-    }).catch(() => {});
-  }
-
-  async function handleCompleteArea(idOrTitle: string) {
-    await fetch('/api/focus/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idOrTitle }),
-    }).catch(() => {});
-  }
-
-  async function handleDismissArea(idOrTitle: string) {
-    await fetch('/api/focus/dismiss', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idOrTitle }),
-    }).catch(() => {});
+    setFocusRecDismissed(true);
   }
 
   async function handleConfirmDayPlan(planId: string) {
-    const oldScore = typeof calendarFit?.edgeScore === 'number' ? calendarFit.edgeScore : null;
     const res = await fetch('/api/day-plan/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1129,14 +1038,7 @@ export default function Dashboard() {
     setDayPlanApplied(true);
     if (d.newScore != null) {
       setDayPlanAppliedScore(d.newScore);
-      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
-        if (s) {
-          setCalendarFit(s);
-          if (oldScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > oldScore) {
-            setCelebrateFromScore(oldScore);
-          }
-        }
-      }).catch(() => {});
+      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
     }
   }
 
@@ -1167,7 +1069,7 @@ export default function Dashboard() {
     if (isNaN(id)) return;
     const target = briefings.find(b => b.id === id);
     if (target) {
-      setActiveTab('briefings');
+      setActiveTab('briefings' as const);
       setSelectedBriefing(target);
     }
   }, [briefingsLoaded, briefings]);
@@ -1188,16 +1090,16 @@ export default function Dashboard() {
   const [keepingPriorities, setKeepingPriorities] = useState(false);
   const [prioritiesDismissed, setPrioritiesDismissed] = useState(false);
 
-  async function handleKeepPriorities() {
-    setKeepingPriorities(true);
-    await fetch('/api/priorities/keep', { method: 'POST' });
-    setKeepingPriorities(false);
-    setPrioritiesDismissed(true);
-    // Reload priorities so week_of is fresh
-    fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
-  }
+  // Proactive priority derivation
+  const [derivedProposal, setDerivedProposal] = useState<{
+    priorities: { text: string; rationale: string; evidenceTags: string[] }[];
+    summaryLine: string;
+    dataSnapshot?: { calendarEventCount: number; calendarDaysSpanned: number; emailThreadCount: number; factsCount: number; openLoopsCount: number };
+  } | null>(null);
+  const [deriveLoading, setDeriveLoading] = useState(false);
+  const [deriveDismissed, setDeriveDismissed] = useState(false);
+  const [acceptingDerived, setAcceptingDerived] = useState(false);
 
-  // Lazy derivation: fetch Edge's proposed priorities when the user has none or stale ones.
   const shouldDerive = (priorities.length === 0 || prioritiesStale) && !deriveDismissed && !derivedProposal && !deriveLoading;
   useEffect(() => {
     if (!user || !shouldDerive) return;
@@ -1207,7 +1109,6 @@ export default function Dashboard() {
       .then(d => { if (d?.proposal) setDerivedProposal(d.proposal); })
       .catch(() => {})
       .finally(() => setDeriveLoading(false));
-  // shouldDerive is derived from priorities/prioritiesStale/dismiss/loading — stable deps are user
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, shouldDerive]);
 
@@ -1220,13 +1121,21 @@ export default function Dashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priorities: texts }),
     }).catch(() => {});
-    // Reload priorities
     fetch('/api/onboarding/priorities')
       .then(r => r.ok ? r.json() : { priorities: [] })
       .then(d => setPriorities(d.priorities || []))
       .catch(() => {});
     setDerivedProposal(null);
     setAcceptingDerived(false);
+  }
+
+  async function handleKeepPriorities() {
+    setKeepingPriorities(true);
+    await fetch('/api/priorities/keep', { method: 'POST' });
+    setKeepingPriorities(false);
+    setPrioritiesDismissed(true);
+    // Reload priorities so week_of is fresh
+    fetch('/api/onboarding/priorities').then(r => r.ok ? r.json() : { priorities: [] }).then(d => setPriorities(d.priorities || [])).catch(() => {});
   }
 
   // Day-1 preview: once we know the user is onboarded and has no real briefings, fetch the preview.
@@ -1407,7 +1316,7 @@ export default function Dashboard() {
           }}
         />
         {notifOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 'calc(100vw - 32px)', maxWidth: 340, maxHeight: 420, overflowY: 'auto' }}>
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto' }}>
             <NotificationCenter
               notifications={notifs.map(n => ({
                 id: n.id,
@@ -1416,13 +1325,7 @@ export default function Dashboard() {
                 body: n.body,
                 read: !!n.read,
                 createdAt: n.created_at,
-                // "Book a time" belongs ONLY on reply notifications (its whole purpose:
-                // schedule with whoever replied). It was wrongly attached to EVERY
-                // notification — incl. Edge Score changes — which read as nonsensical.
-                // Gate it to reply notifications (their title contains "replied").
-                actions: (n.title || '').includes('replied')
-                  ? [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }]
-                  : undefined,
+                actions: [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }],
               }))}
               onDismiss={() => {}}
             />
@@ -1481,19 +1384,17 @@ export default function Dashboard() {
 
           <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
             {[
-              { id: 'home', label: 'Home', icon: '⚡' },
+              { id: 'home', label: 'Home', icon: '✦' },
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'priorities', label: 'Priorities', icon: '🎯' },
               { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
               { id: 'profile', label: 'Profile', icon: '👤' },
-              { id: 'help', label: 'Help', icon: '?' },
             ].map(tab => (
               <button
                 key={tab.id}
-                aria-label={tab.label}
                 onClick={() => setActiveTab(tab.id as any)}
-                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm font-medium transition-all text-left"
+                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
                   color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
@@ -1505,30 +1406,6 @@ export default function Dashboard() {
               </button>
             ))}
           </nav>
-
-          {/* Mobile: compact Next Call strip */}
-          <div className="flex md:hidden items-center justify-between px-1 py-2 mt-1 border-t" style={{ borderColor: 'var(--edg-hairline)' }}>
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Next call</span>
-              <span className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>
-                {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
-              </span>
-              {callStreak >= 2 && (
-                <span className="text-xs" style={{ color: 'var(--edg-warning)' }}>🔥 {callStreak}d</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {calendarConnected && (
-                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>● Cal</span>
-              )}
-              {whoopConnected && (
-                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>● Whoop</span>
-              )}
-              {todayCallStatus?.status === 'completed' && (
-                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>✓ Done</span>
-              )}
-            </div>
-          </div>
 
           <div className="hidden md:flex md:flex-col mt-6 space-y-3">
             <div
@@ -1603,97 +1480,29 @@ export default function Dashboard() {
                 ) : null}
               </div>
             </div>
-            {/* Proactive priority derivation card — shown when priorities are empty or stale */}
-            {(priorities.length === 0 || prioritiesStale) && !deriveDismissed && (
-              deriveLoading ? (
-                <div className="glass-card p-3">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Edge is reading your patterns…
-                  </p>
+            {prioritiesStale && !prioritiesDismissed && (
+              <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                  Still your top priorities this week?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveTab('priorities')}
+                    className="text-xs py-1 px-2 rounded flex-1"
+                    style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
+                  >
+                    Update
+                  </button>
+                  <button
+                    onClick={handleKeepPriorities}
+                    disabled={keepingPriorities}
+                    className="text-xs py-1 px-2 rounded flex-1"
+                    style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
+                  >
+                    {keepingPriorities ? '…' : 'Keep'}
+                  </button>
                 </div>
-              ) : derivedProposal ? (
-                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-accent-20)' }}>
-                  <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-accent)' }}>
-                    Here&apos;s what I think matters
-                  </p>
-                  {derivedProposal.summaryLine && (
-                    <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                      {derivedProposal.summaryLine}
-                    </p>
-                  )}
-                  <ol className="mb-3 space-y-2">
-                    {derivedProposal.priorities.map((p, i) => (
-                      <li key={i}>
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {i + 1}. {p.text}
-                        </p>
-                        {p.rationale && (
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {p.rationale}
-                          </p>
-                        )}
-                        {p.evidenceTags?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {p.evidenceTags.map((tag, j) => (
-                              <span key={j} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-faint)', fontSize: '10px' }}>
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleAcceptDerived}
-                      disabled={acceptingDerived}
-                      className="btn-primary text-xs py-1.5 px-3 flex-1"
-                    >
-                      {acceptingDerived ? 'Saving…' : 'Set as my priorities'}
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('priorities')}
-                      className="text-xs py-1.5 px-2 rounded"
-                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeriveDismissed(true)}
-                      className="text-xs py-1.5 px-2 rounded"
-                      style={{ color: 'var(--text-faint)' }}
-                      aria-label="Dismiss"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ) : prioritiesStale && !prioritiesDismissed ? (
-                // Fallback: no derivation proposal, just show stale nudge
-                <div className="glass-card p-3" style={{ border: '1px solid var(--edg-warning-border)' }}>
-                  <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                    Still your top priorities this week?
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setActiveTab('priorities')}
-                      className="text-xs py-1 px-2 rounded flex-1"
-                      style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-20)' }}
-                    >
-                      Update
-                    </button>
-                    <button
-                      onClick={handleKeepPriorities}
-                      disabled={keepingPriorities}
-                      className="text-xs py-1 px-2 rounded flex-1"
-                      style={{ background: 'var(--edg-hairline)', color: 'var(--text-faint)', border: '1px solid var(--edg-border-10)' }}
-                    >
-                      {keepingPriorities ? '…' : 'Keep'}
-                    </button>
-                  </div>
-                </div>
-              ) : null
+              </div>
             )}
             {/* Energy OS — daily energy logger */}
             <div className="glass-card p-3">
@@ -1795,13 +1604,8 @@ export default function Dashboard() {
                       recoveryScore={whoopData.recoveryScore}
                       tier={whoopData.tier}
                       sleepHours={whoopData.sleepHours ?? undefined}
-                      sleepScore={whoopData.sleepScore ?? undefined}
-                      sleepTier={whoopData.sleepTier ?? undefined}
                       strain={whoopData.strain ?? undefined}
                       history={whoopData.history}
-                      deviationPts={whoopIntelligence?.deviationPts ?? null}
-                      flags={(whoopIntelligence?.flags ?? []) as any}
-                      recoveryAction={whoopIntelligence?.recoveryAction ?? null}
                     />
                   </div>
                 )}
@@ -1845,9 +1649,9 @@ export default function Dashboard() {
         {/* Main content */}
         <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 md:mb-8">
+          <div className="flex items-center justify-between mb-4 md:mb-8">
             <div>
-              <h1 className="text-xl md:text-2xl font-bold">{(() => {
+              <h1 className="text-2xl font-bold">{(() => {
                 const h = new Date().getHours();
                 const g = h >= 18 ? 'Good evening' : h >= 12 ? 'Good afternoon' : 'Good morning';
                 return `${g}, ${user.name.split(' ')[0]}`;
@@ -1856,11 +1660,11 @@ export default function Dashboard() {
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </p>
             </div>
-            <div className="flex gap-2 sm:gap-3 flex-shrink-0">
+            <div className="flex gap-3">
               <button
                 onClick={openCall}
                 disabled={openingCall}
-                className="btn-secondary text-sm py-2.5 sm:py-2 px-3 sm:px-4 flex-1 sm:flex-none"
+                className="btn-secondary text-sm py-2 px-4"
                 title="An open conversation — no briefing"
               >
                 {openingCall ? 'Calling…' : '💬 Open call'}
@@ -1868,154 +1672,60 @@ export default function Dashboard() {
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
-                className="btn-primary text-sm py-2.5 sm:py-2 px-3 sm:px-4 flex-1 sm:flex-none"
+                className="btn-primary text-sm py-2 px-4"
               >
                 {initiatingCall ? 'Calling…' : '📞 Call me now'}
               </button>
             </div>
           </div>
 
-
-          {/* Tab content */}
-          {activeTab === 'home' && (
-            <div>
-              {/* Briefing preview — shown when a briefing was just generated */}
-              {briefingText && (
-                <div className="glass-card p-6 mb-6" style={{ borderColor: 'var(--edg-accent-20)' }}>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>✦ THIS MORNING&apos;S BRIEFING</h3>
-                    <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ Dismiss</button>
-                  </div>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
-                    {briefingText}
-                  </p>
-                </div>
-              )}
-
-              {/* Activation moment — first connection, before first briefing */}
-              {!activationDismissed && activationFacts.length > 0 && briefings.length === 0 && (
-                <div className="mb-6">
-                  <ActivationCard
-                    facts={activationFacts}
-                    name={user?.name?.split(' ')[0]}
-                    onDismiss={() => setActivationDismissed(true)}
-                  />
-                </div>
-              )}
-
-              {/* Hero loop — always-first greeting card: "Here's what's off" or "You're well-aligned" */}
-              <div ref={dayPlanRef} className="mb-6">
-                <DayPlanCard
-                  // Anchor the plan's before/after to the ONE canonical Edge Score
-                  // (the EdgeScoreCard value) so the hero loop never shows a second,
-                  // differently-computed "EDGE SCORE". Preserves the projected delta.
-                  plan={dayPlan && typeof calendarFit?.edgeScore === 'number'
-                    ? {
-                        ...dayPlan,
-                        scoreBefore: calendarFit.edgeScore,
-                        scoreAfter: Math.max(0, Math.min(100, calendarFit.edgeScore + (dayPlan.scoreAfter - dayPlan.scoreBefore))),
-                      }
-                    : dayPlan}
-                  loading={dayPlanLoading}
-                  onConfirm={handleConfirmDayPlan}
-                  onDismiss={dayPlan ? () => setDayPlan(null) : undefined}
-                  applied={dayPlanApplied}
-                  appliedScore={dayPlanAppliedScore}
-                  diagnoses={dayPlan?.diagnoses}
-                />
+          {/* Generated briefing preview */}
+          {briefingText && (
+            <div className="glass-card p-6 mb-6" style={{ borderColor: 'var(--edg-accent-20)' }}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>TODAY'S BRIEFING PREVIEW</h3>
+                <button onClick={() => setBriefingText('')} style={{ color: 'var(--text-faint)', fontSize: 12 }}>✕ dismiss</button>
               </div>
-
-              {/* Edge Score */}
-              <div className="mb-6">
-                <EdgeScoreCard
-                  fit={calendarFit}
-                  loading={calendarFitLoading}
-                  sparse={priorities.length === 0 || calendarConnected === false}
-                  calibrating={calendarFit?.calibrating === true}
-                  calibratingHalf={
-                    calendarFit?.focusScore.score === 0 && calendarFit?.energyScore.calibrating
-                      ? 'both'
-                      : calendarFit?.energyScore.calibrating
-                      ? 'energy'
-                      : undefined
-                  }
-                  celebrateFromScore={celebrateFromScore}
-                  onRequestFix={() => {
-                    setActiveTab('home');
-                    setTimeout(() => {
-                      dayPlanRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 50);
-                    // If the plan was dismissed, re-fetch it
-                    if (!dayPlan && !dayPlanLoading) {
-                      setDayPlanLoading(true);
-                      fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
-                    }
-                  }}
-                />
-              </div>
-
-              {/* Section divider */}
-              <div className="flex items-center gap-3 mb-5" style={{ borderTop: '1px solid var(--edg-hairline)', paddingTop: '1.25rem' }}>
-                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-faint)', letterSpacing: '0.1em' }}>Your day</span>
-                <div className="flex-1" style={{ height: 1, background: 'var(--edg-hairline)' }} />
-              </div>
-
-              {/* Focus recommendation — stays visible after confirm (transitions to locked state) */}
-              {(!focusRecDismissed || confirmedFocusAreas) && (
-                <div className="mb-6">
-                  <FocusRecommendationCard
-                    recommendation={focusRec}
-                    loading={focusRecLoading}
-                    confirmedAreas={confirmedFocusAreas ?? undefined}
-                    candidates={focusCandidates}
-                    onConfirm={handleConfirmFocus}
-                    onDismiss={confirmedFocusAreas ? undefined : () => setFocusRecDismissed(true)}
-                    onCompleteArea={handleCompleteArea}
-                    onDismissArea={handleDismissArea}
-                  />
-                </div>
-              )}
-
-
-              {/* Time allocation viz — where time actually went vs priorities */}
-              {timeAllocation && (
-                <div className="glass-card p-4 mb-6">
-                  <TimeAllocationViz
-                    buckets={timeAllocation.buckets}
-                    periodWeeks={timeAllocation.periodWeeks}
-                    biggestMisalignment={timeAllocation.biggestMisalignment}
-                  />
-                </div>
-              )}
-
-              {/* Open Loops */}
-              {openLoops.length > 0 && (
-                <div className="mb-6">
-                  <OpenLoopsSection
-                    loops={openLoops}
-                    onResolve={async (id) => {
-                      await fetch(`/api/open-loops/${id}/resolve`, { method: 'POST' });
-                      setOpenLoops(prev => prev.filter(l => l.id !== id));
-                    }}
-                    onDismiss={async (id) => {
-                      await fetch(`/api/open-loops/${id}/dismiss`, { method: 'POST' });
-                      setOpenLoops(prev => prev.filter(l => l.id !== id));
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Learn — section label + content cards */}
-              <div className="flex items-center gap-3 mb-4" style={{ borderTop: '1px solid var(--edg-hairline)', paddingTop: '1.25rem' }}>
-                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-faint)', letterSpacing: '0.1em' }}>Learn</span>
-                <div className="flex-1" style={{ height: 1, background: 'var(--edg-hairline)' }} />
-              </div>
-              <div className="mb-6">
-                <ContentSection />
-              </div>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
+                {briefingText}
+              </p>
             </div>
           )}
 
+          {/* ── Home tab — morning cockpit ──────────────────────────── */}
+          {activeTab === 'home' && (
+            <div className="space-y-6">
+              {/* Edge Score — hero */}
+              <EdgeScoreCard
+                fit={calendarFit}
+                loading={calendarFitLoading}
+                sparse={priorities.length === 0 || calendarConnected === false}
+                onRequestFix={() => {/* DayPlanCard below handles fixes */}}
+              />
+              {/* Today's focus recommendations */}
+              {!focusRecDismissed && (
+                <FocusRecommendationCard
+                  recommendation={focusRec}
+                  loading={focusRecLoading}
+                  onConfirm={handleConfirmFocus}
+                  onDismiss={() => setFocusRecDismissed(true)}
+                />
+              )}
+              {/* Day plan — reshape CTA / "Your day looks good" */}
+              {calendarConnected !== false && (
+                <DayPlanCard
+                  plan={dayPlan}
+                  loading={dayPlanLoading}
+                  onConfirm={handleConfirmDayPlan}
+                  onDismiss={() => setDayPlan(null)}
+                  applied={dayPlanApplied}
+                  appliedScore={dayPlanAppliedScore}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Tab content */}
           {activeTab === 'briefings' && (
             <div>
               <SectionHint
@@ -2195,6 +1905,21 @@ export default function Dashboard() {
           )}
 
           {activeTab === 'priorities' && (
+            <div className="space-y-6">
+            {/* Derivation card — shown when no priorities or stale */}
+            {(priorities.length === 0 || prioritiesStale) && !deriveDismissed && (
+              deriveLoading ? (
+                <PriorityDerivationLoadingCard />
+              ) : derivedProposal ? (
+                <PriorityDerivationCard
+                  proposal={derivedProposal}
+                  onAccept={handleAcceptDerived}
+                  onTweak={() => { setDerivedProposal(null); }}
+                  onDismiss={() => setDeriveDismissed(true)}
+                  accepting={acceptingDerived}
+                />
+              ) : null
+            )}
             <PrioritiesTab
               priorities={priorities}
               milestones={milestones}
@@ -2227,308 +1952,292 @@ export default function Dashboard() {
                 await fetch(`/api/milestones/${id}`, { method: 'DELETE' });
               }}
             />
+            </div>
           )}
 
           {activeTab === 'activity' && <ActivityTab />}
 
-          {activeTab === 'memory' && (() => {
-            const CATEGORY_META: Record<string, { label: string; icon: string }> = {
-              goal:       { label: 'Goals',       icon: '🎯' },
-              project:    { label: 'Projects',    icon: '🗂' },
-              person:     { label: 'People',      icon: '👤' },
-              preference: { label: 'Preferences', icon: '⚡' },
-              fact:       { label: 'Facts',       icon: '📌' },
-            };
-            const CAT_ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
-            const CAT_PREVIEW = 6;
-            const firstName = (user?.name || '').split(' ')[0];
-            const grouped = CAT_ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
-              const items = facts.filter(f => f.category === cat);
-              if (items.length) acc[cat] = items;
-              return acc;
-            }, {});
-            const catEntries = Object.entries(grouped);
-            const totalFacts = facts.length;
-            const numCats = catEntries.length;
-            return (
-              <div>
-                <SectionHint
-                  id="memory"
-                  text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
-                />
+          {activeTab === 'memory' && (
+            <div>
+              <SectionHint
+                id="memory"
+                text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
+              />
+              <h2 className="text-lg font-bold mb-1">Here&apos;s what Edge knows about you</h2>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+                Built up over your calls — everything here came directly from conversations with you.
+              </p>
 
-                {/* Summary strip */}
-                {totalFacts > 0 && (
-                  <div className="flex items-center justify-between mb-5">
-                    <div>
-                      <h2 className="text-lg font-bold leading-tight">What Edge knows</h2>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                        {totalFacts} fact{totalFacts !== 1 ? 's' : ''} across {numCats} area{numCats !== 1 ? 's' : ''}
-                        {memories.length > 0 && ` · ${memories.length} call note${memories.length !== 1 ? 's' : ''}`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Collapsible categories */}
-                {catEntries.length > 0 && (
-                  <div className="space-y-1.5 mb-6">
-                    {catEntries.map(([cat, catItems], catIdx) => {
+              {/* Structured facts grouped by category */}
+              {facts.length > 0 && (() => {
+                const CATEGORY_META: Record<string, { label: string; icon: string }> = {
+                  goal:       { label: 'Goals',       icon: '🎯' },
+                  project:    { label: 'Projects',    icon: '🗂' },
+                  person:     { label: 'People',      icon: '👤' },
+                  preference: { label: 'Preferences', icon: '⚡' },
+                  fact:       { label: 'Facts',       icon: '📌' },
+                };
+                const FACTS_CAT_LIMIT = 15;
+                const ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
+                const grouped = ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
+                  const items = facts.filter(f => f.category === cat);
+                  if (items.length) acc[cat] = items;
+                  return acc;
+                }, {});
+                return (
+                  <div className="space-y-6 mb-8">
+                    {Object.entries(grouped).map(([cat, catItems]) => {
+                      const isExpanded = expandedFactCats.has(cat);
+                      const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
-                      // Auto-open first category when nothing is explicitly expanded yet
-                      const isSectionOpen = expandedMemorySections.size === 0 ? catIdx === 0 : expandedMemorySections.has(cat);
-                      const isShowAll = expandedFactCats.has(cat);
-                      const visible = isShowAll ? catItems : catItems.slice(0, CAT_PREVIEW);
-                      const toggleSection = () => setExpandedMemorySections(prev => {
-                        const next = new Set(prev); isSectionOpen ? next.delete(cat) : next.add(cat); return next;
-                      });
                       return (
-                        <div
-                          key={cat}
-                          className="rounded-xl overflow-hidden"
-                          style={{ border: '1px solid var(--edg-hairline)', background: isSectionOpen ? 'var(--edg-fill-04)' : 'transparent' }}
-                        >
-                          {/* Category header — always visible, click to expand */}
-                          <button
-                            onClick={toggleSection}
-                            aria-expanded={isSectionOpen}
-                            aria-label={`${meta.label} — ${catItems.length} facts`}
-                            className="w-full flex items-center justify-between px-4 py-3 text-left transition-opacity hover:opacity-80"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm" aria-hidden="true">{meta.icon}</span>
-                              <span className="text-sm font-semibold" style={{ color: 'var(--text-body)' }}>{meta.label}</span>
-                              <span
-                                className="text-xs px-1.5 py-0.5 rounded-full font-medium ml-0.5"
-                                style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)' }}
-                              >
-                                {catItems.length}
-                              </span>
-                            </div>
-                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                              {isSectionOpen ? '▲' : '▼'}
-                            </span>
-                          </button>
-
-                          {/* Expanded fact list */}
-                          {isSectionOpen && (
-                            <div className="px-4 pb-3">
-                              <div
-                                className="rounded-lg overflow-hidden"
-                                style={{ border: '1px solid var(--edg-hairline)' }}
-                              >
-                                {visible.map((f, idx) => {
-                                  const isEditing = editingFactId === f.id;
-                                  const isConfirmingDelete = deletingFactId === f.id;
-                                  return (
-                                    <div
-                                      key={f.id}
-                                      className="group px-3 py-2.5"
-                                      style={{
-                                        borderTop: idx > 0 ? '1px solid var(--edg-hairline)' : 'none',
-                                        background: isEditing ? 'var(--edg-accent-04)' : 'transparent',
-                                      }}
-                                    >
-                                      {isEditing ? (
-                                        <div className="flex items-start gap-2">
-                                          <div className="flex-1">
-                                            {f.entity && (
-                                              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-                                                {correctName(f.entity, firstName)}
-                                              </p>
-                                            )}
-                                            <textarea
-                                              autoFocus
-                                              value={editFactText}
-                                              onChange={e => setEditFactText(e.target.value)}
-                                              onKeyDown={e => {
-                                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }
-                                                if (e.key === 'Escape') setEditingFactId(null);
-                                              }}
-                                              rows={2}
-                                              className="input text-sm w-full resize-none"
-                                              style={{ padding: '6px 10px', lineHeight: '1.4' }}
-                                            />
-                                          </div>
-                                          <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
-                                            <button
-                                              onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
-                                              className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                              style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
-                                            >Save</button>
-                                            <button
-                                              onClick={() => setEditingFactId(null)}
-                                              className="text-xs px-2.5 py-1 rounded-md"
-                                              style={{ color: 'var(--text-faint)' }}
-                                            >Cancel</button>
-                                          </div>
-                                        </div>
-                                      ) : isConfirmingDelete ? (
-                                        <div className="flex items-center justify-between gap-3">
-                                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Remove this fact?</p>
-                                          <div className="flex items-center gap-2 flex-shrink-0">
-                                            <button
-                                              onClick={() => deleteFact(f.id)}
-                                              className="text-xs px-2 py-0.5 rounded font-medium"
-                                              style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
-                                            >Remove</button>
-                                            <button
-                                              onClick={() => setDeletingFactId(null)}
-                                              className="text-xs px-2 py-0.5 rounded"
-                                              style={{ color: 'var(--text-faint)' }}
-                                            >Keep</button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-start gap-2">
-                                          <div className="flex-1 min-w-0">
-                                            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                              {f.entity && (
-                                                <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
-                                              )}
-                                              {correctName(f.statement, firstName)}
-                                              {f.confidence === 'low' && (
-                                                <button
-                                                  title="Edge isn't sure — tap to fix"
-                                                  onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                                  className="inline-flex items-center gap-1 ml-1.5 px-1 py-0.5 rounded text-xs align-middle"
-                                                  style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1 }}
-                                                >&#x26A0; verify</button>
-                                              )}
-                                            </p>
-                                            {f.source_briefing_id ? (
-                                              <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs hover:underline" style={{ color: 'var(--text-faint)' }}>
-                                                {format(parseUTC(f.learned_at), 'MMM d')} ↗
-                                              </a>
-                                            ) : (
-                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(f.learned_at), 'MMM d')}</span>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                                            <button
-                                              title="Edit"
-                                              onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                              className="p-1 rounded text-xs"
-                                              style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                              onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                                              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                            >✎</button>
-                                            <button
-                                              title="Remove"
-                                              onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
-                                              className="p-1 rounded text-xs"
-                                              style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                              onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
-                                              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                            >✕</button>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {catItems.length > CAT_PREVIEW && (
-                                <button
-                                  onClick={() => setExpandedFactCats(prev => {
-                                    const next = new Set(prev); isShowAll ? next.delete(cat) : next.add(cat); return next;
-                                  })}
-                                  className="mt-2 text-xs"
-                                  style={{ color: 'var(--text-accent)' }}
+                        <div key={cat}>
+                          <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                            <span aria-hidden="true">{meta.icon}</span>
+                            {meta.label}
+                          </h3>
+                          <div className="space-y-1.5">
+                            {visible.map(f => {
+                              const isEditing = editingFactId === f.id;
+                              const isConfirmingDelete = deletingFactId === f.id;
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="glass-card px-4 py-3 group"
+                                  style={{ transition: 'background 0.1s' }}
                                 >
-                                  {isShowAll ? 'Show less' : `Show all ${catItems.length}`}
-                                </button>
-                              )}
-                            </div>
+                                  {isEditing ? (
+                                    /* ── Inline edit state ── */
+                                    <div className="flex items-start gap-2">
+                                      <div className="flex-1">
+                                        {f.entity && (
+                                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+                                            {correctName(f.entity, (user?.name || '').split(' ')[0])}
+                                          </p>
+                                        )}
+                                        <textarea
+                                          autoFocus
+                                          value={editFactText}
+                                          onChange={e => setEditFactText(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                              e.preventDefault();
+                                              if (editFactText.trim()) saveFact(f.id, editFactText.trim());
+                                            }
+                                            if (e.key === 'Escape') setEditingFactId(null);
+                                          }}
+                                          rows={2}
+                                          className="input text-sm w-full resize-none"
+                                          style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                                        />
+                                      </div>
+                                      <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                                        <button
+                                          onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingFactId(null)}
+                                          className="text-xs px-2.5 py-1 rounded-md"
+                                          style={{ color: 'var(--text-faint)' }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : isConfirmingDelete ? (
+                                    /* ── Delete confirm state ── */
+                                    <div className="flex items-center justify-between gap-3">
+                                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                                        Remove this fact?
+                                      </p>
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <button
+                                          onClick={() => deleteFact(f.id)}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
+                                        >
+                                          Remove
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingFactId(null)}
+                                          className="text-xs px-2.5 py-1 rounded-md"
+                                          style={{ color: 'var(--text-faint)' }}
+                                        >
+                                          Keep
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    /* ── Default read state ── */
+                                    <div>
+                                      <div className="flex items-start gap-3">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                            {f.entity && (
+                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, (user?.name || '').split(' ')[0])}: </span>
+                                            )}
+                                            {correctName(f.statement, (user?.name || '').split(' ')[0])}
+                                            {f.confidence === 'low' && (
+                                              <button
+                                                title="Edge isn't sure it caught this right — tap to fix"
+                                                onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                                className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
+                                                style={{
+                                                  background: 'var(--edg-warning-tint)',
+                                                  color: 'var(--edg-warning)',
+                                                  border: '1px solid var(--edg-warning-border)',
+                                                  lineHeight: 1,
+                                                }}
+                                              >
+                                                &#x26A0; verify
+                                              </button>
+                                            )}
+                                          </p>
+                                          {/* Provenance line */}
+                                          {f.source_briefing_id ? (
+                                            <a
+                                              href={`/dashboard?briefing=${f.source_briefing_id}`}
+                                              className="text-xs mt-1 block hover:underline"
+                                              style={{ color: 'var(--text-faint)' }}
+                                            >
+                                              learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
+                                            </a>
+                                          ) : (
+                                            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                                              learned {format(new Date(f.learned_at), 'MMM d')}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                                          <button
+                                            title="Edit"
+                                            onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                            className="p-1 rounded"
+                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                          >
+                                            ✎
+                                          </button>
+                                          <button
+                                            title="Remove"
+                                            onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
+                                            className="p-1 rounded"
+                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
+                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+                                          >
+                                            &#x2715;
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {catItems.length > FACTS_CAT_LIMIT && (
+                            <button
+                              onClick={() => setExpandedFactCats(prev => {
+                                const next = new Set(prev);
+                                isExpanded ? next.delete(cat) : next.add(cat);
+                                return next;
+                              })}
+                              className="mt-2 text-xs"
+                              style={{ color: 'var(--text-accent)' }}
+                            >
+                              {isExpanded ? 'Show less' : `Show all (${catItems.length})`}
+                            </button>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                )}
+                );
+              })()}
 
-                {/* Call notes — collapsible */}
-                {memories.length > 0 && (() => {
-                  const PAGE_SIZE = 20;
-                  const totalPages = Math.ceil(memories.length / PAGE_SIZE);
-                  const page = Math.min(memoryPage, totalPages);
-                  const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-                  return (
-                    <div
-                      className="rounded-xl overflow-hidden"
-                      style={{ border: '1px solid var(--edg-hairline)' }}
-                    >
-                      <button
-                        onClick={() => setCallNotesExpanded(v => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3 text-left transition-opacity hover:opacity-80"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm" aria-hidden="true">📋</span>
-                          <span className="text-sm font-semibold" style={{ color: 'var(--text-body)' }}>Call notes</span>
-                          <span
-                            className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                            style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)' }}
-                          >{memories.length}</span>
-                        </div>
-                        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                          {callNotesExpanded ? '▲' : '▼'}
-                        </span>
-                      </button>
-                      {callNotesExpanded && (
-                        <div className="px-4 pb-4">
-                          {totalPages > 1 && (
-                            <div className="flex items-center gap-2 mb-3">
-                              <button onClick={() => setMemoryPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-secondary text-xs py-1 px-3">Prev</button>
-                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{page} / {totalPages}</span>
-                              <button onClick={() => setMemoryPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="btn-secondary text-xs py-1 px-3">Next</button>
-                            </div>
-                          )}
-                          <div className="space-y-2">
-                            {pageItems.map(m => (
-                              <div key={m.id} className="rounded-lg px-3 py-2.5" style={{ border: '1px solid var(--edg-hairline)', background: 'transparent' }}>
-                                <div className="flex items-center gap-2 mb-1.5">
-                                  <span className={`badge ${m.type === 'insight' ? 'badge-success' : m.type === 'transcript' ? 'badge-info' : m.type === 'profile' ? 'badge-pending' : 'badge-info'}`}>{m.type}</span>
-                                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(m.created_at), 'MMM d, yyyy')}</span>
-                                </div>
-                                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                  {correctName(m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content, firstName)}
-                                </p>
-                              </div>
-                            ))}
+              {/* Divider between structured facts and raw call notes */}
+              {facts.length > 0 && memories.length > 0 && (
+                <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+              )}
+
+              {/* Raw memories — paginated */}
+              {memories.length > 0 && (() => {
+                const PAGE_SIZE = 20;
+                const totalPages = Math.ceil(memories.length / PAGE_SIZE);
+                const page = Math.min(memoryPage, totalPages);
+                const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+                return (
+                  <div>
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">📋</span>
+                      Call notes
+                    </h3>
+                    <div className="space-y-3">
+                      {pageItems.map(m => (
+                        <div key={m.id} className="glass-card p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`badge ${
+                              m.type === 'insight' ? 'badge-success' :
+                              m.type === 'transcript' ? 'badge-info' :
+                              m.type === 'profile' ? 'badge-pending' : 'badge-info'
+                            }`}>
+                              {m.type}
+                            </span>
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                              {format(new Date(m.created_at), 'MMM d, yyyy')}
+                            </span>
                           </div>
+                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                            {correctName(m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content, (user?.name || '').split(' ')[0])}
+                          </p>
                         </div>
-                      )}
+                      ))}
                     </div>
-                  );
-                })()}
-
-                {facts.length === 0 && memories.length === 0 && (
-                  <div className="glass-card p-8 text-center">
-                    <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
-                    <p className="font-semibold mb-2">Nothing stored yet</p>
-                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                      After your first call, Edge will start building a picture of you here — goals, projects, preferences, and more.
-                    </p>
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-4">
+                        <button
+                          onClick={() => setMemoryPage(p => Math.max(1, p - 1))}
+                          disabled={page <= 1}
+                          className="btn-secondary text-sm py-1.5 px-4"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Page {page} of {totalPages}
+                        </span>
+                        <button
+                          onClick={() => setMemoryPage(p => Math.min(totalPages, p + 1))}
+                          disabled={page >= totalPages}
+                          className="btn-secondary text-sm py-1.5 px-4"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })()}
+                );
+              })()}
+
+              {facts.length === 0 && memories.length === 0 && (
+                <div className="glass-card p-8 text-center">
+                  <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
+                  <p className="font-semibold mb-2">Nothing stored yet</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    After your first call, Edge will start building a picture of you here — goals, projects, preferences, and more.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {activeTab === 'profile' && (
             <ProfileTab onSettingsSaved={loadData} />
-          )}
-
-          {activeTab === 'help' && (
-            <div className="max-w-2xl mx-auto">
-              <div className="mb-6">
-                <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Help &amp; Support</h2>
-                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                  Common questions and a direct line to us.
-                </p>
-              </div>
-              <HelpSupportSection />
-            </div>
           )}
         </main>
       </div>
