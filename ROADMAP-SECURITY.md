@@ -50,6 +50,23 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Activation Moment security review — 13 fresh-account tests (1214 green).**
+
+  PM dispatch: review the onboarding + priority-derive path for the Activation Moment feature.
+  All routes PASS — no code changes needed.
+
+  **`GET /api/priorities/derive`**: auth ✅ rate-limit 5/hr `priorityDerive` ✅ all reads via `user.id` (no URL param exposure) ✅ `derivePriorities()` full try/catch → null (never throws to caller) ✅ graceful null response with safe human-readable reason (no stack/key leak) ✅ parallel `.catch(() => [])` guards on calendar + email signal ✅
+
+  **`POST /api/priorities/derive/accept`**: auth ✅ rate-limit 20/hr `priorityAccept` ✅ `MAX_PRIORITY_TEXT=200` cap ✅ all writes scoped to `user.id` ✅ empty body → 400 ✅ malformed JSON → 400 ✅ excess priorities (>3) silently truncated ✅
+
+  **`lib/priorityDerivation.ts derivePriorities()`**: full `try/catch` returns null ✅ output bounds `text.slice(0,120)`, `rationale.slice(0,300)`, `evidenceTags.slice(0,4)`, `summaryLine.slice(0,200)` ✅
+
+  **`lib/calendar.ts getPastCalendarEvents`**: user-scoped ✅ returns `[]` when no token (fresh-account graceful) ✅
+
+  New test file: `app/api/priorities/derive/route.test.ts` — 13 tests covering unauthenticated/rate-limited/fresh-account/thin-data/successful-derivation/internals-not-leaked/accept-authz/input-cap/empty-body/malformed-JSON/excess-priorities paths.
+
+  1214/1214 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Round 7: confirmFocus input caps + final LLM-output sweep (1201 green).**
 
   Continued sweep of LLM-extracted content paths in `app/api/vapi/tool-call/route.ts`:
