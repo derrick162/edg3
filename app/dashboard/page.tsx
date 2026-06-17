@@ -874,7 +874,7 @@ interface Memory {
 interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
   statement: string;
   entity: string | null;
   learned_at: string;
@@ -898,7 +898,32 @@ interface ScoreboardWeek {
 }
 interface ScoreboardData {
   perPriority: ScoreboardPriority[]; weeklyTrend: ScoreboardWeek[];
-  totalHoursThisWeek: number; weeksBack: number;
+  totalHoursThisWeek: number; weeksBack: number; timezone?: string;
+}
+
+const ENERGY_COLOR: Record<string, { bg: string; text: string; label: string }> = {
+  high:   { bg: 'rgba(251,191,36,0.12)',  text: 'rgba(251,191,36,0.9)',  label: '⚡ High energy' },
+  medium: { bg: 'rgba(99,102,241,0.10)',  text: 'rgba(139,92,246,0.85)', label: '~ Medium energy' },
+  low:    { bg: 'rgba(148,163,184,0.10)', text: 'var(--text-faint)',      label: '· Low energy' },
+};
+
+function MilestoneDots({ milestones }: { milestones: ScoreboardMilestone[] }) {
+  if (milestones.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {milestones.map(m => (
+        <span key={m.id} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
+          style={{
+            background: m.done ? 'rgba(99,102,241,0.12)' : 'var(--edg-accent-08)',
+            color: m.done ? 'var(--text-accent)' : 'var(--text-faint)',
+            textDecoration: m.done ? 'line-through' : 'none',
+          }}>
+          <span style={{ fontSize: 8 }}>{m.done ? '●' : '○'}</span>
+          {m.title.length > 22 ? m.title.slice(0, 20) + '…' : m.title}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function FocusScoreboardPanel() {
@@ -914,9 +939,16 @@ function FocusScoreboardPanel() {
 
   if (loading) {
     return (
-      <div className="glass-card p-4 mb-6 animate-pulse" style={{ minHeight: 80 }}>
-        <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-accent-15)' }} />
-        <div className="h-2 rounded w-1/2" style={{ background: 'var(--edg-accent-08)' }} />
+      <div className="mb-6 space-y-3 animate-pulse">
+        {[0.6, 0.8, 0.4].map((w, i) => (
+          <div key={i} className="glass-card p-4" style={{ minHeight: 72 }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-full flex-shrink-0" style={{ width: 28, height: 28, background: 'var(--edg-accent-15)' }} />
+              <div className="h-3 rounded flex-1" style={{ maxWidth: `${w * 100}%`, background: 'var(--edg-accent-08)' }} />
+            </div>
+            <div className="h-2 rounded-full" style={{ background: 'var(--edg-accent-08)' }} />
+          </div>
+        ))}
       </div>
     );
   }
@@ -925,80 +957,123 @@ function FocusScoreboardPanel() {
 
   const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
   const trendWeeks = data.weeklyTrend.slice(-4);
+  const maxTrendHours = trendWeeks.length > 0
+    ? Math.max(...trendWeeks.flatMap(w => data.perPriority.map(p => w.perPriority[p.text] ?? 0)), 1)
+    : 1;
 
-  const ENERGY_LABEL: Record<string, string> = { high: '⚡ High', medium: '~ Med', low: '· Low' };
-
-  const trendArrow = (text: string): string => {
+  const trendDelta = (text: string): { arrow: string; up: boolean; flat: boolean } => {
     const weeks = trendWeeks.map(w => w.perPriority[text] ?? 0);
-    if (weeks.length < 2) return '';
+    if (weeks.length < 2) return { arrow: '', up: false, flat: true };
     const recent = weeks[weeks.length - 1];
     const prev   = weeks[weeks.length - 2];
-    if (recent > prev + 0.5) return ' ↑';
-    if (recent < prev - 0.5) return ' ↓';
-    return '';
+    if (recent > prev + 0.5) return { arrow: '↑', up: true, flat: false };
+    if (recent < prev - 0.5) return { arrow: '↓', up: false, flat: false };
+    return { arrow: '→', up: false, flat: true };
   };
 
   return (
     <div className="mb-6">
-      <div className="flex items-center justify-between mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--text-faint)' }}>
-          Focus progress — this week
+          Focus this week
         </h3>
         {data.totalHoursThisWeek > 0 && (
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {data.totalHoursThisWeek}h total
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)' }}>
+            {data.totalHoursThisWeek}h logged
           </span>
         )}
       </div>
 
-      <div className="space-y-3 mb-4">
+      {/* Per-priority cards */}
+      <div className="space-y-3 mb-5">
         {data.perPriority.map(p => {
-          const barPct = maxHours > 0 ? Math.round((p.hoursThisWeek / maxHours) * 100) : 0;
+          const barPct    = maxHours > 0 ? Math.round((p.hoursThisWeek  / maxHours) * 100) : 0;
           const avgBarPct = maxHours > 0 ? Math.round((p.weeklyAvgHours / maxHours) * 100) : 0;
+          const delta     = trendDelta(p.text);
+          const energy    = p.energyCost ? ENERGY_COLOR[p.energyCost] : null;
+          const allDone   = p.milestoneTotal > 0 && p.milestoneDone === p.milestoneTotal;
+
           return (
-            <div key={p.id} className="glass-card p-3">
-              <div className="flex items-start justify-between mb-2 gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-black flex-shrink-0 w-4 text-center"
-                    style={{ color: 'var(--text-accent)' }}>{p.rank}</span>
-                  <span className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>
-                    {p.text}{trendArrow(p.text)}
+            <div key={p.id} className="glass-card p-4">
+              {/* Title row */}
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Rank circle */}
+                  <span className="flex-shrink-0 flex items-center justify-center rounded-full text-xs font-black"
+                    style={{
+                      width: 28, height: 28,
+                      background: p.rank === 1 ? 'rgba(99,102,241,0.18)' : 'var(--edg-accent-08)',
+                      color: p.rank === 1 ? 'var(--edg-indigo)' : 'var(--text-muted)',
+                      border: p.rank === 1 ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                    }}>
+                    {p.rank}
+                  </span>
+                  <span className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
+                    {p.text}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {p.energyCost && (
-                    <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--edg-accent-08)' }}>
-                      {ENERGY_LABEL[p.energyCost] ?? p.energyCost}
+
+                {/* Badges */}
+                <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                  {energy && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: energy.bg, color: energy.text }}>
+                      {energy.label}
                     </span>
                   )}
-                  {p.milestoneTotal > 0 && (
-                    <span style={{ color: p.milestoneDone === p.milestoneTotal ? 'var(--text-accent)' : 'var(--text-muted)' }}>
-                      {p.milestoneDone}/{p.milestoneTotal} ✓
+                  {delta.arrow && (
+                    <span className="text-xs font-bold"
+                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'rgba(239,68,68,0.8)' }}>
+                      {delta.arrow}
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Hours bar */}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 6, background: 'var(--edg-accent-08)' }}>
-                  <div className="h-full rounded-full transition-all"
-                    style={{ width: `${barPct}%`, background: 'var(--edg-indigo)', opacity: 0.8 }} />
+              {/* Hours bar with avg tick */}
+              <div className="relative mb-1">
+                <div className="rounded-full overflow-hidden" style={{ height: 8, background: 'var(--edg-accent-08)' }}>
+                  <div className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${barPct}%`,
+                      background: barPct > 60
+                        ? 'linear-gradient(90deg, var(--edg-indigo), rgba(139,92,246,0.9))'
+                        : barPct > 25
+                        ? 'linear-gradient(90deg, rgba(99,102,241,0.7), var(--edg-indigo))'
+                        : 'rgba(99,102,241,0.5)',
+                    }} />
                 </div>
-                <span className="text-xs w-16 text-right flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                  {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h` : '0h'}
-                  {p.weeklyAvgHours > 0 && p.weeklyAvgHours !== p.hoursThisWeek
-                    ? ` · avg ${p.weeklyAvgHours}h`
-                    : ''}
+                {/* Avg marker tick */}
+                {avgBarPct > 0 && Math.abs(avgBarPct - barPct) > 3 && (
+                  <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${avgBarPct}%` }}>
+                    <div style={{ width: 2, height: 12, marginTop: -2, background: 'var(--text-faint)', borderRadius: 1, opacity: 0.5 }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Hours label */}
+              <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-faint)' }}>
+                <span style={{ color: p.hoursThisWeek > 0 ? 'var(--text-muted)' : 'var(--text-faint)' }}>
+                  {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h this week` : 'No time logged yet'}
                 </span>
+                {p.weeklyAvgHours > 0 && (
+                  <span>avg {p.weeklyAvgHours}h/wk</span>
+                )}
               </div>
 
-              {/* Avg marker overlay (ghost bar) */}
-              {avgBarPct > 0 && avgBarPct !== barPct && (
-                <div className="relative" style={{ height: 2, marginTop: -4, marginBottom: 2 }}>
-                  <div className="absolute h-full rounded-full" style={{
-                    left: `${avgBarPct}%`, width: 2, background: 'var(--text-faint)', opacity: 0.4,
-                  }} />
+              {/* Milestone dots */}
+              {p.milestoneTotal > 0 && (
+                <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--edg-accent-08)' }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Milestones</span>
+                    <span className="text-xs font-medium"
+                      style={{ color: allDone ? 'var(--edg-success)' : 'var(--text-muted)' }}>
+                      {p.milestoneDone}/{p.milestoneTotal}{allDone ? ' ✓ complete' : ''}
+                    </span>
+                  </div>
+                  <MilestoneDots milestones={p.milestones} />
                 </div>
               )}
             </div>
@@ -1006,21 +1081,21 @@ function FocusScoreboardPanel() {
         })}
       </div>
 
-      {/* 4-week trend table */}
+      {/* 4-week heatmap table */}
       {trendWeeks.length >= 2 && (
-        <div className="glass-card p-3 overflow-x-auto">
-          <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-faint)' }}>
-            {data.weeksBack}-week trend (hours/week)
+        <div className="glass-card p-4 overflow-x-auto">
+          <p className="text-xs mb-3 font-medium" style={{ color: 'var(--text-faint)' }}>
+            {data.weeksBack}-week trend
           </p>
-          <table className="text-xs w-full" style={{ borderCollapse: 'collapse' }}>
+          <table className="text-xs w-full" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
             <thead>
               <tr>
-                <th className="text-left pr-3 py-1 font-normal" style={{ color: 'var(--text-faint)', minWidth: 110 }}>
+                <th className="text-left pb-1 font-normal pr-4" style={{ color: 'var(--text-faint)', minWidth: 100 }}>
                   Priority
                 </th>
                 {trendWeeks.map(w => (
-                  <th key={w.weekStart} className="text-right px-2 py-1 font-normal"
-                    style={{ color: 'var(--text-faint)', minWidth: 50 }}>
+                  <th key={w.weekStart} className="text-center pb-1 px-1 font-normal"
+                    style={{ color: 'var(--text-faint)', minWidth: 48 }}>
                     {w.weekLabel}
                   </th>
                 ))}
@@ -1029,15 +1104,22 @@ function FocusScoreboardPanel() {
             <tbody>
               {data.perPriority.map(p => (
                 <tr key={p.id}>
-                  <td className="pr-3 py-1 truncate" style={{ color: 'var(--text-muted)', maxWidth: 110 }}>
-                    {p.text.length > 18 ? p.text.slice(0, 16) + '…' : p.text}
+                  <td className="pr-4 py-0.5 font-medium" style={{ color: 'var(--text-muted)', maxWidth: 120 }}>
+                    <span className="block truncate">{p.text.length > 16 ? p.text.slice(0, 14) + '…' : p.text}</span>
                   </td>
                   {trendWeeks.map(w => {
                     const h = w.perPriority[p.text] ?? 0;
+                    const intensity = maxTrendHours > 0 ? h / maxTrendHours : 0;
                     return (
-                      <td key={w.weekStart} className="text-right px-2 py-1"
-                        style={{ color: h > 0 ? 'var(--text-strong)' : 'var(--text-faint)' }}>
-                        {h > 0 ? `${h}h` : '—'}
+                      <td key={w.weekStart} className="text-center px-1 py-0.5">
+                        <span className="inline-block rounded px-1.5 py-0.5 font-medium transition-all"
+                          style={{
+                            background: h > 0 ? `rgba(99,102,241,${0.08 + intensity * 0.28})` : 'transparent',
+                            color: h > 0 ? `rgba(199,210,254,${0.6 + intensity * 0.4})` : 'var(--text-faint)',
+                            minWidth: 32,
+                          }}>
+                          {h > 0 ? `${h}h` : '—'}
+                        </span>
                       </td>
                     );
                   })}
@@ -1071,6 +1153,7 @@ export default function Dashboard() {
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
+  const [savedFactId, setSavedFactId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -1204,12 +1287,14 @@ export default function Dashboard() {
   }
 
   async function saveFact(id: number, statement: string) {
-    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
+    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement, confidence: null } : f));
     setEditingFactId(null);
+    setSavedFactId(id);
+    setTimeout(() => setSavedFactId(null), 2000);
     await fetch(`/api/memory/facts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statement }),
+      body: JSON.stringify({ statement, confidence: null }),
     });
   }
 
@@ -1966,9 +2051,17 @@ export default function Dashboard() {
               />
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
               {!briefingsLoaded ? (
-                <div className="glass-card p-8 text-center">
-                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block mb-3" />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading your briefings…</p>
+                <div className="space-y-3 animate-pulse">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="glass-card p-5">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-3 rounded w-20" style={{ background: 'var(--edg-fill-04)' }} />
+                        <div className="h-3 rounded w-12" style={{ background: 'var(--edg-fill-04)' }} />
+                      </div>
+                      <div className="h-3 rounded w-full mb-2" style={{ background: 'var(--edg-fill-04)' }} />
+                      <div className="h-3 rounded w-3/4" style={{ background: 'var(--edg-fill-04)' }} />
+                    </div>
+                  ))}
                 </div>
               ) : briefings.length === 0 ? (
                 previewLoading ? (
@@ -2197,10 +2290,58 @@ export default function Dashboard() {
                 id="memory"
                 text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
               />
-              <h2 className="text-lg font-bold mb-1">Here&apos;s what Edge knows about you</h2>
+              <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap">
+                <h2 className="text-lg font-bold">Here&apos;s what Edge knows about you</h2>
+                {facts.length > 0 && (
+                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                    {facts.length} fact{facts.length !== 1 ? 's' : ''} across {new Set(facts.map(f => f.category)).size} areas
+                  </span>
+                )}
+              </div>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Built up over your calls — everything here came directly from conversations with you.
+                Built from your calls — not filled out by hand. Correcting anything here makes Edge smarter.
               </p>
+
+              {/* Recently learned — newest 5 facts across all categories */}
+              {facts.length > 0 && (() => {
+                const recent = [...facts]
+                  .sort((a, b) => new Date(b.learned_at).getTime() - new Date(a.learned_at).getTime())
+                  .slice(0, 5);
+                const CATEGORY_ICONS: Record<string, string> = {
+                  goal: '🎯', project: '🗂', person: '👤', preference: '⚡', fact: '📌', pattern: '📈',
+                };
+                const firstName = (user?.name || '').split(' ')[0];
+                return (
+                  <div className="mb-8">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">✦</span>
+                      Recently learned
+                    </h3>
+                    <div className="space-y-1.5">
+                      {recent.map(f => (
+                        <div key={f.id} className="glass-card px-4 py-3 flex items-start gap-3" style={{ border: '1px solid var(--edg-accent-08)' }}>
+                          <span className="text-xs mt-0.5 flex-shrink-0" aria-hidden="true">
+                            {CATEGORY_ICONS[f.category] ?? '📌'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                              {f.entity && (
+                                <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>
+                                  {correctName(f.entity, firstName)}:{' '}
+                                </span>
+                              )}
+                              {correctName(f.statement, firstName)}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                              learned {format(new Date(f.learned_at), 'MMM d')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Structured facts grouped by category */}
               {facts.length > 0 && (() => {
@@ -2210,20 +2351,283 @@ export default function Dashboard() {
                   person:     { label: 'People',      icon: '👤' },
                   preference: { label: 'Preferences', icon: '⚡' },
                   fact:       { label: 'Facts',       icon: '📌' },
+                  pattern:    { label: 'Patterns',    icon: '📈' },
                 };
                 const FACTS_CAT_LIMIT = 15;
-                const ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
+                const ORDER = ['goal', 'project', 'person', 'pattern', 'preference', 'fact'];
                 const grouped = ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
                   const items = facts.filter(f => f.category === cat);
                   if (items.length) acc[cat] = items;
                   return acc;
                 }, {});
+
+                // ── Reusable fact row (used in both person cards and flat lists) ──
+                function FactRow({ f, indented }: { f: Fact; indented?: boolean }) {
+                  const isEditing = editingFactId === f.id;
+                  const isConfirmingDelete = deletingFactId === f.id;
+                  const justSaved = savedFactId === f.id;
+                  const firstName = (user?.name || '').split(' ')[0];
+                  return (
+                    <div
+                      className={`group ${indented ? '' : 'glass-card px-4 py-3'}`}
+                      style={indented ? { padding: '6px 0' } : { transition: 'background 0.1s' }}
+                    >
+                      {isEditing ? (
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1">
+                            <textarea
+                              autoFocus
+                              value={editFactText}
+                              onChange={e => setEditFactText(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }
+                                if (e.key === 'Escape') setEditingFactId(null);
+                              }}
+                              rows={2}
+                              className="input text-sm w-full resize-none"
+                              style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                            <button
+                              onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
+                              className="text-xs px-2.5 py-1 rounded-md font-medium"
+                              style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingFactId(null)}
+                              className="text-xs px-2.5 py-1 rounded-md"
+                              style={{ color: 'var(--text-faint)' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : isConfirmingDelete ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Remove this fact?</p>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => deleteFact(f.id)}
+                              className="text-xs px-2.5 py-1 rounded-md font-medium"
+                              style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
+                            >
+                              Remove
+                            </button>
+                            <button onClick={() => setDeletingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Keep</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            {justSaved ? (
+                              <p className="text-xs font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edge updated</p>
+                            ) : (
+                              <>
+                                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                  {!indented && f.entity && (
+                                    <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
+                                  )}
+                                  {correctName(f.statement, firstName)}
+                                  {f.confidence === 'low' && (
+                                    <button
+                                      title="Edge isn't sure it caught this right — tap to fix"
+                                      onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                      className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
+                                      style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1 }}
+                                    >
+                                      &#x26A0; verify
+                                    </button>
+                                  )}
+                                </p>
+                                {f.source_briefing_id ? (
+                                  <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>
+                                    learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
+                                  </a>
+                                ) : (
+                                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                            <button
+                              title="Edit"
+                              onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                              className="p-1 rounded"
+                              style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                              aria-label="Edit fact"
+                            >✎</button>
+                            <button
+                              title="Remove"
+                              onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
+                              className="p-1 rounded"
+                              style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                              aria-label="Remove fact"
+                            >&#x2715;</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="space-y-6 mb-8">
                     {Object.entries(grouped).map(([cat, catItems]) => {
                       const isExpanded = expandedFactCats.has(cat);
-                      const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
+
+                      // ── Goals: elevated anchor cards with rank number ──
+                      if (cat === 'goal') {
+                        const firstName = (user?.name || '').split(' ')[0];
+                        return (
+                          <div key={cat}>
+                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                              <span aria-hidden="true">{meta.icon}</span>
+                              {meta.label}
+                            </h3>
+                            <div className="space-y-2">
+                              {catItems.map((f, idx) => {
+                                const isEditing = editingFactId === f.id;
+                                const justSaved = savedFactId === f.id;
+                                const isConfirmingDelete = deletingFactId === f.id;
+                                return (
+                                  <div
+                                    key={f.id}
+                                    className="glass-card px-4 py-3 group"
+                                    style={{ border: `1px solid ${idx === 0 ? 'var(--edg-accent-20)' : 'var(--edg-hairline)'}`, background: idx === 0 ? 'var(--edg-accent-04)' : undefined }}
+                                  >
+                                    {isEditing ? (
+                                      <div className="flex items-start gap-2">
+                                        <div className="flex-1">
+                                          <textarea
+                                            autoFocus
+                                            value={editFactText}
+                                            onChange={e => setEditFactText(e.target.value)}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }
+                                              if (e.key === 'Escape') setEditingFactId(null);
+                                            }}
+                                            rows={2}
+                                            className="input text-sm w-full resize-none"
+                                            style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                                          />
+                                        </div>
+                                        <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                                          <button onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}>Save</button>
+                                          <button onClick={() => setEditingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Cancel</button>
+                                        </div>
+                                      </div>
+                                    ) : isConfirmingDelete ? (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Remove this goal?</p>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          <button onClick={() => deleteFact(f.id)} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}>Remove</button>
+                                          <button onClick={() => setDeletingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Keep</button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-start gap-3">
+                                        <div
+                                          className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+                                          style={{ background: idx === 0 ? 'var(--edg-indigo)' : 'var(--edg-accent-15)', color: idx === 0 ? '#fff' : 'var(--text-accent)' }}
+                                          aria-hidden="true"
+                                        >
+                                          {idx + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          {justSaved ? (
+                                            <p className="text-sm font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edge updated</p>
+                                          ) : (
+                                            <>
+                                              <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
+                                                {correctName(f.statement, firstName)}
+                                              </p>
+                                              {f.source_briefing_id ? (
+                                                <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>learned from your {format(new Date(f.learned_at), 'MMM d')} call ↗</a>
+                                              ) : (
+                                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                                          <button title="Edit" onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }} className="p-1 rounded" style={{ color: 'var(--text-faint)', lineHeight: 1 }} aria-label="Edit goal">✎</button>
+                                          <button title="Remove" onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }} className="p-1 rounded" style={{ color: 'var(--text-faint)', lineHeight: 1 }} aria-label="Remove goal">&#x2715;</button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── People: group by entity into relationship profile cards ──
+                      if (cat === 'person') {
+                        const byEntity = catItems.reduce<Record<string, Fact[]>>((acc, f) => {
+                          const key = f.entity || '(unknown)';
+                          (acc[key] = acc[key] || []).push(f);
+                          return acc;
+                        }, {});
+                        const entities = Object.keys(byEntity);
+                        const PERSON_LIMIT = 8;
+                        const visibleEntities = entities.length > PERSON_LIMIT && !isExpanded ? entities.slice(0, PERSON_LIMIT) : entities;
+                        return (
+                          <div key={cat}>
+                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                              <span aria-hidden="true">{meta.icon}</span>
+                              {meta.label}
+                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>{entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
+                            </h3>
+                            <div className="space-y-2">
+                              {visibleEntities.map(entity => {
+                                const personFacts = byEntity[entity];
+                                const firstName = (user?.name || '').split(' ')[0];
+                                const mostRecent = personFacts.reduce((a, b) => new Date(a.learned_at) > new Date(b.learned_at) ? a : b);
+                                return (
+                                  <div key={entity} className="glass-card px-4 py-3" style={{ border: '1px solid var(--edg-hairline)' }}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div
+                                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                                        style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)' }}
+                                      >
+                                        {correctName(entity, firstName).charAt(0).toUpperCase()}
+                                      </div>
+                                      <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                                        {correctName(entity, firstName)}
+                                      </p>
+                                      <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
+                                        last updated {format(new Date(mostRecent.learned_at), 'MMM d')}
+                                      </p>
+                                    </div>
+                                    <div className="space-y-0">
+                                      {personFacts.map(f => <FactRow key={f.id} f={f} indented />)}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {entities.length > PERSON_LIMIT && (
+                              <button
+                                onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
+                                className="mt-2 text-xs"
+                                style={{ color: 'var(--text-accent)' }}
+                              >
+                                {isExpanded ? 'Show less' : `Show all (${entities.length} people)`}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // ── All other categories: flat list ──
+                      const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       return (
                         <div key={cat}>
                           <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
@@ -2231,157 +2635,11 @@ export default function Dashboard() {
                             {meta.label}
                           </h3>
                           <div className="space-y-1.5">
-                            {visible.map(f => {
-                              const isEditing = editingFactId === f.id;
-                              const isConfirmingDelete = deletingFactId === f.id;
-                              return (
-                                <div
-                                  key={f.id}
-                                  className="glass-card px-4 py-3 group"
-                                  style={{ transition: 'background 0.1s' }}
-                                >
-                                  {isEditing ? (
-                                    /* ── Inline edit state ── */
-                                    <div className="flex items-start gap-2">
-                                      <div className="flex-1">
-                                        {f.entity && (
-                                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-                                            {correctName(f.entity, (user?.name || '').split(' ')[0])}
-                                          </p>
-                                        )}
-                                        <textarea
-                                          autoFocus
-                                          value={editFactText}
-                                          onChange={e => setEditFactText(e.target.value)}
-                                          onKeyDown={e => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                              e.preventDefault();
-                                              if (editFactText.trim()) saveFact(f.id, editFactText.trim());
-                                            }
-                                            if (e.key === 'Escape') setEditingFactId(null);
-                                          }}
-                                          rows={2}
-                                          className="input text-sm w-full resize-none"
-                                          style={{ padding: '6px 10px', lineHeight: '1.4' }}
-                                        />
-                                      </div>
-                                      <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
-                                        <button
-                                          onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
-                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
-                                        >
-                                          Save
-                                        </button>
-                                        <button
-                                          onClick={() => setEditingFactId(null)}
-                                          className="text-xs px-2.5 py-1 rounded-md"
-                                          style={{ color: 'var(--text-faint)' }}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : isConfirmingDelete ? (
-                                    /* ── Delete confirm state ── */
-                                    <div className="flex items-center justify-between gap-3">
-                                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                                        Remove this fact?
-                                      </p>
-                                      <div className="flex items-center gap-2 flex-shrink-0">
-                                        <button
-                                          onClick={() => deleteFact(f.id)}
-                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
-                                        >
-                                          Remove
-                                        </button>
-                                        <button
-                                          onClick={() => setDeletingFactId(null)}
-                                          className="text-xs px-2.5 py-1 rounded-md"
-                                          style={{ color: 'var(--text-faint)' }}
-                                        >
-                                          Keep
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    /* ── Default read state ── */
-                                    <div>
-                                      <div className="flex items-start gap-3">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                            {f.entity && (
-                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, (user?.name || '').split(' ')[0])}: </span>
-                                            )}
-                                            {correctName(f.statement, (user?.name || '').split(' ')[0])}
-                                            {f.confidence === 'low' && (
-                                              <button
-                                                title="Edge isn't sure it caught this right — tap to fix"
-                                                onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                                className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
-                                                style={{
-                                                  background: 'var(--edg-warning-tint)',
-                                                  color: 'var(--edg-warning)',
-                                                  border: '1px solid var(--edg-warning-border)',
-                                                  lineHeight: 1,
-                                                }}
-                                              >
-                                                &#x26A0; verify
-                                              </button>
-                                            )}
-                                          </p>
-                                          {/* Provenance line */}
-                                          {f.source_briefing_id ? (
-                                            <a
-                                              href={`/dashboard?briefing=${f.source_briefing_id}`}
-                                              className="text-xs mt-1 block hover:underline"
-                                              style={{ color: 'var(--text-faint)' }}
-                                            >
-                                              learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
-                                            </a>
-                                          ) : (
-                                            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-                                              learned {format(new Date(f.learned_at), 'MMM d')}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
-                                          <button
-                                            title="Edit"
-                                            onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                            className="p-1 rounded"
-                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                          >
-                                            ✎
-                                          </button>
-                                          <button
-                                            title="Remove"
-                                            onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
-                                            className="p-1 rounded"
-                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
-                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                          >
-                                            &#x2715;
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                            {visible.map(f => <FactRow key={f.id} f={f} />)}
                           </div>
                           {catItems.length > FACTS_CAT_LIMIT && (
                             <button
-                              onClick={() => setExpandedFactCats(prev => {
-                                const next = new Set(prev);
-                                isExpanded ? next.delete(cat) : next.add(cat);
-                                return next;
-                              })}
+                              onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
                               className="mt-2 text-xs"
                               style={{ color: 'var(--text-accent)' }}
                             >
@@ -2394,6 +2652,50 @@ export default function Dashboard() {
                   </div>
                 );
               })()}
+
+              {/* Memory layer placeholders — shown until Core ships the relevant data */}
+              {facts.length > 0 && (
+                <div className="space-y-4 mb-8">
+                  {/* Patterns (M3) */}
+                  {facts.filter(f => f.category === 'pattern').length === 0 && (
+                    <div>
+                      <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                        <span aria-hidden="true">📈</span>
+                        Patterns
+                      </h3>
+                      <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
+                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                          Edge is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Decisions (M4/L4) */}
+                  <div>
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">🔑</span>
+                      Decisions
+                    </h3>
+                    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
+                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                        Major decisions and their rationale — so Edge never re-litigates what you&apos;ve already resolved.
+                      </p>
+                    </div>
+                  </div>
+                  {/* Accountability (L7) */}
+                  <div>
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">✓</span>
+                      Commitments &amp; outcomes
+                    </h3>
+                    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
+                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                        What you committed to, and what actually happened. Edge uses this to learn from reality, not just your intentions.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Divider between structured facts and raw call notes */}
               {facts.length > 0 && memories.length > 0 && (

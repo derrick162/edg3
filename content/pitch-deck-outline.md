@@ -69,13 +69,37 @@ Don't pad with fake metrics. If the traction is thin, say "early beta — these 
 
 ---
 
-### Slide 6 — Why voice (the non-obvious insight)
+### Slide 6 — The moat (why this is hard to replicate)
 
-This is your differentiation argument.
+This is your defensibility slide. Replace the old "why voice" slide with this — voice is the delivery mechanism, memory is the moat.
 
-> "Every productivity tool requires you to remember to use it. A call meets you where you are — in your morning routine, before your phone fills up with everyone else's priorities. Voice is the only modality that works for someone who's already in motion."
+**Header:** "The moat is memory, not the model."
 
-Below: "The call is a forcing function. Text is optional."
+**Body:** Five streams no competitor combines:
+
+| Stream | What it understands |
+|---|---|
+| Intentions (Calendar) | What you've planned and where your time goes |
+| Commitments (Email) | What you've said you'll do; who you're in relationship with |
+| Physical state (Whoop) | Recovery, energy, strain |
+| Conversations (Voice) | Priorities, decisions, concerns — in your own words |
+| Outcomes (Behavior) | What actually happened; what patterns drive results |
+
+**The key line:** "The value of Edge compounds with every call. After six months, it knows your patterns, your commitments, your energy cycles, and your recurring avoidances. That's not something you can get by switching to a competitor."
+
+**The investor version:** "Every other productivity AI starts over when you switch. With Edge, switching has a cost — years of structured memory about you. That's not a lock-in dark pattern. That's a product that genuinely gets better the longer you use it."
+
+**What's built today:** Streams 1–4 live. Outcomes (stream 5) partially built. Memory gets structured into 7 layers — State and Goal are complete; Pattern, Relationship, and Accountability are deepening; Decision and Narrative are on the roadmap.
+
+---
+
+### Slide 6b — Why voice (optional second slide or speaker note)
+
+This explains the delivery mechanism — add as a second slide or collapse into slide 6 if the deck needs to be tighter.
+
+> "Every productivity tool requires you to remember to use it. A call meets you where you are — in your morning routine, before the day's noise arrives. Voice is the only modality that works for someone who's already in motion."
+
+> "And voice is how the five memory streams stay current: each morning call adds to the pattern layer, confirms commitments, updates state, and records outcomes. The call IS the data ingestion mechanism — not just the user experience."
 
 ---
 
@@ -107,10 +131,11 @@ Or: use the coaching market: "The executive coaching market is $15B/year in the 
 
 ### Slide 9 — Why now
 
-Three bullets:
-1. Voice AI is good enough (Vapi + Claude enable real conversations)
-2. Burnout is an acknowledged crisis for founders/executives (it's discussable now)
-3. Calendar AI is the unlock (reading + reshaping time in real time is new)
+Four bullets:
+1. Voice AI is good enough (Vapi + Claude enable real multi-turn reasoning about your life)
+2. Structured per-person memory is now viable (LLMs can tag, query, and reason over months of behavioral data in real time)
+3. Burnout is a documented crisis — the tools people use aren't fixing it (post-pandemic data, no sign of recovery)
+4. Calendar AI tried to win on scheduling automation (Reclaim, Motion) — and couldn't. The unlock was intent + memory, not algorithm. That's the window.
 
 ---
 
@@ -139,9 +164,11 @@ If you have any relevant investors from the advisory asks, name them here once t
 
 Move this to an appendix slide — available if asked.
 - Full Edge Score components (Focus 30% + Energy 30% + Clarity 20% + Momentum 20%)
+- Memory architecture — the 7 layers and current build status (State ✅, Goal ✅, Pattern 🟡, Relationship 🟡, Accountability 🟡, Decision 🔴, Narrative 🔴)
+- The 5 data streams table with what each contributes to the memory model
 - Privacy architecture (data-control screen, Privacy Mode, what's encrypted)
 - Technical stack (Vapi, Claude, Google Calendar, Whoop)
-- Roadmap (Notifications, voice prosody, team features)
+- Roadmap (deeper Pattern/Relationship/Accountability layers; Decision + Narrative; team features)
 
 ---
 

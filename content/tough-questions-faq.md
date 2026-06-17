@@ -7,7 +7,10 @@ _Answers written for honesty — the goal is trust, not spin._
 ## Product questions
 
 **"How is this different from ChatGPT?"**
-> "ChatGPT is a tool you go to. Edge comes to you — it calls you. The call is the forcing function. Most people can't maintain a daily habit with a chatbot because opening the app is optional. A phone call isn't. And Edge has your actual calendar and priorities — it's not a general assistant, it's specifically about keeping you aligned with what matters."
+> "ChatGPT starts over every conversation — it has no memory of your priorities, your calendar, your patterns, or anything you told it yesterday. Edge has structured memory of your life: your commitments, your energy cycles, your recurring avoidances, months of behavioral patterns. ChatGPT answers questions. Edge makes better decisions with you because it actually knows your context. And Edge calls you — you don't have to remember to open anything."
+
+**"What's your defensibility? Couldn't someone just copy this?"**
+> "The AI capabilities are replicable. The memory isn't. After six months of daily calls, Edge has structured behavioral memory about a specific user that took that user six months to build. Switching means starting over. And the five data streams we combine — calendar, email, health data, voice calls, and observed outcomes — no competitor currently has all five. That's not a feature lead, it's an architecture lead."
 
 **"What if I don't want to talk in the morning?"**
 > "That's actually a useful signal. Edge keeps the calls short — usually under 10 minutes. The habit is easier than it sounds because it fits into the morning routine you already have: brush teeth, make coffee, take the call. But if someone really can't build the habit, that's a real product problem I want to know about."

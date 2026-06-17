@@ -35,6 +35,46 @@ not just your time.
 **For burnout angle:**
 > Stop planning. Let Edge tell you what to do with your day.
 
+**For the memory moat angle (investor / strategic conversations):**
+> Edge remembers your life better than you do. Every call, every commitment, every pattern — structured and used to make better decisions with you every morning.
+
+**For the "better decisions" angle:**
+> Most AI answers your questions. Edge helps you make better decisions — because it knows your calendar, your energy, your commitments, and six months of your patterns.
+
+**Competitive short-cut (for when someone says "can't I just use ChatGPT for this?"):**
+> ChatGPT forgets you after every conversation. Edge has never forgotten a priority, a commitment, or a pattern since your first call.
+
+---
+
+## The strategic spine: memory is the moat
+
+Most AI products answer questions. **Edge remembers your life — and uses that memory to make better decisions for you.**
+
+The key insight: competitors who offer AI productivity features can copy a workflow, a voice interface, or a dashboard. What they cannot easily copy is **years of structured memory about a specific person** — their patterns, commitments, decisions, relationships, and behavioral outcomes over time. The value compounds every day. The longer a user stays, the harder Edge is to replace.
+
+**The five data streams Edge combines (that competitors don't):**
+
+| Stream | What it understands | Status |
+|---|---|---|
+| **Intentions** (Calendar) | What the user has planned and how they spend their time | ✅ Live |
+| **Commitments** (Email) | What they've said they'll do; who they're in relationships with | ✅ Live (subject lines + thread signals) |
+| **Physical state** (Whoop / health) | Recovery, energy, strain — the biological resource layer | ✅ Live (Whoop integration) |
+| **Conversations** (Voice calls) | Priorities, concerns, decisions, preferences — in their own words | ✅ Live (daily call + transcript) |
+| **Outcomes** (Behavior) | What actually happened; what patterns repeat; what improves results | 🟡 Partial — open loops + commitment tracking; deepening |
+
+No other product combines all five. A calendar app sees Intentions. A general AI chat sees Conversations. A wearable sees Physical state. Only Edge sees all five — and structures them into a coherent model of the user.
+
+**The seven memory layers (what this adds up to):**
+Edge structures what it learns from these streams into increasingly deep memory: current State (today's load, energy, calendar), active Goals (what the user is trying to achieve), behavioral Patterns (what helps them, what blocks them), major Decisions (what they decided and why), key Relationships (who matters and the evolving context), their Narrative (the life arc this all serves), and their Accountability record (what they committed to and what happened).
+
+Layers 1 (State) and 2 (Goal) are live today. Layers 3, 5, and 7 are partially built and deepening. Layers 4 and 6 are on the roadmap.
+
+**The investor-grade version of this:**
+> The moat is not the AI model — it's the accumulated structured memory, behavioral understanding, and life context that grows with every call. That's why the value of Edge compounds over time and becomes increasingly difficult to replace. Most AI products start over every conversation. Edge never forgets.
+
+**For design partners and press:**
+> Edge remembers your priorities, your patterns, your commitments, and your energy across months of daily calls. It's not a better assistant — it's a different kind of thing. The longer you use it, the more it understands you. That's not something you can get by switching.
+
 ---
 
 ## The wedge: trust + accuracy
@@ -82,10 +122,11 @@ Post-pandemic burnout rates among knowledge workers are the highest ever measure
 people are using — deep work frameworks, calendars, todo apps — aren't helping. There's an
 opening for something that addresses the energy dimension, not just the time dimension.
 
-**4. Trust + transparency are early-mover advantages.**
-The first AI productivity tools that establish genuine trust with users — through transparency,
-accuracy, and reversibility — will be hard to unseat. Users who trust an AI won't switch. This is
-the window to build that trust before the market commoditizes.
+**4. Structured memory is now a viable moat.**
+Until recently, AI systems couldn't maintain coherent, structured memory about a specific person across months of interactions. That's changed. We can now tag, structure, and reason over years of behavioral data — calendar patterns, commitment history, energy signals, conversation notes — in a way that's genuinely useful and genuinely hard for competitors to replicate on a per-user basis. This is the window to establish deep memory before the market figures out that this is the real product.
+
+**5. Trust + transparency are early-mover advantages.**
+The first AI tools that establish genuine trust with users — through transparency, accuracy, and reversibility — will be hard to unseat. Users who trust an AI won't switch. Users who have *years of context* in an AI won't switch at any price. This is the window to build that trust and that depth before the market commoditizes the surface features.
 
 **5. Derrick's story is the product story.**
 Founder-market fit is strongest when the founder IS the ICP. Derrick is a recovered burnout
@@ -108,7 +149,10 @@ _(See `content/competitive-landscape.md` for full analysis. Summary here.)_
 | **Whoop / Oura apps** | Health/recovery data | No calendar integration. Data without action. |
 
 **The one-sentence competitive answer:**
-> Edge is the only tool that calls you, reads your calendar, knows your energy, and takes action — without you having to ask it to.
+> Edge is the only tool that calls you, reads your calendar, knows your energy, and accumulates structured memory about your life — without you having to ask it to.
+
+**The memory-moat competitive answer (for investors):**
+> No competitor combines all five data streams (calendar, email, health, voice, outcomes) into structured, growing memory about a specific person. That's not a feature gap — it's a different architecture. The result: Edge gets more valuable the longer you use it. Every other tool starts over.
 
 ---
 

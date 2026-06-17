@@ -95,6 +95,22 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Memory encryption + consent helper + memory authz tests (1331 green).**
+
+  PM dispatch: memory is the moat — every memory field encrypted, user-scoped, consent-gated.
+
+  1. **`memories.content` encrypted at rest** (`lib/db.ts`): Critical gap closed — `memories` table previously stored call insights, profile context, and transcripts as plaintext. Added `decryptMemoryRow()` helper; `memoryQueries.create()` now writes `encryptField(content)`; all three read paths (`getRecent`, `getWeighted`, `getByType`) now map through `decryptMemoryRow`. Legacy plaintext rows pass through transparently on decryption (zero migration needed). `getWeighted` converted from SQL LIKE on content to JS filter after decryption (LIKE can't search encrypted data).
+
+  2. **`lib/consent.ts`** — consent enforcement helper. `isImproveConsented(user)` / `isPrivacyMode(user)`. Safe default: null/undefined data_consent → Privacy Mode (false from `isImproveConsented`). This means every future fine-tuning path that calls this helper will fail-safe to privacy mode until the user explicitly opts in. 11 unit tests in `lib/consent.test.ts`.
+
+  3. **Memory authz integration tests** (`app/api/memory/route.test.ts`) — 9 tests verifying: unauthenticated → 401, user A cannot see user B's memories or facts (cross-user leakage), empty memories return [] not cross-user bleed, response shape includes memories + facts arrays.
+
+  4. **`content/data-protection.md`** updated: new "You control how your data is used" section with the two-setting table; "What Edge remembers" section naming the 5 memory layers in plain language; encrypted fields list now includes `memories.content`; export note includes consent setting; "What we don't do" updated to "without your explicit opt-in."
+
+  5. **`content/security-audit.md`** updated: `memories.content` added to encrypted-fields table; consent helper + memory authz added to Readiness Summary; test count updated to 61 files / 1331 tests.
+
+  1331/1331 green, tsc clean, next build clean.
+
 - **2026-06-18** — **Data consent enforcement — CASA requirement (1267 green).**
 
   PM dispatch: enforce Privacy Mode and document for CASA / Google OAuth verification.

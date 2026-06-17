@@ -40,10 +40,11 @@ Edg3 is what he built for himself. The closed beta launched June 2026.
 
 ## Why now
 
-Three converging shifts:
+Four converging shifts:
 1. **Voice AI is good enough.** The 10-minute morning call is possible — and actually useful — in a way it wasn't 18 months ago.
-2. **The burnout conversation has changed.** High-performers are openly talking about unsustainable work patterns; the shame is gone.
-3. **Calendar AI is the unlock.** The calendar is the one source of truth about how time is actually being spent. AI that can read and reshape it in real time is new.
+2. **Structured per-person memory is now viable.** Until recently, AI couldn't maintain coherent, structured memory about a specific person across months of interactions. That's changed. The result: a product that gets more valuable the longer you use it — not just more familiar.
+3. **The burnout conversation has changed.** High-performers are openly talking about unsustainable work patterns; the shame is gone.
+4. **Calendar AI tried the wrong approach.** Reclaim, Motion, Clockwise optimized scheduling algorithmically — and couldn't crack retention because they had no understanding of *intent*. The missing layer was context + memory, not a better algorithm.
 
 ---
 
@@ -73,12 +74,31 @@ Long-term: anyone who leads — project managers, operators, consultants, coache
 
 ---
 
+## Why Edge is hard to replicate (the memory architecture)
+
+Most AI tools start over every conversation. Edge doesn't. Every morning call, every calendar pattern, every commitment made and outcome observed — structured and retained. This is the strategic core of the product.
+
+Edge combines five data streams that no other product integrates:
+
+- **Intentions** — Calendar (what the user has planned)
+- **Commitments** — Email signals (what they've said they'll do)
+- **Physical state** — Whoop data (recovery, energy, strain)
+- **Conversations** — Voice calls (priorities, decisions, patterns — in their own words)
+- **Outcomes** — Observed behavior (what actually changed)
+
+The result: after six months of daily calls, Edge has structured memory about a specific user's patterns, recurring avoidances, energy cycles, and what drives results for them specifically. That's not a product feature — it's a data moat that compounds over time and becomes genuinely difficult to replace.
+
+The founders behind competing products can see the feature list. They cannot easily replicate two years of structured behavioral memory for a specific person.
+
+---
+
 ## The technology
 
 - **Voice AI:** Vapi (voice layer); Anthropic Claude (reasoning)
-- **Calendar:** Google Calendar (read + write — Core to the product)
+- **Calendar:** Google Calendar (read + write — core to the product)
 - **Health data:** Whoop integration (optional; recovery affects pacing)
-- **Privacy:** all data encrypted at rest; user-controlled retention; Privacy Mode option
+- **Memory:** seven structured layers — State, Goal, Pattern, Relationship, Accountability, Decision, Narrative — built from all five streams
+- **Privacy:** all data encrypted at rest; user-controlled retention; Privacy Mode option (data used only for the user's own experience, never for training)
 
 ---
 
