@@ -6,7 +6,7 @@ import { getOAuthClient, getCalendarEvents, getWeekEvents } from '@/lib/calendar
 import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeCalendarFit } from '@/lib/calendarScore';
 import { computeAlignment } from '@/lib/alignment';
-import { buildCalendarPlan } from '@/lib/calendarPlan';
+import { buildCalendarPlan, type PlanAction } from '@/lib/calendarPlan';
 import { consumeDeleteToken } from '@/lib/idempotency';
 import { recordUndo, type UndoOp } from '@/lib/undo';
 import { wallTimeToUtc, timedEventDateMove } from '@/lib/time';
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
   })();
 
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
+  const scoreBefore = fit.edgeScore;
   const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday);
 
   // Build calendar client
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
 
   const undoOps: UndoOp[] = [];
   const doneDescs: string[] = [];
+  const doneActions: PlanAction[] = [];
 
   for (const action of plan.actions) {
     if (action.type === 'create' && action.title && action.startDateTime && action.endDateTime) {
@@ -83,6 +85,7 @@ export async function POST(req: NextRequest) {
         if (res.data.id) {
           undoOps.push({ type: 'delete', calId: 'primary', eventId: res.data.id });
           doneDescs.push(action.description);
+          doneActions.push(action);
         }
       } catch (err) {
         console.error('[day-plan/confirm] create failed:', err);
@@ -106,12 +109,20 @@ export async function POST(req: NextRequest) {
               : undefined,
           } });
           doneDescs.push(action.description);
+          doneActions.push(action);
         }
       } catch (err) {
         console.error('[day-plan/confirm] move failed:', err);
       }
     }
   }
+
+  // Build 1–3 plain-English change-lines from successfully applied actions for the
+  // DayPlanCard "Day reshaped" toast. Prefer action.reason (already short + honest);
+  // fall back to a truncated description so the toast is never empty.
+  const changeLines = doneActions.slice(0, 3).map(a =>
+    a.reason ?? a.description.slice(0, 80)
+  );
 
   if (undoOps.length) {
     // Pass planId so undoPlan() can locate and revert the whole batch by planId.
@@ -156,5 +167,5 @@ export async function POST(req: NextRequest) {
     } catch { /* non-fatal */ }
   } catch { /* non-fatal */ }
 
-  return NextResponse.json({ ok: true, newScore: newEdgeScore, count: doneDescs.length });
+  return NextResponse.json({ ok: true, newScore: newEdgeScore, scoreBefore, changeLines, count: doneDescs.length });
 }
