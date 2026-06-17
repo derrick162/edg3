@@ -9,6 +9,18 @@ Every conversation you have with a chatbot starts from zero. When you close the 
 
 ---
 
+## The Edg3 Flywheel
+
+```
+Daily Call → Memory → Trust → Daily Call → ...
+```
+
+Every call feeds Memory — Edge learns something new about you. Better Memory builds Trust — Edge gets you right, says true things, earns your 3 minutes. Trust brings you back to the Daily Call. And the cycle compounds.
+
+This is what separates Edg3 from every other AI. ChatGPT has no forcing function to generate data. Edg3 has a daily conversation that runs whether you think about it or not — the call is both the product *and* the engine. By call 30, Edge knows things about you that took months to surface. You can't port that to another app.
+
+---
+
 ## Five data streams competitors can't easily combine
 
 | Stream | What it captures | Status |

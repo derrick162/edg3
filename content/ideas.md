@@ -60,5 +60,26 @@ Growth path: one user gets addicted → tells friends. Bottom-up, not enterprise
 
 ---
 
+## 2026-06-17 — The Edg3 Flywheel
+
+Three product pillars — Daily Call, Trust, Memory — but not a list. A cycle.
+
+```
+Daily Call → Memory → Trust → Daily Call → ...
+```
+
+- **Daily Call** feeds Memory (every conversation, Edge learns something new)
+- **Memory** builds Trust (Edge gets you right because it knows your history)
+- **Trust** brings you back to the Daily Call (you believe 3 minutes is worth it)
+- Repeat. Compound. The flywheel spins faster the longer you use it.
+
+The call is both the product AND the engine. ChatGPT has no forcing function to generate data. Edg3's daily call runs whether you think about it or not — it's what makes the moat compound automatically.
+
+By call 30, Edge knows things about you that took months to surface. You can't port that to another app.
+
+This is the **Edg3 Flywheel**. Use this framing in angel conversations, design-partner pitches, and product decisions.
+
+---
+
 _Add more entries below this line._
 
