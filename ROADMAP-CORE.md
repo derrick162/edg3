@@ -259,6 +259,24 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **T4 — STT transcript canonicalization (3 write paths).**
+  - **`canonicalNamesFromProfile(userName)`** pure helper added to `lib/grounding.ts`. Splits a
+    user's profile name ("Derrick Fung") into proper-noun tokens for use as canonical names in
+    the Tier-1 grounding pass. Tokens < 3 chars filtered; deduplicates automatically.
+  - **Full call transcript (stored in DB):** before `briefingQueries.update` in the webhook
+    `call-ended` block, applies `groundProperNouns` with user name + person facts. Corrects
+    1-edit near-misses (e.g. "Derick" → "Derrick") before the transcript is persisted — what
+    the user sees in the dashboard deep-link is already canonical.
+  - **Call-summary path (`saveCallSummaryToCalendar`):** extended existing T3 grounding to also
+    include user name tokens and today's calendar event titles (via `extractNamesFromEventTitles`
+    + `getCalendarEvents`). Event titles are the canonical source for event-specific names (e.g.
+    "1:1 Jim" → corrects STT "Gym" before the Haiku summarization pass).
+  - **Call notes / user-response memory (`analyzeUserResponse` in `lib/briefing.ts`):** applies
+    grounding with user name + person facts before `memoryQueries.create('transcript', ...)`.
+    What the user reads in the "What Edge knows" tab is canonical.
+  - Tier-1 threshold (edit-distance ≤ 1 post-phonetics) is intentionally conservative — "Derek"
+    (3 edits from "Derrick") is left for Tier-2 Haiku; "Derick" (1 edit) is corrected.
+  - 6 new tests. 1246/1246 green, tsc clean.
 - **2026-06-18** — **Activation Moment data-wiring: 4 bugs fixed, flow wired to real endpoints.**
   - Resolved merge conflict with Cam's activation UI (Cam's visual components win: `ActivationReveal`, `ActivationHeroCard`, `ActivationHeroAligned`, `ActivationLoading`). Step flow: `profile → calendar → activation → hero → priorities → calltime`.
   - **[Bug 1] `ActivationStep.handleAccept` sent no body** — `/api/priorities/derive/accept` requires `{ priorities: string[] }`; was posting empty. Fixed: passes `proposal.priorities.map(p => p.text)`.
