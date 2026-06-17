@@ -85,7 +85,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: 'var(--text-muted)' }}>
-            Edge learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 5 minutes.
+            Edg3 learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 3 minutes.
           </p>
 
           {/* Waitlist form */}
@@ -145,14 +145,14 @@ export default function LandingPage() {
         {/* ── Solution: 3-column explainer ── */}
         <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
-            Edge fixes your week in 5 minutes every morning.
+            Edg3 fixes your week in 3 minutes every morning.
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
                 num: '01',
                 title: 'He already knows your priorities.',
-                desc: 'Edge analyzes your calendar history, call memory, and inbox to tell you what matters most today — you don\'t have to figure it out. Just confirm or tweak.',
+                desc: 'Edg3 analyzes your calendar history, call memory, and inbox to tell you what matters most today — you don\'t have to figure it out. Just confirm or tweak.',
               },
               {
                 num: '02',
@@ -162,7 +162,7 @@ export default function LandingPage() {
               {
                 num: '03',
                 title: 'He gets smarter every day.',
-                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edge how you work. The longer you use it, the better it gets at running the day you need.',
+                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edg3 how you work. The longer you use it, the better it gets at running the day you need.',
               },
             ].map(item => (
               <div key={item.num} className="glass-card glass-card-hover p-7">
@@ -271,7 +271,7 @@ export default function LandingPage() {
               className="rounded-xl px-3 py-2.5 text-xs leading-snug"
               style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
             >
-              <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Edge: </span>
+              <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Edg3: </span>
               <span style={{ color: 'var(--text-muted)' }}>
                 Focus is solid — but your 9 AM deep-work block is sandwiched between two meetings. Want me to move them?
               </span>
@@ -279,7 +279,7 @@ export default function LandingPage() {
           </div>
 
           <p className="text-sm mt-6 text-center" style={{ color: 'var(--text-faint)' }}>
-            The score isn&apos;t just a number. It&apos;s a diagnosis. And Edge can raise it.
+            The score isn&apos;t just a number. It&apos;s a diagnosis. And Edg3 can raise it.
           </p>
         </section>
 
@@ -290,9 +290,9 @@ export default function LandingPage() {
           </h2>
           <div className="flex flex-col gap-6 text-left">
             {[
-              { step: '1', text: 'Edge calls you. At your chosen time, Monday through Friday. The call is 3–5 minutes.' },
+              { step: '1', text: 'Edg3 calls you. At your chosen time, Monday through Friday. The call is 3 minutes.' },
               { step: '2', text: 'He opens with your Edge Score and the diagnosis. "Focus is a 7, Energy\'s a 4 — here\'s why, and here\'s what I\'d change."' },
-              { step: '3', text: 'You say yes. Edge reshapes your calendar, books the blocks, moves what needs moving. You hang up feeling lighter.' },
+              { step: '3', text: 'You say yes. Edg3 reshapes your calendar, books the blocks, moves what needs moving. You hang up feeling lighter.' },
             ].map(item => (
               <div key={item.step} className="flex items-start gap-5">
                 <div style={{
@@ -314,13 +314,13 @@ export default function LandingPage() {
         <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
           <div className="glass-card p-8 md:p-12">
             <h2 className="text-3xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
-              Most AI forgets you. Edge remembers.
+              Most AI forgets you. Edg3 remembers.
             </h2>
             <p className="text-base leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>
-              Every call, every confirmed plan, every priority you name — Edge is building a model of you. Not a profile you fill out once and forget. A living picture that updates every morning.
+              Every call, every confirmed plan, every priority you name — Edg3 is building a model of you. Not a profile you fill out once and forget. A living picture that updates every morning.
             </p>
             <p className="text-base leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>
-              That&apos;s why the briefing feels different after two weeks than it did on day one. Edge knows your energy patterns, your recurring bottlenecks, the people who move things and the ones who don&apos;t. It stops asking what matters and starts just knowing.
+              That&apos;s why the briefing feels different after two weeks than it did on day one. Edg3 knows your energy patterns, your recurring bottlenecks, the people who move things and the ones who don&apos;t. It stops asking what matters and starts just knowing.
             </p>
             <p className="text-base leading-relaxed mb-10" style={{ color: 'var(--text-muted)' }}>
               You&apos;re not training a chatbot. You&apos;re building an operating partner that accumulates context the way a great chief of staff does — call by call, week by week.
@@ -349,13 +349,13 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {[
               'AI-recommended daily focus areas — based on your calendar history, calls, and inbox',
-              'Morning voice call — 3–5 min, Monday–Friday, your schedule',
+              'Morning voice call — 3 min, Monday–Friday, your schedule',
               'Live calendar management — create, move, delete, color-code via conversation',
               'Edge Score — Focus / Energy / Clarity / Momentum, updated daily',
               'Open Loops — surfaces commitments you\'ve mentioned but haven\'t closed',
               'Whoop integration — automatic energy tracking via recovery + sleep scores',
               'Gmail integration — urgent thread detection, reply tracking, inbox triage signal',
-              'Activity log — every change Edge makes, with one-tap undo',
+              'Activity log — every change Edg3 makes, with one-tap undo',
             ].map((feat, i) => (
               <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ background: 'var(--edg-fill-04)' }}>
                 <span style={{ color: 'var(--edg-indigo)', fontSize: 14, flexShrink: 0, marginTop: 2 }}>✦</span>
@@ -372,7 +372,7 @@ export default function LandingPage() {
               Early access is limited. Get on the list.
             </h2>
             <p className="text-base mb-8" style={{ color: 'var(--text-muted)' }}>
-              We&apos;re opening Edge to a small group of beta users before public launch. If you&apos;re a founder, exec, or high-performer who&apos;s serious about focus and energy — we want to hear from you.
+              We&apos;re opening Edg3 to a small group of beta users before public launch. If you&apos;re a founder, exec, or high-performer who&apos;s serious about focus and energy — we want to hear from you.
             </p>
             {submitted ? (
               <div style={{ color: 'var(--text-muted)' }} className="text-sm">You&apos;re on the list — we&apos;ll be in touch soon.</div>

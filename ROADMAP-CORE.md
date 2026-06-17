@@ -449,6 +449,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST UX-1 — landing page brand + timing copy fixes.**
+  - `app/page.tsx`: All "Edge" instances replaced with "Edg3" on public-facing surfaces (Derrick's explicit feedback 2026-06-17). "5 minutes" replaced with "3 minutes" throughout (hero, section heading, "How it works" step 1, features list). The mock UI chip showing the assistant speaking updated to "Edg3:" label. 1652/1652 green.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC0-1b — after-call memory audit: due date extraction fix.**
   - `app/api/vapi/webhook/route.ts` `extractTasksFromTranscript`: previously hardcoded all commitment tasks to "tomorrow." Now extracts explicit due dates from the transcript ("by Friday", "this week", "next week") and resolves them to YYYY-MM-DD. Return format changed from `string[]` to `{text, dueDate}[]`. Validation falls back to tomorrow if date is malformed. People + goal extraction already correct in `lib/facts.ts` extraction prompt.
   - 1652/1652 green, tsc clean, next build clean.
