@@ -49,7 +49,7 @@ export function ActivationLoading() {
   }, [msgIdx]);
 
   return (
-    <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+    <div className="flex flex-col items-center justify-center py-10 px-4 text-center" role="status" aria-live="polite">
       {/* Shimmer ring — pulse, not spinner */}
       <div className="relative mb-8">
         <div
