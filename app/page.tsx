@@ -51,7 +51,7 @@ export default function LandingPage() {
 
       <div className="relative z-10">
         {/* Nav */}
-        <nav className="flex items-center justify-between px-6 md:px-10 py-6 max-w-6xl mx-auto">
+        <nav className="flex items-center justify-between px-4 md:px-10 py-6 max-w-6xl mx-auto">
           <Logo size={22} eyebrow />
           <div className="flex items-center gap-4">
             <Link href="/login" className="btn-secondary text-sm py-2 px-5">Log in</Link>
@@ -60,7 +60,7 @@ export default function LandingPage() {
         </nav>
 
         {/* ── Hero ── */}
-        <section className="max-w-4xl mx-auto px-6 md:px-8 pt-16 pb-14 text-center">
+        <section className="max-w-4xl mx-auto px-4 md:px-8 pt-16 pb-14 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8 text-sm font-medium"
                style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--edg-indigo-bright)', display: 'inline-block' }} className="animate-pulse" />
@@ -98,7 +98,7 @@ export default function LandingPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="btn-primary text-base py-2.5 px-7 whitespace-nowrap"
+                  className="btn-primary text-base py-3 px-7 whitespace-nowrap"
                 >
                   {submitting ? 'Joining…' : 'Join the waitlist'}
                 </button>
@@ -111,7 +111,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Problem ── */}
-        <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
+        <section className="max-w-3xl mx-auto px-4 md:px-8 py-14 text-center">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
             Your calendar is full.<br />The right things aren&apos;t getting done.
           </h2>
@@ -127,7 +127,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Solution: 3-column explainer ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-14">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
             Edge fixes your week in 5 minutes every morning.
           </h2>
@@ -159,7 +159,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Edge Score ── */}
-        <section className="max-w-4xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-4xl mx-auto px-4 md:px-8 py-14">
           <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             One number. Your daily readout.
           </h2>
@@ -171,7 +171,7 @@ export default function LandingPage() {
           <div
             className="glass-card mx-auto"
             style={{
-              maxWidth: 420,
+              maxWidth: 420, width: '100%',
               borderColor: 'var(--edg-accent-20)',
               padding: '28px 28px 24px',
               boxShadow: '0 0 40px rgba(99,102,241,0.10)',
@@ -268,7 +268,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── How it works ── */}
-        <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
+        <section className="max-w-3xl mx-auto px-4 md:px-8 py-14 text-center">
           <h2 className="text-3xl font-black tracking-tight mb-12" style={{ color: 'var(--text-strong)' }}>
             Three things. Every morning.
           </h2>
@@ -295,7 +295,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Burnout / ADHD section ── */}
-        <section className="max-w-4xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-4xl mx-auto px-4 md:px-8 py-14">
           <div className="glass-card p-8 md:p-12">
             <h2 className="text-3xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
               Built for the people most at risk of burning out.
@@ -319,7 +319,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Features ── */}
-        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-14">
           <h2 className="text-xl font-black tracking-tight mb-8 text-center" style={{ color: 'var(--text-strong)' }}>
             Everything you need. Nothing you don&apos;t.
           </h2>
@@ -336,14 +336,14 @@ export default function LandingPage() {
             ].map((feat, i) => (
               <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ background: 'var(--edg-fill-04)' }}>
                 <span style={{ color: 'var(--edg-indigo)', fontSize: 14, flexShrink: 0, marginTop: 2 }}>✦</span>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{feat}</p>
+                <p className="text-sm leading-relaxed min-w-0" style={{ color: 'var(--text-body)' }}>{feat}</p>
               </div>
             ))}
           </div>
         </section>
 
         {/* ── Final CTA ── */}
-        <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
+        <section className="max-w-3xl mx-auto px-4 md:px-8 py-14 text-center">
           <div className="glass-card p-6 md:p-10 lg:p-14" style={{ borderColor: 'var(--edg-accent-20)' }}>
             <h2 className="text-3xl font-black tracking-tight mb-4" style={{ color: 'var(--text-strong)' }}>
               Early access is limited. Get on the list.
@@ -365,7 +365,7 @@ export default function LandingPage() {
                     className="input flex-1 max-w-xs text-base"
                     style={{ paddingTop: '0.625rem', paddingBottom: '0.625rem' }}
                   />
-                  <button type="submit" disabled={submitting} className="btn-primary text-base py-2.5 px-7 whitespace-nowrap">
+                  <button type="submit" disabled={submitting} className="btn-primary text-base py-3 px-7 whitespace-nowrap">
                     {submitting ? 'Joining…' : 'Join waitlist'}
                   </button>
                 </form>
@@ -378,7 +378,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Footer ── */}
-        <footer className="max-w-5xl mx-auto px-6 md:px-8 py-8 text-center" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
+        <footer className="max-w-5xl mx-auto px-4 md:px-8 py-8 text-center" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
           <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
             Your data is encrypted at rest and never sold · Disconnect anytime
           </p>
