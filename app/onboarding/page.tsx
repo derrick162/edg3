@@ -2,10 +2,12 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
+import type { DerivedProposal } from '@/components/ui/PriorityDerivationCard';
 
-type Step = 'profile' | 'calendar' | 'priorities' | 'calltime' | 'done';
+type Step = 'profile' | 'calendar' | 'activation' | 'calltime' | 'done';
 
-const STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime'];
+const STEPS: Step[] = ['profile', 'calendar', 'activation', 'calltime'];
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
@@ -323,41 +325,169 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
   );
 }
 
-// ── Step 3: Priorities ────────────────────────────────────────────────────────
+// ── Step 3: Activation — derive & reveal ─────────────────────────────────────
 
-function PrioritiesStep({ onNext }: { onNext: () => void }) {
-  const [priorities, setPriorities] = useState(['', '', '']);
-  const [loading, setLoading] = useState(false);
-  const [suggesting, setSuggesting] = useState(true);
-  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
+type ActivationStatus = 'loading' | 'proposal' | 'tweaking' | 'accepting' | 'fallback' | 'fallback-saving';
 
-  useEffect(() => {
+function ActivationStep({ onNext }: { onNext: () => void }) {
+  const [status, setStatus] = useState<ActivationStatus>('loading');
+  const [proposal, setProposal] = useState<DerivedProposal | null>(null);
+  const [tweakTexts, setTweakTexts] = useState(['', '', '']);
+  const [manualPriorities, setManualPriorities] = useState(['', '', '']);
+  const [fallbackSuggesting, setFallbackSuggesting] = useState(false);
+
+  function loadFallbackSuggestions() {
+    setFallbackSuggesting(true);
     fetch('/api/onboarding/suggest-priorities')
       .then(r => r.json())
       .then(d => {
         if (d.priorities?.length) {
-          const filled = [...d.priorities, '', '', ''].slice(0, 3);
-          setPriorities(filled);
-          setSuggestionsLoaded(true);
+          setManualPriorities([...d.priorities, '', '', ''].slice(0, 3));
         }
       })
-      .finally(() => setSuggesting(false));
+      .finally(() => setFallbackSuggesting(false));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/priorities/derive')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (d.proposal?.priorities?.length >= 1) {
+          setProposal(d.proposal);
+          setTweakTexts([...d.proposal.priorities.map((p: { text: string }) => p.text), '', ''].slice(0, 3));
+          setStatus('proposal');
+        } else {
+          loadFallbackSuggestions();
+          setStatus('fallback');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        loadFallbackSuggestions();
+        setStatus('fallback');
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function acceptProposal(texts: string[]) {
+    setStatus('accepting');
+    await fetch('/api/priorities/derive/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priorities: texts }),
+    }).catch(() => null);
+    onNext();
+  }
+
+  async function submitFallback(e: React.FormEvent) {
     e.preventDefault();
-    const filled = priorities.filter(p => p.trim());
+    const filled = manualPriorities.filter(p => p.trim());
     if (!filled.length) return;
-    setLoading(true);
+    setStatus('fallback-saving');
     await fetch('/api/onboarding/priorities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priorities: filled }),
-    });
-    setLoading(false);
+    }).catch(() => null);
     onNext();
   }
 
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (status === 'loading') {
+    return (
+      <StepFade>
+        <h2 className="text-2xl font-bold mb-1">Your focus areas</h2>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+          Edge is reading your last few months to figure out what&apos;s actually pulling hardest right now.
+        </p>
+        <PriorityDerivationLoadingCard />
+      </StepFade>
+    );
+  }
+
+  // ── Proposal ───────────────────────────────────────────────────────────────
+  if (status === 'proposal' || status === 'accepting') {
+    return (
+      <StepFade>
+        <h2 className="text-2xl font-bold mb-2">Your focus areas</h2>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+          Edge read your calendar history. Here&apos;s what it sees pulling hardest right now.
+        </p>
+        <PriorityDerivationCard
+          proposal={proposal!}
+          onAccept={() => acceptProposal(proposal!.priorities.map(p => p.text))}
+          onTweak={() => {
+            setTweakTexts([...proposal!.priorities.map(p => p.text), '', ''].slice(0, 3));
+            setStatus('tweaking');
+          }}
+          onDismiss={() => {
+            loadFallbackSuggestions();
+            setStatus('fallback');
+          }}
+          accepting={status === 'accepting'}
+        />
+      </StepFade>
+    );
+  }
+
+  // ── Tweak ──────────────────────────────────────────────────────────────────
+  if (status === 'tweaking') {
+    return (
+      <StepFade>
+        <h2 className="text-2xl font-bold mb-1">Adjust your focus areas</h2>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+          Edit freely — Edge will use your exact words in every briefing.
+        </p>
+        <div className="space-y-3 mb-5">
+          {tweakTexts.map((t, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div
+                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{
+                  background: t.trim() ? 'var(--edg-accent-20)' : 'var(--edg-fill-04)',
+                  color: t.trim() ? 'var(--text-accent)' : 'var(--text-faint)',
+                  border: '1px solid var(--edg-hairline)',
+                  transition: 'background 0.2s, color 0.2s',
+                }}
+              >
+                {i + 1}
+              </div>
+              <input
+                className="input text-sm flex-1"
+                type="text"
+                placeholder={i === 0 ? 'Your primary focus right now' : i === 1 ? 'Second priority' : 'Third (optional)'}
+                value={t}
+                onChange={e => {
+                  const next = [...tweakTexts];
+                  next[i] = e.target.value;
+                  setTweakTexts(next);
+                }}
+              />
+            </div>
+          ))}
+        </div>
+        <button
+          className="btn-primary w-full mb-3"
+          disabled={!tweakTexts.some(t => t.trim())}
+          onClick={() => acceptProposal(tweakTexts.filter(t => t.trim()))}
+        >
+          Set these as my priorities →
+        </button>
+        <button
+          onClick={() => setStatus('proposal')}
+          className="w-full text-xs py-2 text-center transition-opacity hover:opacity-80"
+          style={{ color: 'var(--text-faint)' }}
+        >
+          ← Back to Edge&apos;s suggestion
+        </button>
+      </StepFade>
+    );
+  }
+
+  // ── Fallback: manual entry (thin data or dismissed) ────────────────────────
   const rankLabels = ['Primary', 'Secondary', 'Third'];
   const placeholders = [
     'e.g. Extend my runway to 18 months',
@@ -372,29 +502,22 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
         Edge checks every briefing to make sure your calendar actually reflects these — not just your intentions.
       </p>
 
-      {suggesting ? (
+      {fallbackSuggesting && (
         <div
           className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl text-sm"
           style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-accent)' }}
         >
-          <span className="w-4 h-4 rounded-full border-2 flex-shrink-0 animate-spin"
+          <span
+            className="w-4 h-4 rounded-full border-2 flex-shrink-0 animate-spin"
             style={{ borderColor: 'var(--edg-indigo)', borderTopColor: 'transparent' }}
           />
-          Edge is reading your profile and generating suggestions…
+          Generating suggestions from your profile…
         </div>
-      ) : suggestionsLoaded ? (
-        <div
-          className="flex items-center gap-2 mb-5 px-3 py-2 rounded-lg text-xs"
-          style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)', animation: 'score-rise 0.3s ease both' }}
-        >
-          ✦ Suggested from your profile — edit freely
-        </div>
-      ) : null}
+      )}
 
-      <form onSubmit={handleSubmit} className="space-y-3">
-        {priorities.map((p, i) => (
+      <form onSubmit={submitFallback} className="space-y-3">
+        {manualPriorities.map((p, i) => (
           <div key={i} className="flex items-center gap-3">
-            {/* Rank badge */}
             <div
               className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
               style={{
@@ -413,22 +536,21 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
                 placeholder={placeholders[i]}
                 value={p}
                 onChange={e => {
-                  const next = [...priorities];
+                  const next = [...manualPriorities];
                   next[i] = e.target.value;
-                  setPriorities(next);
+                  setManualPriorities(next);
                 }}
               />
               <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>{rankLabels[i]}</p>
             </div>
           </div>
         ))}
-
         <button
           type="submit"
           className="btn-primary w-full mt-4"
-          disabled={loading || !priorities.some(p => p.trim())}
+          disabled={status === 'fallback-saving' || !manualPriorities.some(p => p.trim())}
         >
-          {loading ? 'Saving…' : 'Set my focus & continue →'}
+          {status === 'fallback-saving' ? 'Saving…' : 'Set my focus & continue →'}
         </button>
       </form>
     </StepFade>
@@ -630,10 +752,10 @@ function OnboardingContent() {
         <div className="glass-card p-5 md:p-8">
           <StepIndicator current={step} />
 
-          {step === 'profile'   && <ProfileStep   onNext={advance} />}
-          {step === 'calendar'  && <CalendarStep  onNext={advance} onSkip={advance} />}
-          {step === 'priorities'&& <PrioritiesStep onNext={advance} />}
-          {step === 'calltime'  && <CallTimeStep  onNext={advance} />}
+          {step === 'profile'    && <ProfileStep    onNext={advance} />}
+          {step === 'calendar'   && <CalendarStep   onNext={advance} onSkip={advance} />}
+          {step === 'activation' && <ActivationStep onNext={advance} />}
+          {step === 'calltime'   && <CallTimeStep   onNext={advance} />}
         </div>
 
         {/* Bottom reassurance */}
