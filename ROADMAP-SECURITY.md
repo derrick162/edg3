@@ -50,6 +50,17 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Auth login tests — anti-enumeration + brute-force (1263 green).**
+
+  10 new tests in `app/api/auth/login/route.test.ts`. Key security invariants verified:
+  - Rate limit 10/15min per IP → 429 (brute-force prevention)
+  - Unknown email + wrong password both return `401 'Invalid credentials'` — same status, same message (anti-enumeration)
+  - Direct assertion that both paths produce identical error text
+  - Successful login → 200 + session cookie set
+  - `onboarding_complete` flag forwarded correctly
+  - `verifyPassword` throw → generic 500, bcrypt error string not exposed to client
+  1263/1263 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Integration test sweep — signup + backup route + backup lib (1253 green).**
 
   Closed the three largest remaining test gaps:
