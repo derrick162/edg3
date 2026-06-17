@@ -4,6 +4,12 @@ waitlist→onboarding handoff, activation funnel + success metrics, wave-1 track
 _Coordinate: Darren (flow + data), Cam (screens + motion), Kevin (PM) for technical accuracy._
 _Last updated: June 18, 2026._
 
+> **Scope note:** This doc covers Screens 0–7 of the NEW activation flow (post-calendar-connect
+> through dashboard arrival). It **supersedes** the equivalent screens in `content/onboarding-copy.md`
+> for the activation path. `onboarding-copy.md` remains authoritative for Screen 1 (Welcome),
+> Screen 2 (Connect calendar), and error/edge-case copy. When the two docs conflict on copy: use
+> this doc for anything from Screen 2 (calendar connected) onward. Call-time default: **7:30 AM**.
+
 ---
 
 ## Part 1 — Screen-by-Screen Copy
@@ -225,10 +231,11 @@ _Shown when derivation reveals priorities + calendar is already well-aligned (hi
 **Body:**
 > Edge calls you every morning — Monday through Friday. The call takes 5–10 minutes. Pick the time that fits before you start work.
 
-**Time picker:** [Time input — default: 8:00 AM in user's timezone]
+**Time picker:** [Time input — default: 7:30 AM in user's timezone]
+_(Note: `content/onboarding-copy.md` also uses 7:30 AM as default. Keep consistent — Cam, use 7:30.)_
 
 **Suggested times (shown below picker):**
-> Most design partners pick 7:30 or 8:00 AM — early enough to reshape the day before it starts.
+> Most people find 7:30–8:30 AM works best — early enough to reshape the day before it starts.
 
 **CTA:** Set call time →
 
