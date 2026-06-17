@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { priorityQueries, memoryQueries, factQueries } from '@/lib/db';
+import { priorityQueries, memoryQueries, factQueries, auditLogQueries } from '@/lib/db';
 import { getWeekOf } from '@/lib/briefing';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -48,6 +48,17 @@ export async function POST(req: NextRequest) {
   // Sync priorities → facts (category 'goal', source 'priority-sync') so they appear
   // in the Memory tab and flow into Edge's context. Idempotent: clears stale entries first.
   try { factQueries.syncPriorityFacts(user.id, newTexts); } catch { /* non-fatal */ }
+
+  auditLogQueries.record({
+    userId: user.id,
+    briefingId: null,
+    action: 'priorities_set',
+    argsJson: JSON.stringify({ priorities: newTexts, added: added.slice(0, 3), removed: removed.slice(0, 3) }),
+    resultText: `Set ${newTexts.length} priorit${newTexts.length === 1 ? 'y' : 'ies'}`,
+    ok: true,
+    snapshotBefore: null,
+    snapshotAfter: null,
+  });
 
   return NextResponse.json({ success: true });
 }
