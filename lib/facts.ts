@@ -143,12 +143,24 @@ export async function extractAndUpsertFacts(
 
     // Tier-1 grounding: deterministic pre-pass corrects 1-edit-distance STT garbling
     // (e.g. "Gym" → "Jim", "Onsi" → "Ansi") before the Haiku model sees the transcript.
-    // Calendar event titles add additional canonical names beyond stored person facts.
-    const eventNames = extractNamesFromEventTitles(calendarEventTitles ?? []);
-    const allCanonical = [...knownNames, ...eventNames];
+    // Calendar event titles add canonical names: prefer exact event spelling over STT re-spell.
+    // Auto-fetch today's events when not supplied — so the webhook call site stays simple.
+    let resolvedEventTitles = calendarEventTitles;
+    if (!resolvedEventTitles) {
+      try {
+        const { getCalendarEvents } = await import('./calendar');
+        const evts = await getCalendarEvents(userId);
+        resolvedEventTitles = evts.map(e => e.summary ?? '').filter(Boolean);
+      } catch { resolvedEventTitles = []; }
+    }
+    const eventNames = extractNamesFromEventTitles(resolvedEventTitles);
+    // Combine person facts + event title names for both Tier-1 pre-pass AND Haiku hint.
+    const allCanonical = [...new Set([...knownNames, ...eventNames])];
     const groundedTranscript = groundProperNouns(transcript, allCanonical);
 
-    const facts = await extractFactsFromTranscript(groundedTranscript, userName, knownNames, storedFacts);
+    // Pass allCanonical (not just knownNames) so the Haiku model uses exact event-title
+    // spellings when a transcribed name is a near-miss (e.g. event "1:1 Jim" → prefer "Jim").
+    const facts = await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts);
     let stored = 0;
     for (const f of facts) {
       // Never file a "person" fact about the user themselves.
