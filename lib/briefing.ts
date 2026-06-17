@@ -22,7 +22,15 @@ import { recommendFocusAreas, type FocusRecommendation } from './focusRecommenda
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
 import { buildRelationshipContextBlock, syncPeopleProfiles } from './relationships';
-import { peopleProfileQueries } from './db';
+import { peopleProfileQueries, patternCacheQueries } from './db';
+import {
+  detectProductiveDayPattern,
+  detectLightDayPattern,
+  detectMeetingLoadRecoveryPattern,
+  detectFocusWindowPattern,
+  pickBestPattern,
+  formatPatternForBriefing,
+} from './patternMemory';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -302,6 +310,17 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   }
   // Refresh people profiles from calendar history (fire-and-forget — never blocks the briefing).
   syncPeopleProfiles(userId, pastCalendarHistory, calendarEvents, user.email).catch(() => {});
+  // Compute and cache behavioral patterns (fire-and-forget).
+  try {
+    const recoveryHistoryPoints = recoveryHistory.map(r => ({ date: r.date, recoveryScore: r.recoveryScore }));
+    const bestPattern = pickBestPattern([
+      detectProductiveDayPattern(pastCalendarHistory, userTimezone),
+      detectLightDayPattern(pastCalendarHistory, userTimezone),
+      detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryHistoryPoints, userTimezone),
+      detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+    ]);
+    patternCacheQueries.upsert(userId, JSON.stringify(bestPattern ? [bestPattern] : []));
+  } catch { /* never block briefing */ }
 
   // Urgent open loops — pure DB read, fetch before focus rec so they can modulate recommendations.
   const urgentLoopsEarly = (() => { try { return getUrgentOpenLoops(userId, focusDate); } catch { return []; } })();
@@ -409,6 +428,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     try {
       const profiles = peopleProfileQueries.listForUser(userId);
       return buildRelationshipContextBlock(calendarEvents, profiles, user.email);
+    } catch { return ''; }
+  })();
+  // Pattern memory: best behavioral pattern detected from calendar + Whoop history.
+  const patternMemoryBlock = (() => {
+    try {
+      const recoveryForPatterns = recoveryHistory.map(r => ({ date: r.date, recoveryScore: r.recoveryScore }));
+      const best = pickBestPattern([
+        detectProductiveDayPattern(pastCalendarHistory, userTimezone),
+        detectLightDayPattern(pastCalendarHistory, userTimezone),
+        detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryForPatterns, userTimezone),
+        detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+      ]);
+      return formatPatternForBriefing(best);
     } catch { return ''; }
   })();
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
@@ -678,6 +710,9 @@ Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE spec
 ` : ''}${relationshipContextBlock ? `
 ${relationshipContextBlock}
 Use RELATIONSHIP CONTEXT to make ONE warm, specific observation about a person you're meeting today — "you've worked with Alice seven times" or "last time you connected with Bob was two months ago — might be worth an update." One line only; weave it into section 2 or 3 naturally. Never read the full list.
+` : ''}${patternMemoryBlock ? `
+${patternMemoryBlock}
+Use PATTERN INSIGHT in section 5 (CALENDAR BLOCKS) — reference the pattern naturally when it strengthens a scheduling suggestion (e.g. "Tuesdays tend to be your clearest — want to protect this Tuesday morning for deep work?"). One mention only; never read the stats aloud.
 ` : ''}${calendarPatternsBlock ? `
 ${calendarPatternsBlock}
 Use CALENDAR PATTERNS in section 5 (CALENDAR BLOCKS) — suggest time blocks that align with the inferred focus window and avoid the historically-packed meeting window. Reference patterns only when they strengthen a recommendation (e.g. "Tuesday mornings are usually light for you — good slot for deep work"). Do not read the whole block aloud.

@@ -1141,6 +1141,7 @@ export default function Dashboard() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
   const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
+  const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -1248,6 +1249,7 @@ export default function Dashboard() {
     retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
     fetch('/api/relationships').then(r => r.ok ? r.json() : null).then(d => { if (d?.profiles) setPeople(d.profiles); }).catch(() => {});
+    fetch('/api/patterns').then(r => r.ok ? r.json() : null).then(d => { if (d?.patterns) setPatterns(d.patterns); }).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
@@ -2700,6 +2702,29 @@ export default function Dashboard() {
               {/* Divider between structured facts and raw call notes */}
               {facts.length > 0 && memories.length > 0 && (
                 <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+              )}
+
+              {/* Behavioral patterns */}
+              {patterns.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">📊</span>
+                    Patterns Edge has noticed
+                  </h3>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                    Detected from your calendar and health data — Edge uses these to protect your best time.
+                  </p>
+                  <div className="space-y-2">
+                    {patterns.map((p, i) => (
+                      <div key={i} className="glass-card px-4 py-3">
+                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{p.summary}</p>
+                        <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
+                          {p.confidence === 'high' ? 'High' : 'Medium'} confidence · {p.sampleDays} data points
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {/* People profiles */}

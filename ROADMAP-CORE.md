@@ -304,6 +304,24 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **M3 Pattern Memory — behavioral patterns from calendar + Whoop history.**
+  - **`lib/patternMemory.ts`** (new, pure, zero I/O): 4 detectors:
+    - `detectProductiveDayPattern` — which days have the most uninterrupted ≥60min blocks (proxy for deep work)
+    - `detectLightDayPattern` — which day consistently has the fewest meetings (≥20% below median)
+    - `detectMeetingLoadRecoveryPattern` — do heavy-meeting days (≥5 events) precede lower Whoop recovery?
+    - `detectFocusWindowPattern` — which 2-hour slot is most consistently meeting-free across weeks
+    - `pickBestPattern(patterns[])` — picks highest-confidence, most-evidenced pattern
+    - `formatPatternForBriefing(pattern)` — formats as briefing prompt block with confidence + sample count
+  - **`pattern_cache` table** added to `lib/db.ts` (one row/user, JSON blob, refreshed each briefing).
+    `patternCacheQueries`: `get` (read cached patterns) + `upsert` (replace on each briefing run).
+  - **Briefing wiring** (`lib/briefing.ts`): patterns computed inline from already-fetched `pastCalendarHistory`
+    + `recoveryHistory` — zero extra API calls. Best pattern injected as `PATTERN INSIGHT` block in section 5
+    (calendar blocks). Cache upserted fire-and-forget. Both the inline block AND cache update degrade silently.
+  - **`GET /api/patterns`** — reads `pattern_cache` for user; returns `{ patterns }` for dashboard.
+  - **Dashboard Memory tab**: "Patterns Edge has noticed" section with summary + confidence + data points.
+    Populated from first briefing call; empty before then (no cold-start cost).
+  - 18 new tests for all 4 detectors + pickBestPattern + formatPatternForBriefing.
+    1389/1389 green, tsc clean, next build clean.
 - **2026-06-18** — **M2 Relationship Memory — people profiles from calendar attendees.**
   - **`lib/relationships.ts`** (new, pure + sync layer): `extractAttendeesFromEvent` strips self/selfEmail;
     `computePersonInteractions(pastEvents, upcomingEvents, selfEmail, nowIso)` — pure, no I/O — groups attendees
