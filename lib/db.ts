@@ -413,8 +413,8 @@ function initSchema(db: Database.Database) {
       source       TEXT NOT NULL CHECK(source IN ('call', 'calendar', 'email')),
       occurred_at  TEXT NOT NULL,
       content_raw  TEXT NOT NULL,
-      topics       TEXT,
-      commitments  TEXT,
+      topics       TEXT NOT NULL DEFAULT '[]',
+      commitments  TEXT NOT NULL DEFAULT '[]',
       created_at   TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -425,17 +425,6 @@ function initSchema(db: Database.Database) {
       user_id    INTEGER NOT NULL REFERENCES users(id),
       flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop')),
       expires_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS episodes (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id      INTEGER NOT NULL REFERENCES users(id),
-      source       TEXT NOT NULL CHECK(source IN ('call', 'calendar', 'email')),
-      occurred_at  TEXT NOT NULL,
-      content_raw  TEXT NOT NULL,
-      topics       TEXT NOT NULL DEFAULT '[]',
-      commitments  TEXT NOT NULL DEFAULT '[]',
-      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
 
