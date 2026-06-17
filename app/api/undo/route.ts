@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { calendarQueries, undoQueries } from '@/lib/db';
+import { calendarQueries, undoQueries, auditLogQueries } from '@/lib/db';
 import { getOAuthClient } from '@/lib/calendar';
 import { executeUndo, parseUndoOps } from '@/lib/undo';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
@@ -59,5 +59,16 @@ export async function POST(req: NextRequest) {
 
   const ok = await executeUndo(cal, parseUndoOps(entry.payload));
   undoQueries.markUndone(entry.id);
+
+  auditLogQueries.record({
+    userId: user.id,
+    action: 'undo_applied',
+    argsJson: JSON.stringify({ undoId: entry.id, label: entry.label }),
+    resultText: ok
+      ? `Undid: ${entry.label}`
+      : `Undo failed (partial): ${entry.label}`,
+    ok,
+  });
+
   return NextResponse.json({ success: ok, label: entry.label });
 }
