@@ -66,6 +66,19 @@ export async function POST(req: NextRequest) {
     date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
   }
 
+  // Idempotency: if already confirmed today with the same area titles, skip all writes.
+  // Prevents duplicate audit entries when the user re-clicks or the voice path re-confirms.
+  const existing = dailyFocusQueries.getToday(user.id, date);
+  if (existing?.confirmed) {
+    let existingAreas: FocusArea[] = [];
+    try { existingAreas = JSON.parse(existing.focus_areas); } catch { /* ok */ }
+    const existingKey = existingAreas.map(a => a.title.trim().toLowerCase()).sort().join('|');
+    const newKey = cleaned.map(a => a.title.trim().toLowerCase()).sort().join('|');
+    if (existingKey === newKey) {
+      return NextResponse.json({ ok: true, date, count: cleaned.length });
+    }
+  }
+
   const generatedAt = new Date().toISOString();
   dailyFocusQueries.upsert(user.id, date, JSON.stringify(cleaned), generatedAt);
   dailyFocusQueries.confirm(user.id, date);

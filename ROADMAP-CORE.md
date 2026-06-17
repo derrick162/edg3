@@ -448,6 +448,29 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Round 5 complete — Memory self-learning flywheel (T1–T4).**
+  - **T1 — Bi-temporal facts** (`lib/db.ts`, `lib/facts.ts`): `valid_from`/`valid_until` columns on `facts` table; `factQueries.retire()` sets `valid_until=now()`; `upsertFact` bi-temporal conflict path — low-confidence existing fact is retired, new inserted (history preserved); all briefing/memory reads filter `valid_until IS NULL`. `getAllIncludingRetired()` added for T4 history analysis. `lib/db-facts.test.ts` (10 tests).
+  - **T2 — Sleep-time consolidation agent** (`lib/facts.ts`): `runSleepTimeConsolidation(userId, transcript, userName?)` — one Haiku call after each call; structured `{action:'update'|'retire'|'add'}` output → applies via bi-temporal pipeline; wired in webhook fire-and-forget after `extractAndUpsertFacts`. Degrades silently (<50 char transcript → early return). 7 new tests in `lib/facts.test.ts`.
+  - **T3 — In-call memory triggers** (`app/api/vapi/tool-call/route.ts`, `lib/vapi.ts`): `rememberPreference` handler expanded to accept `topic` and `category` params; looks up existing fact by entity and detects update vs. new; returns "updated" vs. "saved" confirmation. Prompt updated with overwrite guidance. ⚠️ External: add optional `topic`/`category` params to Vapi `rememberPreference` tool.
+  - **T4 — Historical pattern detection** (`lib/factPatterns.ts`, `lib/patternMemory.ts`, `lib/briefing.ts`): weekly Haiku pass over bi-temporal fact history → `commitment_follow_through` + `priority_drift` patterns; weekly throttle (6.5d cache); results stored as JSON fact rows (`source='historical-pattern'`); `PatternType` extended; `pickBestPattern` TYPE_RANK updated; `patternMemoryBlock` spreads `getHistoricalPatterns()` alongside M3 calendar/Whoop patterns. 9 new tests in `lib/factPatterns.test.ts`. 1506/1506 green, tsc clean, next build clean.
+  - **Voice naming reconciliation**: `daniel`/`aria` keys replace `male`/`female` system-wide (db, api, scheduler, vapi, tests). `app/api/profile/voice/route.ts` created for Design's voice UI. Dashboard conflict resolved (Design's voice picker section is canonical; Core's duplicate removed).
+- **2026-06-18** — **Voice preference — per-user male/female voice override.**
+  - **`lib/vapi.ts`** — `VOICES` map with both configs (male: Daniel `3WqHLnw80rOZqJzW9YRB` eleven_turbo_v2_5; female: `cgSgspJ2msm6clMCkdW9` eleven_flash_v2). `initiateCall` adds `voicePref` param; wires `VOICES[voicePref]` into BOTH the inline assistant `voice:` block AND `assistantOverrides.voice` so it applies regardless of whether `VAPI_ASSISTANT_ID` is set. No Vapi dashboard step needed.
+  - **`lib/db.ts`** — `voice_preference TEXT NOT NULL DEFAULT 'male'` migration added; `userQueries.setVoicePreference(id, pref)` added; `User.voice_preference` optional field.
+  - **`lib/scheduler.ts`** — both `scheduleBriefingCall` and `scheduleOpenCall` now pass `user.voice_preference` to `initiateCall` (defaulting to `'male'`).
+  - **`app/api/profile/route.ts`** — GET returns `voice_preference`; POST accepts `voice_preference` standalone (no `profile_summary` required); validates against `{'male','female'}`.
+  - **`app/dashboard/page.tsx`** — "Edge's voice" section in ProfileTab: two buttons (Daniel / Female), immediate save on click, "Applies to your next call" note.
+  - 6 new tests (VOICES map shape × 3, initiateCall voice path × 3). No Vapi dashboard step. 1480/1480 green, tsc clean, next build clean.
+- **2026-06-18** — **Memory trust fix — people/goals hallucination guards.**
+  - **`isAssistantEntity()`** — new guard blocks Edge/Edg3/AI as person contacts at upsert (and in email path).
+  - **`isActivityEntity()`** — blocks gym, workout, lunch, etc. from being filed as people (STT homophone fix).
+  - **M2 contact cross-check** — `extractAndUpsertFacts` loads `peopleProfileQueries.listForUser` and drops low-confidence person facts with no real contact match when M2 data is available. Degrades gracefully when M2 is empty (no filter applied).
+  - **Fuzzy entity dedup in `consolidateFacts`** — Pass 2 merges groups where one entity is a substring of the other (e.g. "Pfizer" + "Pfizer CIBC" → "Pfizer"). Guards against over-merging first names. Reuses the existing `reduceGroup` sort/bestStatement logic.
+  - **Tighter extraction prompt** — "person" category line explicitly excludes Edge/Edg3, activities, and companies. New CONCRETE DETAILS rule: prefer "Derrick's dad's birthday is June 15" over "Dad has a birthday."
+  - **`cleanupPeopleFacts(userId, userName?)`** — exported idempotent cleanup for existing bad data: removes self/assistant/activity entities and unmatched low-conf facts; calls `consolidateFacts` to merge fuzzy dups. Returns `{ removed }`.
+  - **Email path guards** — `extractAndUpsertFactsFromEmail` now applies all three person guards (self, assistant, activity).
+  - **Dashboard JSX fix** — two `{!secCollapsed && <div>...</div>}` blocks had a missing `}` causing malformed JSX tree; fixed by closing the conditional block before the show-more button expression.
+  - 7 new tests in `lib/facts.test.ts` (`people fact guards` describe block). 1425/1425 green, tsc clean, next build clean.
 - **2026-06-18** — **Briefing V2 + Episode dashboard surface.**
   - **Briefing V2 prompt improvements** (`lib/briefing.ts` + `lib/vapi.ts`):
     - **#1 — Recovery tied to specific events.** Green recovery now encourages pushing hard on a NAMED calendar event, not a generic "solid day ahead." Red recovery names the heaviest deferrable block and offers to move it.

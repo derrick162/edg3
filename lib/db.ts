@@ -488,10 +488,13 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
     "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
     "ALTER TABLE facts ADD COLUMN source TEXT",
+    "ALTER TABLE facts ADD COLUMN valid_from TEXT",
+    "ALTER TABLE facts ADD COLUMN valid_until TEXT",
     "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
     "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
+    "ALTER TABLE users ADD COLUMN voice_preference TEXT NOT NULL DEFAULT 'daniel'",
     "ALTER TABLE people_profiles ADD COLUMN email TEXT",
     // Round 5 — bi-temporal facts (Graphiti model)
     "ALTER TABLE facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT (datetime('now'))",
@@ -535,6 +538,9 @@ export const userQueries = {
   },
   setDataConsent: (id: number, consent: 'improve' | 'privacy') => {
     return getDb().prepare('UPDATE users SET data_consent = ? WHERE id = ?').run(consent, id);
+  },
+  setVoicePreference: (id: number, pref: 'daniel' | 'aria') => {
+    return getDb().prepare("UPDATE users SET voice_preference = ? WHERE id = ?").run(pref, id);
   },
 };
 
@@ -1214,6 +1220,7 @@ export interface User {
   // 'improve' = user opts in to product improvement use; 'privacy' = inference-only.
   // Optional here so reads are safe before the column exists in the DB.
   data_consent?: 'improve' | 'privacy' | null;
+  voice_preference?: 'daniel' | 'aria' | null;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,
@@ -1313,7 +1320,7 @@ export interface Fact {
   // Bi-temporal columns (Graphiti model): valid_from = when fact became true; valid_until = when retired (null = current).
   // Retired facts are never hard-deleted — they feed pattern detection and historical queries.
   // Optional in the TS type because existing test fixtures predate the columns; DB always populates both.
-  valid_from?: string;
+  valid_from?: string | null;
   valid_until?: string | null;
   // Confidence decay (Round 6 T2): starts at 1.0, decays weekly by category tier.
   // Below 0.3 = unverified, surfaced for reconfirmation. Optional: DB always populates; tests predate columns.
@@ -1380,10 +1387,26 @@ export const factQueries = {
     return (getDb().prepare(sql).all(userId) as Fact[]).map(decryptFactRow);
   },
 
+  // Returns ALL facts including retired ones — for historical pattern analysis (T4).
+  getAllIncludingRetired: (userId: number): Fact[] => {
+    return (getDb().prepare(
+      'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at ASC'
+    ).all(userId) as Fact[]).map(decryptFactRow);
+  },
+
+  // Retire a fact bi-temporally (sets valid_until = now). Preserves history — never hard-deletes.
+  retire: (userId: number, id: number): void => {
+    getDb().prepare(
+      "UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?"
+    ).run(id, userId);
+  },
+
   // Upsert: dedupe by (category, entity) when entity present; by (category, first-80-chars-statement) otherwise.
   // Conflict detection only considers ACTIVE facts (valid_until IS NULL) — retired history is ignored.
   // statement is encrypted at rest; no-entity dedup compares decrypted values in app (SQL SUBSTR
   // cannot match ciphertext).
+  // Bi-temporal: on conflict with a low-confidence existing fact, RETIRE old + INSERT new.
+  // High-confidence facts (user-corrected) are never overwritten by extraction.
   upsertFact: (
     userId: number,
     category: string,
@@ -1414,27 +1437,22 @@ export const factQueries = {
 
     if (existingId !== undefined) {
       // User-corrected facts (confidence='high') are not overwritten by new extractions.
-      // The user's explicit edit wins over any subsequent STT/LLM extraction.
       if (existingConfidence === 'high') {
         return;
       }
       if (existingStatement!.toLowerCase() !== statement.toLowerCase()) {
-        db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=?")
-          .run(encryptField(statement), existingId);
+        // Bi-temporal: retire the old fact and insert the updated one (history preserved).
+        db.prepare("UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?")
+          .run(existingId, userId);
+        db.prepare(
+          "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
+        ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
       }
     } else {
       db.prepare(
-        'INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id) VALUES (?,?,?,?,?,?)'
+        "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
       ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
     }
-  },
-
-  // Retire a fact: sets valid_until = now(). NEVER hard-deletes — retired facts are historical record.
-  // Called by Darren's conflict-resolution logic in lib/facts.ts when a newer contradicting fact arrives.
-  retire: (userId: number, factId: number): void => {
-    getDb().prepare(
-      "UPDATE facts SET valid_until = datetime('now') WHERE id = ? AND user_id = ? AND valid_until IS NULL"
-    ).run(factId, userId);
   },
 
   // Active facts only by default. Pass includeRetired:true to include history (e.g. pattern detection).

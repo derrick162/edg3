@@ -12,15 +12,17 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 ### T0-1 — DB durability: off-box backup replication (Security — URGENT)
 **The risk:** `lib/backup.ts` stores backups on the SAME Railway volume as the database. Volume loss = database AND backups gone simultaneously. The entire memory moat — every fact, episode, pattern ever learned — lives in one SQLite file with no off-box copy. We also don't know if the Railway volume is persistent or ephemeral. If ephemeral, data may already be resetting on redeploys.
 - **Step 1:** Verify Railway volume type — persistent or ephemeral? Check Railway dashboard → Volume settings. If ephemeral, this is a production data-loss incident happening right now.
-- **Step 2:** Stand up off-box replication — at minimum, a daily SQLite dump to Railway's object storage or an external S3-compatible store. The backup must live in a different failure domain than the DB.
-- **Step 3:** Update `lib/backup.ts` to write to the off-box destination in addition to (not instead of) the on-volume location.
-- Test: simulate volume replacement, verify backup is restorable from off-box location
+- **Step 2:** Stand up Litestream → object storage replication (Railway's object storage or R2/S3). Litestream streams WAL pages continuously so RPO is seconds, not hours. The backup must live in a different failure domain than the DB.
+- **Step 3:** Move the backup trigger OFF the webhook handler — backups must run as a scheduled cron (e.g., every 15 minutes), not triggered by an incoming call. A backup firing inside a webhook is fragile and blocks the response path.
+- **Step 4:** Add a **Restore Drill** item to the Trust QA checklist — backups you've never restored from are not backups. Vijay should do one restore from a real snapshot before marking this complete.
+- Test: simulate volume replacement, restore from off-box snapshot, verify data is intact and app works
 
-### T0-2 — Encryption key: backup + graceful fallback (Security — URGENT)
+### T0-2 — Encryption key custody: backup + graceful fallback + rotation protocol (Security — URGENT)
 **The risk:** `DATA_ENCRYPTION_KEY` has no backup and no versioning. If the key is lost, rotated, or accidentally changed on Railway, every encrypted field in the database becomes permanently unreadable. Currently `decryptField` throws on key mismatch — which would crash reads across the entire app simultaneously.
 - **Step 1:** Back up `DATA_ENCRYPTION_KEY` to a second secure location (Railway secret + an external vault). Document the backup location in `content/security-audit.md` (the location, not the key itself).
-- **Step 2:** Make `decryptField` degrade gracefully — if decryption fails, return `null` and log the failure rather than throwing. Callers already handle null (most use `.catch(()=>null)` patterns). A null is recoverable. A crash is not.
+- **Step 2:** Make `decryptField` degrade gracefully — if decryption fails, return `null` and log the failure rather than throwing. Callers already handle null. A null is recoverable. A crash is not.
 - **Step 3:** Add a key-presence health check on app startup — if `DATA_ENCRYPTION_KEY` is missing, log a critical error and disable write operations rather than starting in a broken state.
+- **Step 4:** Write a one-page `content/encryption-key-rotation.md` doc: **never rotate the key without first running a re-encryption migration** (read every encrypted field, decrypt with old key, re-encrypt with new key, write back). Without this doc, whoever touches the key next will silently corrupt all data.
 - Test: temporarily remove the key, verify app degrades gracefully rather than crashing; restore key, verify reads resume
 
 ### T0-3 — End-to-end smoke test: the "7am path" (Core — HIGH PRIORITY)
@@ -57,12 +59,13 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Weekly summary: how many calls in the last 7 days failed the health check? Surface in Railway logs.
 - Test: complete a real call end-to-end, verify all three checks pass
 
-### T1-3 — Silent failure monitoring for the memory pipeline (Security)
-**The risk:** Fact extraction, sleep-time consolidation, and pattern detection all fail silently. No alerts, no visibility.
+### T1-3 — Observability: single alert path + daily admin health digest (Security)
+**The risk:** Today every failure hits only `console.error` — invisible in production. A 7am call fail, a backup fail, a decrypt error, an extraction fail: all silent. There is no way to know Edge is degraded without the user noticing first.
+- **Single alert path:** implement one outbound alert channel (Railway log-based alert → email/Slack/webhook) triggered by any of: 7am call failed to connect, backup cron failed, `decryptField` error, memory extraction failed for a call. The channel doesn't matter — one reliable signal is the goal.
+- **Daily admin health digest:** a 6am cron (runs before the 7am call) that checks: backup ran successfully in the last 24h? Any calls failed yesterday? Any extraction failures? Any decrypt errors? Write result to a `health_log` table and emit one summary log line. Derrick can check Railway logs for "HEALTH: OK" vs "HEALTH: DEGRADED (reason)".
 - Wrap every background job (sleep-time consolidation, pattern detection, predictive context loading) in try/catch with structured error logging
 - Failed jobs: log `{job, userId, failedAt, error}` to a `background_job_failures` table
-- Alert threshold: if any job fails for the same user 3+ consecutive runs, flag it
-- Test: force a failure in the sleep-time consolidation job, verify it's logged, verify the next call isn't broken
+- Test: force a failure in the sleep-time consolidation job, verify it's logged, verify the alert path fires, verify the next call isn't broken
 
 ### T1-4 — Encryption audit: verify all sensitive fields (Security)
 **The risk:** New tables have been added across Core and Security over many sessions. Not all of them have been confirmed encrypted at rest.
@@ -148,15 +151,31 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Implement a pre-call health check: 5 minutes before a scheduled call, ping Vapi status. If unhealthy, send the user a dashboard notification: "Edge couldn't reach you this morning — we'll try again tomorrow. Check your connection settings."
 - Test: simulate Vapi unavailability, verify notification fires
 
-### T4-3 — Database connection handling (Security)
-**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs running simultaneously with incoming webhooks could produce write contention.
-- Audit `lib/db.ts` `getDb()`: is WAL mode enabled? Is the connection timeout set appropriately?
+### T4-3 — SQLite concurrency + write-lock behavior under load (Security)
+**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs (sleep-time consolidation, pattern detection, predictive context loading) running simultaneously with incoming webhooks could produce write contention. Untested at multi-user scale — will bite as users grow.
+- Audit `lib/db.ts` `getDb()`: is WAL mode enabled? Is `busy_timeout` set?
 - Add `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` if not present
-- Test: simulate concurrent writes, verify no locking errors
+- Add a single-instance scheduler lock: if Edge ever scales beyond 1 Railway replica, the 7am call must not fire twice (double-dial). Implement a `scheduler_lock` table row that the scheduler claims before dialing and releases after — second instance sees the lock and skips.
+- Test: simulate concurrent writes from 5 simultaneous webhook calls, verify no locking errors or dropped writes
+
+### T4-4 — Write-idempotency sweep (Security + Core)
+**The risk:** The `confirmFocus` duplicate-call bug class — a webhook fires twice (Vapi retry, network retry, double-tap) and a mutation runs twice. Every write endpoint should be safe to call twice with the same payload.
+- Audit every `POST`/`PATCH`/`DELETE` in `app/api/**` — does it have idempotency protection?
+- Priority endpoints: `app/api/vapi/webhook/route.ts` (call end), `app/api/tasks/**`, `app/api/memory/**`, all `tool-call` handlers
+- Pattern: accept an optional `idempotencyKey` on write endpoints; if a key has been seen in the last 24h, return the cached result rather than re-executing
+- Test: POST the same payload twice to a mutation endpoint, verify the mutation only happens once
+
+### T4-5 — Undo coverage: every mutation must be reversible (Core)
+**The risk:** Undo was added for calendar mutations. But later mutations (email drafts, memory updates, task completions, episode inserts) may not be covered.
+- Audit every mutation in `app/api/vapi/tool-call/route.ts`: does it call `recordUndo`?
+- Add `recordUndo` to any handler that's missing it
+- Test: trigger every tool-call mutation, verify an undo record exists in the `undo_log` table, verify undo actually reverses the action
 
 ---
 
 ## QA Checklist — run when pillar backlog is exhausted
+
+> **QA rule (Kevin):** When this backlog is exhausted, the lane writes and runs END-TO-END tests for each pillar item — not unit tests. Unit tests verify code. End-to-end tests verify the live path. A green unit test suite and a broken production path are fully compatible.
 
 Work through each item manually. Log the result (pass/fail/partial) in a `content/qa-log.md` file with date and notes.
 
@@ -183,6 +202,9 @@ Work through each item manually. Log the result (pass/fail/partial) in a `conten
 - [ ] Check Railway logs for the last 24h. Any 500 errors? Any failed background jobs?
 - [ ] Check Vapi dashboard: did all scheduled calls connect? Any failures?
 - [ ] Check the failed_webhooks table. Any entries?
+- [ ] Check the `health_log` table — did the 6am health digest run? Status: OK or DEGRADED?
+- [ ] **Restore drill:** take a recent backup snapshot, restore it to a test DB, verify the app reads from it correctly. "Backups you've never restored are not backups."
+- [ ] **End-to-end smoke test (7am path):** trigger a call, verify transcript stored → fact extracted → appears in next briefing. Run `tests/e2e/call-to-briefing.test.ts` if it exists.
 - [ ] Run `npm run preflight`. Should be green
 
 ### Transparency

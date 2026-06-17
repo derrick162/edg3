@@ -34,6 +34,7 @@ import {
 } from './patternMemory';
 import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction } from './accountabilityMemory';
 import { buildEpisodeMemoryBlock } from './episodeStore';
+import { runHistoricalPatternDetection, getHistoricalPatterns } from './factPatterns';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -328,6 +329,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     ]);
     patternCacheQueries.upsert(userId, JSON.stringify(bestPattern ? [bestPattern] : []));
   } catch { /* never block briefing */ }
+  // T4: Historical pattern detection (weekly, fire-and-forget).
+  // Analyzes bi-temporal fact history for priority drift + commitment patterns.
+  runHistoricalPatternDetection(userId).catch(err => console.error('[briefing] Historical pattern detection failed:', err));
 
   // Urgent open loops — pure DB read, fetch before focus rec so they can modulate recommendations.
   const urgentLoopsEarly = (() => { try { return getUrgentOpenLoops(userId, focusDate); } catch { return []; } })();
@@ -450,15 +454,17 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       return buildRelationshipContextBlock(calendarEvents, profiles, user.email);
     } catch { return ''; }
   })();
-  // Pattern memory: best behavioral pattern detected from calendar + Whoop history.
+  // Pattern memory: best behavioral pattern detected from calendar + Whoop history + historical facts (T4).
   const patternMemoryBlock = (() => {
     try {
       const recoveryForPatterns = recoveryHistory.map(r => ({ date: r.date, recoveryScore: r.recoveryScore }));
+      const historicalPatterns = getHistoricalPatterns(userId);
       const best = pickBestPattern([
         detectProductiveDayPattern(pastCalendarHistory, userTimezone),
         detectLightDayPattern(pastCalendarHistory, userTimezone),
         detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryForPatterns, userTimezone),
         detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+        ...historicalPatterns,
       ]);
       return formatPatternForBriefing(best);
     } catch { return ''; }

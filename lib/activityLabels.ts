@@ -421,8 +421,9 @@ export function buildActivityItems(
   limit = 50,
 ): ActivityItem[] {
   const usedUndoIds = new Set<number>();
-  // Collapse repeated email_signal_fetch entries: keep only the most recent per UTC day.
+  // Collapse repeated same-action entries to one per UTC day.
   const seenEmailFetchDays = new Set<string>();
+  const seenConfirmFocusDays = new Set<string>();
 
   const filtered = auditRows.filter(ar => {
     if (!ar.ok || READ_ONLY_ACTIONS.has(ar.action)) return false;
@@ -430,6 +431,11 @@ export function buildActivityItems(
       const day = ar.created_at.slice(0, 10); // UTC date YYYY-MM-DD
       if (seenEmailFetchDays.has(day)) return false;
       seenEmailFetchDays.add(day);
+    }
+    if (ar.action === 'confirmFocusAreas') {
+      const day = ar.created_at.slice(0, 10);
+      if (seenConfirmFocusDays.has(day)) return false;
+      seenConfirmFocusDays.add(day);
     }
     return true;
   });

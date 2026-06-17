@@ -8,7 +8,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-// Stub factQueries so tests don't need a real DB
+// Stub factQueries and peopleProfileQueries so tests don't need a real DB
 vi.mock('./db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./db')>();
   const store: import('./db').Fact[] = [];
@@ -42,12 +42,20 @@ vi.mock('./db', async (importOriginal) => {
         const idx = store.findIndex(f => f.id === id && f.user_id === userId);
         if (idx !== -1) store.splice(idx, 1);
       }),
+      retire: vi.fn((userId: number, id: number) => {
+        const fact = store.find(f => f.id === id && f.user_id === userId);
+        if (fact) fact.valid_until = new Date().toISOString();
+      }),
+    },
+    peopleProfileQueries: {
+      // Default: returns empty array so existing tests are unaffected (no M2 filter applied).
+      listForUser: vi.fn(() => []),
     },
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts } from './facts';
-import { factQueries, type Fact } from './db';
+import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation } from './facts';
+import { factQueries, peopleProfileQueries, type Fact } from './db';
 
 function textResponse(text: string) {
   return { content: [{ type: 'text', text }] };
@@ -442,5 +450,140 @@ describe('extractFactsFromTranscript — existingFacts injection', () => {
     const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
     expect(promptContent).toContain('Fact 29');
     expect(promptContent).not.toContain('Fact 30');
+  });
+});
+
+// ── people fact guards ────────────────────────────────────────────────────────
+
+describe('people fact guards', () => {
+  it('blocks assistant entity "Edge" even at high confidence', async () => {
+    // The model returned "Edge" as a person entity — should be silently dropped.
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Edge is the AI assistant', entity: 'Edge', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks activity entity "Gym" at low confidence', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Gym is where Derrick goes', entity: 'Gym', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks self-entity "Derrick" when userName is "Derrick Fung"', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick works with Derrick Fung', entity: 'Derrick', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('drops low-conf person with no M2 match when M2 data is available', async () => {
+    // M2 has Faiza — "Laura" is unknown and low-confidence → should be dropped.
+    vi.mocked(peopleProfileQueries.listForUser).mockReturnValueOnce([
+      { id: 1, user_id: 1, canonical_name: 'Faiza', email: null, interaction_count: 3,
+        last_interaction: '2026-06-01', upcoming_interaction: null, updated_at: '2026-06-01' },
+    ]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Laura seems to be an investor', entity: 'Laura', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('keeps low-conf person that matches a known M2 contact', async () => {
+    // M2 has Faiza — a low-confidence "Faiza" fact should be kept.
+    vi.mocked(peopleProfileQueries.listForUser).mockReturnValueOnce([
+      { id: 1, user_id: 1, canonical_name: 'Faiza', email: null, interaction_count: 3,
+        last_interaction: '2026-06-01', upcoming_interaction: null, updated_at: '2026-06-01' },
+    ]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Faiza is a key investor', entity: 'Faiza', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'person', 'Faiza is a key investor', 'Faiza', 'low', undefined);
+  });
+
+  it('merges "Pfizer CIBC" into "Pfizer" via fuzzy containment dedup', () => {
+    // Two person facts: shorter "Pfizer" and longer "Pfizer CIBC" — longer should be deleted.
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      makeFact(1, 'person', 'Pfizer', 'Pfizer is a company Derrick is tracking'),
+      makeFact(2, 'person', 'Pfizer CIBC', 'Pfizer CIBC seems to be a duplicate entry'),
+    ]);
+    consolidateFacts(1);
+    // The longer entity "Pfizer CIBC" (id=2) should be deleted (or at minimum deleteFact called once)
+    expect(factQueries.deleteFact).toHaveBeenCalledTimes(1);
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 2);
+  });
+
+  it('keeps low-conf person when M2 returns no data (no filter applied)', async () => {
+    // M2 is empty → hasM2Data is false → low-conf person "Unknown Person" is kept.
+    vi.mocked(peopleProfileQueries.listForUser).mockReturnValueOnce([]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Unknown Person mentioned something', entity: 'Unknown Person', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(
+      1, 'person', 'Unknown Person mentioned something', 'Unknown Person', 'low', undefined,
+    );
+  });
+});
+
+// ── Sleep-time consolidation agent (T2) ───────────────────────────────────────
+describe('runSleepTimeConsolidation', () => {
+  it('returns early for short transcripts without calling Haiku', async () => {
+    await runSleepTimeConsolidation(1, 'too short', 'Derrick');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('calls upsertFact for "update" action with new statement', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'update', category: 'preference', entity: 'gym schedule', old: 'gym is at 6am', new: 'gym is at 7am', reason: 'user said moved to 7am' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'preference', 'gym is at 7am', 'gym schedule', 'high');
+  });
+
+  it('calls upsertFact for "add" action with new statement', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'add', category: 'goal', entity: null, new: 'Close Series A by September', reason: 'new goal stated' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'goal', 'Close Series A by September', null, 'high');
+  });
+
+  it('calls retire for "retire" action when matching active fact exists', async () => {
+    vi.mocked(factQueries.getByCategory).mockReturnValue([
+      { id: 99, user_id: 1, category: 'goal', statement: 'Raise $500K by June', entity: 'fundraising', learned_at: '2026-06-01', confidence: 'low', source_briefing_id: null },
+    ]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'retire', category: 'goal', entity: 'fundraising', old: 'Raise $500K by June', reason: 'user said round is closed' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).toHaveBeenCalledWith(1, 99);
+  });
+
+  it('does nothing when Haiku returns empty array', async () => {
+    h.create.mockResolvedValue(textResponse('[]'));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+    expect(factQueries.retire).not.toHaveBeenCalled();
+  });
+
+  it('degrades silently when Haiku call throws', async () => {
+    h.create.mockRejectedValue(new Error('API down'));
+    await expect(runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick')).resolves.toBeUndefined();
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('skips updates with invalid category', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'add', category: 'invalid_category', entity: null, new: 'Some fact', reason: 'test' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
   });
 });
