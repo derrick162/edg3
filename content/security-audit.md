@@ -269,16 +269,99 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 | Gap | Severity | Notes |
 |---|---|---|
-| `POST /api/undo` audit log | Low | Executes undo but doesn't write to `audit_log`. Calendar action itself is in the log; the reversal isn't. Tracked in ROADMAP-SECURITY. |
+| ~~`POST /api/undo` audit log~~ | ~~Low~~ | ✅ **FIXED 2026-06-17** — `undo_applied` event now written to `audit_log` after every reversal. |
 | `GET /api/vapi/verify-promises` — briefingId not user-scoped | Low | Vapi-secret-authenticated only; not user-accessible. Briefing data returned to Vapi, not to the user's browser. |
 | `GET /api/briefing/preview` — no rate limit on slow path | Low | Slow path (LLM) only runs on cache miss (once per day); daily_focus row prevents re-runs. Acceptable. |
 | `GET /api/memory` — no rate limit | Info | Cheap DB read; returns no live API data. Not worth adding friction. |
+| `users.profile_summary` not encrypted | Info | User-provided onboarding bio. Used directly in LLM hot-path (briefing.ts); encrypting it would require decryption on every prompt build. Accepted: no credentials or health data, comparable sensitivity to `users.name`. |
+| `users.phone_number` not encrypted | Info | Used for Vapi call scheduling. Stored plaintext by design; readable without key. Accepted: operator-tier sensitivity. |
 
-### 🔲 Next Backlog Items (post-audit)
+---
 
-1. Close undo-coverage gap — log undo reversal in `audit_log`
-2. Verify encryption-at-rest completeness across every PII field (see ROADMAP-SECURITY.md)
-3. Session/auth hardening review (cookie flags, CSRF on state-changing web routes, SameSite)
-4. `npm audit` — dependency/supply-chain check
-5. Finalize `content/data-protection.md` (drafted; coordinate with Esther)
-6. Rate-limit tuning review: consider lower limits for briefingGenerate/intro post-launch data
+## Encryption-at-Rest Verification (2026-06-17)
+
+All `encryptField`/`encryptNullable` call sites verified against `lib/db.ts` and `lib/gmail.ts`.
+
+### ✅ Fields encrypted at write time
+
+| Table | Column(s) | Encryption call |
+|---|---|---|
+| `calendar_tokens` | `access_token`, `refresh_token` | `encryptField`, `encryptNullable` |
+| `whoop_tokens` | `access_token`, `refresh_token` | `encryptField` × 2 |
+| `briefings` | `transcript`, `user_response` | `encryptField` (via `ENCRYPTED_BRIEFING_FIELDS` set) |
+| `facts` | `statement` | `encryptField` at create + both update paths |
+| `priorities` (goal-sync) | goal statement | `encryptField` in priority-sync path |
+| `gmail_drafts_log` | `recipient`, `subject` | `encryptNullable` × 2 |
+| `watched_threads` | `recipient`, `context` | `encryptNullable` × 2 |
+| `notifications` | `title`, `body` | `encryptNullable` × 2 |
+| `daily_focus` | `focus_areas` (JSON) | `encryptField` |
+| `open_loops` | `description` | `encryptField` |
+| `audit_log` (email signals) | `snapshot_after` subjects JSON | `encryptField` in `lib/gmail.ts` |
+
+### Crypto design
+
+- **Algorithm:** AES-256-GCM (authenticated — tamper-evident, per-value random 12-byte IV)
+- **No-op rollout:** `DATA_ENCRYPTION_KEY` unset → `encryptField()` is a passthrough (plaintext); `decryptField()` reads legacy plaintext transparently. Once the key is set, all new writes are encrypted.
+- **Fail-closed on read:** `decryptField()` throws if the key is unset but the value is already encrypted — prevents silent plaintext exposure.
+- **Strict mode:** `STRICT_ENCRYPTION=1` makes `encryptField()` throw if the key is absent — prevents misconfigured prod from persisting plaintext.
+- **Key derivation:** raw 64-char hex → direct; raw 32-byte base64 → direct; anything else → `scryptSync(key, 'edg3-data-at-rest-v1', 32)`.
+
+### Known unencrypted user fields (accepted)
+
+| Field | Reason accepted |
+|---|---|
+| `users.email` | Login index key — must be searchable; comparable to any auth system |
+| `users.name` | Low sensitivity display field |
+| `users.profile_summary` | LLM hot-path; onboarding bio; no credentials/health data |
+| `users.phone_number` | Vapi scheduling; operator-tier PII |
+| `audit_log.args_json` (non-email) | Structured action metadata; no raw content |
+
+---
+
+## Session & Auth Hardening Review (2026-06-17)
+
+**Finding: PASS — no gaps.**
+
+| Control | Implementation | Assessment |
+|---|---|---|
+| JWT secret | `getJwtSecret()` — fail-closed; throws if `JWT_SECRET` unset | ✅ No hardcoded fallback |
+| bcrypt cost | Factor 12 in `hashPassword()` | ✅ Strong (industry std is 10–12) |
+| Session revocation | `session_version` in JWT payload; validated against DB on every `getSession()`; incremented on logout | ✅ Immediate invalidation on logout |
+| Cookie: httpOnly | `httpOnly: true` in `setSessionCookie()` | ✅ JS can't read the cookie |
+| Cookie: secure | `secure: process.env.NODE_ENV === 'production'` | ✅ HTTPS-only in prod |
+| Cookie: sameSite | `sameSite: 'lax'` | ✅ Correct for OAuth redirect flows; blocks CSRF on POST |
+| Cookie: maxAge | 30 days | ✅ Reasonable for this app tier |
+| Brute force | `login` rate limit: 10/15min per IP | ✅ |
+| Password bcrypt DoS | 128-char cap on signup | ✅ FIXED in flagship audit |
+| OAuth CSRF | `oauthStateQueries` — crypto random state token verified on callback | ✅ Calendar + Whoop |
+| Admin auth | Separate HMAC-derived cookie + brute-force RL | ✅ |
+| Error messages | Generic "Invalid credentials" for both bad email + bad password (no user enumeration) | ✅ |
+
+**CSRF note:** `sameSite: lax` means the browser won't attach the session cookie to cross-origin POST/PUT/DELETE requests (only navigation-level GETs get cookies cross-site). All state-changing API routes require an auth'd session, so a forged cross-site form cannot trigger mutations. No additional CSRF token layer is needed at this app tier.
+
+---
+
+## Dependency Audit (2026-06-17)
+
+`npm audit` output: **2 moderate severity vulnerabilities**
+
+```
+postcss <8.5.10
+Severity: moderate — XSS via unescaped </style> in CSS stringify output
+Package: node_modules/next/node_modules/postcss  (bundled transitive dep of Next.js)
+```
+
+**Assessment:** Cannot fix without downgrading Next.js to 9.3.3 (`npm audit fix --force` proposes this — a major breaking change). This vulnerability is in Next.js's build-time CSS processing (Turbopack/PostCSS pipeline), not in runtime user-facing HTML output. Our app does not call PostCSS programmatically; the exposure is limited to the build process on the developer machine / CI server.
+
+**Decision:** Accept. Track for resolution when Next.js ships a patch to their bundled postcss. Not a pre-beta blocker.
+
+---
+
+### 🔲 Remaining Backlog Items
+
+1. ✅ ~~Close undo-coverage gap~~ — DONE (2026-06-17)
+2. ✅ ~~Encryption-at-rest verification~~ — DONE (2026-06-17); see section above
+3. ✅ ~~Session/auth hardening review~~ — DONE (2026-06-17); PASS
+4. ✅ ~~`npm audit` dependency check~~ — DONE (2026-06-17); 2 accepted moderate transitive vulns
+5. Finalize `content/data-protection.md` — drafted; route to Esther for copy polish before launch
+6. Rate-limit tuning review: revisit `briefingGenerate`/`briefingIntro` limits post-launch with real traffic data

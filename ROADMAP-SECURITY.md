@@ -50,6 +50,15 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Post-flagship backlog: undo audit gap + encryption verification + session/auth review + npm audit (1133 green).**
+
+  1. **Undo audit gap CLOSED** — `POST /api/undo` now writes `action='undo_applied'` to `audit_log` after every reversal (success or partial-failure). Every calendar mutation including reversals now has a full audit trail.
+  2. **Encryption-at-rest verified** — all `encryptField`/`encryptNullable` call sites in `lib/db.ts` + `lib/gmail.ts` confirmed comprehensive: `calendar_tokens`, `whoop_tokens`, `briefings`, `facts`, `gmail_drafts_log`, `watched_threads`, `notifications`, `daily_focus`, `open_loops`, `audit_log` email-signal subjects. Documented in `content/security-audit.md`. Known-unencrypted fields accepted: `users.email` (index key), `users.name`, `users.profile_summary` (LLM hot-path), `users.phone_number` (Vapi scheduling).
+  3. **Session/auth hardening review — PASS** — JWT fail-closed, bcrypt cost 12, session versioning with logout invalidation, cookie flags (httpOnly + secure + sameSite:lax), brute-force RL, OAuth CSRF state tokens. No gaps found.
+  4. **npm audit — 2 moderate transitive vulns (accepted)** — `postcss <8.5.10` in Next.js's internal build tooling; fix requires downgrading Next.js to 9.3.3 (breaking change). Build-time-only exposure; not pre-beta blocker. Documented in `content/security-audit.md`.
+  5. **`content/data-protection.md` updated** — added missing encrypted fields (email draft recipients/subjects, notification messages, daily focus plans, open loops) to the "What's encrypted at rest" section. Ready for Esther's copy polish.
+  1133/1133 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Flagship: full pre-beta security audit + hardening — all 78 routes reviewed (1133 green).**
 
   Systematically audited every `app/api/**` route across 6 dimensions: authn/authz, rate-limit, input validation, SQL/prompt injection, idempotency, audit-log coverage. All HIGH and MEDIUM findings fixed. Readiness report in `content/security-audit.md`.
