@@ -449,6 +449,14 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-MEMORY T0-3 — end-to-end smoke test: "7am path."**
+  - `lib/call-to-briefing.test.ts` (new): 18 tests covering the post-call chain:
+    `extractAndUpsertFacts` → `factQueries.upsertFact` called; `persistCallEpisode` → `episodeQueries.insert` called.
+    Pure helpers covered: `tagTopicsFromTranscript` (domain keyword detection, priority matching, 10-tag cap),
+    `tagCommitmentsFromTasks` (cap at 10). DB contract: skips short transcripts (<50 chars), self-entity
+    and assistant-entity person facts are filtered, malformed Anthropic JSON degrades without throw.
+    End-to-end "7am path" test: both writes fire in the same pipeline and the stored episode surfaces in
+    `buildEpisodeMemoryBlock`. 1670/1670 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-TRUST UX-1 — landing page brand + timing copy fixes.**
   - `app/page.tsx`: All "Edge" instances replaced with "Edg3" on public-facing surfaces (Derrick's explicit feedback 2026-06-17). "5 minutes" replaced with "3 minutes" throughout (hero, section heading, "How it works" step 1, features list). The mock UI chip showing the assistant speaking updated to "Edg3:" label. 1652/1652 green.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC0-1b — after-call memory audit: due date extraction fix.**
