@@ -59,6 +59,30 @@ Early access is open. Link in comments.
 
 ---
 
+## Draft D — Best of A + C (ADHD + burnout, tighter) ★ Recommended
+
+Here's something I don't talk about much: ADHD made building Cardify/Drop to $100M raised both easier and harder than it looked.
+
+Easier: hyperfocus, pattern recognition, swinging at things others wouldn't.
+
+Harder: everything else. Time blindness. Decision fatigue. The inability to stop when the signals are flashing red.
+
+I burned out. The real kind — where the first feeling every morning is dread and you can't remember why you started.
+
+I spent a year figuring out what happened. One thing kept coming up: I never had a chief of staff.
+
+Not a task manager. Not another app. Someone who looks at your week and says: this is wrong, here's why, let me fix it. Someone who tracks your energy, not just your schedule. Someone who would have noticed I was running myself into the ground — and said something.
+
+I built that tool.
+
+Edge is an AI chief of staff. Every morning he calls you — takes 5–10 minutes. He already knows your priorities and your calendar. He opens with a diagnosis. You say yes. Your day gets better.
+
+I've been using it for months. It's the first tool I've actually stuck with. If you have ADHD or you've burned out — or you're heading that way — this is what I built it for.
+
+Early access is open. Link in comments.
+
+---
+
 ## Notes for Derrick
 
 - **Pick one draft, rewrite it in your voice.** The facts are right; the phrasing should sound like you on a call, not like a press release.

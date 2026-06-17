@@ -829,8 +829,8 @@ Tasks:`
 
   const insightContent = insight.content[0];
   if (insightContent.type === 'text') {
-    memoryQueries.create(userId, 'transcript', response);
-    memoryQueries.create(userId, 'insight', insightContent.text);
+    memoryQueries.create(userId, 'transcript', response.slice(0, 2000));
+    memoryQueries.create(userId, 'insight', insightContent.text.slice(0, 500));
   }
 
   const tasksContent = tasksResult.content[0];

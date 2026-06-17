@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import type { CalendarFit, ScoreResult, ScoreTopFix } from './CalendarFitCard';
 
 // Re-export the type so consumers can import from here too
@@ -13,8 +13,6 @@ export interface EdgeScoreCardProps {
   calibrating?: boolean;    // energy score still learning (< 10 calls)
   calibratingHalf?: 'focus' | 'energy' | 'both';  // which half is still calibrating
   previousScore?: number;   // yesterday's score — shows movement delta
-  /** When set and less than current score, triggers the confirm-moment celebration */
-  celebrateFromScore?: number | null;
   onRequestFix?: () => void;
 }
 
@@ -164,47 +162,6 @@ function ArcGauge({ score, color, glow }: { score: number; color: string; glow: 
         EDGE SCORE
       </text>
     </svg>
-  );
-}
-
-// ── Sparkle burst overlay — shown on score rise after focus confirm ───────────
-
-const SPARK_ANGLES = [0, 60, 120, 180, 240, 300];
-
-function SparkBurst({ color }: { color: string }) {
-  return (
-    <div
-      aria-hidden="true"
-      style={{ position: 'absolute', top: 0, left: 0, width: 128, height: 128, pointerEvents: 'none' }}
-    >
-      {SPARK_ANGLES.map((deg, i) => (
-        <div
-          key={deg}
-          style={{
-            position: 'absolute',
-            left: 64,
-            top: 64,
-            width: 0,
-            height: 0,
-            transform: `rotate(${deg}deg)`,
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              left: -3,
-              top: -3,
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: color,
-              opacity: 0,
-              animation: `spark-fly 0.65s ease-out ${i * 55}ms both`,
-            }}
-          />
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -410,63 +367,9 @@ export function EdgeScoreCard({
   calibrating = false,
   calibratingHalf,
   previousScore,
-  celebrateFromScore,
   onRequestFix,
 }: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [displayScore, setDisplayScore] = useState<number | null>(null);
-  const [celebrating, setCelebrating] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const rafRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setReducedMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (
-      celebrateFromScore == null ||
-      fit == null ||
-      typeof fit.edgeScore !== 'number' ||
-      fit.edgeScore <= celebrateFromScore
-    ) {
-      setDisplayScore(null);
-      setCelebrating(false);
-      return;
-    }
-    const from = celebrateFromScore;
-    const to = fit.edgeScore;
-    setCelebrating(true);
-
-    if (reducedMotion) {
-      // No animation — just show the new score
-      setDisplayScore(to);
-      const t = setTimeout(() => { setDisplayScore(null); setCelebrating(false); }, 1500);
-      return () => clearTimeout(t);
-    }
-
-    // Tick from→to over 650ms
-    const duration = 650;
-    const startTime = performance.now();
-    setDisplayScore(from);
-
-    function tick(now: number) {
-      const t = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setDisplayScore(Math.round(from + (to - from) * eased));
-      if (t < 1) {
-        rafRef.current = requestAnimationFrame(tick);
-      } else {
-        // Hold the final score, then return to static
-        setTimeout(() => { setDisplayScore(null); setCelebrating(false); }, 800);
-      }
-    }
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [celebrateFromScore]);
 
   // Show the canonical 4-component Edge Score (Focus + Energy + Clarity + Momentum,
   // already weight-renormalized server-side so calibrating components don't blank it).
@@ -552,7 +455,6 @@ export function EdgeScoreCard({
   const color = scoreColor(edgeScore!);
   const glow  = scoreGlow(edgeScore!);
   const s     = edgeScore!;
-  const shownScore = displayScore ?? s;
 
   return (
     <div
@@ -564,10 +466,9 @@ export function EdgeScoreCard({
       }}
     >
       <div className="flex items-center gap-3">
-        {/* Arc gauge + celebration overlay */}
-        <div className="flex-shrink-0" style={{ position: 'relative' }}>
-          <ArcGauge score={shownScore} color={color} glow={glow} />
-          {celebrating && !reducedMotion && <SparkBurst color={color} />}
+        {/* Arc gauge */}
+        <div className="flex-shrink-0">
+          <ArcGauge score={s} color={color} glow={glow} />
         </div>
 
         {/* Right panel */}

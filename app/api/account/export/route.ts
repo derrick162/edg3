@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 // Returns a full JSON export of everything EDG3 has stored for the authenticated user.
 // Encrypted fields are decrypted in the response. Sensitive internal fields
@@ -9,6 +10,9 @@ import { decryptField } from '@/lib/crypto';
 export async function GET(_req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('accountExport', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const db = getDb();
   const userId = user.id;

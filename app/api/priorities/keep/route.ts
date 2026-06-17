@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { priorityQueries } from '@/lib/db';
 import { getWeekOf } from '@/lib/briefing';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 // POST /api/priorities/keep
 // Refreshes the week_of of the user's most-recent priorities to the current week,
@@ -9,6 +10,9 @@ import { getWeekOf } from '@/lib/briefing';
 export async function POST() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('prioritiesKeep', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const latest = priorityQueries.getMostRecent(user.id);
   if (!latest.length) return NextResponse.json({ success: true }); // nothing to refresh

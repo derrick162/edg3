@@ -1111,7 +1111,7 @@ Query: ${query}` }],
     // survives even if post-call transcript extraction misses or mis-categorises it.
     const { statement } = args as { statement: string };
     if (!statement?.trim()) return "What preference should I remember? Tell me in one sentence.";
-    factQueries.upsertFact(userId, 'preference', statement.trim(), null);
+    factQueries.upsertFact(userId, 'preference', statement.trim().slice(0, 500), null);
     return `Got it — I've saved that preference and will apply it going forward.`;
 
   } else if (fn === 'checkReplies') {

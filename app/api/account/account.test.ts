@@ -63,6 +63,11 @@ vi.mock('@/lib/crypto', () => ({
   decryptField: (v: string) => `decrypted:${v}`,
 }));
 
+vi.mock('@/lib/rateLimit', () => ({
+  checkRateLimit: () => ({ allowed: true, remaining: 4, resetAt: Date.now() + 3600_000 }),
+  rateLimitResponse: () => new Response(JSON.stringify({ error: 'Too many requests' }), { status: 429 }),
+}));
+
 // ── import routes AFTER mocks ──────────────────────────────────────────────────
 
 const { GET: exportGET } = await import('./export/route');

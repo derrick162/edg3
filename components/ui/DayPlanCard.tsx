@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 
 // ── Types (contract with Core — matches lib/calendarPlan.ts output) ───────────
 
@@ -19,8 +19,6 @@ export interface CalendarPlan {
   scoreAfter: number;    // 0–100 projected Edge Score after
   summary: string;       // one-line e.g. "3 moves + 1 block to align your morning"
   planId: string;        // opaque id for the confirm/undo call
-  diagnoses?: string[];  // 1–3 concrete problem sentences (why this plan is needed)
-  wellAligned?: boolean; // true when no actions needed — card shows score + positive state
 }
 
 export interface DayPlanCardProps {
@@ -34,8 +32,6 @@ export interface DayPlanCardProps {
   applied?: boolean;
   /** Score after application (may differ from plan.scoreAfter once real) */
   appliedScore?: number;
-  /** 1–3 concrete diagnoses explaining why the plan is needed */
-  diagnoses?: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,31 +58,6 @@ function scoreDeltaColor(delta: number): string {
 
 // ── DayPlanCard ───────────────────────────────────────────────────────────────
 
-function useScoreTicker(target: number, trigger: string | undefined): number {
-  const [displayed, setDisplayed] = useState(target);
-  const rafRef = useRef<number>(0);
-  useEffect(() => {
-    setDisplayed(prev => {
-      const start = prev;
-      const end = target;
-      if (start === end) return end;
-      const duration = 700;
-      const t0 = performance.now();
-      function tick(now: number) {
-        const p = Math.min(1, (now - t0) / duration);
-        const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-        setDisplayed(Math.round(start + (end - start) * eased));
-        if (p < 1) rafRef.current = requestAnimationFrame(tick);
-      }
-      rafRef.current = requestAnimationFrame(tick);
-      return start;
-    });
-    return () => cancelAnimationFrame(rafRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trigger]);
-  return displayed;
-}
-
 export function DayPlanCard({
   plan,
   loading = false,
@@ -94,11 +65,9 @@ export function DayPlanCard({
   onDismiss,
   applied = false,
   appliedScore,
-  diagnoses,
 }: DayPlanCardProps) {
   const [confirming, setConfirming] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const animatedAfter = useScoreTicker(plan?.scoreAfter ?? 0, plan?.planId);
 
   async function handleConfirm() {
     if (!plan) return;
@@ -124,66 +93,28 @@ export function DayPlanCard({
     );
   }
 
-  // ── No plan — well-aligned greeting
+  // ── No plan
   if (!plan) {
     return (
-      <div
-        className="glass-card p-5"
-        style={{ borderColor: 'var(--plan-border)', animation: 'score-rise 0.4s ease both' }}
-      >
-        <div className="flex items-center gap-3">
-          <span
-            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-base"
-            style={{
-              background: 'var(--edg-accent-08)',
-              border: '1.5px solid var(--edg-accent-20)',
-            }}
-          >
-            ✦
-          </span>
-          <div>
-            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-              EDGE ASSESSMENT
-            </p>
-            <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-              Your day looks well-aligned.
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              No reshaping needed — Edge is watching.
-            </p>
-          </div>
-        </div>
+      <div className="glass-card p-5 text-center" style={{ borderColor: 'var(--plan-border)' }}>
+        <p className="text-xl mb-2">✦</p>
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+          Your day looks good
+        </p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          No changes needed — Edge will keep watching.
+        </p>
       </div>
     );
   }
 
   const delta = plan.scoreAfter - plan.scoreBefore;
-  const finalScore = applied ? (appliedScore ?? plan.scoreAfter) : plan.scoreAfter;
-
-  // ── Well-aligned / on-track state
-  // No score number here — there is ONE Edge Score, shown by the EdgeScoreCard.
-  // Showing a second "EDGE SCORE" here (computed differently) confused users.
-  if (plan.wellAligned && !applied) {
-    return (
-      <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
-        <div className="flex items-center gap-3">
-          <span className="flex-shrink-0 text-lg" style={{ color: 'var(--edg-success)' }}>✦</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--edg-success)' }}>ON TRACK</p>
-            <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-              {plan.summary}
-            </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-              Edge will flag it if something shifts.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ── Applied / celebration state
+  // NO standalone EDGE SCORE here — there is ONE Edge Score (the headline EdgeScoreCard,
+  // which refetches after apply). A second number here read as a competing score.
   if (applied) {
+    const noChanges = plan.changes.length === 0;
     return (
       <div
         className="glass-card p-5"
@@ -193,7 +124,7 @@ export function DayPlanCard({
           animation: 'score-rise 0.4s ease both',
         }}
       >
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3">
           <span
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
             style={{
@@ -207,25 +138,18 @@ export function DayPlanCard({
           </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-              Your day just got better
+              {noChanges ? 'Your day was already aligned' : 'Your day just got better'}
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {plan.changes.length} change{plan.changes.length !== 1 ? 's' : ''} applied to your calendar
+              {noChanges
+                ? 'Nothing needed changing — your Edge Score is up top.'
+                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edge Score updated up top`}
             </p>
-          </div>
-          <div className="flex-shrink-0 text-right">
-            <p
-              className="text-2xl font-black tabular-nums leading-none"
-              style={{ color: scoreDeltaColor(delta) }}
-            >
-              {finalScore}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>EDGE SCORE</p>
           </div>
         </div>
-        {delta > 0 && (
+        {!noChanges && delta > 0 && (
           <div
-            className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold"
+            className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold mt-3"
             style={{
               background: 'rgba(34,197,94,0.08)',
               color: scoreDeltaColor(delta),
@@ -253,13 +177,10 @@ export function DayPlanCard({
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ HERE&apos;S WHAT&apos;S OFF TODAY
+            ✦ HERE&apos;S WHAT I&apos;D CHANGE
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {plan.summary}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-            Nothing changes until you confirm.
           </p>
         </div>
         {onDismiss && (
@@ -269,42 +190,24 @@ export function DayPlanCard({
         )}
       </div>
 
-      {/* Diagnoses — insight bullets, not error flags */}
-      {diagnoses && diagnoses.length > 0 && (
-        <div className="mt-3 mb-1 space-y-1.5">
-          {diagnoses.map((d, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-2.5 px-3 py-2 rounded-lg"
-              style={{ background: 'var(--edg-accent-04)', border: '1px solid var(--edg-accent-08)' }}
-            >
-              <span className="flex-shrink-0 text-xs mt-0.5" style={{ color: 'var(--text-accent)', opacity: 0.7 }}>◆</span>
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{d}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      <p className="text-xs mt-1 mb-3" style={{ color: 'var(--text-faint)' }}>
+        Preview — nothing changes until you confirm.
+      </p>
 
-      {/* Score delta — animated reveal */}
-      <div className="flex items-center gap-3 mb-4 mt-3">
-        <div
-          className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
-          style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}
-        >
-          <span className="text-lg font-black tabular-nums leading-none" style={{ color: 'var(--text-faint)' }}>
+      {/* Score delta preview */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+          <span className="text-sm font-black tabular-nums" style={{ color: 'var(--text-faint)' }}>
             {plan.scoreBefore}
           </span>
-          <span className="text-sm" style={{ color: 'var(--text-faint)' }}>→</span>
+          <span className="text-xs" style={{ color: 'var(--text-faint)' }}>→</span>
           <span
-            className="text-2xl font-black tabular-nums leading-none"
+            className="text-sm font-black tabular-nums"
             style={{ color: scoreDeltaColor(delta) }}
           >
-            {animatedAfter}
+            {plan.scoreAfter}
           </span>
-          <span
-            className="text-xs font-bold px-1.5 py-0.5 rounded-md"
-            style={{ background: `${scoreDeltaColor(delta)}18`, color: scoreDeltaColor(delta) }}
-          >
+          <span className="text-xs font-semibold" style={{ color: scoreDeltaColor(delta) }}>
             +{delta}
           </span>
         </div>

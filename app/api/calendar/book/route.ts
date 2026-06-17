@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     const isNoToken = /No calendar connected/i.test(errMsg);
     const userError = (isScope || isNoToken)
       ? "Couldn't create the event — your Google Calendar needs to be reconnected in the dashboard."
-      : `Couldn't create the event — ${errMsg.slice(0, 120)}`;
+      : "Couldn't create the event — please try again or reconnect your calendar in the dashboard.";
     return NextResponse.json({ error: userError }, { status: 500 });
   }
 

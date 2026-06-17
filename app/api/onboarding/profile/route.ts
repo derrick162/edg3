@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries, memoryQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
+
+const MAX_PROFILE_SUMMARY = 2000;
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('onboardingProfile', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: { profile_summary?: string };
   try {
@@ -13,12 +19,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
   const { profile_summary } = body;
-  if (!profile_summary?.trim()) {
+  const summary = profile_summary?.trim().slice(0, MAX_PROFILE_SUMMARY);
+  if (!summary) {
     return NextResponse.json({ error: 'Profile summary required' }, { status: 400 });
   }
 
-  userQueries.updateProfile(user.id, profile_summary.trim());
-  memoryQueries.create(user.id, 'profile', profile_summary.trim());
+  userQueries.updateProfile(user.id, summary);
+  memoryQueries.create(user.id, 'profile', summary);
 
   return NextResponse.json({ success: true });
 }

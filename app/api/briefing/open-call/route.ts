@@ -18,7 +18,6 @@ export async function POST() {
     if (err instanceof CallError) {
       return NextResponse.json({ error: err.userMessage, code: err.code }, { status: 503 });
     }
-    const message = err instanceof Error ? err.message : 'Failed to start open call';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to start call — please try again shortly.' }, { status: 500 });
   }
 }

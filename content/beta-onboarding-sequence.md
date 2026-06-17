@@ -1,5 +1,5 @@
 # Edge — Beta Onboarding Email Sequence
-_Pairs with Cam's in-app first-run flow. Send from derrick@deltaedg3.com — personal tone, not marketing._
+_Pairs with Cam's in-app first-run flow. Send from derrick@edg3.ai — personal tone, not marketing._
 
 ---
 

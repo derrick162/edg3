@@ -58,8 +58,8 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
-| `DELETE /api/account` | ✅ | — | Explicit confirm phrase required | Full cascade + session clear |
-| `GET /api/account/export` | ✅ | — | — | User-scoped; omits pw_hash + OAuth tokens; decrypts PII |
+| `DELETE /api/account` | ✅ | **ADDED** 3/hr | Explicit confirm phrase required | Full cascade + session clear |
+| `GET /api/account/export` | ✅ | **ADDED** 5/hr | — | User-scoped; omits pw_hash + OAuth tokens; decrypts PII |
 
 ### Activity Routes
 
@@ -150,9 +150,9 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
 | `POST /api/onboarding/call-time` | ✅ | — | **FIXED**: HH:MM format + isValidTimeZone + phone len | |
-| `GET,POST /api/onboarding/priorities` | ✅ | — | Array check; text trimmed | Priority-sync to facts |
+| `GET,POST /api/onboarding/priorities` | ✅ | **ADDED** 10/hr on POST | Array check; text trimmed | Writes priorities + memory + facts |
 | `POST /api/onboarding/profile` | ✅ | — | Trim + empty check | |
-| `GET /api/onboarding/suggest-priorities` | ✅ | — | — | LLM parses JSON array; output sanitized |
+| `GET /api/onboarding/suggest-priorities` | ✅ | **ADDED** 5/hr | — | LLM call; rate-limited to prevent cost abuse |
 
 ### Priorities Routes
 
@@ -160,7 +160,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 |---|---|---|---|---|
 | `PATCH /api/priorities/[id]/energy` | ✅ | — | **FIXED** id: Number.isFinite + >0; energy_cost enum | User-scoped |
 | `GET,POST /api/priorities/[id]/milestones` | ✅ | — | **FIXED** id: Number.isFinite + >0 | User-scoped |
-| `POST /api/priorities/keep` | ✅ | — | — | |
+| `POST /api/priorities/keep` | ✅ | **ADDED** 20/hr | — | |
 
 ### Profile Routes
 
@@ -217,7 +217,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 ## Fixes Applied This Session
 
-### Rate Limit Additions (10 new limit types)
+### Rate Limit Additions (26 new limit types — flagship + Round 2/3)
 
 | New Type | Limit | Applied To |
 |---|---|---|
@@ -229,6 +229,14 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `notifications` | 30/hr/user | `POST /api/notifications` |
 | `tasksWrite` | 60/hr/user | `POST /api/tasks`, `PATCH/DELETE /api/tasks/[id]`, `POST /api/tasks/complete-all` |
 | `undoPost` | 20/hr/user | `POST /api/undo` |
+| `suggestPriorities` | 5/hr/user | `GET /api/onboarding/suggest-priorities` |
+| `accountDelete` | 3/hr/user | `DELETE /api/account` |
+| `accountExport` | 5/hr/user | `GET /api/account/export` |
+| `onboardingPriorities` | 10/hr/user | `POST /api/onboarding/priorities` |
+| `prioritiesKeep` | 20/hr/user | `POST /api/priorities/keep` |
+| `onboardingProfile` | 5/hr/user | `POST /api/onboarding/profile` |
+| `onboardingCallTime` | 10/hr/user | `POST /api/onboarding/call-time` |
+| `profileUpdate` | 10/hr/user | `POST /api/profile` |
 
 ### Input Validation Fixes
 
@@ -242,6 +250,19 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `timezone` validated with `isValidTimeZone()` | `POST /api/onboarding/call-time`, `POST /api/profile/timezone` |
 | `phone_number` type + length check | `POST /api/onboarding/call-time` |
 | `text` capped at 500 chars | `POST /api/tasks` |
+| `profile_summary` capped at 2000 chars (flows into LLM prompts) | `POST /api/onboarding/profile`, `POST /api/profile` |
+| `statement` capped at 500 chars | `rememberPreference` tool handler in `vapi/tool-call` |
+
+### Error Leak Fixes
+
+Removed internal error details (`err.message`, `String(err).slice(0,120)`) from user-facing responses; replaced with safe generic messages. Internal details still logged to console for ops diagnosis.
+
+| Route | Old (leaked) | New (safe) |
+|---|---|---|
+| `POST /api/calendar/book` | `errMsg.slice(0, 120)` | generic reconnect message |
+| `POST /api/briefing/call` | `err.message` | "Failed to initiate call — please try again shortly." |
+| `POST /api/briefing/open-call` | `err.message` | "Failed to start call — please try again shortly." |
+| `POST /api/briefing/retry-call` | `err.message` | "Failed to initiate call — please try again shortly." |
 
 ---
 
@@ -251,7 +272,8 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 - **Authentication:** JWT cookie with `session_version` (logout invalidates tokens immediately)
 - **Authorization:** Every route gates on `getSession()` and scopes all DB queries to `user.id` — no cross-user data leakage
-- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (28 rate-limit types total)
+- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (36 rate-limit types total)
+- **Error leak hardening:** Internal error details (`err.message`, raw `String(err)`) removed from all user-facing non-admin routes; generic safe messages returned instead
 - **Parameterized SQL:** No raw string interpolation in queries (better-sqlite3 prepared statements everywhere)
 - **Prompt injection defense:** `sanitize()` strips `\r\n\t` on calendar event titles in `lib/alignment.ts`; newline-strip in `lib/calendar.ts` `formatEventsForBriefing`
 - **Input validation:** length caps, type checks, enum validation on all mutation endpoints
@@ -357,11 +379,21 @@ Package: node_modules/next/node_modules/postcss  (bundled transitive dep of Next
 
 ---
 
-### 🔲 Remaining Backlog Items
+### ✅ All Backlog Items Complete (2026-06-17)
 
-1. ✅ ~~Close undo-coverage gap~~ — DONE (2026-06-17)
-2. ✅ ~~Encryption-at-rest verification~~ — DONE (2026-06-17); see section above
-3. ✅ ~~Session/auth hardening review~~ — DONE (2026-06-17); PASS
-4. ✅ ~~`npm audit` dependency check~~ — DONE (2026-06-17); 2 accepted moderate transitive vulns
-5. Finalize `content/data-protection.md` — drafted; route to Esther for copy polish before launch
-6. Rate-limit tuning review: revisit `briefingGenerate`/`briefingIntro` limits post-launch with real traffic data
+1. ✅ ~~Close undo-coverage gap~~ — DONE: `undo_applied` logged to audit_log
+2. ✅ ~~Encryption-at-rest verification~~ — DONE: 14 fields documented; accepted-unencrypted catalogued
+3. ✅ ~~Session/auth hardening review~~ — DONE: PASS
+4. ✅ ~~`npm audit` dependency check~~ — DONE: 2 accepted moderate transitive vulns
+5. ✅ ~~Finalize `content/data-protection.md`~~ — DONE: all encrypted fields added; ready for Esther copy polish
+6. ✅ ~~Rate-limit tuning review~~ — DONE: 28 keys reviewed; limits appropriate for pre-beta; revisit post-launch with real traffic data
+
+### Security Integration Tests Added (2026-06-17)
+
+| Test file | What it covers |
+|---|---|
+| `lib/auth.test.ts` (22 tests) | JWT round-trip, tamper detection, expired token, wrong secret, session_version revocation (old ver → null), legacy token grandfathering, cookie flags (httpOnly, sameSite:lax, maxAge 30d), bcrypt round-trip |
+| `app/api/memory/facts/[id]/route.test.ts` (existing + enhanced) | Cross-user authz (fact 42 owned by user 2 → user 1 gets 404), rate limit, priority-sync 409, audit logging |
+| `app/api/activity/email-receipt/[id]/route.test.ts` (existing) | Cross-user 404, rate limit, numeric id validation |
+| `app/api/day-plan/confirm/route.test.ts` (existing) | Double-submit rejected (400), cross-user token rejected, undo grouping, markApplied, calendar gate |
+| `lib/backup.ts` | `verifyBackup` now checks 15 tables (added milestones, notifications, daily_focus, calendar_scores) |

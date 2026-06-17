@@ -87,24 +87,26 @@ Derrick has lived this story. Cardify, the burnout, the rebuild. That's not just
 5. Onboarding flow that delivers the "Clarity payoff" (here's what I learned about you)
 6. Edge Score stable and meaningful (all 4 components live)
 
-**Timeline:** realistic public launch = early September. Use July–August for design partners.
+**Timeline:** design partners launch June 2026 (pending Twilio clearance). Realistic public launch = early September. Use July–August for controlled waitlist growth and content marketing.
 
 ---
 
 ## GTM phases
 
-### Phase 1 — Design partners (July–August)
-- 5–10 hand-picked users: overwhelmed founders, ADHD high-performers, people Derrick knows personally
+### Phase 1 — Design partners (June–July)
+_Status: launching now. Twilio is the remaining hard dependency._
+- 5 hand-picked users: overwhelmed founders, ADHD high-performers, people Derrick knows personally
 - Goal: validate the hero loop works for real users, not just Derrick
-- Collect: call recordings (with consent), score trends, qualitative feedback
-- Derrick runs onboarding calls personally — 30 min each, listens more than he talks
+- Collect: call transcripts, Edge Score trends, direct feedback on every call
+- Derrick monitors each user's first week personally — proactive check-ins, not surveys
 - No press. No Product Hunt. No paid ads. Just learning.
+- See `content/launch-day-runbook.md` for exact sequence.
 
-### Phase 2 — Waitlist + content (July–August in parallel)
-- Landing page with waitlist capture
-- Derrick's story as content: the burnout, the rebuild, building the tool he wished he had
-- LinkedIn + Twitter/X: short posts on focus, energy, burnout — educational, not promotional
-- Audience: 250k+ followers = a meaningful waitlist is achievable before launch
+### Phase 2 — Content marketing + waitlist (July–August)
+_Content library complete as of June 18. Execution begins when Derrick posts the founding story._
+- Derrick's founding story published on LinkedIn (Draft D in `content/founding-story-post.md`)
+- LinkedIn + Twitter/X: short posts on focus, energy, burnout — educational, not promotional (content cards in `content/education-cards.md`)
+- Audience: 250k+ followers = meaningful waitlist achievable before launch
 - Target: 500–1,000 waitlist signups before Phase 3
 
 ### Phase 3 — Controlled launch (September)
@@ -147,11 +149,14 @@ Do not launch at $9.99/month. It signals the wrong product and attracts the wron
 
 ## What Derrick needs to do (personal brand + GTM)
 
-1. **Tell the story publicly** — the burnout, the rebuild, why he built Edge. One LinkedIn post, well-written, honest. This is the seed of the GTM.
-2. **Start the design partner list** — 5 names this week. People who are clearly overwhelmed and would try it.
-3. **Voice check the content cards** — #2 (burnout) and #3 (Edge Score) especially. These are marketing assets.
-4. **Unblock Google verification** — nothing else matters until this is live.
+_Updated June 18 — most content is done. These remain:_
+
+1. **Send Twilio follow-up today** — template in `content/twilio-followup-email.md`. Hard dependency.
+2. **Pick 5 design partner names** — archetypes defined in `content/design-partner-outreach-kit.md`. Templates ready.
+3. **Post the founding story** — Draft D in `content/founding-story-post.md`. Adapt in your voice. Time it with first design partner outreach.
+4. **Record the Google CASA demo video** — script in `content/google-casa-video-script.md`. Unblocks OAuth verification.
+5. **Confirm pricing** — recommendation is $69/month for wave 2. Free for design partners. Decision needed before inviting paying users. See `content/pricing-analysis.md`.
 
 ---
 
-_Flag for Derrick: pricing and design partner outreach need his input before we can move. Everything else is executable by the team._
+_Content library complete as of June 18. Full index: `content/morning-brief-june-18.md`._

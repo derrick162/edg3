@@ -90,7 +90,7 @@ ${text.slice(0, 2500)}`,
       )
       .slice(0, 8)
       .map(item => ({
-        description: (item.description as string).trim(),
+        description: (item.description as string).trim().slice(0, 500),
         type: item.type as OpenLoopType,
         source,
         due_date: typeof item.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.due_date)
