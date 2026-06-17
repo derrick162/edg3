@@ -262,6 +262,7 @@ function FaqAccordion({ sections }: { sections: FaqSection[] }) {
             {/* Section header */}
             <button
               onClick={() => setOpenSection(isSectionOpen ? null : section.title)}
+              aria-expanded={isSectionOpen}
               className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors"
               style={{ background: isSectionOpen ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)' }}
             >
@@ -296,6 +297,7 @@ function FaqAccordion({ sections }: { sections: FaqSection[] }) {
                     <div key={key}>
                       <button
                         onClick={() => setOpenItem(isOpen ? null : key)}
+                        aria-expanded={isOpen}
                         className="w-full flex items-start justify-between gap-3 px-4 py-3 text-left"
                       >
                         <span className="text-sm font-medium leading-snug" style={{ color: 'var(--text-body)' }}>

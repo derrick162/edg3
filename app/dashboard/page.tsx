@@ -2184,6 +2184,8 @@ export default function Dashboard() {
                           {/* Category header — always visible, click to expand */}
                           <button
                             onClick={toggleSection}
+                            aria-expanded={isSectionOpen}
+                            aria-label={`${meta.label} — ${catItems.length} facts`}
                             className="w-full flex items-center justify-between px-4 py-3 text-left transition-opacity hover:opacity-80"
                           >
                             <div className="flex items-center gap-2">
