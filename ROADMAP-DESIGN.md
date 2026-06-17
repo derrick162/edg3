@@ -25,6 +25,31 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-17 LATE (UNBLOCKED work — your trust UI tickets are dependency-blocked)
+
+> Master at `9629aa4` (1051 green). `git merge master` first (gets Ticket H + tonight's work).
+> ⚠️ Your queued UI tickets (fact-correction UI, Activity receipts) are BLOCKED on Core/Security
+> building the backend (fact-update API, encrypted-subjects read path). Do this UNBLOCKED work now:
+
+**Hero-loop card visual pass (flagship, fully unblocked).** Ticket H just shipped REAL content into
+`DayPlanCard` — actual diagnoses (multiple varied actions, not just one focus block), a real
+4-component before→after Edge Score, and an always-on positive state. Make it premium:
+- **Diagnosis list** — each proposed change (create/move/buffer) + its reason. Read like a sharp
+  executive brief, not a debug dump: clear hierarchy, an icon per op type, reason as supporting text.
+- **before→after score reveal** — `scoreBefore → scoreAfter` should feel like a payoff (number
+  climbing, emphasis on the delta); reuse your spark mechanism.
+- **"well-aligned / nothing to reshape" positive state** — reassuring + earned, not empty.
+- **Apply CTA** — the obvious, satisfying primary action. + mobile pass on the card.
+This is THE feature (the hero loop) — it went from hidden one-trick to prominent + deep tonight; the
+visual should match. Pure Design, zero Core dependency.
+
+**Then (get ahead on the blocked UI):** build the **fact-correction inline-edit interaction** in
+"What Edge knows" against EXISTING fact data (pencil → inline input → save/cancel); wire to
+`PATCH /api/memory/facts/[id]` — coordinate with Darren (T2) who's building that endpoint; build the
+interaction now, connect when his API lands. Claim app/dashboard/** rows; small diffs; coordinate.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (P0 reconcile + hero-loop prominence)
 
 > Master at `4f68720` (1015 green).

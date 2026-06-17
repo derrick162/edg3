@@ -1,7 +1,8 @@
 import { google, gmail_v1 } from 'googleapis';
 import { getOAuthClient } from './calendar';
-import { calendarQueries, gmailQueries, auditLogQueries } from './db';
+import { getDb, calendarQueries, gmailQueries, auditLogQueries } from './db';
 import { hasGmailScope, hasGmailReadScope } from './google-auth';
+import { encryptField, decryptField } from './crypto';
 
 // Gmail access primitive for EDG3 — the GUARDED, DRAFT-ONLY entry point.
 //
@@ -309,14 +310,43 @@ export async function getRecentEmailSignal(
     .filter((r): r is PromiseFulfilledResult<EmailSignalItem> => r.status === 'fulfilled')
     .map((r) => r.value);
 
-  // Audit: thread count only — zero email content enters the log.
+  // Audit: thread count in argsJson; subjects encrypted in snapshotAfter so the
+  // user can see which threads Edge reviewed in the Activity tab receipt, without
+  // subjects ever appearing in plaintext in the log. Bodies/snippets are never stored.
   auditLogQueries.record({
     userId,
     action: 'email_signal_fetch',
     argsJson: JSON.stringify({ days, threadCount: items.length }),
-    resultText: `${items.length} inbox threads read for prioritization`,
+    resultText: `${items.length} inbox threads reviewed for prioritization`,
     ok: true,
+    snapshotAfter: items.length > 0
+      ? encryptField(JSON.stringify({ subjects: items.map(i => i.subject) }))
+      : null,
   });
 
   return { items, fetchedAt, scopeMissing: false };
+}
+
+/**
+ * Return the encrypted thread subjects stored on a specific email_signal_fetch audit entry.
+ *
+ * User-scoped: the query enforces `user_id = userId` so no cross-user subject leakage.
+ * Decrypts on read — subjects are only accessible to the account owner.
+ * Returns null when the entry doesn't exist, isn't owned by this user, has no subjects,
+ * or decryption fails (e.g. key rotation).
+ *
+ * Core calls this via GET /api/activity/email-receipt/[id] to render the Activity receipt.
+ */
+export function getEmailSignalSubjects(userId: number, auditId: number): string[] | null {
+  try {
+    const row = getDb().prepare(
+      "SELECT snapshot_after FROM audit_log WHERE id = ? AND user_id = ? AND action = 'email_signal_fetch'"
+    ).get(auditId, userId) as { snapshot_after: string | null } | undefined;
+    if (!row?.snapshot_after) return null;
+    const parsed = JSON.parse(decryptField(row.snapshot_after)) as { subjects?: unknown };
+    if (!Array.isArray(parsed.subjects)) return null;
+    return (parsed.subjects as unknown[]).filter((s): s is string => typeof s === 'string');
+  } catch {
+    return null;
+  }
 }

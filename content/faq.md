@@ -52,12 +52,12 @@ Edge won't leave a voicemail or reschedule automatically. You'll see a summary o
 
 *Google Calendar (required):* Edge reads your events to understand your schedule and writes changes when you approve them. This is the foundation of everything Edge does.
 
-*Gmail (optional):* Edge scans your inbox for signals that matter — urgent threads, financial or legal notices, replies from people you've contacted. It does not read newsletters, promotions, or automated emails, and it does not store the content of your emails. It looks for signals and discards the rest.
+*Gmail (optional):* Edge scans your inbox for signals that matter — urgent threads, financial or legal notices, replies from people you've contacted. It does not read newsletters, promotions, or automated emails. It never reads message bodies. Thread subject lines are stored encrypted at rest for 90 days so you can see which emails Edge reviewed in your Activity tab; senders, snippets, and bodies are never stored.
 
 *Whoop (optional):* Edge reads your daily recovery score and sleep data to understand your energy level. This is read-only — Edge never writes anything to Whoop.
 
 **Is my data encrypted?**
-Yes. Your Google Calendar access credentials, Whoop health tokens, call transcripts, and stored facts are all encrypted at rest using AES-256-GCM. Calendar events themselves are fetched live from Google — they are not stored in our database.
+Yes. Your Google Calendar access credentials, Whoop health tokens, call transcripts, stored facts, and inbox thread subjects are all encrypted at rest using AES-256-GCM. Calendar events themselves are fetched live from Google — they are not stored in our database.
 
 **Do you sell my data?**
 No. Never. Your data is used to make Edge work for you — that's it. It is not sold, shared with advertisers, or used to train models for other users.
@@ -66,7 +66,7 @@ No. Never. Your data is used to make Edge work for you — that's it. It is not 
 Edge uses third-party services to function (Google APIs, Vapi for calls, Anthropic for AI). These services process your data as needed to deliver the product, under their own privacy policies. We do not share your data with anyone else.
 
 **Does Edge read every email I receive?**
-No. Edge scans for specific signals — urgent sender patterns, financial or legal keywords, replies to threads you've been part of. It does not read the full body of emails, does not retain email content, and does not process newsletters, promotions, or anything flagged as non-personal by Gmail.
+No. Edge scans for specific signals — urgent sender patterns, financial or legal keywords, replies to threads you've been part of. It does not read the full body of emails and does not process newsletters, promotions, or anything flagged as non-personal by Gmail. Thread subject lines are stored encrypted at rest for 90 days (visible only to you in your Activity tab); no other email content is retained.
 
 **Can I see what Edge knows about me?**
 Yes. Your dashboard has a "What Edge knows" tab that shows everything Edge has learned — your focus areas, preferences, and facts from your calls. Nothing is hidden.
