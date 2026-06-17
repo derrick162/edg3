@@ -275,7 +275,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: 'var(--text-muted)' }}>
-            Edg3 learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 5 minutes.
+            Edg3 learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 3–5 minutes.
           </p>
 
           {/* Waitlist form */}
@@ -330,7 +330,7 @@ export default function LandingPage() {
         {/* ── Solution ── */}
         <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
-            Edg3 fixes your week in 5 minutes every morning.
+            Edg3 fixes your week in 3 minutes every morning.
           </h2>
           <p className="text-base mb-12 text-center" style={{ color: 'var(--text-muted)' }}>
             One call. Your calendar reshaped. Your priorities protected.
