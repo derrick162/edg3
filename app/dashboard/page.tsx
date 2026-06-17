@@ -488,7 +488,8 @@ function ActivityTab() {
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error'
-  const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error'>>({});
+  // 'none' = this (older) scan predates subject-recording — not an error, just nothing to show.
+  const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error' | 'none'>>({});
 
   async function load() {
     setLoading(true);
@@ -512,6 +513,9 @@ function ActivityTab() {
         if (r.ok) {
           const d = await r.json();
           setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: d.subjects ?? [] }));
+        } else if (r.status === 404) {
+          // Older scan from before Edge started recording subjects — graceful, not an error.
+          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'none' }));
         } else {
           setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
         }
@@ -709,6 +713,14 @@ function ActivityTab() {
                             );
                             if (state === 'error') return (
                               <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
+                            );
+                            if (state === 'none') return (
+                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>
+                                Edge didn&apos;t record the subjects for this earlier scan — newer scans will show them here.
+                              </p>
+                            );
+                            if (Array.isArray(state) && state.length === 0) return (
+                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>No subjects recorded for this scan.</p>
                             );
                             if (Array.isArray(state) && state.length > 0) return (
                               <div className="mt-3">
@@ -1721,7 +1733,16 @@ export default function Dashboard() {
               {/* Hero loop — always-first greeting card: "Here's what's off" or "You're well-aligned" */}
               <div ref={dayPlanRef} className="mb-6">
                 <DayPlanCard
-                  plan={dayPlan}
+                  // Anchor the plan's before/after to the ONE canonical Edge Score
+                  // (the EdgeScoreCard value) so the hero loop never shows a second,
+                  // differently-computed "EDGE SCORE". Preserves the projected delta.
+                  plan={dayPlan && typeof calendarFit?.edgeScore === 'number'
+                    ? {
+                        ...dayPlan,
+                        scoreBefore: calendarFit.edgeScore,
+                        scoreAfter: Math.max(0, Math.min(100, calendarFit.edgeScore + (dayPlan.scoreAfter - dayPlan.scoreBefore))),
+                      }
+                    : dayPlan}
                   loading={dayPlanLoading}
                   onConfirm={handleConfirmDayPlan}
                   onDismiss={dayPlan ? () => setDayPlan(null) : undefined}

@@ -161,24 +161,21 @@ export function DayPlanCard({
   const finalScore = applied ? (appliedScore ?? plan.scoreAfter) : plan.scoreAfter;
 
   // ── Well-aligned / on-track state
+  // No score number here — there is ONE Edge Score, shown by the EdgeScoreCard.
+  // Showing a second "EDGE SCORE" here (computed differently) confused users.
   if (plan.wellAligned && !applied) {
     return (
       <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex-shrink-0 text-lg" style={{ color: 'var(--edg-success)' }}>✦</span>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--edg-success)' }}>✦ ON TRACK</p>
+            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--edg-success)' }}>ON TRACK</p>
             <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
               {plan.summary}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
               Edge will flag it if something shifts.
             </p>
-          </div>
-          <div className="flex-shrink-0 text-right">
-            <p className="text-3xl font-black tabular-nums leading-none" style={{ color: scoreDeltaColor(12) }}>
-              {plan.scoreBefore}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>EDGE SCORE</p>
           </div>
         </div>
       </div>
