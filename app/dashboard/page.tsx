@@ -110,7 +110,16 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
     onSettingsSaved?.();
   }
 
-  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
+  if (loading) return (
+    <div className="space-y-4 mt-2 animate-pulse">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="glass-card p-5">
+          <div className="h-3 rounded w-1/4 mb-4" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="h-9 rounded" style={{ background: 'var(--edg-fill-04)' }} />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-8">
@@ -543,7 +552,17 @@ function ActivityTab() {
     return '📅';
   }
 
-  if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
+  if (loading) return (
+    <div className="space-y-3 mt-2">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="glass-card p-4 animate-pulse">
+          <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="h-4 rounded w-3/4 mb-2" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="h-3 rounded w-1/2" style={{ background: 'var(--edg-fill-04)' }} />
+        </div>
+      ))}
+    </div>
+  );
 
   // Group items by day
   const groups: { day: string; items: ActivityItem[] }[] = [];
