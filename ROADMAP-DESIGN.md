@@ -25,6 +25,54 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-18 (★ FLAGSHIP — First-run Activation Moment, screens + motion)
+
+> Master at `a3053cb`. Sync master (`git merge master`) FIRST — picks up canonical EdgeScoreCard,
+> hero-loop card, DayPlanCard, globals.css tokens. Full spec: `specs/activation-moment.md`.
+> Copy doc (every screen's exact words): `content/activation-moment-copy.md`.
+> Darren owns flow + data; you own the screens + motion.
+
+**What to build:** The activation screens in `app/onboarding/**` — shown immediately after
+calendar connect. Two ★ moments: the priorities reveal and the first hero-loop.
+
+**Screen-by-screen (copy in `content/activation-moment-copy.md`):**
+
+1. **Screen 2 — Loading ("Edge is learning about you"):** Rotating subtext (3 lines, swap ~2.5s).
+   Pulse/shimmer, not a spinner. No percentage or progress bar.
+
+2. **★ Screen 3 — Priorities reveal:** Header "Here's what I already know about you." + subheader
+   with [N] months. Priority cards appear **one by one, ~200ms stagger**. Each card: priority label
+   (large) + evidence line (muted, small) + optional category badge. Respect `prefers-reduced-motion`
+   (show all at once, no animation). Primary CTA: "These look right →" (80% of users). Secondary
+   (smaller): "Let me adjust →".
+
+3. **Screen 3b — Thin-data fallback:** Two text inputs, conversational tone, no animation.
+   Different visual register from the reveal — lighter, question-based.
+
+4. **Screen 4 — Adjust priorities:** Editable fields pre-filled with derived anchors. Only shown
+   to users who tap "Let me adjust."
+
+5. **★ Screen 5 — First hero-loop ("Here's what I'd change today"):** 1–3 plan action cards.
+   Primary CTA: "Make it happen →". Post-apply: Edge Score appears with visual weight — first
+   time user sees their number; treat it as a reward, not a stat.
+
+6. **Screen 5b — Positive state:** Shown when calendar is already aligned. Score visible. Calm,
+   confident tone.
+
+7. **Screen 6 — Call time picker:** Time input with suggested times note.
+
+8. **Screen 7 — Dashboard arrival:** One ambient banner (not a modal), dismissible. Doesn't gate
+   the dashboard.
+
+**Key design decisions:**
+- Edge Score reveal (Screen 5, post-apply) needs real weight — large, prominent, first-ever view.
+- "These look right" is the primary CTA on Screen 3; don't visually compete with "Let me adjust."
+- Mobile-first (375px). "Here's what I already know about you" may need a line break before "know."
+- Claim `app/onboarding/**` in the Status Board before editing — Darren is also touching those files.
+  Coordinate: you own the visual layer, Darren wires the data. Merge frequently to stay in sync.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (T2 — Expandable inbox receipts in Activity tab)
 
 > Master at `9c2ed83` (1051 green). Sync master first. Full spec in `specs/trust-features.md §T2`.
@@ -130,6 +178,7 @@ Ship small / green / full preflight (real exit code); log each below.
 - [ ] Mobile pass (users are often on the go / mid-call).
 
 ## Changelog
+- **2026-06-17** — **FLAGSHIP: Activation Moment — loading, reveal, hero-loop.** (1) `ActivationReveal` component (`components/ui/ActivationReveal.tsx`): animated "Edge is learning about you" loading state with cycling scan messages + spinning/pulsing orb ring; staggered priority reveal — items animate in one by one (320ms stagger) with rank circle, priority text, rationale, and evidence chips; data provenance line ("Based on N events · N emails…"); Accept / Tweak CTAs appear after last item. (2) `ActivationHeroCard` component (`components/ui/ActivationHeroCard.tsx`): "here's what I'd change today" first hero-loop card with suggestion card, timeGained chip, Make it happen CTA; Edge Score reveal panel slides in post-apply. `ActivationHeroAligned` variant for already-aligned calendars. (3) Onboarding wired: two new hidden steps `activation` + `hero` inserted between calendar and priorities; StepIndicator unchanged (they count as Calendar step 2); thin-data fallback skips reveal and goes directly to manual priorities. `prefers-reduced-motion` handled by globals.css global rule. 1200 green.
 - **2026-06-17** — **ROUND 2: PriorityDerivationCard + email receipts polish + a11y.** (1) `PriorityDerivationCard` component (`components/ui/PriorityDerivationCard.tsx`): ranked priorities with numbered circles (accent for #1), rationale below each, evidence chips as rounded pills, data provenance line ("Based on N events · N emails…"), accent border, Accept/Tweak/Dismiss actions. `PriorityDerivationLoadingCard` skeleton with animated placeholders. Wired into priorities tab — shows above `PrioritiesTab` when no/stale priorities exist; derivation state/fetch/accept handler restored after parallel session stripped them. (2) Activity email receipts: `emailReceiptId` restored to `ActivityItem` interface; lazy-fetch email subjects on expand; skeleton loading pills (80/65/75% width); rounded pill rows for flagged (⚑ warning tint + border) and regular threads; "+ N more" overflow; privacy note (10px). (3) ActivityTab + ProfileTab: animated skeleton cards replace plain "Loading…". (4) Accessibility: `@media (prefers-reduced-motion: reduce)` disables all animations app-wide; global `:focus-visible` ring on all button/a/role=button; `.btn-primary/secondary/danger:focus-visible` outline. Merged parallel design session (Home tab cockpit, EdgeScore Intelligence breakdown, RecoveryCard sleep-hero). 1178 tests green.
 - **2026-06-18** — **Accessibility + token consolidation pass.** (1) NotificationBell: `aria-label` with unread count. (2) HelpSupportSection FAQ: `aria-expanded` on both section-level and item-level accordion toggles. (3) Memory tab category buttons: `aria-expanded` + `aria-label` with fact count. (4) Activity + Profile tabs: animated 3-card skeleton loading states replace bare "Loading…" text. (5) globals.css badge variants (`badge-success/pending/danger/info`) consolidated to use `--edg-*` CSS var tokens instead of hardcoded RGBA. (6) Milestone delete + fact edit/delete controls: `opacity-30` base (was `opacity-0` — invisible on mobile where hover never fires); milestone delete gets `aria-label`. 3 commits, preflight clean.
 - **2026-06-18** — **FLAGSHIP mobile pass (overnight queue).** (1) Notification panel: `width: 340px` fixed → `calc(100vw-32px)` / max 340px — no more overflow on phones. (2) Dashboard sidebar: Next Call time + connection status exposed on mobile via compact `md:hidden` strip (were buried inside `hidden md:flex` block). (3) Nav tab buttons: `aria-label={tab.label}` for icon-only mobile accessibility. (4) Landing: h1 `text-5xl` → `text-4xl md:text-5xl lg:text-6xl` responsive; CTA card `p-10/p-14` → `p-6/p-10/p-14`. (5) Onboarding: textarea `minHeight: 180px` → `clamp(120px,30vw,180px)`; tel input gets `inputMode="tel"`. (6) Memory tab: first-category auto-open re-applied (was lost in merge). (7) Activity + Profile tabs: animated skeleton loading cards replace plain "Loading…" text. Auth pages (login/signup) reviewed — already mobile-safe. All green, 4 commits.

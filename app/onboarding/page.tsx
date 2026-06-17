@@ -2,27 +2,37 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
-import type { DerivedProposal } from '@/components/ui/PriorityDerivationCard';
+import { ActivationLoading, ActivationReveal } from '@/components/ui/ActivationReveal';
+import type { DerivedProposal } from '@/components/ui/ActivationReveal';
+import { ActivationHeroCard, ActivationHeroAligned } from '@/components/ui/ActivationHeroCard';
+import type { HeroSuggestion } from '@/components/ui/ActivationHeroCard';
 
-type Step = 'profile' | 'calendar' | 'activation' | 'calltime' | 'done';
+type Step = 'profile' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'done';
 
-const STEPS: Step[] = ['profile', 'calendar', 'activation', 'calltime'];
+const STEPS: Step[] = ['profile', 'calendar', 'activation', 'hero', 'priorities', 'calltime'];
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
-const STEP_META: { label: string; icon: string }[] = [
+// Activation + hero are hidden "wow" beats — shown as progress inside the
+// calendar step node, not as separate indicator steps.
+const INDICATOR_STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime'];
+const INDICATOR_META: { label: string; icon: string }[] = [
   { label: 'About you',  icon: '👤' },
   { label: 'Calendar',   icon: '📅' },
   { label: 'Focus',      icon: '🎯' },
   { label: 'Your call',  icon: '📞' },
 ];
 
+function indicatorIdx(step: Step): number {
+  if (step === 'activation' || step === 'hero') return 1;
+  return INDICATOR_STEPS.indexOf(step);
+}
+
 function StepIndicator({ current }: { current: Step }) {
-  const idx = STEPS.indexOf(current);
+  const idx = indicatorIdx(current);
   return (
     <div className="flex items-center gap-0 mb-8">
-      {STEPS.map((s, i) => (
+      {INDICATOR_STEPS.map((s, i) => (
         <div key={s} className="flex items-center flex-1 last:flex-none">
           {/* Node */}
           <div className="flex flex-col items-center gap-1">
@@ -41,17 +51,17 @@ function StepIndicator({ current }: { current: Step }) {
                 boxShadow: i === idx ? '0 0 0 4px var(--edg-accent-08)' : 'none',
               }}
             >
-              {i < idx ? '✓' : STEP_META[i].icon}
+              {i < idx ? '✓' : INDICATOR_META[i].icon}
             </div>
             <span
               className="text-xs hidden sm:block text-center"
               style={{ color: i === idx ? 'var(--text-accent)' : 'var(--text-faint)', fontWeight: i === idx ? 600 : 400 }}
             >
-              {STEP_META[i].label}
+              {INDICATOR_META[i].label}
             </span>
           </div>
           {/* Connector */}
-          {i < STEPS.length - 1 && (
+          {i < INDICATOR_STEPS.length - 1 && (
             <div
               className="flex-1 h-px mx-2 transition-all duration-500"
               style={{ background: i < idx ? 'var(--edg-indigo)' : 'var(--edg-hairline)', marginBottom: 18 }}
@@ -325,169 +335,186 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
   );
 }
 
-// ── Step 3: Activation — derive & reveal ─────────────────────────────────────
+// ── Step 3a: Activation — loading + reveal ────────────────────────────────────
 
-type ActivationStatus = 'loading' | 'proposal' | 'tweaking' | 'accepting' | 'fallback' | 'fallback-saving';
-
-function ActivationStep({ onNext }: { onNext: () => void }) {
-  const [status, setStatus] = useState<ActivationStatus>('loading');
+function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: () => void }) {
   const [proposal, setProposal] = useState<DerivedProposal | null>(null);
-  const [tweakTexts, setTweakTexts] = useState(['', '', '']);
-  const [manualPriorities, setManualPriorities] = useState(['', '', '']);
-  const [fallbackSuggesting, setFallbackSuggesting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [accepting, setAccepting] = useState(false);
 
-  function loadFallbackSuggestions() {
-    setFallbackSuggesting(true);
+  useEffect(() => {
+    fetch('/api/priorities/derive')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.proposal) setProposal(d.proposal); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleAccept() {
+    if (!proposal) return;
+    setAccepting(true);
+    try {
+      await fetch('/api/priorities/derive/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priorities: proposal.priorities.map(p => p.text) }),
+      });
+    } catch {
+      // accept is best-effort; still advance
+    }
+    setAccepting(false);
+    onAccept();
+  }
+
+  if (loading || !proposal) {
+    // Still fetching OR thin-data (no proposal) — show loading, then skip to manual
+    if (!loading && !proposal) {
+      // No proposal returned — silently advance to manual priorities
+      onTweak();
+      return null;
+    }
+    return (
+      <StepFade>
+        <ActivationLoading />
+      </StepFade>
+    );
+  }
+
+  return (
+    <StepFade>
+      <ActivationReveal
+        proposal={proposal}
+        onAccept={handleAccept}
+        onTweak={onTweak}
+        accepting={accepting}
+      />
+    </StepFade>
+  );
+}
+
+// ── Step 3b: Hero loop ────────────────────────────────────────────────────────
+
+function HeroStep({ onContinue }: { onContinue: () => void }) {
+  const [suggestion, setSuggestion] = useState<HeroSuggestion | null>(null);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [edgeScore, setEdgeScore] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [aligned, setAligned] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/day-plan').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/scores').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([plan, score]) => {
+      if (plan?.wellAligned || !plan?.changes?.length) {
+        setAligned(true);
+      } else {
+        const top = plan.changes[0];
+        const delta = (plan.scoreAfter ?? 0) - (plan.scoreBefore ?? 0);
+        setSuggestion({
+          action: `${top.title}${top.detail ? ` · ${top.detail}` : ''}`,
+          rationale: top.reason ?? '',
+          timeGained: delta > 0 ? `Edge Score +${delta}` : undefined,
+        });
+        setPlanId(plan.planId ?? null);
+      }
+      if (score?.edgeScore != null) setEdgeScore(score.edgeScore);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  async function handleApply() {
+    setApplying(true);
+    try {
+      if (planId) {
+        const res = await fetch('/api/day-plan/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planId }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.newScore != null) setEdgeScore(data.newScore);
+        }
+      }
+    } catch {
+      // best-effort
+    }
+    setApplying(false);
+    setApplied(true);
+  }
+
+  if (loading) {
+    return (
+      <StepFade>
+        <div className="py-8 space-y-4">
+          <div className="h-6 w-40 rounded-lg animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="rounded-xl p-5 animate-pulse" style={{ background: 'var(--edg-fill-04)', height: 120 }} />
+          <div className="h-11 rounded-xl animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
+        </div>
+      </StepFade>
+    );
+  }
+
+  // No suggestion and no score — skip this beat entirely
+  if (!suggestion && !aligned) {
+    onContinue();
+    return null;
+  }
+
+  return (
+    <StepFade>
+      {aligned ? (
+        <ActivationHeroAligned edgeScore={edgeScore} onContinue={onContinue} />
+      ) : (
+        <ActivationHeroCard
+          suggestion={suggestion!}
+          edgeScore={edgeScore}
+          onApply={handleApply}
+          onSkip={onContinue}
+          applying={applying}
+          applied={applied}
+        />
+      )}
+    </StepFade>
+  );
+}
+
+// ── Step 3c: Manual priorities (tweak / thin-data fallback) ──────────────────
+
+function PrioritiesStep({ onNext }: { onNext: () => void }) {
+  const [priorities, setPriorities] = useState(['', '', '']);
+  const [loading, setLoading] = useState(false);
+  const [suggesting, setSuggesting] = useState(true);
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
+
+  useEffect(() => {
     fetch('/api/onboarding/suggest-priorities')
       .then(r => r.json())
       .then(d => {
         if (d.priorities?.length) {
-          setManualPriorities([...d.priorities, '', '', ''].slice(0, 3));
+          setPriorities([...d.priorities, '', '', ''].slice(0, 3));
+          setSuggestionsLoaded(true);
         }
       })
-      .finally(() => setFallbackSuggesting(false));
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/priorities/derive')
-      .then(r => r.json())
-      .then(d => {
-        if (cancelled) return;
-        if (d.proposal?.priorities?.length >= 1) {
-          setProposal(d.proposal);
-          setTweakTexts([...d.proposal.priorities.map((p: { text: string }) => p.text), '', ''].slice(0, 3));
-          setStatus('proposal');
-        } else {
-          loadFallbackSuggestions();
-          setStatus('fallback');
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        loadFallbackSuggestions();
-        setStatus('fallback');
-      });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .finally(() => setSuggesting(false));
   }, []);
 
-  async function acceptProposal(texts: string[]) {
-    setStatus('accepting');
-    await fetch('/api/priorities/derive/accept', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ priorities: texts }),
-    }).catch(() => null);
-    onNext();
-  }
-
-  async function submitFallback(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const filled = manualPriorities.filter(p => p.trim());
+    const filled = priorities.filter(p => p.trim());
     if (!filled.length) return;
-    setStatus('fallback-saving');
+    setLoading(true);
     await fetch('/api/onboarding/priorities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priorities: filled }),
-    }).catch(() => null);
+    });
+    setLoading(false);
     onNext();
   }
 
-  // ── Loading ────────────────────────────────────────────────────────────────
-  if (status === 'loading') {
-    return (
-      <StepFade>
-        <h2 className="text-2xl font-bold mb-1">Your focus areas</h2>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-          Edge is reading your last few months to figure out what&apos;s actually pulling hardest right now.
-        </p>
-        <PriorityDerivationLoadingCard />
-      </StepFade>
-    );
-  }
-
-  // ── Proposal ───────────────────────────────────────────────────────────────
-  if (status === 'proposal' || status === 'accepting') {
-    return (
-      <StepFade>
-        <h2 className="text-2xl font-bold mb-2">Your focus areas</h2>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-          Edge read your calendar history. Here&apos;s what it sees pulling hardest right now.
-        </p>
-        <PriorityDerivationCard
-          proposal={proposal!}
-          onAccept={() => acceptProposal(proposal!.priorities.map(p => p.text))}
-          onTweak={() => {
-            setTweakTexts([...proposal!.priorities.map(p => p.text), '', ''].slice(0, 3));
-            setStatus('tweaking');
-          }}
-          onDismiss={() => {
-            loadFallbackSuggestions();
-            setStatus('fallback');
-          }}
-          accepting={status === 'accepting'}
-        />
-      </StepFade>
-    );
-  }
-
-  // ── Tweak ──────────────────────────────────────────────────────────────────
-  if (status === 'tweaking') {
-    return (
-      <StepFade>
-        <h2 className="text-2xl font-bold mb-1">Adjust your focus areas</h2>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-          Edit freely — Edge will use your exact words in every briefing.
-        </p>
-        <div className="space-y-3 mb-5">
-          {tweakTexts.map((t, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div
-                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-                style={{
-                  background: t.trim() ? 'var(--edg-accent-20)' : 'var(--edg-fill-04)',
-                  color: t.trim() ? 'var(--text-accent)' : 'var(--text-faint)',
-                  border: '1px solid var(--edg-hairline)',
-                  transition: 'background 0.2s, color 0.2s',
-                }}
-              >
-                {i + 1}
-              </div>
-              <input
-                className="input text-sm flex-1"
-                type="text"
-                placeholder={i === 0 ? 'Your primary focus right now' : i === 1 ? 'Second priority' : 'Third (optional)'}
-                value={t}
-                onChange={e => {
-                  const next = [...tweakTexts];
-                  next[i] = e.target.value;
-                  setTweakTexts(next);
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <button
-          className="btn-primary w-full mb-3"
-          disabled={!tweakTexts.some(t => t.trim())}
-          onClick={() => acceptProposal(tweakTexts.filter(t => t.trim()))}
-        >
-          Set these as my priorities →
-        </button>
-        <button
-          onClick={() => setStatus('proposal')}
-          className="w-full text-xs py-2 text-center transition-opacity hover:opacity-80"
-          style={{ color: 'var(--text-faint)' }}
-        >
-          ← Back to Edge&apos;s suggestion
-        </button>
-      </StepFade>
-    );
-  }
-
-  // ── Fallback: manual entry (thin data or dismissed) ────────────────────────
   const rankLabels = ['Primary', 'Secondary', 'Third'];
   const placeholders = [
     'e.g. Extend my runway to 18 months',
@@ -502,21 +529,27 @@ function ActivationStep({ onNext }: { onNext: () => void }) {
         Edge checks every briefing to make sure your calendar actually reflects these — not just your intentions.
       </p>
 
-      {fallbackSuggesting && (
+      {suggesting ? (
         <div
           className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl text-sm"
           style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-accent)' }}
         >
-          <span
-            className="w-4 h-4 rounded-full border-2 flex-shrink-0 animate-spin"
+          <span className="w-4 h-4 rounded-full border-2 flex-shrink-0 animate-spin"
             style={{ borderColor: 'var(--edg-indigo)', borderTopColor: 'transparent' }}
           />
-          Generating suggestions from your profile…
+          Edge is reading your profile and generating suggestions…
         </div>
-      )}
+      ) : suggestionsLoaded ? (
+        <div
+          className="flex items-center gap-2 mb-5 px-3 py-2 rounded-lg text-xs"
+          style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)', animation: 'score-rise 0.3s ease both' }}
+        >
+          ✦ Suggested from your profile — edit freely
+        </div>
+      ) : null}
 
-      <form onSubmit={submitFallback} className="space-y-3">
-        {manualPriorities.map((p, i) => (
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {priorities.map((p, i) => (
           <div key={i} className="flex items-center gap-3">
             <div
               className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
@@ -536,9 +569,9 @@ function ActivationStep({ onNext }: { onNext: () => void }) {
                 placeholder={placeholders[i]}
                 value={p}
                 onChange={e => {
-                  const next = [...manualPriorities];
+                  const next = [...priorities];
                   next[i] = e.target.value;
-                  setManualPriorities(next);
+                  setPriorities(next);
                 }}
               />
               <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>{rankLabels[i]}</p>
@@ -548,9 +581,9 @@ function ActivationStep({ onNext }: { onNext: () => void }) {
         <button
           type="submit"
           className="btn-primary w-full mt-4"
-          disabled={status === 'fallback-saving' || !manualPriorities.some(p => p.trim())}
+          disabled={loading || !priorities.some(p => p.trim())}
         >
-          {status === 'fallback-saving' ? 'Saving…' : 'Set my focus & continue →'}
+          {loading ? 'Saving…' : 'Set my focus & continue →'}
         </button>
       </form>
     </StepFade>
@@ -718,7 +751,8 @@ function OnboardingContent() {
   function advance() {
     const idx = STEPS.indexOf(step);
     if (idx < STEPS.length - 1) {
-      setStep(STEPS[idx + 1]);
+      const next = STEPS[idx + 1];
+      setStep(next);
     } else {
       sessionStorage.setItem('edg3_welcome', '1');
       router.push('/dashboard');
@@ -729,8 +763,6 @@ function OnboardingContent() {
     router.push('/dashboard');
     return null;
   }
-
-  const stepIdx = STEPS.indexOf(step);
 
   return (
     <div
@@ -745,7 +777,7 @@ function OnboardingContent() {
         <div className="text-center mb-6">
           <span className="logo-text text-2xl">EDG3</span>
           <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-            Step {stepIdx + 1} of {STEPS.length}
+            Step {Math.min(indicatorIdx(step) + 1, INDICATOR_STEPS.length)} of {INDICATOR_STEPS.length}
           </p>
         </div>
 
@@ -754,7 +786,14 @@ function OnboardingContent() {
 
           {step === 'profile'    && <ProfileStep    onNext={advance} />}
           {step === 'calendar'   && <CalendarStep   onNext={advance} onSkip={advance} />}
-          {step === 'activation' && <ActivationStep onNext={advance} />}
+          {step === 'activation' && (
+            <ActivationStep
+              onAccept={() => setStep('hero')}
+              onTweak={() => setStep('priorities')}
+            />
+          )}
+          {step === 'hero'       && <HeroStep onContinue={() => setStep('calltime')} />}
+          {step === 'priorities' && <PrioritiesStep onNext={() => setStep('calltime')} />}
           {step === 'calltime'   && <CallTimeStep   onNext={advance} />}
         </div>
 
