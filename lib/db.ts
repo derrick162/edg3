@@ -468,6 +468,8 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
     "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
     "ALTER TABLE facts ADD COLUMN source TEXT",
+    "ALTER TABLE facts ADD COLUMN valid_from TEXT",
+    "ALTER TABLE facts ADD COLUMN valid_until TEXT",
     "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
     "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
@@ -1289,6 +1291,8 @@ export interface Fact {
   confidence: 'high' | 'low';
   source_briefing_id: number | null;
   source?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -1342,15 +1346,25 @@ function decryptFactRow(r: Fact): Fact {
 }
 
 export const factQueries = {
+  // Only returns ACTIVE facts (valid_until IS NULL — retired facts are excluded).
   getAll: (userId: number): Fact[] => {
     return (getDb().prepare(
-      'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at DESC'
+      'SELECT * FROM facts WHERE user_id = ? AND valid_until IS NULL ORDER BY category, learned_at DESC'
     ).all(userId) as Fact[]).map(decryptFactRow);
+  },
+
+  // Retire a fact bi-temporally (sets valid_until = now). Preserves history — never hard-deletes.
+  retire: (userId: number, id: number): void => {
+    getDb().prepare(
+      "UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?"
+    ).run(id, userId);
   },
 
   // Upsert: dedupe by (category, entity) when entity present; by (category, first-80-chars-statement) otherwise.
   // statement is encrypted at rest; no-entity dedup compares decrypted values in app (SQL SUBSTR
   // cannot match ciphertext).
+  // Bi-temporal: on conflict with a low-confidence existing fact, RETIRE old + INSERT new.
+  // High-confidence facts (user-corrected) are never overwritten by extraction.
   upsertFact: (
     userId: number,
     category: string,
@@ -1366,12 +1380,12 @@ export const factQueries = {
     let existingConfidence: 'high' | 'low' | undefined;
     if (entity) {
       const row = db.prepare(
-        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?)'
+        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?) AND valid_until IS NULL'
       ).get(userId, category, entity) as { id: number; statement: string; confidence: 'high' | 'low' } | undefined;
       if (row) { existingId = row.id; existingStatement = decryptField(row.statement); existingConfidence = row.confidence; }
     } else {
       const cands = db.prepare(
-        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL'
+        'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL AND valid_until IS NULL'
       ).all(userId, category) as Array<{ id: number; statement: string; confidence: 'high' | 'low' }>;
       const match = cands.find(
         r => decryptField(r.statement).toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
@@ -1381,24 +1395,28 @@ export const factQueries = {
 
     if (existingId !== undefined) {
       // User-corrected facts (confidence='high') are not overwritten by new extractions.
-      // The user's explicit edit wins over any subsequent STT/LLM extraction.
       if (existingConfidence === 'high') {
         return;
       }
       if (existingStatement!.toLowerCase() !== statement.toLowerCase()) {
-        db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=?")
-          .run(encryptField(statement), existingId);
+        // Bi-temporal: retire the old fact and insert the updated one (history preserved).
+        db.prepare("UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?")
+          .run(existingId, userId);
+        db.prepare(
+          "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
+        ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
       }
     } else {
       db.prepare(
-        'INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id) VALUES (?,?,?,?,?,?)'
+        "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
       ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
     }
   },
 
+  // Only returns ACTIVE facts for a given category (valid_until IS NULL).
   getByCategory: (userId: number, category: string): Fact[] => {
     return (getDb().prepare(
-      'SELECT * FROM facts WHERE user_id=? AND category=? ORDER BY learned_at DESC'
+      'SELECT * FROM facts WHERE user_id=? AND category=? AND valid_until IS NULL ORDER BY learned_at DESC'
     ).all(userId, category) as Fact[]).map(decryptFactRow);
   },
 

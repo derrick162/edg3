@@ -42,6 +42,10 @@ vi.mock('./db', async (importOriginal) => {
         const idx = store.findIndex(f => f.id === id && f.user_id === userId);
         if (idx !== -1) store.splice(idx, 1);
       }),
+      retire: vi.fn((userId: number, id: number) => {
+        const fact = store.find(f => f.id === id && f.user_id === userId);
+        if (fact) fact.valid_until = new Date().toISOString();
+      }),
     },
     peopleProfileQueries: {
       // Default: returns empty array so existing tests are unaffected (no M2 filter applied).
