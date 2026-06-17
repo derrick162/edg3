@@ -8,7 +8,48 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
-## 📥 PM DISPATCH — 2026-06-16 EVENING (Ticket G — the dashboard Hero Loop)
+## 📥 PM DISPATCH — 2026-06-17 (Ticket H — DEEPEN the hero loop; supersedes G)
+
+> Master at `75d32da` (1015 green). Sync master first. **CORRECTION: the hero-loop
+> scaffold from G already EXISTS** (`/api/day-plan` + `/api/day-plan/confirm` +
+> `DayPlanCard` + `buildCalendarPlan` + "Improve my day" CTA). The problem is it's
+> SHALLOW. Ticket H makes it deep + honest. Don't rebuild the scaffold — extend it.
+
+**H1 — `buildCalendarPlan` only ever proposes ONE thing (a focus block), and the
+energy-move branch is dead code.** (`lib/calendarPlan.ts`) Today it creates a focus block
+only when `focusScore.topFix.op === 'create'`; the "move draining event" branch requires
+`energyScore.worstMismatchEventId`, which `computeEnergyScore` (Whoop-derived, not per-event)
+NEVER sets — so it never fires. Result: when Focus is fine (now common after the recalibration),
+the plan is empty → the card hides. **Fix:** feed the plan the diagnosis signals we ALREADY
+compute but ignore: hygiene flags (`detectHygieneFlags` → 3 back-to-back meetings → insert 15-min
+buffers; no deep-work block on busy days → create one), recovery tier (low-recovery + over-scheduled
+→ propose moving the heaviest deferrable event to tomorrow — this is the real source for the move
+action, replacing the dead `worstMismatchEventId` path), alignment gaps (biggest unaligned time-sink
+→ propose trimming/moving), urgent open loops (due today → propose a block). Compose 1–3 concrete,
+deterministic actions.
+
+**H2 — The projected score is FAKE and INCONSISTENT.** (`app/api/day-plan/route.ts:89`)
+`scoreAfter = edgeScore + actions.length * 12` — a hardcoded guess. AND the route computes its
+score with only Focus+Energy (`computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep)`
+— no clarity/momentum inputs), so even `scoreBefore` doesn't match the dashboard's 4-component Edge
+Score. **Fix:** compute `scoreBefore` with the SAME 4-component inputs as `/api/scores` (pass
+clarityInputs + momentumInputs), and compute `scoreAfter` by actually re-deriving the score for the
+reshaped calendar (apply the plan's deltas to the event set / alignment and recompute), not a flat
++12. The before→after the user sees must be real and must match the headline.
+
+**H3 — Always say something.** When `actions.length === 0`, the route returns `null` → the card
+vanishes (looks like a missing feature). **Fix:** return a positive state ("Your day's well-aligned —
+nothing to reshape right now", with the current score) so the card always renders. Design (Cam) will
+surface this prominently rather than behind "Improve my day".
+
+Reuse everything; keep `app/dashboard/**` diffs small (SHARED with Design — Cam is doing card
+prominence + the spark in the same files; claim Status Board rows, merge frequently). Tests for the
+new plan-generation branches + the real score projection. Ship incrementally (H1 first, then H2, then
+H3), green at each step.
+
+---
+
+## 📥 PM DISPATCH — 2026-06-16 EVENING (Ticket G — hero-loop scaffold — ✅ EXISTS, see H)
 
 > Master at `2c73f5b` (997 green). Sync master first. This is the #1 strategic build —
 > bring the voice `applyCalendarPlan` reshape to the dashboard as ONE visible motion.
