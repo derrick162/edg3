@@ -902,6 +902,7 @@ export default function Dashboard() {
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
+  const [savedFactId, setSavedFactId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -1034,12 +1035,14 @@ export default function Dashboard() {
   }
 
   async function saveFact(id: number, statement: string) {
-    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
+    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement, confidence: null } : f));
     setEditingFactId(null);
+    setSavedFactId(id);
+    setTimeout(() => setSavedFactId(null), 2000);
     await fetch(`/api/memory/facts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statement }),
+      body: JSON.stringify({ statement, confidence: null }),
     });
   }
 
@@ -2025,9 +2028,16 @@ export default function Dashboard() {
                 id="memory"
                 text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
               />
-              <h2 className="text-lg font-bold mb-1">Here&apos;s what Edge knows about you</h2>
+              <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap">
+                <h2 className="text-lg font-bold">Here&apos;s what Edge knows about you</h2>
+                {facts.length > 0 && (
+                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                    {facts.length} fact{facts.length !== 1 ? 's' : ''} across {new Set(facts.map(f => f.category)).size} areas
+                  </span>
+                )}
+              </div>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Built up over your calls — everything here came directly from conversations with you.
+                Built from your calls — not filled out by hand. Correcting anything here makes Edge smarter.
               </p>
 
               {/* Structured facts grouped by category */}
@@ -2038,20 +2048,195 @@ export default function Dashboard() {
                   person:     { label: 'People',      icon: '👤' },
                   preference: { label: 'Preferences', icon: '⚡' },
                   fact:       { label: 'Facts',       icon: '📌' },
+                  pattern:    { label: 'Patterns',    icon: '📈' },
                 };
                 const FACTS_CAT_LIMIT = 15;
-                const ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
+                const ORDER = ['goal', 'project', 'person', 'pattern', 'preference', 'fact'];
                 const grouped = ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
                   const items = facts.filter(f => f.category === cat);
                   if (items.length) acc[cat] = items;
                   return acc;
                 }, {});
+
+                // ── Reusable fact row (used in both person cards and flat lists) ──
+                function FactRow({ f, indented }: { f: Fact; indented?: boolean }) {
+                  const isEditing = editingFactId === f.id;
+                  const isConfirmingDelete = deletingFactId === f.id;
+                  const justSaved = savedFactId === f.id;
+                  const firstName = (user?.name || '').split(' ')[0];
+                  return (
+                    <div
+                      className={`group ${indented ? '' : 'glass-card px-4 py-3'}`}
+                      style={indented ? { padding: '6px 0' } : { transition: 'background 0.1s' }}
+                    >
+                      {isEditing ? (
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1">
+                            <textarea
+                              autoFocus
+                              value={editFactText}
+                              onChange={e => setEditFactText(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }
+                                if (e.key === 'Escape') setEditingFactId(null);
+                              }}
+                              rows={2}
+                              className="input text-sm w-full resize-none"
+                              style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                            <button
+                              onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
+                              className="text-xs px-2.5 py-1 rounded-md font-medium"
+                              style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingFactId(null)}
+                              className="text-xs px-2.5 py-1 rounded-md"
+                              style={{ color: 'var(--text-faint)' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : isConfirmingDelete ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Remove this fact?</p>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => deleteFact(f.id)}
+                              className="text-xs px-2.5 py-1 rounded-md font-medium"
+                              style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
+                            >
+                              Remove
+                            </button>
+                            <button onClick={() => setDeletingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Keep</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            {justSaved ? (
+                              <p className="text-xs font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edge updated</p>
+                            ) : (
+                              <>
+                                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                  {!indented && f.entity && (
+                                    <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
+                                  )}
+                                  {correctName(f.statement, firstName)}
+                                  {f.confidence === 'low' && (
+                                    <button
+                                      title="Edge isn't sure it caught this right — tap to fix"
+                                      onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                                      className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
+                                      style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1 }}
+                                    >
+                                      &#x26A0; verify
+                                    </button>
+                                  )}
+                                </p>
+                                {f.source_briefing_id ? (
+                                  <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>
+                                    learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
+                                  </a>
+                                ) : (
+                                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                            <button
+                              title="Edit"
+                              onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
+                              className="p-1 rounded"
+                              style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                              aria-label="Edit fact"
+                            >✎</button>
+                            <button
+                              title="Remove"
+                              onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
+                              className="p-1 rounded"
+                              style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                              aria-label="Remove fact"
+                            >&#x2715;</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="space-y-6 mb-8">
                     {Object.entries(grouped).map(([cat, catItems]) => {
                       const isExpanded = expandedFactCats.has(cat);
-                      const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
+
+                      // ── People: group by entity into relationship profile cards ──
+                      if (cat === 'person') {
+                        const byEntity = catItems.reduce<Record<string, Fact[]>>((acc, f) => {
+                          const key = f.entity || '(unknown)';
+                          (acc[key] = acc[key] || []).push(f);
+                          return acc;
+                        }, {});
+                        const entities = Object.keys(byEntity);
+                        const PERSON_LIMIT = 8;
+                        const visibleEntities = entities.length > PERSON_LIMIT && !isExpanded ? entities.slice(0, PERSON_LIMIT) : entities;
+                        return (
+                          <div key={cat}>
+                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                              <span aria-hidden="true">{meta.icon}</span>
+                              {meta.label}
+                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>{entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
+                            </h3>
+                            <div className="space-y-2">
+                              {visibleEntities.map(entity => {
+                                const personFacts = byEntity[entity];
+                                const firstName = (user?.name || '').split(' ')[0];
+                                const mostRecent = personFacts.reduce((a, b) => new Date(a.learned_at) > new Date(b.learned_at) ? a : b);
+                                return (
+                                  <div key={entity} className="glass-card px-4 py-3" style={{ border: '1px solid var(--edg-hairline)' }}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div
+                                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                                        style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)' }}
+                                      >
+                                        {correctName(entity, firstName).charAt(0).toUpperCase()}
+                                      </div>
+                                      <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                                        {correctName(entity, firstName)}
+                                      </p>
+                                      <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
+                                        last updated {format(new Date(mostRecent.learned_at), 'MMM d')}
+                                      </p>
+                                    </div>
+                                    <div className="space-y-0">
+                                      {personFacts.map(f => <FactRow key={f.id} f={f} indented />)}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {entities.length > PERSON_LIMIT && (
+                              <button
+                                onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
+                                className="mt-2 text-xs"
+                                style={{ color: 'var(--text-accent)' }}
+                              >
+                                {isExpanded ? 'Show less' : `Show all (${entities.length} people)`}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // ── All other categories: flat list ──
+                      const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       return (
                         <div key={cat}>
                           <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
@@ -2059,157 +2244,11 @@ export default function Dashboard() {
                             {meta.label}
                           </h3>
                           <div className="space-y-1.5">
-                            {visible.map(f => {
-                              const isEditing = editingFactId === f.id;
-                              const isConfirmingDelete = deletingFactId === f.id;
-                              return (
-                                <div
-                                  key={f.id}
-                                  className="glass-card px-4 py-3 group"
-                                  style={{ transition: 'background 0.1s' }}
-                                >
-                                  {isEditing ? (
-                                    /* ── Inline edit state ── */
-                                    <div className="flex items-start gap-2">
-                                      <div className="flex-1">
-                                        {f.entity && (
-                                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-                                            {correctName(f.entity, (user?.name || '').split(' ')[0])}
-                                          </p>
-                                        )}
-                                        <textarea
-                                          autoFocus
-                                          value={editFactText}
-                                          onChange={e => setEditFactText(e.target.value)}
-                                          onKeyDown={e => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                              e.preventDefault();
-                                              if (editFactText.trim()) saveFact(f.id, editFactText.trim());
-                                            }
-                                            if (e.key === 'Escape') setEditingFactId(null);
-                                          }}
-                                          rows={2}
-                                          className="input text-sm w-full resize-none"
-                                          style={{ padding: '6px 10px', lineHeight: '1.4' }}
-                                        />
-                                      </div>
-                                      <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
-                                        <button
-                                          onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }}
-                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                          style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}
-                                        >
-                                          Save
-                                        </button>
-                                        <button
-                                          onClick={() => setEditingFactId(null)}
-                                          className="text-xs px-2.5 py-1 rounded-md"
-                                          style={{ color: 'var(--text-faint)' }}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : isConfirmingDelete ? (
-                                    /* ── Delete confirm state ── */
-                                    <div className="flex items-center justify-between gap-3">
-                                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                                        Remove this fact?
-                                      </p>
-                                      <div className="flex items-center gap-2 flex-shrink-0">
-                                        <button
-                                          onClick={() => deleteFact(f.id)}
-                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                          style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
-                                        >
-                                          Remove
-                                        </button>
-                                        <button
-                                          onClick={() => setDeletingFactId(null)}
-                                          className="text-xs px-2.5 py-1 rounded-md"
-                                          style={{ color: 'var(--text-faint)' }}
-                                        >
-                                          Keep
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    /* ── Default read state ── */
-                                    <div>
-                                      <div className="flex items-start gap-3">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                                            {f.entity && (
-                                              <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, (user?.name || '').split(' ')[0])}: </span>
-                                            )}
-                                            {correctName(f.statement, (user?.name || '').split(' ')[0])}
-                                            {f.confidence === 'low' && (
-                                              <button
-                                                title="Edge isn't sure it caught this right — tap to fix"
-                                                onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                                className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
-                                                style={{
-                                                  background: 'var(--edg-warning-tint)',
-                                                  color: 'var(--edg-warning)',
-                                                  border: '1px solid var(--edg-warning-border)',
-                                                  lineHeight: 1,
-                                                }}
-                                              >
-                                                &#x26A0; verify
-                                              </button>
-                                            )}
-                                          </p>
-                                          {/* Provenance line */}
-                                          {f.source_briefing_id ? (
-                                            <a
-                                              href={`/dashboard?briefing=${f.source_briefing_id}`}
-                                              className="text-xs mt-1 block hover:underline"
-                                              style={{ color: 'var(--text-faint)' }}
-                                            >
-                                              learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
-                                            </a>
-                                          ) : (
-                                            <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-                                              learned {format(new Date(f.learned_at), 'MMM d')}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
-                                          <button
-                                            title="Edit"
-                                            onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
-                                            className="p-1 rounded"
-                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                          >
-                                            ✎
-                                          </button>
-                                          <button
-                                            title="Remove"
-                                            onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }}
-                                            className="p-1 rounded"
-                                            style={{ color: 'var(--text-faint)', lineHeight: 1 }}
-                                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--edg-danger)')}
-                                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
-                                          >
-                                            &#x2715;
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                            {visible.map(f => <FactRow key={f.id} f={f} />)}
                           </div>
                           {catItems.length > FACTS_CAT_LIMIT && (
                             <button
-                              onClick={() => setExpandedFactCats(prev => {
-                                const next = new Set(prev);
-                                isExpanded ? next.delete(cat) : next.add(cat);
-                                return next;
-                              })}
+                              onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
                               className="mt-2 text-xs"
                               style={{ color: 'var(--text-accent)' }}
                             >
@@ -2222,6 +2261,24 @@ export default function Dashboard() {
                   </div>
                 );
               })()}
+
+              {/* Patterns placeholder — ready to receive M3 data from Core */}
+              {facts.filter(f => f.category === 'pattern').length === 0 && facts.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">📈</span>
+                    Patterns
+                  </h3>
+                  <div
+                    className="rounded-xl px-4 py-4"
+                    style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}
+                  >
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      Edge is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out. Check back after a few more calls.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Divider between structured facts and raw call notes */}
               {facts.length > 0 && memories.length > 0 && (
