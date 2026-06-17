@@ -50,6 +50,13 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Round 7: confirmFocus input caps + final LLM-output sweep (1201 green).**
+
+  Continued sweep of LLM-extracted content paths in `app/api/vapi/tool-call/route.ts`:
+  - **`confirmFocus` handler**: `title` capped at 200 chars, `rationale` at 500 chars before `dailyFocusQueries.upsert`. Consistent with all other LLM → DB paths.
+  - **Full sweep completed**: all `taskQueries.create`, `memoryQueries.create`, `factQueries.upsertFact`, `openLoopQueries.insert`, `dailyFocusQueries.upsert` paths now uniformly capped. No uncapped LLM-generated DB writes remain.
+  1201/1201 green, tsc clean, next build clean.
+
 - **2026-06-17** — **S3 audit: hero-loop apply path — PASS, no changes (1201 green).**
 
   Audited `/api/day-plan/confirm` across all four PM-dispatched dimensions:
