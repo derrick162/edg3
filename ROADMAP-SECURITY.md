@@ -7,6 +7,30 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Bi-temporal fact schema)
+
+> Master at `e7357cc`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`
+> (Zep/Graphiti bi-temporal model). This is the schema foundation for the memory self-learning flywheel —
+> Core builds the conflict-resolution logic on top. Coordinate query shape with Darren.
+
+### Ticket 1 — ★ Bi-temporal columns on the `facts` table (P1)
+- Add `valid_from TEXT DEFAULT (datetime('now'))` and `valid_until TEXT` (nullable) to the **`facts`** table
+  (`lib/db.ts` ~line 228). Additive, defaulted — no migration drama. NOTE: Edge's entity facts live in `facts`,
+  NOT `memories` (the spec says "memories" generically, but `memories` is raw call notes — facts is the fact store).
+- Add `factQueries.retire(userId, factId)` → sets `valid_until = datetime('now')`; NEVER hard-delete. User-scoped (`AND user_id = ?`).
+- Support an "active only" filter (`valid_until IS NULL`) on fact reads. Keep ADDITIVE so existing callers don't
+  break — default to active-only or add an `includeRetired` flag; coordinate the exact shape with Darren (he wires
+  conflict-resolution on top in `lib/facts.ts`).
+- Retired facts are historical record (they feed pattern detection). `facts.statement` is already encrypted at rest — keep it.
+
+### Ticket 2 — verify new memory tables encrypted + scoped (carry-over)
+- M2/M3/M4 tables (relationships/patterns/accountability) + `episodes`: confirm content encrypted at rest +
+  user-scoped authz. Episode ingestion consent-gating audit (respect `data_consent` / `isImproveConsented`).
+
+> Small / green / full preflight. Update changelog + Status Board.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 4 — Launch hardening: audit log gaps + rate-limit sweep)
 
 > Master at `30ff3df`. `git merge master` first (picks up CASA enforcement you already shipped).
