@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
+import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
 import { computeAlignment } from '@/lib/alignment';
@@ -196,6 +197,21 @@ interface ToolContext {
 async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   const { cal, calIds, calMeta, userId, tz } = ctx;
 
+  // Tier-1 grounding: correct STT phonetic errors in title args before event resolution.
+  // Loads person-fact names once per tool call (synchronous SQLite read).
+  // E.g., "shorten Gym's appointment" → "Jim's" when Jim is a stored person fact.
+  const _personNames = (() => {
+    try {
+      return factQueries.getAll(userId)
+        .filter(f => f.category === 'person' && f.entity?.trim())
+        .map(f => f.entity as string);
+    } catch { return []; }
+  })();
+  function groundTitle(raw: string): string {
+    if (!_personNames.length || !raw) return raw;
+    return groundProperNouns(raw, _personNames);
+  }
+
   if (fn === 'readCalendar') {
     const { startDate, endDate } = args as { startDate: string; endDate: string };
     const rcMin = dayRangeUtc(tz, startDate).start.toISOString();
@@ -248,7 +264,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     return `Got it — I'll use ${timezone} for your calendar and briefings from now on.`;
 
   } else if (fn === 'getEventDetails') {
-    const { title, date, currentTime } = args as { title: string; date: string; currentTime?: string };
+    const { title: rawTitle, date, currentTime } = args as { title: string; date: string; currentTime?: string };
+    const title = groundTitle(rawTitle);
     const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
     if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one?`;
@@ -263,7 +280,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     return lines.join('\n');
 
   } else if (fn === 'editEvent') {
-    const { title, date, currentTime, description, appendDescription, location } = args as { title: string; date: string; currentTime?: string; description?: string; appendDescription?: boolean; location?: string };
+    const { title: rawTitle, date, currentTime, description, appendDescription, location } = args as { title: string; date: string; currentTime?: string; description?: string; appendDescription?: boolean; location?: string };
+    const title = groundTitle(rawTitle);
     const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date}.`;
     if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${r.message}. Which one should I edit? Re-call with currentTime set to its start time.`;
@@ -286,7 +304,8 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     return `Updated and confirmed "${(e.summary ?? '').replace(/^⚡\s*/, '')}"${body.location ? ` — location: ${body.location}` : ''}${body.description ? ' — notes updated' : ''}.`;
 
   } else if (fn === 'researchToEvent') {
-    const { title, date, query, currentTime } = args as { title: string; date: string; query: string; currentTime?: string };
+    const { title: rawTitle, date, query, currentTime } = args as { title: string; date: string; query: string; currentTime?: string };
+    const title = groundTitle(rawTitle);
     if (!query) return 'What should I research?';
     const r = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz, currentTime);
     if (r.kind === 'none') return `No event matching "${title}" on ${date} to attach research to.`;
@@ -445,7 +464,8 @@ Query: ${query}` }],
     return `Created recurring "${title}" from ${startDate} at ${startTime} ${timezone}.`;
 
   } else if (fn === 'deleteEvent') {
-    const { title, date, deleteAll, recurringScope, currentTime, confirmToken, targetEndDate } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmToken?: string; targetEndDate?: string };
+    const { title: rawTitle, date, deleteAll, recurringScope, currentTime, confirmToken, targetEndDate } = args as { title: string; date: string; deleteAll?: boolean; recurringScope?: 'this' | 'thisAndFollowing' | 'all'; currentTime?: string; confirmToken?: string; targetEndDate?: string };
+    const title = groundTitle(rawTitle);
     let dayMatches = await eventsOnDay(cal, calIds, date, tz);
 
     // All-day disambiguation: if the caller supplied targetEndDate, narrow all-day events to
@@ -552,7 +572,8 @@ Query: ${query}` }],
       : `Deleted: ${deleted.join(', ')}`;
 
   } else if (fn === 'moveEvent') {
-    const { title, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime, targetEndDate } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string; targetEndDate?: string };
+    const { title: rawTitle, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime, targetEndDate } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string; targetEndDate?: string };
+    const title = groundTitle(rawTitle);
     let moveMatches = await eventsOnDay(cal, calIds, date, tz);
     if (targetEndDate) {
       const exclusive = nextDay(targetEndDate);
@@ -654,7 +675,8 @@ Query: ${query}` }],
     return `Moved and confirmed "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" to ${confirmWhen}${recurringScope === 'all' ? ' (all occurrences)' : ''}.`;
 
   } else if (fn === 'colorEvent') {
-    const { title, date, color } = args as { title: string; date: string; color: string };
+    const { title: rawTitle, date, color } = args as { title: string; date: string; color: string };
+    const title = groundTitle(rawTitle);
     const colorId = getColorId(color);
     const tMin = date === 'all' ? new Date().toISOString() : dayRangeUtc(tz, date).start.toISOString();
     const tMax = date === 'all' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : dayRangeUtc(tz, date).end.toISOString();
@@ -805,7 +827,7 @@ Query: ${query}` }],
     // Draft (never send) a personalized outreach email per recipient, optionally proposing the
     // user's real open slots. Composition lives in lib/outreach.ts (Core); the actual draft is
     // created by Security's guarded, draft-only createDraft (lib/gmail.ts). Undo deletes the drafts.
-    const { recipients, title, date, ask, proposeAvailability, startDate, endDate, subject } = args as {
+    const { recipients, title: rawTitle, date, ask, proposeAvailability, startDate, endDate, subject } = args as {
       recipients?: { name?: string; email?: string }[];
       title?: string;
       date?: string;
@@ -815,6 +837,7 @@ Query: ${query}` }],
       endDate?: string;
       subject?: string;
     };
+    const title = rawTitle ? groundTitle(rawTitle) : undefined;
     if (!ask || !ask.trim()) return 'What should I ask them in the email?';
 
     // Recipients: prefer an explicit list; otherwise read them from the research notes on the
