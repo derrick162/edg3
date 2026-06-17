@@ -334,6 +334,7 @@ export function NotificationBell({
     <button
       onClick={onClick}
       title="Notifications"
+      aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
       style={{
         position: 'relative',
         width: 40,
