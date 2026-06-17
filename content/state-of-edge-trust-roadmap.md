@@ -1,5 +1,5 @@
 # State of Edge — What We've Built + The Trust Roadmap
-_June 2026. Exec-readable. Sources: lane changelogs, specs, Status Board. Nothing invented._
+_Updated June 17, 2026 (1066 green, deployed). Exec-readable. Sources: lane changelogs, specs, Status Board. Nothing invented._
 
 ---
 
@@ -46,6 +46,7 @@ The most differentiating feature in the product. Instead of asking an overwhelme
 - `isUrgentEmail` flags financial, legal, and collection threads
 - Urgent threads get `INBOX PRIORITY WEIGHTING` — ranked #1 in the focus proposal above any calendar block
 - Degrades gracefully: no Gmail scope → prompt unchanged, no error shown
+- **Encrypted email receipts (S4, shipped June 17):** thread subjects stored AES-256-GCM encrypted in `audit_log.snapshot_after` at scan time; `getEmailSignalSubjects(userId, auditId)` decrypts user-scoped; `GET /api/activity/email-receipt/[id]` exposes subjects to Core for the Activity tab expand view. Privacy policy + FAQ updated. Bodies/senders/snippets never stored.
 
 ---
 
@@ -78,13 +79,12 @@ The product's magic moment. The full loop:
 3. **Apply** — one button executes the whole plan atomically via `/api/day-plan/confirm`; each action is individually undoable; the whole plan is undoable as a unit
 4. **Re-score** — Edge Score refetched and updated immediately; the score visibly climbs
 
-**Infrastructure shipped:**
-- `/api/day-plan` (GET) — builds today's plan, estimates score before/after
-- `/api/day-plan/confirm` (POST) — executes creates + moves atomically, records undo group
-- `DayPlanCard` — dashboard card showing the diagnosis and Apply button
-- **S3 security hardening (June 17):** idempotency (double-click safely rejected), undo grouping bug fixed (planId now passed), execution tracking written, rate limit, authz (planId user-scoped)
-
-**In progress (Ticket H):** deepening the diagnosis — currently only proposes a focus block; being extended to use hygiene flags, recovery tier, alignment gaps, and open loops so the card always has something real to say.
+**Shipped as of June 17 (Ticket H — DEEP):**
+- `buildCalendarPlan` now uses the full diagnosis signal: hygiene flags (back-to-back meetings → insert buffers; no deep-work block → create one), recovery tier (low recovery + over-scheduled → propose moving heaviest deferrable event), alignment gaps (biggest unaligned time-sink → trim/move), urgent open loops (due today → propose a block). Composes 1–3 concrete, deterministic actions.
+- `/api/day-plan` now computes `scoreBefore` with the full 4-component inputs (matching the dashboard Edge Score — no more divergence) and `scoreAfter` by actually re-deriving the score for the reshaped calendar. The +12-per-action fake is gone.
+- Card always renders — when no actions needed, shows "Your day's well-aligned — nothing to reshape right now" with the current score. Never hides.
+- `DayPlanCard` moved to top of home tab — Edge greets the user with the diagnosis, not a buried "Improve my day" button.
+- **S3 security hardening:** idempotency (double-click safely rejected via atomic token consumption), undo grouping bug fixed (planId now passed to `recordUndo`), execution tracking written (`calendarPlanQueries.markApplied`), rate limit, authz (planId user-scoped — user B cannot consume user A's token).
 
 ---
 
@@ -190,8 +190,8 @@ Edge remembers everything the user tells it across calls.
 | Edge recommends your focus areas | ✅ Live | Still somewhat reactive — anchors proposed from history but not yet deeply derived from multi-month behavioral patterns |
 | Edge proposes a reshaped day | ✅ Live (scaffold) | Diagnosis is shallow — currently only proposes a focus block; Ticket H deepens it |
 | One "yes" reshapes the calendar | ✅ Live | Works; undo as a unit now fixed |
-| Edge Score re-scores after apply | ✅ Live | Score projection was fake (+12 per action); Ticket H fixes to real re-derivation |
-| "Wow, my day just got better" | 🟡 Partial | The loop works but the diagnosis lacks enough specificity to feel like a real chief of staff assessment; Ticket H is the fix |
+| Edge Score re-scores after apply | ✅ Live | Real 4-component re-derivation (Ticket H shipped June 17) |
+| "Wow, my day just got better" | 🟡 Partial — improving | Hero loop is now deep (hygiene flags, recovery tier, alignment gaps, open loops). Card always visible. The remaining gap is UI polish (undo toast, score changelog) + first-user validation. |
 | Proactive across the week (not just the call) | 🔴 Gap | Edge is still call-triggered; no proactive nudges between calls except notifications |
 
 **The honest read:** the engine is real. The call works. The score is meaningful. The hero loop exists. The gap is **depth of diagnosis** — Edge needs to surface more specific, more surprising insights about the user's day (not just "you have no time on priority X" but "you have 3 meetings back-to-back and your recovery is red — this is how burnout starts"). That's Ticket H's job.
@@ -213,9 +213,10 @@ A high-performer only hands their calendar, email, and energy data to an AI if t
 - Audit log — timestamped record of all actions
 - "What Edge knows" tab — full fact/memory transparency
 - Undo per action + undo plan as a unit
+- **Email receipt backend (S4, June 17):** encrypted subjects stored per inbox scan; `GET /api/activity/email-receipt/[id]` ready for Core to call
 
 **Next features:**
-1. **Expandable receipts on every Activity item** — "Read 20 inbox threads" → expands to show sender names and subject lines of what was read (no bodies — just enough to verify). Currently the activity log shows action names with no detail.
+1. **Expandable receipts UI (T2 — spec written, unblocked)** — Activity tab `email_signal_fetch` rows expand to show subject lines from the encrypted store. Backend is done; this is a Design/UI task only.
 2. **"Why did Edge propose this?"** — each hero loop proposal shows its exact reasoning: which data point triggered it ("recovery was 28 — red tier; heaviest block is 'Strategy planning' at 2pm — proposing to defer to tomorrow").
 3. **Editable fact corrections** — user can tap any fact in "What Edge knows" and correct it (e.g. "Onsi" → "Ansi"). Currently facts are append-only with no correction path.
 4. **"What Edge did today" summary** — end-of-day push notification or dashboard card: "Today Edge created 2 blocks, moved 1 meeting, read 8 inbox threads. [View details]"
