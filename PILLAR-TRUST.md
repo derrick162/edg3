@@ -1,0 +1,157 @@
+# 🔒 PILLAR: TRUST
+_Permanent backlog. If your dispatch is exhausted, work through this in order. If this is exhausted too, run the QA checklist at the bottom._
+
+> **The thesis:** Every user of Edge is sharing their goals, relationships, calendar, health, and voice. Trust isn't a feature — it's the product. If Edge gets something wrong, loses data, or behaves unexpectedly, the user leaves and never comes back. Every item in this pillar makes Edge more trustworthy. Ship them in order.
+
+**Lane ownership:** Security (Vijay) leads. Core (Darren) contributes accuracy + error-message items. Design (Cam) contributes data-transparency UI items.
+
+---
+
+## Tier 1 — Foundation (hardening the path data travels)
+
+### T1-1 — Webhook reliability: retry + dead-letter queue (Security)
+**The risk:** If the Vapi → webhook → memory pipeline fails silently, a call happens and nothing is learned. The user doesn't know. Edge doesn't know. The moat leaks.
+- Add retry logic (3 attempts, exponential backoff) to the webhook handler in `app/api/vapi/webhook/route.ts`
+- If all retries fail: write a `failed_webhooks` record (userId, callId, failedAt, error) for diagnosis
+- Add a daily check: any failed webhooks in the last 24h? Log a warning to Railway so it's visible
+- Test: simulate a webhook failure mid-processing, verify retry fires, verify failure is logged
+
+### T1-2 — End-to-end call health check (Security + Core)
+**The risk:** A call can "succeed" in Vapi but fail to produce a briefing, a transcript, or a memory update. No one knows until the user notices.
+- After each call webhook: verify (a) transcript stored, (b) at least one fact extracted or updated, (c) episode record created. If any check fails, write a `call_health_events` log entry.
+- Weekly summary: how many calls in the last 7 days failed the health check? Surface in Railway logs.
+- Test: complete a real call end-to-end, verify all three checks pass
+
+### T1-3 — Silent failure monitoring for the memory pipeline (Security)
+**The risk:** Fact extraction, sleep-time consolidation, and pattern detection all fail silently. No alerts, no visibility.
+- Wrap every background job (sleep-time consolidation, pattern detection, predictive context loading) in try/catch with structured error logging
+- Failed jobs: log `{job, userId, failedAt, error}` to a `background_job_failures` table
+- Alert threshold: if any job fails for the same user 3+ consecutive runs, flag it
+- Test: force a failure in the sleep-time consolidation job, verify it's logged, verify the next call isn't broken
+
+### T1-4 — Encryption audit: verify all sensitive fields (Security)
+**The risk:** New tables have been added across Core and Security over many sessions. Not all of them have been confirmed encrypted at rest.
+- Audit every table in `lib/db.ts` that stores user-generated content
+- For each: confirm it calls `encryptField()` on write and `decryptField()` on read
+- Tables most likely to be missing: `briefing_context_packs`, `background_job_failures`, `call_health_events`, `people_models` (when shipped)
+- Document the full encryption coverage map — add a section to `content/data-protection.md`
+
+### T1-5 — Rate limit coverage sweep (Security)
+**The risk:** Core has added new routes since the last rate-limit sweep. Unprotected mutation endpoints are an attack surface.
+- Scan every `POST`/`PATCH`/`DELETE` in `app/api/**` added since the last audit
+- Add `rateLimit()` to any unprotected mutation route
+- Update the rate-limit inventory in `content/security-audit.md`
+
+---
+
+## Tier 2 — Accuracy (Edge says true things)
+
+### T2-1 — Fact grounding: no hallucinated entities (Core)
+**The risk:** People-extraction has produced hallucinated contacts (Jim-from-gym appearing as a person, Edge itself appearing as a contact, duplicate Pfizer entries). These corrupt memory and produce wrong briefings.
+- In `lib/facts.ts` fact extraction pipeline: add a grounding filter before inserting people-category facts
+- Blocked entities: the user's own name, "Edge", "Edg3", generic nouns (gym, office, company)
+- Duplicate detection: before inserting a new person fact, check if a person with the same name (case-insensitive, fuzzy) already exists
+- Test: run extraction on a transcript that mentions "Jim" (gym) and "Edge (the assistant)" — neither should appear as a contact
+
+### T2-2 — Stale fact surfacing in briefings (Core)
+**The risk:** Edge mentions a fact that was true 3 months ago but hasn't been confirmed since. It sounds confident. It's wrong. The user loses trust instantly.
+- In the briefing builder: when injecting facts older than 90 days with no reconfirmation, add a soft hedge: "last I heard..." rather than stating it as current
+- Pair with the confidence decay column (Round 6 T2) when it lands: facts below 0.5 confidence get hedged; below 0.3 get flagged for reconfirmation
+- Test: inject a 91-day-old fact, verify briefing text hedges it
+
+### T2-3 — Honest failure messages across all tool-call handlers (Core)
+**The risk:** When a tool fails (calendar write, email draft, memory update), Edge either says nothing or says something misleading. The user doesn't know what happened.
+- Audit every `return` in `app/api/vapi/tool-call/route.ts` for failed paths
+- Each failure must: (a) give an honest plain-English description of what failed, (b) never say "reconnect your account" unless that's actually the fix, (c) offer a concrete alternative if one exists
+- No "I couldn't do that" without saying why
+
+### T2-4 — Briefing accuracy regression test (Core)
+**The risk:** Changes to the briefing builder silently degrade briefing quality — missing facts, wrong priorities, stale context.
+- Write a `lib/briefing.test.ts` snapshot test: given a fixed set of user facts + calendar events + Whoop data, the briefing prompt should contain certain key strings
+- Run this as part of preflight — if the briefing structure changes unexpectedly, the test catches it before deploy
+
+---
+
+## Tier 3 — Transparency (user can see and control everything)
+
+### T3-1 — "What Edge knows" completeness audit (Core + Design)
+**The risk:** The Memory tab shows some facts but may not show all of them. Users can't correct what they can't see.
+- Audit every fact category stored in the `facts` table: are all categories rendered in the Memory tab?
+- If any category is missing from the UI: add it
+- Test: insert a fact in every category via a test call, verify all appear in the dashboard
+
+### T3-2 — Activity log completeness (Security)
+**The risk:** The audit log may not cover all user-triggered mutations. Users can't trust the Activity tab if it's incomplete.
+- Audit every `POST`/`PATCH`/`DELETE` route: does it write to `audit_log`?
+- Add logging to any missing route
+- Document full coverage in `content/security-audit.md`
+
+### T3-3 — Data export accuracy (Security)
+**The risk:** The data export (Settings → Account → Export) may not include everything Edge stores, or may include it in an unreadable format.
+- Audit the export endpoint: does it include facts, memories, episodes, call transcripts, priorities, tasks, activity log, and the user's current privacy setting?
+- If anything is missing: add it
+- Test: create a complete user account with data in every category, export, verify completeness
+
+### T3-4 — Account deletion completeness (Security)
+**The risk:** When a user deletes their account, some data may be left behind in tables added after the deletion route was written.
+- Audit the deletion handler: does it delete from every table that stores user data?
+- Tables most likely to be missing: `briefing_context_packs`, `call_health_events`, `background_job_failures`, `people_models`, `episodes`
+- Test: create a user, populate all tables, delete, verify no rows remain anywhere
+
+---
+
+## Tier 4 — Resilience (Edge keeps working when things go wrong)
+
+### T4-1 — Google token refresh reliability (Security)
+**The risk:** OAuth tokens expire. If the refresh fails silently, all calendar/Gmail operations fail for that user until they manually reconnect.
+- Audit `lib/google-auth.ts`: does it handle refresh failures gracefully? Does it surface a clear error rather than a silent 401?
+- If token refresh fails 3+ times: write a flag to the user record so the next briefing can tell them to reconnect
+- Test: force a token expiry, verify refresh fires, verify failure is surfaced
+
+### T4-2 — Vapi connection resilience (Security)
+**The risk:** If Vapi is unavailable, calls fail with no user notification. The user wakes up, no call, no explanation.
+- Implement a pre-call health check: 5 minutes before a scheduled call, ping Vapi status. If unhealthy, send the user a dashboard notification: "Edge couldn't reach you this morning — we'll try again tomorrow. Check your connection settings."
+- Test: simulate Vapi unavailability, verify notification fires
+
+### T4-3 — Database connection handling (Security)
+**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs running simultaneously with incoming webhooks could produce write contention.
+- Audit `lib/db.ts` `getDb()`: is WAL mode enabled? Is the connection timeout set appropriately?
+- Add `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` if not present
+- Test: simulate concurrent writes, verify no locking errors
+
+---
+
+## QA Checklist — run when pillar backlog is exhausted
+
+Work through each item manually. Log the result (pass/fail/partial) in a `content/qa-log.md` file with date and notes.
+
+### Memory pipeline
+- [ ] Make a call. Verify transcript is stored in the briefings table within 5 minutes
+- [ ] Make a call where Derrick says something new ("my new goal is X"). Verify it appears in "What Edge knows" by the next call
+- [ ] Make a call where Derrick contradicts an existing fact ("actually my gym is now at 7am"). Verify the old fact is retired and the new one is active
+- [ ] Check the episode store: after every call, a new episode record should exist
+- [ ] Verify sleep-time consolidation ran after the last call (check logs)
+
+### Accuracy
+- [ ] Open "What Edge knows." Read every fact. Are any of them wrong or outdated?
+- [ ] Make a call where Edge references a fact. Does Edge state it accurately?
+- [ ] Make a call where a tool fails (e.g., try to move a read-only calendar event). Does Edge give an honest explanation?
+- [ ] Check the last 5 briefings. Did Edge mention anything that wasn't true?
+
+### Data protection
+- [ ] Connect a new Google account. Verify calendar and Gmail access work
+- [ ] Disconnect Google. Verify the OAuth tokens are removed from the database
+- [ ] Check the audit log after a calendar mutation. Is the action logged with the correct userId?
+- [ ] Attempt to access another user's data via a direct API call. Verify it returns 404
+
+### Reliability
+- [ ] Check Railway logs for the last 24h. Any 500 errors? Any failed background jobs?
+- [ ] Check Vapi dashboard: did all scheduled calls connect? Any failures?
+- [ ] Check the failed_webhooks table. Any entries?
+- [ ] Run `npm run preflight`. Should be green
+
+### Transparency
+- [ ] Open Activity tab. Does it show every action Edge has taken in the last 7 days?
+- [ ] Open "What Edge knows." Can you see, edit, and delete every fact?
+- [ ] Go to Settings → Account → Export. Does the export contain all your data?
+- [ ] Go to Settings → Privacy. Is your current consent setting displayed correctly?

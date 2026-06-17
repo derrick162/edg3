@@ -7,6 +7,103 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## ⚡ Standing order — read this before every ticket
+
+**Do not stop between tickets.** Your job is not done when one ticket is done — it is done when the entire current dispatch is complete and preflight is green.
+
+After every ticket:
+1. Run `npm run preflight` from `C:\Users\Derrick\edg3-security`
+2. If green → commit with a clear message → immediately start the next ticket in this dispatch
+3. If preflight fails → fix it (up to 2 attempts) → if still failing, note the blocker in the Status Board and move to the next independent ticket; only stop if fully blocked
+
+**Only stop if:**
+- All tickets in the current dispatch AND the pillar backlogs are exhausted AND the QA checklist is complete, OR
+- You hit a genuine blocker that requires PM input (note it clearly in the Status Board), OR
+- Preflight has failed 3+ times and you cannot identify the root cause
+
+**In all other cases: keep going.** You do not need PM approval between tickets. Commit small, run preflight, move to the next ticket.
+
+**When the dispatch is exhausted → move to the pillars:**
+1. Read `PILLAR-TRUST.md` — work through items in order, highest tier first (Security owns Tier 1 and Tier 4)
+2. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Security) that aren't done
+3. When both pillars are exhausted → run the QA checklists in `PILLAR-TRUST.md` and `PILLAR-MEMORY.md`
+4. Log QA results in `content/qa-log.md` (create if it doesn't exist)
+
+## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay schema)
+
+> Master at `c7d2515`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`
+> (Theory 3: Predictive context loading; Theory 1: Memory confidence decay).
+> Two tickets. #1 is fully independent — build now. #2 depends on bi-temporal landing first (Round 5 T1).
+
+### Ticket 1 — ★ Predictive context loading: 11pm pre-call prep job (P1 — build now, independent)
+
+> **Owned by Security/Vijay.** You own `lib/scheduler.ts`. Core provides the builder fn; you wire the cron.
+> This is distinct from the sleep-time consolidation agent (which runs *after* calls). This runs *before* —
+> assembling tomorrow's optimal briefing context so the call reads a pre-warmed pack, not a live query.
+
+**What it does:**
+Nightly at 11pm (user's local timezone), for each active user with a call scheduled tomorrow:
+1. Calls `buildBriefingContextPack(userId)` (Core exports this from `lib/briefing.ts` — see constraint below)
+2. Writes the result to a new `briefing_context_packs` table (or `user_cache` row keyed by date)
+3. The morning call reads the pre-warmed pack first; falls back to live assembly if pack is missing or stale
+
+**Two hard constraints (coordinate with Darren):**
+- **Reuse `lib/briefing.ts` context assembly** — do NOT write a parallel assembler. Darren extracts a
+  `buildBriefingContextPack(userId): Promise<string>` fn from the existing briefing builder. You call it.
+  If they drift, briefings become inconsistent.
+- **Respect `data_consent`** — call `isImproveConsented(user)` from `lib/consent.ts` before caching.
+  Users in Privacy Mode: cache is allowed (it's their own data), but log no telemetry on the pack contents.
+
+**Schema (Security owns):**
+```sql
+CREATE TABLE IF NOT EXISTS briefing_context_packs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  pack_date TEXT NOT NULL,          -- YYYY-MM-DD (the date of the briefing this primes)
+  context_pack TEXT NOT NULL,       -- encrypted at rest (contains memory content)
+  generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, pack_date)
+);
+```
+- `context_pack` encrypted at rest (same pattern as `memories.content`)
+- One row per user per day; upsert on regeneration
+- Prune rows older than 7 days (no need to keep stale packs)
+
+**Scheduler entry:** add to `lib/scheduler.ts` alongside the existing briefing scheduler.
+One Haiku call per user per night. ~$0.001/user/day.
+
+---
+
+### Ticket 2 — Confidence decay schema (P1 — depends on bi-temporal Round 5 T1 landing first)
+
+> **NOTE:** This IS the active half of the P3 "memory quality scoring" item. Do NOT build as a
+> separate system — this is the same thing, built on the `valid_from` column from Round 5 T1.
+> Wait for Round 5 T1 to merge before starting this ticket.
+
+**What it does:** Every fact has a confidence score. Facts decay over time. When confidence drops below
+a threshold, they surface for reconfirmation. Prevents memory drift — the moat leaking.
+
+**Schema addition (on top of Round 5 T1's `facts` table changes):**
+```sql
+-- Add to facts table (after valid_from/valid_until land):
+confidence REAL NOT NULL DEFAULT 1.0,   -- 1.0 = confirmed; decays to 0.0
+last_confirmed_at TEXT DEFAULT (datetime('now'))
+```
+
+**Decay logic (Security owns — weekly scheduled job in `lib/scheduler.ts`):**
+- Volatile facts (category: priorities, projects, current_focus): decay 0.1/week
+- Stable facts (category: personality, working_style, relationships): decay 0.02/week
+- Fact confirmed again (mentioned in call or Derrick doesn't correct it): reset to 1.0, update `last_confirmed_at`
+- Facts below 0.3 confidence: flagged as "unverified" — surfaced to Core's reconfirmation trigger (see ROADMAP-CORE Round 6 T2)
+
+**Coordinate with Darren:** Core writes the mid-call reconfirmation trigger that reads the low-confidence
+queue and surfaces questions during briefings. Security owns the schema + decay scheduler only.
+
+Ship small / green / full preflight (`npm run preflight` from `C:\Users\Derrick\edg3`).
+Update changelog + Status Board when done.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Bi-temporal fact schema)
 
 > Master at `e7357cc`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`

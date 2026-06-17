@@ -7,6 +7,29 @@
 > the same commit that ships work, and claim Shared page-UI files in the constitution's
 > Status Board (§6) before editing them.
 
+## ⚡ Standing order — read this before every ticket
+
+**Do not stop between tickets.** Your job is not done when one ticket is done — it is done when the entire current dispatch is complete and preflight is green.
+
+After every ticket:
+1. Run `npm run preflight` from `C:\Users\Derrick\edg3-design`
+2. If green → commit with a clear message → immediately start the next ticket in this dispatch
+3. If preflight fails → fix it (up to 2 attempts) → if still failing, note the blocker in the Status Board and move to the next independent ticket; only stop if fully blocked
+
+**Only stop if:**
+- All tickets in the current dispatch AND the pillar backlogs are exhausted AND the QA checklist is complete, OR
+- You hit a genuine blocker that requires PM input (note it clearly in the Status Board), OR
+- Preflight has failed 3+ times and you cannot identify the root cause
+
+**In all other cases: keep going.** You do not need PM approval between tickets. Commit small, run preflight, move to the next ticket.
+
+**When the dispatch is exhausted → move to the pillars:**
+1. Read `PILLAR-TRUST.md` — pick up any Trust items tagged (Design): data-transparency UI, "What Edge knows" completeness (T3-1)
+2. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Design): Memory tab UI, episode timeline, confidence display
+3. When both pillars are exhausted → run the QA checklists in `PILLAR-TRUST.md` and `PILLAR-MEMORY.md`
+4. Log QA results in `content/qa-log.md` (create if it doesn't exist)
+5. If QA is also done: speculative polish on `app/globals.css` and `components/ui/` — your domain, no dispatch needed
+
 ## Mandate
 Own the **design system** (`app/globals.css`) and the **visual/UX** of the app. Improve
 trust + usability for the **early-September launch** — polish and consolidate what exists;
@@ -202,6 +225,9 @@ Ship small / green / full preflight (real exit code); log each below.
 - [ ] Mobile pass (users are often on the go / mid-call).
 
 ## Changelog
+- **2026-06-18** — **Landing page: Memory section + widen/de-center.** (1) Removed burnout/ADHD section (was `max-w-4xl glass-card` with 3 body paragraphs + ADHD callout). (2) Added Memory section in its place: heading "Most AI forgets you. Edge remembers." + 3 body paragraphs on accumulating context + 4-up icon grid (Your goals / People in your orbit / Energy & patterns / Commitments). (3) Widened constrained sections: Problem, How-it-works, and Edge Score all `max-w-3xl`/`max-w-4xl` → `max-w-5xl`; Memory section `max-w-5xl`. Dropped `text-center` from Problem/How-it-works section elements (multi-paragraph body); kept `text-center` on hero, short intro headings, and final CTA. Preflight clean.
+- **2026-06-18** — **EdgeScoreCard: recent change line.** Added `ScoreChange` interface (`delta`, `direction`, `sinceLabel`, `reason`, `asOf`) and optional `change` prop to `EdgeScoreCardProps`. When Core populates the field, renders a direction-colored compact line below the headline message — amber/red for down (↓), green for up (↑), `asOf` time muted. Hidden when `change` is null or direction is flat. `▼ See the breakdown` remains below it. Canonical score model untouched (clarityScore/momentumScore/EdgeTrendSparkline). Preflight clean.
+- **2026-06-18** — **Global cursor affordances.** Added to `app/globals.css`: `cursor: pointer` on `button:not(:disabled)`, `[role="button"]:not([aria-disabled="true"])`, `a[href]`, `label[for]`, `summary`, `select`, `.clickable`; `cursor: not-allowed` on `button:disabled` and `[aria-disabled="true"]`. Verified: all expandable Activity rows already have `role="button"` (covered); all episode/memory expand controls are `<button>` elements (covered). No clickable bare divs found requiring `.clickable`. Preflight clean.
 - **2026-06-18** — **Episode timeline + memory health card + voice selector.** (1) **Episode history timeline**: replaced flat list with a reverse-chronological timeline grouped by date — left accent-line track, date-dot labels, source icon (📞/✉️/📅) per entry, topic chips as accent pills, expandable commitment list with ↳ items. `source` field added to episodes state type. `expandedEpisodes` Set state for per-entry expand/collapse. Collapsible section header with count. (2) **Memory health card (shell)**: surfaces stale facts (>90 days, not dismissed) with per-category quality chips, Edit/Still-true affordances per fact (up to 3 shown + overflow count). `dismissedStaleIds` Set state for UI-level dismiss. Gated behind `staleFacts.length > 0` — invisible when memory is fresh. (3) **Voice selector**: segmented two-button control (Daniel / Aria) in ProfileTab below Data & privacy. `voicePref` state, reads `voice_preference` from `/api/profile`, POSTs to `/api/profile/voice` (graceful no-op until Core wires the route). `aria-pressed` semantics, "Applies to your next call" note. 1407 green, preflight clean.
 - **2026-06-18** — **Memory tab: fact source labels + collapsible sections.** (1) **Source labels**: all three fact renderers (recently-learned rows + both per-category renderers) now call `factSourceLabel(f)` — shows "learned Jun 17 · from your morning call" (as a link to the transcript), "from your inbox", or "from your priorities" based on `source`/`source_briefing_id`. `factSourceLabel()` helper added above FocusScoreboard. (2) **Collapsible sections**: all memory-tab section headers are now `<button>` elements with `aria-expanded` + ▸/▾ chevron + count label (e.g. "👤 People · 9 people"). Click to collapse/expand. Default collapsed: call-notes, people-m2, patterns-m3, accountability, fact, preference (long lower sections). Goals, projects, person category sections default open. `collapsedMemorySections` Set state + `toggleMemorySection` helper added. 1407 green, preflight clean.
 - **2026-06-18** — **Design-system consolidation — utility class foundation.** Added to `app/globals.css`: text color shortcuts (`.text-faint`, `.text-muted`, `.text-body`, `.text-strong`, `.text-accent`) — eliminates `style={{ color: 'var(--text-*)' }}` inline props; fill shortcuts (`.bg-fill-04`, `.bg-fill-hover`, `.bg-accent-08`, `.bg-accent-15`); `.label-caps` for the uppercase tracking header pattern (~30 occurrences); `.glass-card-accent` for the accent-border card pattern. Also raised `--ring-focus` token from 10% → 30% opacity (all focus rings now visible). The utility classes are the foundation; actual inline-style removal happens incrementally as components are touched. 1407 green, preflight clean.
