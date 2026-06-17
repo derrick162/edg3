@@ -8,6 +8,7 @@ import { computeCallStreak } from '@/lib/streak';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
+import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -58,6 +59,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [currentTimezone, setCurrentTimezone] = useState(''); // '' = home (no override)
   const [savingTz, setSavingTz] = useState(false);
 
+  const [dataConsent, setDataConsent] = useState<DataConsent>('privacy');
+  const [savingConsent, setSavingConsent] = useState(false);
+
   useEffect(() => {
     fetch('/api/profile')
       .then(r => r.json())
@@ -66,9 +70,21 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         if (d.call_time) setCallTime(d.call_time);
         if (d.timezone) setTimezone(d.timezone);
         setCurrentTimezone(d.current_timezone || '');
+        if (d.data_consent) setDataConsent(d.data_consent as DataConsent);
         setLoading(false);
       });
   }, []);
+
+  async function handleConsentChange(next: DataConsent) {
+    setDataConsent(next);
+    setSavingConsent(true);
+    await fetch('/api/onboarding/consent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data_consent: next }),
+    }).catch(() => {});
+    setSavingConsent(false);
+  }
 
   async function saveCurrentTimezone(tz: string) {
     setSavingTz(true);
@@ -191,6 +207,12 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Data & Privacy */}
+      <div>
+        <h2 className="text-lg font-bold mb-4">Data &amp; privacy</h2>
+        <DataConsentToggle value={dataConsent} onChange={handleConsentChange} saving={savingConsent} />
       </div>
 
       {/* Profile */}

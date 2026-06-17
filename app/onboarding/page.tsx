@@ -4,10 +4,11 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ActivationLoading, ActivationReveal, ThinDataFallback, DerivedProposal } from '@/components/ui/ActivationReveal';
 import { ActivationHeroCard, ActivationHeroAligned, PlanChange } from '@/components/ui/ActivationHeroCard';
+import { DataConsentScreen, DataConsent } from '@/components/ui/DataConsentCard';
 
-type Step = 'profile' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'done';
+type Step = 'profile' | 'consent' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'done';
 
-const STEPS: Step[] = ['profile', 'calendar', 'activation', 'hero', 'priorities', 'calltime'];
+const STEPS: Step[] = ['profile', 'consent', 'calendar', 'activation', 'hero', 'priorities', 'calltime'];
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ const INDICATOR_META: { label: string; icon: string }[] = [
 ];
 
 function indicatorIdx(step: Step): number {
+  if (step === 'consent') return 0;
   if (step === 'activation' || step === 'hero') return 1;
   return INDICATOR_STEPS.indexOf(step);
 }
@@ -220,6 +222,30 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
           {loading ? 'Edge is reading your profile…' : 'Save & continue →'}
         </button>
       </form>
+    </StepFade>
+  );
+}
+
+// ── Step 1b: Data consent ─────────────────────────────────────────────────────
+
+function ConsentStep({ onNext }: { onNext: () => void }) {
+  async function handleContinue(consent: DataConsent) {
+    // Persist the choice — Core wires the DB column; this fires best-effort
+    try {
+      await fetch('/api/onboarding/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data_consent: consent }),
+      });
+    } catch {
+      // best-effort; don't block the user
+    }
+    onNext();
+  }
+
+  return (
+    <StepFade>
+      <DataConsentScreen onContinue={handleContinue} />
     </StepFade>
   );
 }
@@ -798,6 +824,7 @@ function OnboardingContent() {
           <StepIndicator current={step} />
 
           {step === 'profile'    && <ProfileStep    onNext={advance} />}
+          {step === 'consent'    && <ConsentStep    onNext={advance} />}
           {step === 'calendar'   && <CalendarStep   onNext={advance} onSkip={advance} />}
           {step === 'activation' && (
             <ActivationStep
