@@ -7,6 +7,32 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## 📥 PM DISPATCH — 2026-06-18 (ROUND 4 — Launch hardening: audit log gaps + rate-limit sweep)
+
+> Master at `30ff3df`. `git merge master` first (picks up CASA enforcement you already shipped).
+> CASA is done. This dispatch is pre-launch hardening — close the remaining trust gaps before September.
+
+### Ticket 1 — Audit log coverage sweep
+
+The `audit_log` table records calendar mutations and email drafts. Before launch, verify it covers every action a user can trigger and close any gaps.
+
+1. List every `POST`/`PATCH`/`DELETE` route in `app/api/**` that mutates user data. For each: confirm it writes to `audit_log` (or explain why it doesn't need to).
+2. Routes most likely to be missing: `/api/onboarding/**`, `/api/memory/facts/[id]` (PATCH — fact edits), `/api/priorities/**`, `/api/open-loops/**`.
+3. For any missing: add a `recordAuditEvent(userId, action, args, snapshot)` call. Reuse the existing pattern from calendar mutations.
+4. Document the full coverage map in `content/security-audit.md` under a new "Audit log coverage" section.
+
+### Ticket 2 — Rate-limit gap check
+
+Round 3 shipped 36 rate-limited route types. Before launch, verify there are no obvious unprotected mutation routes remaining — especially any new routes Core has added since Round 3 (Focus Scoreboard, CASA consent endpoint, any new onboarding routes).
+
+1. Scan `app/api/**` for `POST`/`PATCH`/`DELETE` routes added or modified since your last sweep.
+2. Add `rateLimit()` to any unprotected mutation endpoint.
+3. Update the rate-limit inventory in `content/security-audit.md`.
+
+Ship small / green / full preflight. Update changelog + Status Board when done.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (Data consent enforcement — CASA requirement)
 
 > Master at `65c04dd`. Sync master first. Full spec: `specs/data-control-onboarding.md`.
