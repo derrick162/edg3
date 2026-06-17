@@ -463,7 +463,7 @@ export const userQueries = {
   incrementSessionVersion: (id: number) => {
     return getDb().prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?').run(id);
   },
-  updateConsent: (id: number, consent: 'improve' | 'privacy') => {
+  setDataConsent: (id: number, consent: 'improve' | 'privacy') => {
     return getDb().prepare('UPDATE users SET data_consent = ? WHERE id = ?').run(consent, id);
   },
 };

@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     const prev = user.data_consent ?? null;
-    userQueries.updateConsent(user.id, consent as ConsentValue);
+    userQueries.setDataConsent(user.id, consent as ConsentValue);
 
     auditLogQueries.record({
       userId: user.id,

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import {
   computeTimeAllocation,
+  computeWeeklyBreakdown,
   formatTimeAllocationForBriefing,
   formatTimeAllocationInsight,
 } from './timeAllocation';
@@ -298,5 +299,83 @@ describe('formatTimeAllocationInsight', () => {
       expect(insight).not.toBeNull();
       expect(insight).toContain('%');
     }
+  });
+});
+
+// ── computeWeeklyBreakdown ────────────────────────────────────────────────────
+// NOW is fixed to a Tuesday 2026-06-16 so week buckets are deterministic.
+// The current week started Sun 2026-06-15 (UTC).
+
+describe('computeWeeklyBreakdown', () => {
+  // Event at an absolute UTC timestamp (not relative to NOW, since we need exact week placement).
+  function absEvent(summary: string, isoDate: string, durationHours = 1): calendar_v3.Schema$Event {
+    const start = new Date(isoDate);
+    const end = new Date(start.getTime() + durationHours * 3600000);
+    return { summary, start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() } };
+  }
+
+  it('returns empty array for 0 priorities', () => {
+    expect(computeWeeklyBreakdown([absEvent('Sync', '2026-06-10T10:00:00Z')], [], 2)).toEqual([]);
+  });
+
+  it('returns correct number of buckets', () => {
+    const result = computeWeeklyBreakdown([], [{ text: 'fundraising' }], 4);
+    expect(result).toHaveLength(4);
+  });
+
+  it('buckets are oldest-first', () => {
+    const result = computeWeeklyBreakdown([], [{ text: 'fundraising' }], 3);
+    // each weekStart should be increasing
+    expect(result[0].weekStart < result[1].weekStart).toBe(true);
+    expect(result[1].weekStart < result[2].weekStart).toBe(true);
+  });
+
+  it('attributes event in the correct week bucket', () => {
+    // Jun 8 is a Monday; the week starting Sun Jun 8 is week 2 of 4 (looking back 3 weeks + current)
+    // NOW = Jun 16 (Tue). Current week = Jun 15–21. Previous weeks: Jun 8–14, Jun 1–7, May 25–31.
+    const evts = [
+      absEvent('Fundraising pitch', '2026-06-09T10:00:00Z', 2),  // week of Jun 8
+      absEvent('Fundraising call',  '2026-06-15T10:00:00Z', 1),  // current week (Jun 15)
+    ];
+    const result = computeWeeklyBreakdown(evts, [{ text: 'fundraising' }], 4);
+    // Last bucket = current week (Jun 15)
+    expect(result[result.length - 1].perPriority['fundraising']).toBe(1);
+    // Second-to-last = Jun 8 week
+    expect(result[result.length - 2].perPriority['fundraising']).toBe(2);
+    // Older weeks have 0
+    expect(result[0].perPriority['fundraising']).toBe(0);
+  });
+
+  it('credits exercise event to a fitness/weight goal', () => {
+    const evts = [absEvent('Gym', '2026-06-15T08:00:00Z', 1)];
+    const result = computeWeeklyBreakdown(evts, [{ text: 'Get to 130 lbs' }], 1);
+    expect(result[0].perPriority['Get to 130 lbs']).toBe(1);
+  });
+
+  it('puts non-priority events in otherHours', () => {
+    const evts = [absEvent('Random admin', '2026-06-15T08:00:00Z', 2)];
+    const result = computeWeeklyBreakdown(evts, [{ text: 'fundraising' }], 1);
+    expect(result[0].perPriority['fundraising']).toBe(0);
+    expect(result[0].otherHours).toBe(2);
+  });
+
+  it('rounds hours to 1 decimal place', () => {
+    const evts = [absEvent('Fundraising', '2026-06-15T08:00:00Z', 1.333)];
+    const result = computeWeeklyBreakdown(evts, [{ text: 'fundraising' }], 1);
+    expect(result[0].perPriority['fundraising']).toBe(1.3);
+  });
+
+  it('handles multiple priorities attributing each correctly', () => {
+    const evts = [
+      absEvent('Fundraising pitch',  '2026-06-15T09:00:00Z', 2),
+      absEvent('Morning walk', '2026-06-15T07:00:00Z', 1),
+    ];
+    const result = computeWeeklyBreakdown(
+      evts,
+      [{ text: 'fundraising' }, { text: 'Get to 130 lbs' }],
+      1,
+    );
+    expect(result[0].perPriority['fundraising']).toBe(2);
+    expect(result[0].perPriority['Get to 130 lbs']).toBe(1);
   });
 });

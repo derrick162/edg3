@@ -26,7 +26,7 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/db', () => ({
   userQueries: {
-    updateConsent: (_id: number, consent: string) => {
+    setDataConsent: (_id: number, consent: string) => {
       h.updatedConsent = consent;
     },
   },
