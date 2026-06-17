@@ -365,10 +365,32 @@ describe('consolidateFacts', () => {
     expect(factQueries.deleteFact).toHaveBeenCalledTimes(1);
   });
 
-  it('skips facts with null entity', () => {
+  it('merges null-entity goal/preference facts with high Jaccard overlap', () => {
+    // "Prefers morning calls" vs "Prefers morning calls — confirmed twice" share 3/5 tokens
+    // (Jaccard ≈ 0.6) → should be merged (Pass 0).
     vi.mocked(factQueries.getAll).mockReturnValueOnce([
       makeFact(1, 'preference', null, 'Prefers morning calls'),
       makeFact(2, 'preference', null, 'Prefers morning calls — confirmed twice'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(1);
+    expect(factQueries.deleteFact).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips null-entity facts from non-goal/preference categories (fact category)', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'fact', null, 'Company founded in 2020'),
+      makeFact(2, 'fact', null, 'Company was founded in 2020 by Derrick'),
+    ]);
+    const removed = consolidateFacts(1);
+    expect(removed).toBe(0);
+    expect(factQueries.deleteFact).not.toHaveBeenCalled();
+  });
+
+  it('does not merge null-entity goals with low token overlap (genuinely different goals)', () => {
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'goal', null, 'Raise a Series A by end of year'),
+      makeFact(2, 'goal', null, 'Hire a VP of Engineering'),
     ]);
     const removed = consolidateFacts(1);
     expect(removed).toBe(0);

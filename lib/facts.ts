@@ -244,6 +244,34 @@ export async function extractAndUpsertFacts(
  * Merges the best available statement onto the keeper before deleting duplicates.
  * Entity-null facts are never merged — they can't be reliably matched.
  */
+// Normalize a string for dedup comparison: lowercase, expand number ranges (30-60-90 → 30 60 90),
+// collapse all non-alphanumeric to spaces. Returns a set of non-empty tokens.
+function tokenizeForDedup(s: string): Set<string> {
+  const normalized = s
+    .toLowerCase()
+    .replace(/(\d+)[-/](\d)/g, '$1 $2') // "30-60-90" → "30 60 90"
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  return new Set(normalized.split(' ').filter(t => t.length > 0));
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  let intersection = 0;
+  for (const t of a) { if (b.has(t)) intersection++; }
+  return intersection / (a.size + b.size - intersection);
+}
+
+// Normalize an entity string for containment checks: remove hyphens/slashes between
+// digits (so "30-60-90" and "30/60/90" and "30 60 90" all normalize to "30 60 90").
+function normalizeEntity(e: string): string {
+  return e
+    .toLowerCase()
+    .replace(/(\d+)[-/](\d)/g, '$1 $2')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export function consolidateFacts(userId: number): number {
   const allFacts = factQueries.getAll(userId);
   const groups = new Map<string, typeof allFacts>();
@@ -288,13 +316,37 @@ export function consolidateFacts(userId: number): number {
     }
   }
 
+  // Pass 0: null-entity goal/preference dedup via Jaccard token overlap.
+  // Catches "30-60-90 plan" stored with slight variations (no entity key to group on).
+  // Threshold: Jaccard ≥ 0.4 on normalized token sets → consider same goal/preference.
+  const JACCARD_THRESHOLD = 0.4;
+  const NULL_ENTITY_CATS = new Set(['goal', 'preference']);
+  const nullEntityFacts = allFacts.filter(f => !f.entity?.trim() && NULL_ENTITY_CATS.has(f.category));
+  const tokenSets = nullEntityFacts.map(f => tokenizeForDedup(f.statement));
+  const claimedNull = new Set<number>(); // indexes of already-merged facts
+  for (let i = 0; i < nullEntityFacts.length; i++) {
+    if (claimedNull.has(i)) continue;
+    const cluster: typeof nullEntityFacts = [nullEntityFacts[i]];
+    for (let j = i + 1; j < nullEntityFacts.length; j++) {
+      if (claimedNull.has(j)) continue;
+      if (nullEntityFacts[i].category !== nullEntityFacts[j].category) continue;
+      if (jaccardSimilarity(tokenSets[i], tokenSets[j]) >= JACCARD_THRESHOLD) {
+        cluster.push(nullEntityFacts[j]);
+        claimedNull.add(j);
+      }
+    }
+    claimedNull.add(i);
+    if (cluster.length > 1) reduceGroup(cluster);
+  }
+
   // Pass 1: exact-match grouping (same category + same entity, case-insensitive).
   for (const group of groups.values()) {
     reduceGroup(group);
   }
 
   // Pass 2: fuzzy containment — merge groups where one entity is a substring of the other
-  // (same category). Catches "Pfizer" vs "Pfizer CIBC" → keep "Pfizer".
+  // (same category). Uses normalized entity strings (hyphens/slashes expanded) so
+  // "30-60-90" and "30/60/90" and "30 60 90" all match.
   // Guard: both entities ≥3 chars, shared portion ≥4 chars.
   // People-guard: shorter entity must be ≥6 chars OR one fully contains the other (prevents
   // merging "Sam" with "Samsung").
@@ -312,11 +364,13 @@ export function consolidateFacts(userId: number): number {
 
   for (let i = 0; i < keys.length; i++) {
     if (merged.has(keys[i])) continue;
-    const [catI, entI] = keys[i].split('::');
+    const [catI, rawEntI] = keys[i].split('::');
+    const entI = normalizeEntity(rawEntI);
 
     for (let j = i + 1; j < keys.length; j++) {
       if (merged.has(keys[j])) continue;
-      const [catJ, entJ] = keys[j].split('::');
+      const [catJ, rawEntJ] = keys[j].split('::');
+      const entJ = normalizeEntity(rawEntJ);
 
       if (catI !== catJ) continue;
       if (entI.length < 3 || entJ.length < 3) continue;
@@ -327,7 +381,7 @@ export function consolidateFacts(userId: number): number {
       // Shared portion must be at least 4 chars.
       if (shorter.length < 4) continue;
 
-      // One must contain the other (substring check).
+      // One must contain the other (substring check on normalized forms).
       if (!longer.includes(shorter)) continue;
 
       // People guard: shorter string must be ≥6 chars OR the longer fully starts with shorter
@@ -528,6 +582,24 @@ export async function cleanupPeopleFacts(
   consolidateFacts(userId);
 
   return { removed };
+}
+
+/**
+ * Run goal/preference dedup for a user: calls the improved consolidateFacts which
+ * handles null-entity Jaccard dedup + normalized entity containment. Safe to run
+ * repeatedly (idempotent). Returns the number of duplicate facts removed.
+ * Called from the admin memories cleanup endpoint and from sleep-time consolidation.
+ */
+export function cleanupGoalFacts(userId: number): { removed: number } {
+  try {
+    const before = factQueries.getAll(userId).length;
+    consolidateFacts(userId);
+    const after = factQueries.getAll(userId).length;
+    return { removed: Math.max(0, before - after) };
+  } catch (err) {
+    console.error('[facts] cleanupGoalFacts failed:', err);
+    return { removed: 0 };
+  }
 }
 
 /**
