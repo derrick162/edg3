@@ -304,6 +304,69 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **M4 Accountability Memory — commitment outcome tracking + briefing reflection.**
+  - **`lib/accountabilityMemory.ts`** (new, pure, zero I/O):
+    - `buildAccountabilitySnapshot(tasks, openLoops, today, lookbackDays=7)` — takes edg3-source tasks
+      + `commitment_made` open_loops for the last N days; splits into `done` vs `stillOpen` with
+      `daysOpen`, `completionRate`, and `dueDate` metadata. `completionRate` is null when < 2
+      commitments (avoids misleading "100%" on first use). Today's open tasks excluded (too fresh).
+    - `formatAccountabilityForBriefing(snapshot)` — formats done/open list with age/due-date labels.
+      Caps `stillOpen` display at 3 + overflow note. Returns '' when nothing to surface.
+    - `accountabilityBriefingInstruction(snapshot)` — if open items exist: ask about most overdue
+      in section 4 ACTION ITEMS, offer to reschedule or drop ("never shame — curious, not judgmental").
+      If all done: encourage briefly in GREETING or closing. Returns '' when no commitments.
+  - **`lib/briefing.ts`**: ACCOUNTABILITY block injected into the briefing prompt when
+    `accountabilitySnapshot` has past commitments. Falls back to old single-line `YESTERDAY'S
+    COMMITMENT` block when snapshot is empty (backwards-compatible). Fixed `require('./db')` ESM
+    bug — now uses the already-imported `openLoopQueries` at top level. Inputs: all 7-day tasks
+    (done + incomplete) + open+done open_loops; zero new API calls.
+  - **`GET /api/accountability`** (new): returns `buildAccountabilitySnapshot` for the current user
+    scoped to 7 days; rate-limited via `meetingContext` (30/hr).
+  - **`app/dashboard/page.tsx`**: `accountability` state + `/api/accountability` fetch. Memory tab
+    "Past commitments" section: ⏳ stillOpen cards (age + due date) + ✓ done cards + completion
+    rate badge. Appears above "Patterns Edge has noticed".
+  - **`lib/accountabilityMemory.test.ts`** (new): 18 tests — all snapshot, format, and instruction
+    pure-function paths. All 1407/1407 green, tsc clean, next build clean.
+- **2026-06-18** — **M3 Pattern Memory — behavioral patterns from calendar + Whoop history.**
+  - **`lib/patternMemory.ts`** (new, pure, zero I/O): 4 detectors:
+    - `detectProductiveDayPattern` — which days have the most uninterrupted ≥60min blocks (proxy for deep work)
+    - `detectLightDayPattern` — which day consistently has the fewest meetings (≥20% below median)
+    - `detectMeetingLoadRecoveryPattern` — do heavy-meeting days (≥5 events) precede lower Whoop recovery?
+    - `detectFocusWindowPattern` — which 2-hour slot is most consistently meeting-free across weeks
+    - `pickBestPattern(patterns[])` — picks highest-confidence, most-evidenced pattern
+    - `formatPatternForBriefing(pattern)` — formats as briefing prompt block with confidence + sample count
+  - **`pattern_cache` table** added to `lib/db.ts` (one row/user, JSON blob, refreshed each briefing).
+    `patternCacheQueries`: `get` (read cached patterns) + `upsert` (replace on each briefing run).
+  - **Briefing wiring** (`lib/briefing.ts`): patterns computed inline from already-fetched `pastCalendarHistory`
+    + `recoveryHistory` — zero extra API calls. Best pattern injected as `PATTERN INSIGHT` block in section 5
+    (calendar blocks). Cache upserted fire-and-forget. Both the inline block AND cache update degrade silently.
+  - **`GET /api/patterns`** — reads `pattern_cache` for user; returns `{ patterns }` for dashboard.
+  - **Dashboard Memory tab**: "Patterns Edge has noticed" section with summary + confidence + data points.
+    Populated from first briefing call; empty before then (no cold-start cost).
+  - 18 new tests for all 4 detectors + pickBestPattern + formatPatternForBriefing.
+    1389/1389 green, tsc clean, next build clean.
+- **2026-06-18** — **M2 Relationship Memory — people profiles from calendar attendees.**
+  - **`lib/relationships.ts`** (new, pure + sync layer): `extractAttendeesFromEvent` strips self/selfEmail;
+    `computePersonInteractions(pastEvents, upcomingEvents, selfEmail, nowIso)` — pure, no I/O — groups attendees
+    by display name, counts past interactions, finds `lastInteraction` (most recent past date) and
+    `upcomingInteraction` (earliest future date). `syncPeopleProfiles(userId, ...)` — I/O wrapper, upserts top 50
+    by interaction count, fire-and-forget safe. `buildRelationshipContextBlock(upcomingEvents, profiles, selfEmail)`
+    formats a briefing-ready block for attendees with ≥2 past interactions. `formatInteractionContext` — compact
+    "met 5× · last Jun 10" string.
+  - **`people_profiles` table** added to `lib/db.ts`: `canonical_name`, `email`, `interaction_count`,
+    `last_interaction`, `upcoming_interaction`, `updated_at`. Unique index on `(user_id, canonical_name)`.
+    `peopleProfileQueries`: `listForUser`, `getByName`, `upsert` (ON CONFLICT DO UPDATE). Migration for `email`
+    column (try/catch safe for fresh installs).
+  - **`GET /api/relationships`** — returns profiles sorted by interaction_count DESC; rate-limited via
+    `meetingContext` key (30/hr).
+  - **`POST /api/relationships/sync`** — triggers 30-day past + 14-day upcoming calendar fetch + upsert; rate-limited.
+  - **Briefing wiring** (`lib/briefing.ts`): fire-and-forget `syncPeopleProfiles` after each briefing's calendar
+    fetch (keeps profiles fresh at zero cost). `buildRelationshipContextBlock` injected after MEETING PREP — Edge
+    gets "met N× · last Jun 10" for each attendee with history. Degrades silently when no data.
+  - **Dashboard Memory tab**: "People you meet with" section shows canonical_name, met count, last date, next
+    date (indigo) — rendered before Call notes, sorted by interaction_count DESC.
+  - 17 new tests (extractAttendeesFromEvent, computePersonInteractions, formatInteractionContext).
+    1353/1353 green, tsc clean, next build clean.
 - **2026-06-18** — **Focus Scoreboard — outcome layer + 4-week trend (Ticket 2).**
   - **`computeWeeklyBreakdown(events, priorities, numWeeks)` pure helper** added to `lib/timeAllocation.ts`.
     Splits calendar events into weekly Sun–Sat buckets going back `numWeeks` weeks. For each bucket, applies the

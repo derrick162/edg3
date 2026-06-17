@@ -1140,6 +1140,9 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
+  const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
+  const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
+  const [accountability, setAccountability] = useState<{ done: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; stillOpen: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; completionRate: number | null; lookbackDays: number } | null>(null);
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -1250,6 +1253,9 @@ export default function Dashboard() {
     };
     retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
+    fetch('/api/relationships').then(r => r.ok ? r.json() : null).then(d => { if (d?.profiles) setPeople(d.profiles); }).catch(() => {});
+    fetch('/api/patterns').then(r => r.ok ? r.json() : null).then(d => { if (d?.patterns) setPatterns(d.patterns); }).catch(() => {});
+    fetch('/api/accountability').then(r => r.ok ? r.json() : null).then(d => { if (d?.snapshot) setAccountability(d.snapshot); }).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
@@ -2747,6 +2753,112 @@ export default function Dashboard() {
               {facts.length > 0 && memories.length > 0 && (
                 <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
               )}
+
+              {/* Past commitments (M4 accountability) */}
+              {accountability && (accountability.stillOpen.length > 0 || accountability.done.length > 0) && (
+                <div className="mb-8">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">✅</span>
+                    Past commitments
+                  </h3>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                    Edge tracks what you commit to on calls and checks in when they&apos;re still open.
+                    {accountability.completionRate !== null && (
+                      <> · <strong>{Math.round(accountability.completionRate * 100)}%</strong> completed in the last {accountability.lookbackDays} days</>
+                    )}
+                  </p>
+                  {accountability.stillOpen.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Still open</p>
+                      {accountability.stillOpen.slice(0, 5).map(c => (
+                        <div key={`ol-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3">
+                          <span className="mt-0.5 text-base" aria-hidden="true">⏳</span>
+                          <div className="min-w-0">
+                            <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                              Open {c.daysOpen === 1 ? '1 day' : `${c.daysOpen} days`}
+                              {c.dueDate ? ` · due ${c.dueDate}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {accountability.done.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Completed</p>
+                      {accountability.done.slice(0, 3).map(c => (
+                        <div key={`done-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3">
+                          <span className="mt-0.5 text-base" aria-hidden="true">✓</span>
+                          <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Behavioral patterns */}
+              {patterns.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">📊</span>
+                    Patterns Edge has noticed
+                  </h3>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                    Detected from your calendar and health data — Edge uses these to protect your best time.
+                  </p>
+                  <div className="space-y-2">
+                    {patterns.map((p, i) => (
+                      <div key={i} className="glass-card px-4 py-3">
+                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{p.summary}</p>
+                        <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
+                          {p.confidence === 'high' ? 'High' : 'Medium'} confidence · {p.sampleDays} data points
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* People profiles */}
+              {people.length > 0 && (() => {
+                const PEOPLE_LIMIT = 15;
+                const topPeople = people.slice(0, PEOPLE_LIMIT);
+                return (
+                  <div className="mb-8">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">🤝</span>
+                      People you meet with
+                    </h3>
+                    <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                      Built from your calendar — Edge tracks who you&apos;re meeting with so it can give you better context before calls.
+                    </p>
+                    <div className="space-y-1.5">
+                      {topPeople.map(p => {
+                        const lastDate = p.last_interaction
+                          ? new Date(p.last_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                          : null;
+                        const nextDate = p.upcoming_interaction
+                          ? new Date(p.upcoming_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                          : null;
+                        return (
+                          <div key={p.canonical_name} className="glass-card px-4 py-3 flex items-center justify-between gap-3">
+                            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                              {p.canonical_name}
+                            </span>
+                            <div className="flex items-center gap-3 text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                              <span>{p.interaction_count}× met</span>
+                              {lastDate && <span>last {lastDate}</span>}
+                              {nextDate && <span className="font-medium" style={{ color: 'var(--edg-indigo-bright)' }}>next {nextDate}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Raw memories — paginated */}
               {memories.length > 0 && (() => {
