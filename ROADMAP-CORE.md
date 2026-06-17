@@ -8,6 +8,32 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-18 (ROUND 2 — CASA DB wiring + Focus Scoreboard)
+
+> Master at `30ff3df`. `git merge master` first. Two tickets in priority order.
+
+### Ticket 1 — CASA DB wiring (unblocks full CASA flow — do this first, it's short)
+
+Security shipped enforcement; Design shipped the screen. You own the last piece.
+
+1. Add `data_consent TEXT DEFAULT 'privacy'` column to `users` table in `lib/db.ts`.
+2. Expose `data_consent` from `GET /api/profile` so Design's Settings toggle reads initial state.
+3. Wire `POST /api/onboarding/consent` (body: `{ data_consent: 'privacy' | 'improve' }`) — upsert into the column. Design's onboarding screen + settings toggle already POST to this endpoint.
+
+That's it — Design and Security are already done. This unblocks CASA/Google OAuth verification.
+
+### Ticket 2 — ★★★ Focus Scoreboard (the outcome layer)
+
+The backlog item marked `★★★`. This is the heart of the vision — users need to see that Edge is moving the needle on their actual priorities, not just managing their calendar. Build the outcome/scoreboard layer so the Edge Score has a visible story behind it.
+
+Read `ROADMAP-CORE.md §Focus Scoreboard` for the full spec if it exists, otherwise implement:
+- A weekly "how did your time map to your priorities?" summary — hours per priority vs target, surfaced in the dashboard.
+- The data already exists: `priorities` table + calendar events + `lib/alignment.ts` alignment scores. Wire it into a visible scoreboard surface (new tab or section) so the user can see trend over time, not just today's score.
+
+Ship Ticket 1 first (it's ~30 min), then Ticket 2. Small commits, preflight gate (`npm run preflight` from `C:\Users\Derrick\edg3`), update this changelog + Status Board when done.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (Data control onboarding screen — CASA requirement)
 
 > Master at `65c04dd`. Sync master first. Full spec: `specs/data-control-onboarding.md`.
