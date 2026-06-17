@@ -1151,10 +1151,10 @@ Query: ${query}` }],
     // Accept string titles or full FocusArea objects from Sonnet
     const cleaned = (areas as unknown[])
       .map(a => {
-        if (typeof a === 'string') return { title: a.trim(), rationale: '', confidence: 'medium' as const };
+        if (typeof a === 'string') return { title: a.trim().slice(0, 200), rationale: '', confidence: 'medium' as const };
         if (typeof a === 'object' && a !== null) {
           const o = a as Record<string, unknown>;
-          return { title: String(o.title ?? '').trim(), rationale: String(o.rationale ?? '').trim(), confidence: 'medium' as const };
+          return { title: String(o.title ?? '').trim().slice(0, 200), rationale: String(o.rationale ?? '').trim().slice(0, 500), confidence: 'medium' as const };
         }
         return null;
       })
