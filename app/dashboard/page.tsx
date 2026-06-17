@@ -898,7 +898,32 @@ interface ScoreboardWeek {
 }
 interface ScoreboardData {
   perPriority: ScoreboardPriority[]; weeklyTrend: ScoreboardWeek[];
-  totalHoursThisWeek: number; weeksBack: number;
+  totalHoursThisWeek: number; weeksBack: number; timezone?: string;
+}
+
+const ENERGY_COLOR: Record<string, { bg: string; text: string; label: string }> = {
+  high:   { bg: 'rgba(251,191,36,0.12)',  text: 'rgba(251,191,36,0.9)',  label: '⚡ High energy' },
+  medium: { bg: 'rgba(99,102,241,0.10)',  text: 'rgba(139,92,246,0.85)', label: '~ Medium energy' },
+  low:    { bg: 'rgba(148,163,184,0.10)', text: 'var(--text-faint)',      label: '· Low energy' },
+};
+
+function MilestoneDots({ milestones }: { milestones: ScoreboardMilestone[] }) {
+  if (milestones.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {milestones.map(m => (
+        <span key={m.id} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
+          style={{
+            background: m.done ? 'rgba(99,102,241,0.12)' : 'var(--edg-accent-08)',
+            color: m.done ? 'var(--text-accent)' : 'var(--text-faint)',
+            textDecoration: m.done ? 'line-through' : 'none',
+          }}>
+          <span style={{ fontSize: 8 }}>{m.done ? '●' : '○'}</span>
+          {m.title.length > 22 ? m.title.slice(0, 20) + '…' : m.title}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function FocusScoreboardPanel() {
@@ -914,9 +939,16 @@ function FocusScoreboardPanel() {
 
   if (loading) {
     return (
-      <div className="glass-card p-4 mb-6 animate-pulse" style={{ minHeight: 80 }}>
-        <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-accent-15)' }} />
-        <div className="h-2 rounded w-1/2" style={{ background: 'var(--edg-accent-08)' }} />
+      <div className="mb-6 space-y-3 animate-pulse">
+        {[0.6, 0.8, 0.4].map((w, i) => (
+          <div key={i} className="glass-card p-4" style={{ minHeight: 72 }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-full flex-shrink-0" style={{ width: 28, height: 28, background: 'var(--edg-accent-15)' }} />
+              <div className="h-3 rounded flex-1" style={{ maxWidth: `${w * 100}%`, background: 'var(--edg-accent-08)' }} />
+            </div>
+            <div className="h-2 rounded-full" style={{ background: 'var(--edg-accent-08)' }} />
+          </div>
+        ))}
       </div>
     );
   }
@@ -925,80 +957,123 @@ function FocusScoreboardPanel() {
 
   const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
   const trendWeeks = data.weeklyTrend.slice(-4);
+  const maxTrendHours = trendWeeks.length > 0
+    ? Math.max(...trendWeeks.flatMap(w => data.perPriority.map(p => w.perPriority[p.text] ?? 0)), 1)
+    : 1;
 
-  const ENERGY_LABEL: Record<string, string> = { high: '⚡ High', medium: '~ Med', low: '· Low' };
-
-  const trendArrow = (text: string): string => {
+  const trendDelta = (text: string): { arrow: string; up: boolean; flat: boolean } => {
     const weeks = trendWeeks.map(w => w.perPriority[text] ?? 0);
-    if (weeks.length < 2) return '';
+    if (weeks.length < 2) return { arrow: '', up: false, flat: true };
     const recent = weeks[weeks.length - 1];
     const prev   = weeks[weeks.length - 2];
-    if (recent > prev + 0.5) return ' ↑';
-    if (recent < prev - 0.5) return ' ↓';
-    return '';
+    if (recent > prev + 0.5) return { arrow: '↑', up: true, flat: false };
+    if (recent < prev - 0.5) return { arrow: '↓', up: false, flat: false };
+    return { arrow: '→', up: false, flat: true };
   };
 
   return (
     <div className="mb-6">
-      <div className="flex items-center justify-between mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--text-faint)' }}>
-          Focus progress — this week
+          Focus this week
         </h3>
         {data.totalHoursThisWeek > 0 && (
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {data.totalHoursThisWeek}h total
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)' }}>
+            {data.totalHoursThisWeek}h logged
           </span>
         )}
       </div>
 
-      <div className="space-y-3 mb-4">
+      {/* Per-priority cards */}
+      <div className="space-y-3 mb-5">
         {data.perPriority.map(p => {
-          const barPct = maxHours > 0 ? Math.round((p.hoursThisWeek / maxHours) * 100) : 0;
+          const barPct    = maxHours > 0 ? Math.round((p.hoursThisWeek  / maxHours) * 100) : 0;
           const avgBarPct = maxHours > 0 ? Math.round((p.weeklyAvgHours / maxHours) * 100) : 0;
+          const delta     = trendDelta(p.text);
+          const energy    = p.energyCost ? ENERGY_COLOR[p.energyCost] : null;
+          const allDone   = p.milestoneTotal > 0 && p.milestoneDone === p.milestoneTotal;
+
           return (
-            <div key={p.id} className="glass-card p-3">
-              <div className="flex items-start justify-between mb-2 gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-black flex-shrink-0 w-4 text-center"
-                    style={{ color: 'var(--text-accent)' }}>{p.rank}</span>
-                  <span className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>
-                    {p.text}{trendArrow(p.text)}
+            <div key={p.id} className="glass-card p-4">
+              {/* Title row */}
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Rank circle */}
+                  <span className="flex-shrink-0 flex items-center justify-center rounded-full text-xs font-black"
+                    style={{
+                      width: 28, height: 28,
+                      background: p.rank === 1 ? 'rgba(99,102,241,0.18)' : 'var(--edg-accent-08)',
+                      color: p.rank === 1 ? 'var(--edg-indigo)' : 'var(--text-muted)',
+                      border: p.rank === 1 ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                    }}>
+                    {p.rank}
+                  </span>
+                  <span className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
+                    {p.text}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {p.energyCost && (
-                    <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--edg-accent-08)' }}>
-                      {ENERGY_LABEL[p.energyCost] ?? p.energyCost}
+
+                {/* Badges */}
+                <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                  {energy && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: energy.bg, color: energy.text }}>
+                      {energy.label}
                     </span>
                   )}
-                  {p.milestoneTotal > 0 && (
-                    <span style={{ color: p.milestoneDone === p.milestoneTotal ? 'var(--text-accent)' : 'var(--text-muted)' }}>
-                      {p.milestoneDone}/{p.milestoneTotal} ✓
+                  {delta.arrow && (
+                    <span className="text-xs font-bold"
+                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'rgba(239,68,68,0.8)' }}>
+                      {delta.arrow}
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Hours bar */}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 6, background: 'var(--edg-accent-08)' }}>
-                  <div className="h-full rounded-full transition-all"
-                    style={{ width: `${barPct}%`, background: 'var(--edg-indigo)', opacity: 0.8 }} />
+              {/* Hours bar with avg tick */}
+              <div className="relative mb-1">
+                <div className="rounded-full overflow-hidden" style={{ height: 8, background: 'var(--edg-accent-08)' }}>
+                  <div className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${barPct}%`,
+                      background: barPct > 60
+                        ? 'linear-gradient(90deg, var(--edg-indigo), rgba(139,92,246,0.9))'
+                        : barPct > 25
+                        ? 'linear-gradient(90deg, rgba(99,102,241,0.7), var(--edg-indigo))'
+                        : 'rgba(99,102,241,0.5)',
+                    }} />
                 </div>
-                <span className="text-xs w-16 text-right flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                  {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h` : '0h'}
-                  {p.weeklyAvgHours > 0 && p.weeklyAvgHours !== p.hoursThisWeek
-                    ? ` · avg ${p.weeklyAvgHours}h`
-                    : ''}
+                {/* Avg marker tick */}
+                {avgBarPct > 0 && Math.abs(avgBarPct - barPct) > 3 && (
+                  <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${avgBarPct}%` }}>
+                    <div style={{ width: 2, height: 12, marginTop: -2, background: 'var(--text-faint)', borderRadius: 1, opacity: 0.5 }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Hours label */}
+              <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-faint)' }}>
+                <span style={{ color: p.hoursThisWeek > 0 ? 'var(--text-muted)' : 'var(--text-faint)' }}>
+                  {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h this week` : 'No time logged yet'}
                 </span>
+                {p.weeklyAvgHours > 0 && (
+                  <span>avg {p.weeklyAvgHours}h/wk</span>
+                )}
               </div>
 
-              {/* Avg marker overlay (ghost bar) */}
-              {avgBarPct > 0 && avgBarPct !== barPct && (
-                <div className="relative" style={{ height: 2, marginTop: -4, marginBottom: 2 }}>
-                  <div className="absolute h-full rounded-full" style={{
-                    left: `${avgBarPct}%`, width: 2, background: 'var(--text-faint)', opacity: 0.4,
-                  }} />
+              {/* Milestone dots */}
+              {p.milestoneTotal > 0 && (
+                <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--edg-accent-08)' }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Milestones</span>
+                    <span className="text-xs font-medium"
+                      style={{ color: allDone ? 'var(--edg-success)' : 'var(--text-muted)' }}>
+                      {p.milestoneDone}/{p.milestoneTotal}{allDone ? ' ✓ complete' : ''}
+                    </span>
+                  </div>
+                  <MilestoneDots milestones={p.milestones} />
                 </div>
               )}
             </div>
@@ -1006,21 +1081,21 @@ function FocusScoreboardPanel() {
         })}
       </div>
 
-      {/* 4-week trend table */}
+      {/* 4-week heatmap table */}
       {trendWeeks.length >= 2 && (
-        <div className="glass-card p-3 overflow-x-auto">
-          <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-faint)' }}>
-            {data.weeksBack}-week trend (hours/week)
+        <div className="glass-card p-4 overflow-x-auto">
+          <p className="text-xs mb-3 font-medium" style={{ color: 'var(--text-faint)' }}>
+            {data.weeksBack}-week trend
           </p>
-          <table className="text-xs w-full" style={{ borderCollapse: 'collapse' }}>
+          <table className="text-xs w-full" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
             <thead>
               <tr>
-                <th className="text-left pr-3 py-1 font-normal" style={{ color: 'var(--text-faint)', minWidth: 110 }}>
+                <th className="text-left pb-1 font-normal pr-4" style={{ color: 'var(--text-faint)', minWidth: 100 }}>
                   Priority
                 </th>
                 {trendWeeks.map(w => (
-                  <th key={w.weekStart} className="text-right px-2 py-1 font-normal"
-                    style={{ color: 'var(--text-faint)', minWidth: 50 }}>
+                  <th key={w.weekStart} className="text-center pb-1 px-1 font-normal"
+                    style={{ color: 'var(--text-faint)', minWidth: 48 }}>
                     {w.weekLabel}
                   </th>
                 ))}
@@ -1029,15 +1104,22 @@ function FocusScoreboardPanel() {
             <tbody>
               {data.perPriority.map(p => (
                 <tr key={p.id}>
-                  <td className="pr-3 py-1 truncate" style={{ color: 'var(--text-muted)', maxWidth: 110 }}>
-                    {p.text.length > 18 ? p.text.slice(0, 16) + '…' : p.text}
+                  <td className="pr-4 py-0.5 font-medium" style={{ color: 'var(--text-muted)', maxWidth: 120 }}>
+                    <span className="block truncate">{p.text.length > 16 ? p.text.slice(0, 14) + '…' : p.text}</span>
                   </td>
                   {trendWeeks.map(w => {
                     const h = w.perPriority[p.text] ?? 0;
+                    const intensity = maxTrendHours > 0 ? h / maxTrendHours : 0;
                     return (
-                      <td key={w.weekStart} className="text-right px-2 py-1"
-                        style={{ color: h > 0 ? 'var(--text-strong)' : 'var(--text-faint)' }}>
-                        {h > 0 ? `${h}h` : '—'}
+                      <td key={w.weekStart} className="text-center px-1 py-0.5">
+                        <span className="inline-block rounded px-1.5 py-0.5 font-medium transition-all"
+                          style={{
+                            background: h > 0 ? `rgba(99,102,241,${0.08 + intensity * 0.28})` : 'transparent',
+                            color: h > 0 ? `rgba(199,210,254,${0.6 + intensity * 0.4})` : 'var(--text-faint)',
+                            minWidth: 32,
+                          }}>
+                          {h > 0 ? `${h}h` : '—'}
+                        </span>
                       </td>
                     );
                   })}
