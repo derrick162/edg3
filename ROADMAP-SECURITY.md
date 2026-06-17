@@ -217,6 +217,54 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T1-5 + T3-4 + T4-3 — Rate limit sweep clean + account deletion completeness + WAL (1596 green).**
+  - **T1-5 — Rate limit sweep:** Full scan of all 37 user-facing POST/PATCH/DELETE routes in `app/api/`. All mutation routes are protected with `checkRateLimit()`. No gaps found. `vapi/webhook` and `vapi/verify-promises` use Vapi secret auth (correct — no user session on these paths). No code changes needed.
+  - **T4-3 — WAL + busy_timeout:** Already confirmed in overnight hardening commit: `db.pragma('journal_mode = WAL')` was pre-existing; `db.pragma('busy_timeout = 5000')` added. ✅ Complete.
+  - **T3-4 — Account deletion completeness (BUG FIX):**
+    - **Bug found:** `briefing_context_packs` has no `ON DELETE CASCADE` on its `user_id` FK. With `foreign_keys = ON` active (confirmed in `getDb()`), deleting the `users` row would throw a FK constraint error for any user with context packs — account deletion would 500.
+    - **Fix:** `app/api/account/route.ts` — added explicit `DELETE FROM briefing_context_packs WHERE user_id = ?` before the `users` delete. Also added explicit deletes for `episodes`, `people_profiles`, `pattern_cache`, `failed_webhooks`, `background_job_failures` (belt-and-suspenders; these have CASCADE but weren't in the list).
+    - **Tests:** `app/api/account/account.test.ts` — updated mock to capture `preparedSqls`; added 3 tests: total DELETE count ≥ 30, explicit `briefing_context_packs` delete present, explicit `episodes` delete present. Updated stale "≥ 17" assertion to "≥ 30".
+  - 82 test files / 1596 tests total.
+- **2026-06-18** — **PILLAR-TRUST T1-4 — Encryption audit + coverage map in content/data-protection.md.**
+  - Full audit of all 28 tables in `lib/db.ts`: verified encrypt-on-write and decrypt-on-read call sites for each table.
+  - 14 tables confirmed encrypted at rest (AES-256-GCM): briefings, calendar_tokens, whoop_tokens, episodes, briefing_context_packs, memories, facts, pattern_cache, focus_milestones, open_loops, notifications, daily_focus, gmail_drafts_log, watched_threads.
+  - 3 accepted gaps documented with rationale: `people_profiles.canonical_name`/`.email` (plaintext for `LOWER()` lookup, same tier as users.name), `priorities.text` (needed for full-text alignment queries), `undo_log.payload` (calendar event JSON, low-risk).
+  - `safeDecryptField`/`safeDecryptNullable` used on all content-path reads; auth token reads use throwing `decryptField` (misconfiguration surfaces clearly).
+  - `content/data-protection.md`: added full internal encryption coverage map (table × PII level × write/read coverage × notes). No code changes — documentation only.
+  - No test changes — audit is observational. 82 test files / 1594 tests still green.
+- **2026-06-18** — **PILLAR-TRUST T1-1 + T1-3 — Dead-letter queue + background job failure logging (1594 green).**
+  - **T1-1 — Webhook dead-letter queue:**
+    - `failed_webhooks` table in `lib/db.ts`: `(id, user_id, vapi_call_id, briefing_id, failed_at, error)`. Index on `failed_at DESC`.
+    - `failedWebhookQueries`: `record(userId, vapiCallId, briefingId, error)` — never throws, truncates error to 2000 chars; `recentCount(sinceHours)` — for daily health check; `prune(keepDays=30)`.
+    - `checkAndInitiateCalls` retry catch: if the DB-flagged retry also fails, writes to `failed_webhooks` dead-letter so the failure is preserved for diagnosis.
+    - 3am cron: calls `failedWebhookQueries.prune()` + daily health check logs `[health] WARN: N webhook(s) in dead-letter queue` if any exist in last 24h.
+  - **T1-3 — Background job failure logging:**
+    - `background_job_failures` table in `lib/db.ts`: `(id, job, user_id, failed_at, error, consecutive)`. Index on `(job, user_id, failed_at DESC)`.
+    - `backgroundJobFailureQueries`: `record(job, userId, error)` — reads prior consecutive count, increments, logs `ALERT` when ≥3 consecutive failures; `recentCount(sinceHours)`; `maxConsecutive(job)`; `prune(keepDays=30)`.
+    - `runNightlyContextPacks` per-user catch now calls `backgroundJobFailureQueries.record('nightly_context_packs', userId, err)`.
+    - `decayFactConfidenceScores` catch now calls `backgroundJobFailureQueries.record('decay_fact_confidence', null, err)`.
+    - 3am cron: calls `backgroundJobFailureQueries.prune()` + daily health check logs warn if any failures in last 24h.
+  - **Tests:** `lib/failure-logging.test.ts` (NEW, 20 tests): `failedWebhookQueries.record` (insert SQL, arg passing, null userId, error truncation), `.recentCount`, `.prune`; `backgroundJobFailureQueries.record` (insert SQL, args, null userId, consecutive=1 on first fail, increment on prior row), `.recentCount`, `.maxConsecutive` (returns 0 when null), `.prune`. Scheduler test mock + hardening test mock updated to include both new query objects.
+  - 82 test files / 1594 tests total.
+- **2026-06-18** — **Overnight hardening — DB durability + encryption graceful degradation + durable retry (1574 green).**
+  - **DB Durability (#1):**
+    - `lib/backup.ts`: `pushBackupToObjectStorage(info)` — dependency-free off-box backup to any S3-compatible endpoint (AWS S3, Cloudflare R2). Manual AWS Signature V4 via `node:crypto` (no SDK). Activated by setting `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` env vars on Railway. Returns `{ ok, message }` — silently skips when not configured.
+    - `maybeDailyBackup()` now calls `pushBackupToObjectStorage` after every snapshot AND for fresh existing snapshots (in case prior push failed). Backup call removed from webhook trigger — now solely on 3am cron.
+    - `busy_timeout = 5000` added to `getDb()` to prevent SQLite write-contention errors under concurrent requests.
+    - Restore steps documented in `lib/backup.ts` comment for Kevin's emergency runbook.
+    - ⚠️ **Kevin action required:** set `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` on Railway to activate off-box backup.
+  - **Encryption key graceful degradation (#2):**
+    - `safeDecryptField(value, field)` + `safeDecryptNullable(value, field)` added to `lib/crypto.ts`: catch→log `[crypto] DECRYPT_FAILURE`→return empty string/null instead of throwing. Do NOT use for OAuth tokens (those should still throw to surface misconfiguration).
+    - All content-path read functions in `lib/db.ts` updated to use safe variants: `decryptMemoryRow`, `decryptFactRow`, `upsertFact` conflict detection, `patternCacheQueries.get`, `briefingContextPackQueries.get`, `decryptEpisodeRow`. Auth token reads left as throwing — deliberate.
+  - **Durable retry (#3a):**
+    - `app/api/vapi/webhook/route.ts`: replaced in-memory `retryCall()` (with `setTimeout(10min)`) with synchronous `scheduleRetry(db, briefingId, userId)` that stamps `retry_after = datetime('now', '+10 minutes')` in the DB. Survives server restarts.
+    - `lib/scheduler.ts` `checkAndInitiateCalls()`: new loop after the per-user call block queries `briefings WHERE status='missed' AND retry_after IS NOT NULL AND retry_after <= datetime('now')`, clears `retry_after = NULL` before firing, calls `scheduleBriefingCall(userId, { force: true })`. Errors are caught per-row — one failed retry does not block others.
+  - **Tests:** 27 new tests across 3 files:
+    - `lib/crypto.test.ts` (+11): `safeDecryptField` — normal decrypt, missing-key degrades to empty string, rotated-key degrades, plaintext passthrough, empty input. `safeDecryptNullable` — null/undefined passthrough, normal decrypt, missing-key degrades to null.
+    - `lib/backup.test.ts` (+11): `pushBackupToObjectStorage` — not configured returns ok=false; file missing returns ok=false; valid config makes PUT with AWS4-HMAC-SHA256 Authorization; S3 403 returns ok=false; network error returns ok=false; BACKUP_S3_PREFIX respected.
+    - `lib/scheduler.hardening.test.ts` (NEW, 5 tests): retry pickup fires when row exists, clears retry_after before firing, no-op when no rows, handles multiple users, error in one retry doesn't block others.
+    - Crypto mock updated in `db.bitemporal.test.ts`, `episodes.test.ts`, `db.encryption.test.ts`, `scheduler.round6.test.ts` to include `safeDecryptField`/`safeDecryptNullable`. `scheduler.test.ts` mock updated to handle `retry_after IS NOT NULL` query.
+  - 81 test files / 1574 tests total.
 - **2026-06-18** — **Round 6 — Predictive context loading + confidence decay schema (1553 green).**
   - **Ticket 1 — Predictive context loading (11pm nightly cron):**
     - `briefing_context_packs` table added to `lib/db.ts`: `(id, user_id, pack_date, context_pack encrypted, generated_at, UNIQUE(user_id, pack_date))`. Index on `(user_id, pack_date)`.

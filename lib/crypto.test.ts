@@ -108,3 +108,82 @@ describe('STRICT_ENCRYPTION mode', () => {
     expect(isEncrypted(encryptField('sensitive'))).toBe(true);
   });
 });
+
+// ── safeDecryptField — graceful degradation ───────────────────────────────────
+//
+// The briefing path uses safeDecryptField so a missing/rotated DATA_ENCRYPTION_KEY
+// returns an empty string rather than crashing the 7am call.
+
+describe('safeDecryptField — graceful degradation', () => {
+  afterEach(() => {
+    delete process.env.DATA_ENCRYPTION_KEY;
+    delete process.env.STRICT_ENCRYPTION;
+  });
+
+  it('decrypts normally when the key matches', async () => {
+    const { encryptField, safeDecryptField } = await load(KEY);
+    const enc = encryptField('hello');
+    expect(safeDecryptField(enc, 'test.field')).toBe('hello');
+  });
+
+  it('returns empty string instead of throwing when key is missing on encrypted data', async () => {
+    // Encrypt with a key, then reload WITHOUT the key → decryption fails gracefully.
+    const { encryptField } = await load(KEY);
+    const enc = encryptField('sensitive-value');
+
+    vi.resetModules();
+    delete process.env.DATA_ENCRYPTION_KEY;
+    const { safeDecryptField } = await import('./crypto');
+    expect(safeDecryptField(enc, 'fact.statement')).toBe('');
+  });
+
+  it('returns empty string when key is rotated (different key) on encrypted data', async () => {
+    const { encryptField } = await load(KEY);
+    const enc = encryptField('sensitive-value');
+
+    vi.resetModules();
+    process.env.DATA_ENCRYPTION_KEY = 'b'.repeat(64); // different key
+    const { safeDecryptField } = await import('./crypto');
+    expect(safeDecryptField(enc, 'memory.content')).toBe('');
+  });
+
+  it('passes through plaintext without error', async () => {
+    const { safeDecryptField } = await load(KEY);
+    expect(safeDecryptField('legacy-plaintext', 'test.field')).toBe('legacy-plaintext');
+  });
+
+  it('returns empty string for empty input', async () => {
+    const { safeDecryptField } = await load(KEY);
+    expect(safeDecryptField('', 'test.field')).toBe('');
+  });
+});
+
+describe('safeDecryptNullable — graceful degradation', () => {
+  afterEach(() => { delete process.env.DATA_ENCRYPTION_KEY; });
+
+  it('returns null for null input', async () => {
+    const { safeDecryptNullable } = await load(KEY);
+    expect(safeDecryptNullable(null, 'test.field')).toBe(null);
+  });
+
+  it('returns null for undefined input', async () => {
+    const { safeDecryptNullable } = await load(KEY);
+    expect(safeDecryptNullable(undefined, 'test.field')).toBe(null);
+  });
+
+  it('decrypts a non-null value normally', async () => {
+    const { encryptField, safeDecryptNullable } = await load(KEY);
+    const enc = encryptField('nullable-value');
+    expect(safeDecryptNullable(enc, 'test.field')).toBe('nullable-value');
+  });
+
+  it('returns null instead of throwing when key is missing on encrypted nullable data', async () => {
+    const { encryptField } = await load(KEY);
+    const enc = encryptField('nullable-sensitive');
+
+    vi.resetModules();
+    delete process.env.DATA_ENCRYPTION_KEY;
+    const { safeDecryptNullable } = await import('./crypto');
+    expect(safeDecryptNullable(enc, 'episode.content_raw')).toBe(null);
+  });
+});

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { isValidTimeZone } from './time';
-import { encryptField, encryptNullable, decryptField, decryptNullable } from './crypto';
+import { encryptField, encryptNullable, decryptField, decryptNullable, safeDecryptField, safeDecryptNullable } from './crypto';
 
 // On Railway, use the mounted volume at /data. Locally, use ./data
 export const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'edg3.db');
@@ -19,6 +19,7 @@ export function getDb(): Database.Database {
   if (!db) {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000'); // wait up to 5s on write contention before throwing
     db.pragma('foreign_keys = ON');
     initSchema(db);
   }
@@ -444,6 +445,30 @@ function initSchema(db: Database.Database) {
       generated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, pack_date)
     );
+
+    -- Dead-letter queue for webhook calls that failed even after retry.
+    -- Populated by lib/scheduler.ts when the DB-flagged retry also fails.
+    -- Daily check logs a warning to Railway if any rows exist in the last 24h.
+    CREATE TABLE IF NOT EXISTS failed_webhooks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      vapi_call_id TEXT,
+      briefing_id INTEGER REFERENCES briefings(id) ON DELETE SET NULL,
+      failed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      error       TEXT NOT NULL
+    );
+
+    -- Structured failure log for background cron jobs (sleep-time consolidation,
+    -- pattern detection, predictive context loading, etc.). Populated by the cron
+    -- runners in lib/scheduler.ts. Retained for 30 days; pruned on each daily run.
+    CREATE TABLE IF NOT EXISTS background_job_failures (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job         TEXT NOT NULL,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      failed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      error       TEXT NOT NULL,
+      consecutive INTEGER NOT NULL DEFAULT 1
+    );
   `);
 
   // Indexes for performance
@@ -470,6 +495,8 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
     CREATE INDEX IF NOT EXISTS idx_episodes_user_occurred ON episodes(user_id, occurred_at DESC);
     CREATE INDEX IF NOT EXISTS idx_context_packs_user_date ON briefing_context_packs(user_id, pack_date);
+    CREATE INDEX IF NOT EXISTS idx_failed_webhooks_failed_at ON failed_webhooks(failed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_bg_job_failures_job_user ON background_job_failures(job, user_id, failed_at DESC);
   `);
 
   // Migrations for existing databases
@@ -502,6 +529,8 @@ function initSchema(db: Database.Database) {
     // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
     "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
     "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
+    // Retry durability: DB-flagged retry time survives server restarts (replaces in-memory setTimeout)
+    "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -616,7 +645,7 @@ export const energyLogQueries = {
 // Memory content is PII (transcripts, insights, personal context) — encrypted at rest.
 // Legacy plaintext rows transparently pass through decryptField (see lib/crypto.ts design).
 function decryptMemoryRow(r: Memory): Memory {
-  return { ...r, content: decryptField(r.content) };
+  return { ...r, content: safeDecryptField(r.content, 'memory.content') };
 }
 
 // Special content tags that determine priority in getWeighted().
@@ -1097,6 +1126,73 @@ export const auditLogQueries = {
   },
 };
 
+// Failed webhook dead-letter queue
+export const failedWebhookQueries = {
+  record: (userId: number | null, vapiCallId: string | null, briefingId: number | null, error: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO failed_webhooks (user_id, vapi_call_id, briefing_id, error) VALUES (?, ?, ?, ?)'
+      ).run(userId, vapiCallId, briefingId, error.slice(0, 2000));
+    } catch { /* best effort — never block the caller */ }
+  },
+
+  recentCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM failed_webhooks WHERE failed_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM failed_webhooks WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// Background job failure log — structured error records for cron jobs
+export const backgroundJobFailureQueries = {
+  record: (job: string, userId: number | null, error: string): void => {
+    try {
+      // Count consecutive failures for this job+user pair to surface persistent problems.
+      const prev = getDb().prepare(
+        `SELECT consecutive FROM background_job_failures WHERE job = ? AND (user_id = ? OR (user_id IS NULL AND ? IS NULL)) ORDER BY failed_at DESC LIMIT 1`
+      ).get(job, userId, userId) as { consecutive: number } | undefined;
+      const consecutive = (prev?.consecutive ?? 0) + 1;
+      getDb().prepare(
+        'INSERT INTO background_job_failures (job, user_id, error, consecutive) VALUES (?, ?, ?, ?)'
+      ).run(job, userId, error.slice(0, 2000), consecutive);
+      if (consecutive >= 3) {
+        console.error(`[job-failures] ALERT: job="${job}" userId=${userId} has failed ${consecutive} consecutive times`);
+      }
+    } catch { /* best effort */ }
+  },
+
+  recentCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM background_job_failures WHERE failed_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+
+  maxConsecutive: (job: string, sinceHours = 168): number => {
+    const row = getDb().prepare(
+      `SELECT MAX(consecutive) AS m FROM background_job_failures WHERE job = ? AND failed_at >= datetime('now', ?)`
+    ).get(job, `-${sinceHours} hours`) as { m: number | null };
+    return row.m ?? 0;
+  },
+
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM background_job_failures WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
 // Task queries
 export const taskQueries = {
   create: (userId: number, text: string, date: string, source: 'manual' | 'edg3' = 'manual') => {
@@ -1375,7 +1471,7 @@ export const whoopQueries = {
 
 // Decrypt a raw DB row so statement is plaintext. Non-encrypted (legacy) values pass through.
 function decryptFactRow(r: Fact): Fact {
-  return { ...r, statement: decryptField(r.statement) };
+  return { ...r, statement: safeDecryptField(r.statement, 'fact.statement') };
 }
 
 export const factQueries = {
@@ -1425,15 +1521,15 @@ export const factQueries = {
       const row = db.prepare(
         'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?) AND valid_until IS NULL'
       ).get(userId, category, entity) as { id: number; statement: string; confidence: 'high' | 'low' } | undefined;
-      if (row) { existingId = row.id; existingStatement = decryptField(row.statement); existingConfidence = row.confidence; }
+      if (row) { existingId = row.id; existingStatement = safeDecryptField(row.statement, 'fact.statement'); existingConfidence = row.confidence; }
     } else {
       const cands = db.prepare(
         'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL AND valid_until IS NULL'
       ).all(userId, category) as Array<{ id: number; statement: string; confidence: 'high' | 'low' }>;
       const match = cands.find(
-        r => decryptField(r.statement).toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
+        r => safeDecryptField(r.statement, 'fact.statement').toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
       );
-      if (match) { existingId = match.id; existingStatement = decryptField(match.statement); existingConfidence = match.confidence; }
+      if (match) { existingId = match.id; existingStatement = safeDecryptField(match.statement, 'fact.statement'); existingConfidence = match.confidence; }
     }
 
     if (existingId !== undefined) {
@@ -1580,7 +1676,7 @@ export const briefingContextPackQueries = {
       'SELECT context_pack FROM briefing_context_packs WHERE user_id = ? AND pack_date = ?'
     ).get(userId, packDate) as { context_pack: string } | undefined;
     if (!row) return null;
-    return decryptField(row.context_pack);
+    return safeDecryptField(row.context_pack, 'briefing_context_packs.context_pack');
   },
 
   prune: (): void => {
@@ -1638,7 +1734,7 @@ export const peopleProfileQueries = {
 export const patternCacheQueries = {
   get: (userId: number): string | null => {
     const row = getDb().prepare('SELECT patterns FROM pattern_cache WHERE user_id = ?').get(userId) as { patterns: string } | undefined;
-    return row ? decryptField(row.patterns) : null;
+    return row ? safeDecryptField(row.patterns, 'pattern_cache.patterns') : null;
   },
   upsert: (userId: number, patternsJson: string) => {
     getDb().prepare(`
@@ -2062,7 +2158,7 @@ function decryptEpisodeRow(r: EpisodeRow): Episode {
     userId:      r.user_id,
     source:      r.source as EpisodeSource,
     occurredAt:  r.occurred_at,
-    contentRaw:  decryptField(r.content_raw),
+    contentRaw:  safeDecryptField(r.content_raw, 'episode.content_raw'),
     topics:      safeJsonArray(r.topics),
     commitments: safeJsonArray(r.commitments),
     createdAt:   r.created_at,

@@ -7,7 +7,7 @@
  * - litstreamEnabled reflects the env var correctly
  * - maybeDailyBackup never throws (fire-and-forget contract)
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -191,5 +191,123 @@ describe('maybeDailyBackup — never throws', () => {
     process.env.BACKUP_DIR = path.join(os.tmpdir(), 'edg3-no-backup-dir');
     const { maybeDailyBackup } = await import('./backup');
     await expect(maybeDailyBackup()).resolves.toBeUndefined();
+  });
+});
+
+// ── pushBackupToObjectStorage ─────────────────────────────────────────────────
+//
+// Off-box backup: push DB snapshot to S3-compatible object storage.
+// Implemented with manual AWS Signature V4 (no SDK dependency).
+
+describe('pushBackupToObjectStorage — not configured', () => {
+  const S3_ENV_VARS = [
+    'BACKUP_S3_ENDPOINT', 'BACKUP_S3_BUCKET', 'BACKUP_S3_ACCESS_KEY', 'BACKUP_S3_SECRET_KEY',
+  ];
+
+  afterEach(() => {
+    vi.resetModules();
+    S3_ENV_VARS.forEach(k => delete process.env[k]);
+    delete process.env.BACKUP_DIR;
+  });
+
+  it('returns ok=false with "not configured" when env vars are absent', async () => {
+    S3_ENV_VARS.forEach(k => delete process.env[k]);
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: 'edg3-test.db', sizeBytes: 100, createdAt: new Date().toISOString() };
+    const result = await pushBackupToObjectStorage(info);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/not configured/i);
+  });
+
+  it('returns ok=false when the backup file does not exist on disk', async () => {
+    S3_ENV_VARS.forEach(k => { process.env[k] = 'test-value'; });
+    process.env.BACKUP_S3_ENDPOINT = 'https://test.r2.cloudflarestorage.com';
+    process.env.BACKUP_S3_BUCKET   = 'test-bucket';
+    process.env.BACKUP_DIR = path.join(os.tmpdir(), 'edg3-s3-test-nonexistent');
+    vi.resetModules();
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: 'nonexistent.db', sizeBytes: 0, createdAt: new Date().toISOString() };
+    const result = await pushBackupToObjectStorage(info);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/not found/i);
+  });
+});
+
+describe('pushBackupToObjectStorage — S3 PUT request', () => {
+  const tmpDir = path.join(os.tmpdir(), 'edg3-s3-push-test');
+  const fileName = 'edg3-push-test.db';
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, fileName), 'fake-db-content');
+    process.env.BACKUP_DIR           = tmpDir;
+    process.env.BACKUP_S3_ENDPOINT   = 'https://test.example.cloudflarestorage.com';
+    process.env.BACKUP_S3_BUCKET     = 'edg3-backups';
+    process.env.BACKUP_S3_ACCESS_KEY = 'test-access-key';
+    process.env.BACKUP_S3_SECRET_KEY = 'test-secret-key-32charminimum0000';
+    process.env.BACKUP_S3_REGION     = 'auto';
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('', { status: 200 })
+    );
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    vi.resetModules();
+    ['BACKUP_S3_ENDPOINT', 'BACKUP_S3_BUCKET', 'BACKUP_S3_ACCESS_KEY', 'BACKUP_S3_SECRET_KEY',
+     'BACKUP_S3_REGION', 'BACKUP_S3_PREFIX', 'BACKUP_DIR'].forEach(k => delete process.env[k]);
+    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('returns ok=true and calls fetch with PUT when file exists and S3 responds 200', async () => {
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: fileName, sizeBytes: 16, createdAt: new Date().toISOString() };
+    const result = await pushBackupToObjectStorage(info);
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain(fileName);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, opts] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain(fileName);
+    expect(opts.method).toBe('PUT');
+  });
+
+  it('includes an AWS4-HMAC-SHA256 Authorization header', async () => {
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: fileName, sizeBytes: 16, createdAt: new Date().toISOString() };
+    await pushBackupToObjectStorage(info);
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const headers = opts.headers as Record<string, string>;
+    expect(headers['Authorization']).toMatch(/^AWS4-HMAC-SHA256/);
+    expect(headers['Authorization']).toContain('test-access-key');
+    expect(headers['x-amz-date']).toMatch(/^\d{8}T\d{6}Z$/);
+  });
+
+  it('returns ok=false when S3 returns a non-200 status', async () => {
+    fetchSpy.mockResolvedValue(new Response('AccessDenied', { status: 403 }));
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: fileName, sizeBytes: 16, createdAt: new Date().toISOString() };
+    const result = await pushBackupToObjectStorage(info);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/403/);
+  });
+
+  it('returns ok=false when fetch throws (network error)', async () => {
+    fetchSpy.mockRejectedValue(new Error('ECONNREFUSED'));
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: fileName, sizeBytes: 16, createdAt: new Date().toISOString() };
+    const result = await pushBackupToObjectStorage(info);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/ECONNREFUSED/);
+  });
+
+  it('uses the BACKUP_S3_PREFIX env var as the object key prefix', async () => {
+    process.env.BACKUP_S3_PREFIX = 'prod-backups/2026/';
+    vi.resetModules();
+    const { pushBackupToObjectStorage } = await import('./backup');
+    const info = { file: fileName, sizeBytes: 16, createdAt: new Date().toISOString() };
+    await pushBackupToObjectStorage(info);
+    const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('prod-backups/2026/');
   });
 });
