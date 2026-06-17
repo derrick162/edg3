@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -219,6 +219,59 @@ export function decayFactConfidenceScores(): void {
   }
 }
 
+// ── 6am health digest (T1-3 / PILLAR-TRUST) ─────────────────────────────────
+// Runs before the 7am call. Checks for: failed calls (last 24h), webhook DLQ,
+// background job failures, and calendar auth issues. Writes to health_log and emits
+// a single summary line — "HEALTH: OK" or "HEALTH: DEGRADED (reason1; reason2)".
+export async function runHealthDigest(): Promise<void> {
+  const issues: string[] = [];
+
+  try {
+    const failedCalls = callAttemptQueries.failedCount(24);
+    if (failedCalls > 0) issues.push(`${failedCalls} call(s) failed in last 24h`);
+  } catch (e) { issues.push(`call-attempts check error: ${e}`); }
+
+  try {
+    const webhookFails = failedWebhookQueries.recentCount(24);
+    if (webhookFails > 0) issues.push(`${webhookFails} webhook(s) in DLQ`);
+  } catch (e) { issues.push(`webhook-dlq check error: ${e}`); }
+
+  try {
+    const jobFails = backgroundJobFailureQueries.recentCount(24);
+    if (jobFails > 0) issues.push(`${jobFails} background job failure(s)`);
+  } catch (e) { issues.push(`job-failures check error: ${e}`); }
+
+  try {
+    // Proactively validate calendar tokens for all active users before the 7am call.
+    const { checkCalendarTokenHealth } = await import('./google-auth');
+    const db = getDb();
+    const activeUsers = db.prepare(
+      `SELECT u.id FROM users u INNER JOIN calendar_tokens ct ON ct.user_id = u.id WHERE u.onboarding_complete = 1`
+    ).all() as Array<{ id: number }>;
+    let tokenFails = 0;
+    for (const u of activeUsers) {
+      const result = await checkCalendarTokenHealth(u.id).catch(() => ({ ok: false, needsReconnect: false }));
+      if (!result.ok) tokenFails++;
+    }
+    if (tokenFails > 0) issues.push(`${tokenFails} user(s) have calendar auth issues`);
+  } catch (e) { issues.push(`calendar-auth check error: ${e}`); }
+
+  const status = issues.length === 0 ? 'ok' : 'degraded';
+  const summary = issues.length === 0
+    ? 'All systems nominal'
+    : issues.join('; ');
+
+  healthLogQueries.write(status, summary);
+  healthLogQueries.prune();
+  callAttemptQueries.prune();
+
+  if (status === 'ok') {
+    console.log('[health] HEALTH: OK — All systems nominal');
+  } else {
+    console.error(`[health] HEALTH: DEGRADED — ${summary}`);
+  }
+}
+
 let schedulerRunning = false;
 
 export function startScheduler() {
@@ -247,6 +300,15 @@ export function startScheduler() {
       if (webhookFails > 0) console.error(`[health] WARN: ${webhookFails} webhook(s) in dead-letter queue in last 24h — check Railway logs`);
       if (jobFails > 0) console.error(`[health] WARN: ${jobFails} background job failure(s) in last 24h — check Railway logs`);
     } catch (e) { console.error('[scheduler] daily health check failed:', e); }
+  });
+
+  // Daily at 6am UTC: health digest — runs before the 7am call so failures surface first.
+  // Writes one row to health_log (status OK vs DEGRADED) + emits a single summary log line
+  // that Railway can alert on. Check: failed calls, job failures, webhook DLQ, calendar auth.
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      await runHealthDigest();
+    } catch (e) { console.error('[scheduler] health digest cron failed:', e); }
   });
 
   // Nightly at 11pm UTC: pre-warm tomorrow's briefing context for all active users.
@@ -315,9 +377,13 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       if (alreadyCalled) continue;
 
       console.log(`[scheduler] Calling user ${user.id} (${user.name}) at ${userCurrentTime} ${timezone}`);
+      const scheduledFor = `${userToday}T${user.call_time}:00`;
       await scheduleBriefingCall(user.id);
+      callAttemptQueries.record(user.id, scheduledFor, 'connected');
     } catch (err) {
       console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
+      const userToday2 = new Date(now.toLocaleString('en-US', { timeZone: user.timezone || 'America/Vancouver' })).toLocaleDateString('en-CA');
+      callAttemptQueries.record(user.id, `${userToday2}T${user.call_time}:00`, 'failed', String(err).slice(0, 500));
     }
   }
 

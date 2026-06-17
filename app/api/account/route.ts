@@ -65,6 +65,7 @@ export async function DELETE(req: NextRequest) {
     db.prepare('DELETE FROM pattern_cache WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM failed_webhooks WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM background_job_failures WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM call_attempts WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
 
     // Clear the session cookie — the user no longer exists.

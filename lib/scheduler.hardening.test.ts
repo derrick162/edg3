@@ -59,6 +59,15 @@ vi.mock('./db', () => ({
   memoryQueries:    { getRecent: vi.fn(() => []) },
   failedWebhookQueries: { record: vi.fn(), recentCount: vi.fn(() => 0), prune: vi.fn() },
   backgroundJobFailureQueries: { record: vi.fn(), recentCount: vi.fn(() => 0), prune: vi.fn() },
+  healthLogQueries: { write: vi.fn(), prune: vi.fn(), getLatest: vi.fn() },
+  callAttemptQueries: { record: vi.fn(), failedCount: vi.fn(() => 0), getRecent: vi.fn(() => []), prune: vi.fn() },
+  calendarQueries: { get: vi.fn(), recordAuthFailure: vi.fn(), clearAuthFailures: vi.fn(), needsReconnect: vi.fn(() => false) },
+  briefingContextPackQueries: { upsert: vi.fn(), prune: vi.fn() },
+  episodeQueries: { pruneAll: vi.fn() },
+  openLoopQueries: { prune: vi.fn() },
+  watchedThreadQueries: { prune: vi.fn() },
+  oauthStateQueries: { prune: vi.fn() },
+  auditLogQueries: { pruneEmailSubjects: vi.fn() },
   effectiveTimezone: (u: { timezone?: string }) => u.timezone ?? 'America/Vancouver',
 }));
 

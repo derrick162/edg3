@@ -484,6 +484,29 @@ function initSchema(db: Database.Database) {
       error       TEXT NOT NULL,
       consecutive INTEGER NOT NULL DEFAULT 1
     );
+
+    -- System-level health log written by the 6am health digest cron (runs before the
+    -- 7am call). One row per check; no user_id — this is infrastructure-level state.
+    -- Status 'ok' = all systems nominal; 'degraded' = at least one failure category.
+    -- Core / Design can surface this in an admin panel. Retained for 30 days.
+    CREATE TABLE IF NOT EXISTS health_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      status     TEXT NOT NULL CHECK(status IN ('ok', 'degraded')),
+      summary    TEXT NOT NULL,
+      checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Per-attempt log for every scheduled morning call (DC1-1). Written before Vapi
+    -- is contacted so even early failures are captured. status = connected on success,
+    -- failed on all-retries-exhausted, retrying on the first failure (retry pending).
+    CREATE TABLE IF NOT EXISTS call_attempts (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      scheduled_for TEXT NOT NULL,
+      status        TEXT NOT NULL CHECK(status IN ('connected', 'failed', 'retrying')),
+      fail_reason   TEXT,
+      attempted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -512,6 +535,8 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_context_packs_user_date ON briefing_context_packs(user_id, pack_date);
     CREATE INDEX IF NOT EXISTS idx_failed_webhooks_failed_at ON failed_webhooks(failed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_bg_job_failures_job_user ON background_job_failures(job, user_id, failed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_health_log_checked_at ON health_log(checked_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_call_attempts_user ON call_attempts(user_id, attempted_at DESC);
   `);
 
   // Migrations for existing databases
@@ -548,6 +573,9 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
     // Learning pipeline reliability: per-call extraction status (success/partial/failed)
     "ALTER TABLE briefings ADD COLUMN learning_status TEXT",
+    // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
+    "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -836,6 +864,32 @@ export const calendarQueries = {
   },
   delete: (userId: number) => {
     return getDb().prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
+  },
+  // T4-1 — auth failure tracking. Increments failure counter; sets reconnect_required after 3+ failures.
+  recordAuthFailure: (userId: number): void => {
+    try {
+      const db = getDb();
+      const failures = db.prepare(
+        'UPDATE calendar_tokens SET calendar_auth_failures = calendar_auth_failures + 1 WHERE user_id = ?'
+      ).run(userId);
+      if (failures.changes === 0) return;
+      const row = db.prepare('SELECT calendar_auth_failures FROM calendar_tokens WHERE user_id = ?').get(userId) as { calendar_auth_failures: number } | undefined;
+      if (row && row.calendar_auth_failures >= 3) {
+        db.prepare('UPDATE calendar_tokens SET calendar_reconnect_required = 1 WHERE user_id = ?').run(userId);
+        console.error(`[calendar-auth] ALERT: userId=${userId} has had ${row.calendar_auth_failures} consecutive auth failures — flagged for reconnect`);
+      }
+    } catch { /* best effort */ }
+  },
+  clearAuthFailures: (userId: number): void => {
+    try {
+      getDb().prepare(
+        'UPDATE calendar_tokens SET calendar_auth_failures = 0, calendar_reconnect_required = 0 WHERE user_id = ?'
+      ).run(userId);
+    } catch { /* best effort */ }
+  },
+  needsReconnect: (userId: number): boolean => {
+    const row = getDb().prepare('SELECT calendar_reconnect_required FROM calendar_tokens WHERE user_id = ?').get(userId) as { calendar_reconnect_required: number } | undefined;
+    return (row?.calendar_reconnect_required ?? 0) === 1;
   },
 };
 
@@ -1215,6 +1269,58 @@ export const backgroundJobFailureQueries = {
     try {
       getDb().prepare(
         `DELETE FROM background_job_failures WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// System health log — written by the 6am health digest cron (T1-3)
+export const healthLogQueries = {
+  write: (status: 'ok' | 'degraded', summary: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO health_log (status, summary) VALUES (?, ?)'
+      ).run(status, summary.slice(0, 2000));
+    } catch { /* best effort */ }
+  },
+  getLatest: (): { status: string; summary: string; checked_at: string } | undefined => {
+    return getDb().prepare(
+      'SELECT status, summary, checked_at FROM health_log ORDER BY checked_at DESC LIMIT 1'
+    ).get() as { status: string; summary: string; checked_at: string } | undefined;
+  },
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM health_log WHERE checked_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// Call attempt log — one row per scheduled call attempt (DC1-1)
+export const callAttemptQueries = {
+  record: (userId: number, scheduledFor: string, status: 'connected' | 'failed' | 'retrying', failReason?: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO call_attempts (user_id, scheduled_for, status, fail_reason) VALUES (?, ?, ?, ?)'
+      ).run(userId, scheduledFor, status, failReason ?? null);
+    } catch { /* best effort */ }
+  },
+  getRecent: (userId: number, sinceHours = 24): Array<{ status: string; fail_reason: string | null; attempted_at: string }> => {
+    return getDb().prepare(
+      `SELECT status, fail_reason, attempted_at FROM call_attempts WHERE user_id = ? AND attempted_at >= datetime('now', ?) ORDER BY attempted_at DESC`
+    ).all(userId, `-${sinceHours} hours`) as Array<{ status: string; fail_reason: string | null; attempted_at: string }>;
+  },
+  failedCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM call_attempts WHERE status = 'failed' AND attempted_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM call_attempts WHERE attempted_at < datetime('now', ?)`
       ).run(`-${keepDays} days`);
     } catch { /* best effort */ }
   },

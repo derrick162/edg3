@@ -217,6 +217,22 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T0-2(partial) + T1-3(completion) + T4-1 + DC1-1 — Encryption key rotation doc + 6am health digest + Google token auth tracking + call attempt log (1660 green).**
+  - **T0-2 — Encryption key rotation protocol:** `content/encryption-key-rotation.md` written. Documents: the single rule (never rotate without a re-encryption migration), when rotation is necessary, step-by-step safe rotation process with template migration script, what `safeDecryptField` does vs. throwing variant, and the catastrophic recovery note. Accepted gaps and `DATA_ENCRYPTION_KEY` backup location placeholder included.
+  - **T1-3 completion — 6am health digest + health_log table:**
+    - `health_log` table added to `lib/db.ts` schema: `(id, status TEXT CHECK('ok'|'degraded'), summary TEXT, checked_at TEXT)`. Index on `checked_at DESC`. `healthLogQueries.write/getLatest/prune` exported.
+    - `runHealthDigest()` exported from `lib/scheduler.ts`: checks failed calls (last 24h), webhook DLQ, background job failures, and calendar auth issues. Writes `health_log` row (status=ok/degraded + combined summary). Logs `[health] HEALTH: OK` or `[health] HEALTH: DEGRADED — reason1; reason2`. New 6am UTC cron fires this before the 7am call window.
+  - **T4-1 — Google token refresh reliability:**
+    - `calendar_auth_failures INTEGER DEFAULT 0` and `calendar_reconnect_required INTEGER DEFAULT 0` columns added to `calendar_tokens` (via migration). `calendarQueries.recordAuthFailure(userId)` increments counter + sets `calendar_reconnect_required = 1` at ≥3 failures with ALERT log. `calendarQueries.clearAuthFailures(userId)` resets both on successful auth. `calendarQueries.needsReconnect(userId)` checks the flag.
+    - `checkCalendarTokenHealth(userId)` added to `lib/google-auth.ts` (Security-owned): makes a lightweight `calendarList.list` probe; on 401/invalid_grant → calls `recordAuthFailure`; on success → clears failures. Returns `{ ok, needsReconnect }`.
+    - 6am health digest proactively calls `checkCalendarTokenHealth` for all active users before the 7am call.
+  - **DC1-1 — Call attempt log:**
+    - `call_attempts` table added: `(id, user_id, scheduled_for, status CHECK('connected'|'failed'|'retrying'), fail_reason, attempted_at)`. Index on `(user_id, attempted_at DESC)`. `callAttemptQueries.record/getRecent/failedCount/prune` exported.
+    - `checkAndInitiateCalls` now records a `call_attempts` row on each attempt: `connected` on success, `failed` on exception.
+    - `callAttemptQueries.failedCount(24)` checked by 6am health digest — contributes to DEGRADED status.
+    - `call_attempts` added to account deletion (belt-and-suspenders; has CASCADE but listed for completeness).
+  - **Tests:** `lib/health-digest.test.ts` (NEW, 11 tests): `runHealthDigest` OK path (writes 'ok', prunes on every run), DEGRADED paths (failed calls, webhook DLQ, job failures, combined issues, calendar auth failures). Scheduler.test.ts + scheduler.hardening.test.ts mocks updated with `healthLogQueries`, `callAttemptQueries`, `calendarQueries` new methods.
+  - 86 test files / 1660 tests total.
 - **2026-06-18** — **PILLAR-TRUST T1-5 + T3-4 + T4-3 — Rate limit sweep clean + account deletion completeness + WAL (1596 green).**
   - **T1-5 — Rate limit sweep:** Full scan of all 37 user-facing POST/PATCH/DELETE routes in `app/api/`. All mutation routes are protected with `checkRateLimit()`. No gaps found. `vapi/webhook` and `vapi/verify-promises` use Vapi secret auth (correct — no user session on these paths). No code changes needed.
   - **T4-3 — WAL + busy_timeout:** Already confirmed in overnight hardening commit: `db.pragma('journal_mode = WAL')` was pre-existing; `db.pragma('busy_timeout = 5000')` added. ✅ Complete.
