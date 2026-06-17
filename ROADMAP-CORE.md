@@ -259,6 +259,14 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Activation Moment data-wiring: 4 bugs fixed, flow wired to real endpoints.**
+  - Resolved merge conflict with Cam's activation UI (Cam's visual components win: `ActivationReveal`, `ActivationHeroCard`, `ActivationHeroAligned`, `ActivationLoading`). Step flow: `profile → calendar → activation → hero → priorities → calltime`.
+  - **[Bug 1] `ActivationStep.handleAccept` sent no body** — `/api/priorities/derive/accept` requires `{ priorities: string[] }`; was posting empty. Fixed: passes `proposal.priorities.map(p => p.text)`.
+  - **[Bug 2] `HeroStep` fetched `/api/edge-score` (404)** — real endpoint is `/api/scores`; field is `edgeScore` (number), not `clarityScore` (object). Fixed.
+  - **[Bug 3] `HeroStep` expected `plan.suggestion` (never set)** — `/api/day-plan` returns `{ changes[], scoreBefore, scoreAfter, planId, wellAligned }`. Fixed: maps `changes[0]` to `HeroSuggestion { action, rationale, timeGained }`. `wellAligned===true` or empty changes → `ActivationHeroAligned` (positive state).
+  - **[Bug 4] `HeroStep.handleApply` posted to `/api/day-plan/apply` (doesn't exist)** — real endpoint is `POST /api/day-plan/confirm` with `{ planId }`. Fixed: stores `planId` from plan response, calls confirm, reads `newScore` to update Edge Score reveal.
+  - Restored `PrioritiesStep` as the manual-entry fallback (deleted in prior core-only commit; needed for Tweak path and thin-data skip).
+  - 1240/1240 green, tsc clean, next build clean.
 - **2026-06-18** — **FLAGSHIP — Activation Moment: derive-and-reveal after calendar connect (increment 1).**
   - **Replaces the manual priorities step with `ActivationStep`** in `app/onboarding/page.tsx`. New step order: `profile → calendar → activation → calltime`.
   - On mount, `ActivationStep` immediately fires `GET /api/priorities/derive` (no user action needed — auto-starts the moment the step renders, right after the 1.4s calendar-connect celebration).
