@@ -1394,23 +1394,27 @@ export interface FocusMilestone {
   completed_at: string | null;
 }
 
+function decryptFocusMilestoneRow(r: FocusMilestone): FocusMilestone {
+  return { ...r, title: decryptField(r.title) };
+}
+
 export const focusMilestoneQueries = {
   // All milestones for a user, grouped by focus area then sort order.
   listForUser: (userId: number): FocusMilestone[] => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM focus_milestones WHERE user_id = ? ORDER BY priority_id, sort_order, id'
-    ).all(userId) as FocusMilestone[];
+    ).all(userId) as FocusMilestone[]).map(decryptFocusMilestoneRow);
   },
   // Milestones for a single focus area, ordered for display.
   listForPriority: (userId: number, priorityId: number): FocusMilestone[] => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM focus_milestones WHERE user_id = ? AND priority_id = ? ORDER BY sort_order, id'
-    ).all(userId, priorityId) as FocusMilestone[];
+    ).all(userId, priorityId) as FocusMilestone[]).map(decryptFocusMilestoneRow);
   },
   create: (userId: number, priorityId: number, title: string) => {
     return getDb().prepare(
       'INSERT INTO focus_milestones (user_id, priority_id, title) VALUES (?, ?, ?)'
-    ).run(userId, priorityId, title);
+    ).run(userId, priorityId, encryptField(title));
   },
   markDone: (id: number, userId: number) => {
     return getDb().prepare(
@@ -1747,15 +1751,17 @@ export const supportMessageQueries = {
   insert: (userId: number, type: 'feedback' | 'question' | 'issue', message: string): void => {
     getDb().prepare(
       'INSERT INTO support_messages (user_id, type, message) VALUES (?, ?, ?)'
-    ).run(userId, type, message);
+    ).run(userId, type, encryptField(message));
   },
 
+  /** Admin-only — returns all users' messages. NEVER call from user-facing routes.
+   *  Messages are decrypted inline; the DB stores them encrypted at rest. */
   list: (opts: { limit?: number } = {}): Array<{ id: number; userId: number; type: string; message: string; status: string; createdAt: string }> => {
     const limit = opts.limit ?? 100;
     const rows = getDb().prepare(
       'SELECT id, user_id, type, message, status, created_at FROM support_messages ORDER BY created_at DESC LIMIT ?'
     ).all(limit) as Array<{ id: number; user_id: number; type: string; message: string; status: string; created_at: string }>;
-    return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: r.message, status: r.status, createdAt: r.created_at }));
+    return rows.map(r => ({ id: r.id, userId: r.user_id, type: r.type, message: decryptField(r.message), status: r.status, createdAt: r.created_at }));
   },
 };
 

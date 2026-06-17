@@ -95,6 +95,20 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Memory moat audit — M1–M4 encryption gaps closed (1384 green).**
+
+  Audit of new memory-moat tables from Core's recent sprint. Two encryption gaps found and fixed.
+
+  **`focus_milestones.title` — encrypted at rest.** Previously stored plaintext. Added `decryptFocusMilestoneRow` helper (same pattern as `decryptOpenLoopRow`). `create()` now wraps with `encryptField(title)`; `listForUser()` and `listForPriority()` map through the helper on read. Legacy plaintext rows pass through transparently (existing `decryptField` behavior).
+
+  **`support_messages.message` — encrypted at rest.** `insert()` now wraps with `encryptField(message)`; `list()` decrypts on read. Added admin-only JSDoc comment to `list()` — it has no `WHERE user_id` clause intentionally (admin view), but that scope gap is now documented so it's never accidentally called from a user-facing route. No user-facing route currently calls `list()`.
+
+  **All other M1–M4 tables verified clean:** `daily_focus.focus_areas` already encrypted; `event_energy_tags` no PII; `calendar_plan_executions` no PII; `open_loops.description` already encrypted with `decryptOpenLoopRow`.
+
+  **S3 audit complete:** `/api/day-plan/confirm` already has all 4 required properties — idempotency (atomic `consumeDeleteToken` transaction), user-scoped authz at DB level, undo grouping by planId, rate limiting. Existing 13-test suite covers all S3 requirements. No code changes needed.
+
+  **Tests:** 8 route tests (`app/api/support/route.test.ts` — auth, rate limit, validation, success path) + 8 DB-level encryption tests (`lib/db.encryption.test.ts` — verifies `encryptField`/`decryptField` called correctly for both tables). 1384 green total.
+
 - **2026-06-18** — **CASA consent enforcement wired — Privacy Mode now blocks improvement-data storage (1368 green).**
 
   PM dispatch (Kevin — Round 4 continuation): wire `isImproveConsented(user)` into the actual LLM improvement paths.
