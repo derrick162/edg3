@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
@@ -1212,6 +1212,8 @@ export default function Dashboard() {
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [activationFacts, setActivationFacts] = useState<string[]>([]);
+  const [activationDismissed, setActivationDismissed] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1258,6 +1260,11 @@ export default function Dashboard() {
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
+    fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.isFresh && d.recentFacts?.length > 0) {
+        setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
+      }
+    }).catch(() => {});
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -2026,6 +2033,14 @@ export default function Dashboard() {
           {/* ── Home tab — morning cockpit ──────────────────────────── */}
           {activeTab === 'home' && (
             <div className="space-y-6">
+              {/* Activation card — "here's what I already know" — pre-first-briefing only */}
+              {briefings.length === 0 && !activationDismissed && activationFacts.length > 0 && (
+                <ActivationCard
+                  facts={activationFacts}
+                  name={user?.name?.split(' ')[0] ?? undefined}
+                  onDismiss={() => setActivationDismissed(true)}
+                />
+              )}
               {/* Edge Score — hero */}
               <EdgeScoreCard
                 fit={calendarFit}
