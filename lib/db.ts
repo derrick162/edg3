@@ -1353,6 +1353,13 @@ export const factQueries = {
     ).all(userId) as Fact[]).map(decryptFactRow);
   },
 
+  // Returns ALL facts including retired ones — for historical pattern analysis (T4).
+  getAllIncludingRetired: (userId: number): Fact[] => {
+    return (getDb().prepare(
+      'SELECT * FROM facts WHERE user_id = ? ORDER BY category, learned_at ASC'
+    ).all(userId) as Fact[]).map(decryptFactRow);
+  },
+
   // Retire a fact bi-temporally (sets valid_until = now). Preserves history — never hard-deletes.
   retire: (userId: number, id: number): void => {
     getDb().prepare(

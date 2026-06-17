@@ -16,10 +16,12 @@ import type { calendar_v3 } from 'googleapis';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type PatternType =
-  | 'productive_day'      // certain days reliably have the most uninterrupted time
-  | 'light_day'           // certain days are consistently meeting-light
-  | 'meeting_load_recovery' // heavy-meeting days → lower next-day recovery
-  | 'focus_window';       // certain hour range is consistently uninterrupted
+  | 'productive_day'           // certain days reliably have the most uninterrupted time
+  | 'light_day'                // certain days are consistently meeting-light
+  | 'meeting_load_recovery'    // heavy-meeting days → lower next-day recovery
+  | 'focus_window'             // certain hour range is consistently uninterrupted
+  | 'commitment_follow_through' // T4: commitments kept vs dropped over time
+  | 'priority_drift';          // T4: how often stated priorities shift
 
 export interface PatternInsight {
   type: PatternType;
@@ -399,8 +401,10 @@ export function pickBestPattern(patterns: (PatternInsight | null)[]): PatternIns
   const TYPE_RANK: Record<PatternType, number> = {
     productive_day: 0,
     meeting_load_recovery: 1,
-    light_day: 2,
-    focus_window: 3,
+    commitment_follow_through: 2,
+    priority_drift: 3,
+    light_day: 4,
+    focus_window: 5,
   };
 
   return valid.sort((a, b) => {
