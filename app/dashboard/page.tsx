@@ -488,7 +488,8 @@ function ActivityTab() {
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error'
-  const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error'>>({});
+  // 'none' = this (older) scan predates subject-recording — not an error, just nothing to show.
+  const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error' | 'none'>>({});
 
   async function load() {
     setLoading(true);
@@ -512,6 +513,9 @@ function ActivityTab() {
         if (r.ok) {
           const d = await r.json();
           setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: d.subjects ?? [] }));
+        } else if (r.status === 404) {
+          // Older scan from before Edge started recording subjects — graceful, not an error.
+          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'none' }));
         } else {
           setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
         }
@@ -567,27 +571,7 @@ function ActivityTab() {
     if (action.includes('email') || action.includes('Email') || action.includes('draft') || action.includes('Draft')) return '✉';
     if (action.includes('research') || action.includes('Research')) return '🔍';
     if (action.includes('edit') || action.includes('Edit') || action.includes('update') || action.includes('Update')) return '✎';
-    if (action.includes('reply') || action.includes('Reply') || action.includes('inbox') || action.includes('Inbox')) return '📬';
     return '📅';
-  }
-
-  function isInboxRead(item: ActivityItem): boolean {
-    return item.label.toLowerCase().includes('inbox') || item.action.toLowerCase().includes('checkreplies') || item.action.toLowerCase().includes('inbox');
-  }
-
-  // Collapse consecutive identical-label items into one with a count
-  interface DedupedItem { item: ActivityItem; count: number }
-  function dedupeItems(raw: ActivityItem[]): DedupedItem[] {
-    const out: DedupedItem[] = [];
-    for (const item of raw) {
-      const prev = out[out.length - 1];
-      if (prev && prev.item.label === item.label && prev.item.action === item.action) {
-        prev.count += 1;
-      } else {
-        out.push({ item, count: 1 });
-      }
-    }
-    return out;
   }
 
   if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>;
@@ -640,11 +624,11 @@ function ActivityTab() {
                 {group.day}
               </p>
               <div className="space-y-1.5">
-                {dedupeItems(group.items).map(({ item, count }) => {
+                {group.items.map(item => {
                   const isExpanded = expandedId === item.id;
                   const isUndone = item.undone === 1;
-                  const canUndo = item.undoId !== null && !isUndone && count === 1;
-                  const hasDetail = !!item.detail || isInboxRead(item);
+                  const canUndo = item.undoId !== null && !isUndone;
+                  const hasDetail = !!item.detail;
                   return (
                     <div
                       key={item.id}
@@ -669,22 +653,12 @@ function ActivityTab() {
 
                         {/* Label + time */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p
-                              className="text-sm leading-snug"
-                              style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-body)' }}
-                            >
-                              {item.label}
-                            </p>
-                            {count > 1 && (
-                              <span
-                                className="text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
-                                style={{ background: 'var(--edg-fill-hover)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}
-                              >
-                                ×{count}
-                              </span>
-                            )}
-                          </div>
+                          <p
+                            className="text-sm leading-snug"
+                            style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-body)' }}
+                          >
+                            {item.label}
+                          </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
                               {relativeTime(item.created_at)}
@@ -726,7 +700,7 @@ function ActivityTab() {
                       </div>
 
                       {/* Expanded detail panel */}
-                      {isExpanded && (item.detail || isInboxRead(item)) && (
+                      {isExpanded && item.detail && (
                         <div
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
@@ -745,12 +719,13 @@ function ActivityTab() {
                                   <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Loading…</p>
                                 ) : state === 'error' ? (
                                   <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
+                                ) : state === 'none' ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Edge didn&apos;t record subjects for this earlier scan — newer scans will show them here.</p>
                                 ) : Array.isArray(state) && state.length === 0 ? (
                                   <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>No subjects stored for this scan.</p>
                                 ) : Array.isArray(state) ? (() => {
                                   const flagged = state.filter(isFlagged);
                                   const rest = state.filter(s => !isFlagged(s));
-                                  const visible = [...flagged, ...rest].slice(0, 10);
                                   const overflow = state.length - 10;
                                   return (
                                     <>
@@ -1064,12 +1039,12 @@ export default function Dashboard() {
   }
 
   async function saveFact(id: number, statement: string) {
-    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement, confidence: null } : f));
+    setFacts(prev => prev.map(f => f.id === id ? { ...f, statement } : f));
     setEditingFactId(null);
     await fetch(`/api/memory/facts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statement, confidence: null }),
+      body: JSON.stringify({ statement }),
     });
   }
 
@@ -1779,7 +1754,16 @@ export default function Dashboard() {
               {/* Hero loop — always-first greeting card: "Here's what's off" or "You're well-aligned" */}
               <div ref={dayPlanRef} className="mb-6">
                 <DayPlanCard
-                  plan={dayPlan}
+                  // Anchor the plan's before/after to the ONE canonical Edge Score
+                  // (the EdgeScoreCard value) so the hero loop never shows a second,
+                  // differently-computed "EDGE SCORE". Preserves the projected delta.
+                  plan={dayPlan && typeof calendarFit?.edgeScore === 'number'
+                    ? {
+                        ...dayPlan,
+                        scoreBefore: calendarFit.edgeScore,
+                        scoreAfter: Math.max(0, Math.min(100, calendarFit.edgeScore + (dayPlan.scoreAfter - dayPlan.scoreBefore))),
+                      }
+                    : dayPlan}
                   loading={dayPlanLoading}
                   onConfirm={handleConfirmDayPlan}
                   onDismiss={dayPlan ? () => setDayPlan(null) : undefined}
@@ -2139,8 +2123,7 @@ export default function Dashboard() {
                   <div className="space-y-1.5 mb-6">
                     {catEntries.map(([cat, catItems]) => {
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
-                      const isFirstAndNoneOpen = expandedMemorySections.size === 0 && cat === catEntries[0]?.[0];
-                      const isSectionOpen = expandedMemorySections.has(cat) || isFirstAndNoneOpen;
+                      const isSectionOpen = expandedMemorySections.has(cat);
                       const isShowAll = expandedFactCats.has(cat);
                       const visible = isShowAll ? catItems : catItems.slice(0, CAT_PREVIEW);
                       const toggleSection = () => setExpandedMemorySections(prev => {
@@ -2260,10 +2243,10 @@ export default function Dashboard() {
                                             </p>
                                             {f.source_briefing_id ? (
                                               <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs hover:underline" style={{ color: 'var(--text-faint)' }}>
-                                                learned {format(parseUTC(f.learned_at), 'MMM d')} ↗
+                                                {format(parseUTC(f.learned_at), 'MMM d')} ↗
                                               </a>
                                             ) : (
-                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>learned {format(parseUTC(f.learned_at), 'MMM d')}</span>
+                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(f.learned_at), 'MMM d')}</span>
                                             )}
                                           </div>
                                           <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
