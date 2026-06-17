@@ -449,6 +449,12 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-MEMORY M4-2 — outcome-weighted reliability signal for commitment language calibration.**
+  - `lib/accountabilityMemory.ts`: Added `ReliabilitySignal` type + `getReliabilitySignal(tasks, today, lookbackDays=30)` — pure function that buckets edg3-sourced tasks into sameDay / thisWeek / longHorizon using `created_at` vs `date` delta. Returns completion rate per bucket (null when <2 data points). `TaskLike` extended with optional `created_at` (present for DC0-1b+ tasks; absent → falls back to same-day bucket, treating date as creation date).
+  - `calibrateCommitmentLanguage(text, dueDate, madeAt, signal)` — picks the right horizon bucket and returns calibrated language: high (>0.7) → "did that happen?", medium (0.4–0.7) → "want to block time?", low (<0.4) → "is it still the right priority, or should we let it go?". Falls back to neutral when signal is null.
+  - `accountabilityBriefingInstruction` updated to accept optional `ReliabilitySignal` and use `calibrateCommitmentLanguage` for the most overdue outstanding commitment.
+  - `lib/briefing.ts`: 30-day task fetch after the 7-day accountability snapshot → `getReliabilitySignal` computes the signal → passed to `accountabilityBriefingInstruction`. Both degrade gracefully on DB error.
+  - 13 new tests in `lib/accountabilityMemory.test.ts`. 1683/1683 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-MEMORY T0-3 — end-to-end smoke test: "7am path."**
   - `lib/call-to-briefing.test.ts` (new): 18 tests covering the post-call chain:
     `extractAndUpsertFacts` → `factQueries.upsertFact` called; `persistCallEpisode` → `episodeQueries.insert` called.

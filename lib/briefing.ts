@@ -32,7 +32,7 @@ import {
   pickBestPattern,
   formatPatternForBriefing,
 } from './patternMemory';
-import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction } from './accountabilityMemory';
+import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction, getReliabilitySignal } from './accountabilityMemory';
 import { buildEpisodeMemoryBlock } from './episodeStore';
 import { runHistoricalPatternDetection, getHistoricalPatterns } from './factPatterns';
 
@@ -479,6 +479,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     .filter(t => t.source === 'edg3' && t.date < today)
     .at(-1) ?? null;
   // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
+  // M4-2 Reliability Signal: 30-day window to derive per-horizon completion rates for calibrated language.
   const accountabilitySnapshot = (() => {
     try {
       const recentTasks = taskQueries.getRecent(userId, 7);
@@ -489,8 +490,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       return buildAccountabilitySnapshot(recentTasks, loops, today, 7);
     } catch { return null; }
   })();
+  const reliabilitySignal = (() => {
+    try {
+      const tasks30d = taskQueries.getRecent(userId, 30);
+      return getReliabilitySignal(tasks30d, today, 30);
+    } catch { return undefined; }
+  })();
   const accountabilityBlock = accountabilitySnapshot ? formatAccountabilityForBriefing(accountabilitySnapshot) : '';
-  const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot) : '';
+  const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot, reliabilitySignal) : '';
   // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
   // Degrades to [] if Gmail read access isn't granted yet or anything errors.
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
