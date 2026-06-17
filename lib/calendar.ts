@@ -1190,7 +1190,9 @@ export function formatEventsForBriefing(events: calendar_v3.Schema$Event[], time
         ? new Date(event.start.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) + ' (all day)'
         : 'All day';
     const isPast = startDate && startDate < now;
-    const title = event.summary || 'Untitled event';
+    // Strip newlines before injecting into the briefing prompt — a meeting organizer
+    // (not the user) could craft a title with embedded newlines to inject instructions.
+    const title = (event.summary || 'Untitled event').replace(/[\r\n\t]/g, ' ').trim();
 
     // Detect tentative/placeholder events
     const isTentative =
