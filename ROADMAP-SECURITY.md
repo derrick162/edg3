@@ -50,6 +50,22 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Integration test sweep — signup + backup route + backup lib (1253 green).**
+
+  Closed the three largest remaining test gaps:
+
+  1. **`POST /api/auth/signup`** (18 new tests, `app/api/auth/signup/route.test.ts`) — all pre-beta audit fixes verified: password > 128 chars → 400 (bcrypt DoS cap), password < 8 → 400, name > 100 → 400, email > 254 → 400 (RFC 5321), missing fields → 400, duplicate email → 409 (no account detail leaked), DB error → generic 500 (SQLITE_CONSTRAINT not exposed), rate-limit → 429, successful signup → 200 + session cookie.
+
+  2. **`GET,POST /api/admin/backup`** (14 new route tests, `app/api/admin/backup/route.test.ts`) — auth gate (GET+POST → 401 without admin cookie), filename regex path-traversal prevention (`../../etc/passwd` → 400, Windows separators → 400, non-matching pattern → 400, leading path → 400), valid pattern accepted → verifyBackup called, createBackup error → 500 with safe message, empty body defaults to backup action.
+
+  3. **`lib/backup.ts`** (7 new lib tests, `lib/backup.test.ts`) — verifyBackup path traversal neutralization (`../../etc/passwd` strips to `passwd` via `path.basename` → File not found — no escape from BACKUP_DIR), `litstreamEnabled` env-var reflection, `maybeDailyBackup` fire-and-forget (disk-full error swallowed; no throw propagated to caller).
+
+  **Bug fix**: `admin/backup` route filename regex was `^edg3-[\d-]+\.db$` which rejected ALL valid backup filenames — they contain `T` and `Z` from ISO8601 format. Fixed to `^edg3-[0-9TZ-]+\.db$` matching the actual `ts()` output `edg3-YYYY-MM-DDTHH-MM-SS-mmmZ.db`.
+
+  **Security audit doc** updated with full "✅ Covered" bullet list reflecting LLM-output caps, header injection fix, backup path traversal guard, activation moment review, and current test coverage count.
+
+  1253/1253 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Activation Moment security review — 13 fresh-account tests (1214 green).**
 
   PM dispatch: review the onboarding + priority-derive path for the Activation Moment feature.

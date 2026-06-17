@@ -278,20 +278,25 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 
 - **Authentication:** JWT cookie with `session_version` (logout invalidates tokens immediately)
 - **Authorization:** Every route gates on `getSession()` and scopes all DB queries to `user.id` — no cross-user data leakage
-- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (36 rate-limit types total)
+- **Rate limiting:** All 78+ routes reviewed; every mutation + expensive read now covered (36 rate-limit types total)
 - **Error leak hardening:** Internal error details (`err.message`, raw `String(err)`) removed from all user-facing non-admin routes; generic safe messages returned instead
 - **Parameterized SQL:** No raw string interpolation in queries (better-sqlite3 prepared statements everywhere)
 - **Prompt injection defense:** `sanitize()` strips `\r\n\t` on calendar event titles in `lib/alignment.ts`; newline-strip in `lib/calendar.ts` `formatEventsForBriefing`
 - **Input validation:** length caps, type checks, enum validation on all mutation endpoints
-- **Encryption at rest:** `DATA_ENCRYPTION_KEY` (AES-256-GCM) covers OAuth tokens, transcripts, briefing user_response, email subjects, email draft recipients; `encryptField/decryptField` via `lib/crypto.ts`
+- **LLM-output storage caps:** All paths where LLM-extracted text is stored to DB are uniformly bounded (task text 500, memory content 2000, fact statement 500, priority text 200, confirmFocus title 200 / rationale 500)
+- **Email header injection:** `buildRawMessage` in `lib/gmail.ts` strips `\r\n\t` from all MIME header fields (`to`/`cc`/`bcc`/`subject`) before interpolation
+- **Encryption at rest:** `DATA_ENCRYPTION_KEY` (AES-256-GCM) covers OAuth tokens, transcripts, briefing user_response, email subjects, email draft recipients, notifications, daily focus, open loops; `encryptField/decryptField` via `lib/crypto.ts`
 - **OAuth CSRF:** `oauthStateQueries` crypto state tokens for calendar + Whoop flows
 - **Vapi webhook integrity:** `checkVapiSecret` + fail-closed `VAPI_SECRET_ENFORCE` + admin mismatch monitoring
 - **Idempotency:** calendar book, day-plan confirm, event dedupe keys prevent double-execution
-- **Audit logging:** All calendar + fact mutations logged to `audit_log`; 90-day retention with email-subject pruning
-- **Admin auth:** Separate HMAC-derived cookie; shared brute-force rate limit
+- **Audit logging:** All calendar + fact mutations logged to `audit_log`; undo_applied events logged; 90-day retention with email-subject pruning
+- **Admin auth:** Separate HMAC-derived cookie; shared brute-force rate limit; admin secret header for CoS-agent routes
 - **Session expiry:** 7-day JWT; logout bumps `session_version`
 - **Error responses:** No stack traces or internal error strings in user-facing responses
 - **Data export:** Full user export (`GET /api/account/export`) omits `password_hash` and OAuth tokens; decrypts PII fields
+- **Backup route:** filename regex `^edg3-[0-9TZ-]+\.db$` + `path.basename` guard prevent path traversal; admin-auth gated
+- **Activation Moment path:** `GET /api/priorities/derive` + `POST /api/priorities/derive/accept` — auth, rate-limit, user-scoping, graceful null, no error leak confirmed
+- **Test coverage:** 56 test files, 1253 tests. Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup. Lib-level: auth/JWT, crypto, idempotency, backup path traversal, vapi secret.
 
 ### ⚠️ Known Gaps (Accepted / Tracked)
 
