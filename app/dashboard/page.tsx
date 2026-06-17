@@ -883,6 +883,174 @@ interface Fact {
   source_briefing_id?: number | null;
 }
 
+// ── Focus Scoreboard ──────────────────────────────────────────────────────────
+
+interface ScoreboardMilestone { id: number; title: string; done: boolean; completedAt: string | null }
+interface ScoreboardPriority {
+  id: number; text: string; rank: number; energyCost: 'high' | 'medium' | 'low' | null;
+  hoursThisWeek: number; weeklyAvgHours: number;
+  milestoneDone: number; milestoneTotal: number;
+  milestones: ScoreboardMilestone[];
+}
+interface ScoreboardWeek {
+  weekLabel: string; weekStart: string;
+  perPriority: { [text: string]: number }; otherHours: number;
+}
+interface ScoreboardData {
+  perPriority: ScoreboardPriority[]; weeklyTrend: ScoreboardWeek[];
+  totalHoursThisWeek: number; weeksBack: number;
+}
+
+function FocusScoreboardPanel() {
+  const [data, setData] = useState<ScoreboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/scoreboard')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="glass-card p-4 mb-6 animate-pulse" style={{ minHeight: 80 }}>
+        <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-accent-15)' }} />
+        <div className="h-2 rounded w-1/2" style={{ background: 'var(--edg-accent-08)' }} />
+      </div>
+    );
+  }
+
+  if (!data || data.perPriority.length === 0) return null;
+
+  const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
+  const trendWeeks = data.weeklyTrend.slice(-4);
+
+  const ENERGY_LABEL: Record<string, string> = { high: '⚡ High', medium: '~ Med', low: '· Low' };
+
+  const trendArrow = (text: string): string => {
+    const weeks = trendWeeks.map(w => w.perPriority[text] ?? 0);
+    if (weeks.length < 2) return '';
+    const recent = weeks[weeks.length - 1];
+    const prev   = weeks[weeks.length - 2];
+    if (recent > prev + 0.5) return ' ↑';
+    if (recent < prev - 0.5) return ' ↓';
+    return '';
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--text-faint)' }}>
+          Focus progress — this week
+        </h3>
+        {data.totalHoursThisWeek > 0 && (
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {data.totalHoursThisWeek}h total
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-3 mb-4">
+        {data.perPriority.map(p => {
+          const barPct = maxHours > 0 ? Math.round((p.hoursThisWeek / maxHours) * 100) : 0;
+          const avgBarPct = maxHours > 0 ? Math.round((p.weeklyAvgHours / maxHours) * 100) : 0;
+          return (
+            <div key={p.id} className="glass-card p-3">
+              <div className="flex items-start justify-between mb-2 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-black flex-shrink-0 w-4 text-center"
+                    style={{ color: 'var(--text-accent)' }}>{p.rank}</span>
+                  <span className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>
+                    {p.text}{trendArrow(p.text)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {p.energyCost && (
+                    <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--edg-accent-08)' }}>
+                      {ENERGY_LABEL[p.energyCost] ?? p.energyCost}
+                    </span>
+                  )}
+                  {p.milestoneTotal > 0 && (
+                    <span style={{ color: p.milestoneDone === p.milestoneTotal ? 'var(--text-accent)' : 'var(--text-muted)' }}>
+                      {p.milestoneDone}/{p.milestoneTotal} ✓
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Hours bar */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 6, background: 'var(--edg-accent-08)' }}>
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${barPct}%`, background: 'var(--edg-indigo)', opacity: 0.8 }} />
+                </div>
+                <span className="text-xs w-16 text-right flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                  {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h` : '0h'}
+                  {p.weeklyAvgHours > 0 && p.weeklyAvgHours !== p.hoursThisWeek
+                    ? ` · avg ${p.weeklyAvgHours}h`
+                    : ''}
+                </span>
+              </div>
+
+              {/* Avg marker overlay (ghost bar) */}
+              {avgBarPct > 0 && avgBarPct !== barPct && (
+                <div className="relative" style={{ height: 2, marginTop: -4, marginBottom: 2 }}>
+                  <div className="absolute h-full rounded-full" style={{
+                    left: `${avgBarPct}%`, width: 2, background: 'var(--text-faint)', opacity: 0.4,
+                  }} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 4-week trend table */}
+      {trendWeeks.length >= 2 && (
+        <div className="glass-card p-3 overflow-x-auto">
+          <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-faint)' }}>
+            {data.weeksBack}-week trend (hours/week)
+          </p>
+          <table className="text-xs w-full" style={{ borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th className="text-left pr-3 py-1 font-normal" style={{ color: 'var(--text-faint)', minWidth: 110 }}>
+                  Priority
+                </th>
+                {trendWeeks.map(w => (
+                  <th key={w.weekStart} className="text-right px-2 py-1 font-normal"
+                    style={{ color: 'var(--text-faint)', minWidth: 50 }}>
+                    {w.weekLabel}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.perPriority.map(p => (
+                <tr key={p.id}>
+                  <td className="pr-3 py-1 truncate" style={{ color: 'var(--text-muted)', maxWidth: 110 }}>
+                    {p.text.length > 18 ? p.text.slice(0, 16) + '…' : p.text}
+                  </td>
+                  {trendWeeks.map(w => {
+                    const h = w.perPriority[p.text] ?? 0;
+                    return (
+                      <td key={w.weekStart} className="text-right px-2 py-1"
+                        style={{ color: h > 0 ? 'var(--text-strong)' : 'var(--text-faint)' }}>
+                        {h > 0 ? `${h}h` : '—'}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -1979,6 +2147,8 @@ export default function Dashboard() {
 
           {activeTab === 'priorities' && (
             <div className="space-y-6">
+            {/* Focus Scoreboard — hours invested + milestone progress + 4-week trend */}
+            <FocusScoreboardPanel />
             {/* Derivation card — shown when no priorities or stale */}
             {(priorities.length === 0 || prioritiesStale) && !deriveDismissed && (
               deriveLoading ? (
