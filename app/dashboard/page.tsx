@@ -2124,7 +2124,8 @@ export default function Dashboard() {
                   <div className="space-y-1.5 mb-6">
                     {catEntries.map(([cat, catItems]) => {
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
-                      const isSectionOpen = expandedMemorySections.has(cat);
+                      const isFirstAndNoneOpen = expandedMemorySections.size === 0 && cat === catEntries[0]?.[0];
+                      const isSectionOpen = expandedMemorySections.has(cat) || isFirstAndNoneOpen;
                       const isShowAll = expandedFactCats.has(cat);
                       const visible = isShowAll ? catItems : catItems.slice(0, CAT_PREVIEW);
                       const toggleSection = () => setExpandedMemorySections(prev => {
@@ -2244,10 +2245,10 @@ export default function Dashboard() {
                                             </p>
                                             {f.source_briefing_id ? (
                                               <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs hover:underline" style={{ color: 'var(--text-faint)' }}>
-                                                {format(parseUTC(f.learned_at), 'MMM d')} ↗
+                                                learned {format(parseUTC(f.learned_at), 'MMM d')} ↗
                                               </a>
                                             ) : (
-                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(f.learned_at), 'MMM d')}</span>
+                                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>learned {format(parseUTC(f.learned_at), 'MMM d')}</span>
                                             )}
                                           </div>
                                           <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
