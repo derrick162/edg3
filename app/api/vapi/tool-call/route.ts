@@ -11,7 +11,7 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -1192,9 +1192,18 @@ Query: ${query}` }],
       getLastSleep(userId).catch(() => null),
     ]);
     const alignment = await computeAlignment(priorities, planWeekEvents, userTz).catch(() => null);
+    const openLoopsDueToday = (() => {
+      try {
+        return openLoopQueries.list(userId, 'open')
+          .filter((l: { dueDate: string | null }) => l.dueDate === today)
+          .map((l: { description: string }) => l.description);
+      }
+      catch { return []; }
+    })();
 
     const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep);
-    const plan = buildCalendarPlan(planTodayEvents, fit, priorities, today, userTz);
+    const nowIso = new Date().toISOString();
+    const plan = buildCalendarPlan(planTodayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday, nowIso);
 
     if (plan.actions.length === 0) {
       return `Your Edge Score is ${fit.edgeScore} — calendar looks solid. Nothing to reshape right now.`;
