@@ -531,6 +531,91 @@ export async function cleanupPeopleFacts(
 }
 
 /**
+ * Sleep-time consolidation agent (T2).
+ * After each call, one Haiku call reviews the transcript against stored facts and
+ * applies explicit contradictions/updates via the bi-temporal pipeline (T1).
+ * Fire-and-forget safe — any failure is a no-op.
+ */
+export async function runSleepTimeConsolidation(
+  userId: number,
+  transcript: string,
+  userName?: string,
+): Promise<void> {
+  if (!transcript || transcript.length < 50) return;
+  try {
+    const activeFacts = factQueries.getAll(userId);
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const factsContext = activeFacts.slice(0, 40)
+      .map(f => `[${f.category}${f.entity ? ` | ${f.entity}` : ''}] ${f.statement}`)
+      .join('\n');
+    const userLine = userName ? `User name: "${userName}".\n` : '';
+
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `You are a memory consolidation agent. Review this call transcript against the user's stored facts and identify ONLY explicit contradictions or clear updates — things where the user clearly said something changed.
+${userLine}
+STORED FACTS (active):
+${factsContext || '(none yet)'}
+
+TRANSCRIPT (last call):
+${transcript.slice(0, 2000)}
+
+Return a JSON array of ONLY items where the transcript explicitly contradicts or updates a stored fact. Return [] if nothing changed or you are uncertain.
+Each item: {"action":"update"|"retire"|"add","category":"...","entity":"..."|null,"old":"..."|null,"new":"..."|null,"reason":"..."}
+- "update": stored fact changed (user said something different). Include both old and new.
+- "retire": stored fact is no longer true (goal achieved, habit changed). Include old only.
+- "add": durable new fact not yet in stored list.
+Only return HIGH-CONFIDENCE changes where the user explicitly stated the change. Return [] for ambiguous cases.`,
+      }],
+    });
+
+    const raw = res.content
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text?: string }) => b.text ?? '')
+      .join('')
+      .trim();
+
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return;
+
+    type ConsolidationUpdate = {
+      action: 'update' | 'retire' | 'add';
+      category: string;
+      entity?: string | null;
+      old?: string | null;
+      new?: string | null;
+      reason?: string;
+    };
+    const updates = JSON.parse(match[0]) as ConsolidationUpdate[];
+    let applied = 0;
+
+    for (const u of updates) {
+      if (!VALID_CATEGORIES.has(u.category as ExtractedFact['category'])) continue;
+
+      if ((u.action === 'update' || u.action === 'add') && u.new) {
+        factQueries.upsertFact(userId, u.category, u.new.slice(0, 500), u.entity ?? null, 'high');
+        applied++;
+      } else if (u.action === 'retire' && u.entity) {
+        const active = factQueries.getByCategory(userId, u.category)
+          .find(f => f.entity?.toLowerCase() === (u.entity as string).toLowerCase());
+        if (active) { factQueries.retire(userId, active.id); applied++; }
+      }
+    }
+
+    if (applied > 0) {
+      console.log(`[facts] Sleep-time consolidation: ${applied} updates applied for user ${userId}`);
+    }
+  } catch (err) {
+    console.error('[facts] runSleepTimeConsolidation failed:', err);
+  }
+}
+
+/**
  * Match this week's/today's calendar events to stored facts by entity name.
  * Returns up to 3 most relevant (event, fact) pairs for briefing annotation.
  * Pure function — no DB or API calls.

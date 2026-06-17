@@ -154,6 +154,10 @@ export async function POST(req: NextRequest) {
           // existing ones. Fire-and-forget — never blocks the webhook response.
           import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
             .catch(err => console.error('[webhook] Fact extraction failed:', err));
+          // Sleep-time consolidation: one Haiku call resolves contradictions between the
+          // transcript and stored facts via the bi-temporal retire+insert pipeline.
+          import('@/lib/facts').then(m => m.runSleepTimeConsolidation(briefing.user_id, transcript, user.name))
+            .catch(err => console.error('[webhook] Sleep-time consolidation failed:', err));
           // Extract open loops / commitments from the call transcript.
           import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
             .catch(err => console.error('[webhook] Open loops extraction failed:', err));

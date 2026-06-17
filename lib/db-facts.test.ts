@@ -98,7 +98,7 @@ describe('factQueries — bi-temporal (T1)', () => {
 
       factQueries.upsertFact(1, 'preference', 'gym is at 7am', 'gym schedule', 'low');
 
-      const prepareCalls = m.prepare.mock.calls.map(([sql]) => sql as string);
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
 
       // Should have called retire (UPDATE facts SET valid_until=...)
       expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(true);
@@ -115,7 +115,7 @@ describe('factQueries — bi-temporal (T1)', () => {
 
       factQueries.upsertFact(1, 'preference', 'gym is at 7am', 'gym schedule', 'low');
 
-      const prepareCalls = m.prepare.mock.calls.map(([sql]) => sql as string);
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
       // Should NOT retire since statement is the same
       expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(false);
     });
@@ -129,7 +129,7 @@ describe('factQueries — bi-temporal (T1)', () => {
 
       factQueries.upsertFact(1, 'preference', 'new extraction overwrite attempt', 'gym schedule', 'low');
 
-      const prepareCalls = m.prepare.mock.calls.map(([sql]) => sql as string);
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
       // Should not retire or insert when high-conf existing fact found
       expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(false);
       expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(false);
@@ -140,14 +140,14 @@ describe('factQueries — bi-temporal (T1)', () => {
 
       factQueries.upsertFact(1, 'goal', 'Close Series A by Q3', null, 'high');
 
-      const prepareCalls = m.prepare.mock.calls.map(([sql]) => sql as string);
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
       expect(prepareCalls.some(s => s.includes('INSERT INTO facts') && s.includes('valid_from'))).toBe(true);
     });
 
     it('entity lookup includes valid_until IS NULL to only check active facts', () => {
       factQueries.upsertFact(1, 'person', 'Sarah is the CFO', 'Sarah', 'high');
 
-      const prepareCalls = m.prepare.mock.calls.map(([sql]) => sql as string);
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
       expect(prepareCalls.some(s => s.includes('LOWER(entity)') && s.includes('valid_until IS NULL'))).toBe(true);
     });
   });

@@ -54,7 +54,7 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation } from './facts';
 import { factQueries, peopleProfileQueries, type Fact } from './db';
 
 function textResponse(text: string) {
@@ -529,5 +529,61 @@ describe('people fact guards', () => {
     expect(factQueries.upsertFact).toHaveBeenCalledWith(
       1, 'person', 'Unknown Person mentioned something', 'Unknown Person', 'low', undefined,
     );
+  });
+});
+
+// ── Sleep-time consolidation agent (T2) ───────────────────────────────────────
+describe('runSleepTimeConsolidation', () => {
+  it('returns early for short transcripts without calling Haiku', async () => {
+    await runSleepTimeConsolidation(1, 'too short', 'Derrick');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('calls upsertFact for "update" action with new statement', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'update', category: 'preference', entity: 'gym schedule', old: 'gym is at 6am', new: 'gym is at 7am', reason: 'user said moved to 7am' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'preference', 'gym is at 7am', 'gym schedule', 'high');
+  });
+
+  it('calls upsertFact for "add" action with new statement', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'add', category: 'goal', entity: null, new: 'Close Series A by September', reason: 'new goal stated' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'goal', 'Close Series A by September', null, 'high');
+  });
+
+  it('calls retire for "retire" action when matching active fact exists', async () => {
+    vi.mocked(factQueries.getByCategory).mockReturnValue([
+      { id: 99, user_id: 1, category: 'goal', statement: 'Raise $500K by June', entity: 'fundraising', learned_at: '2026-06-01', confidence: 'low', source_briefing_id: null },
+    ]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'retire', category: 'goal', entity: 'fundraising', old: 'Raise $500K by June', reason: 'user said round is closed' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).toHaveBeenCalledWith(1, 99);
+  });
+
+  it('does nothing when Haiku returns empty array', async () => {
+    h.create.mockResolvedValue(textResponse('[]'));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+    expect(factQueries.retire).not.toHaveBeenCalled();
+  });
+
+  it('degrades silently when Haiku call throws', async () => {
+    h.create.mockRejectedValue(new Error('API down'));
+    await expect(runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick')).resolves.toBeUndefined();
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('skips updates with invalid category', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'add', category: 'invalid_category', entity: null, new: 'Some fact', reason: 'test' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
   });
 });
