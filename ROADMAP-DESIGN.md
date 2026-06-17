@@ -25,6 +25,30 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-18 (Data control onboarding screen — CASA requirement)
+
+> Master at `65c04dd`. Sync master first. Full spec: `specs/data-control-onboarding.md`.
+> Core owns wiring + DB; Security owns enforcement; you own the screen design.
+
+**Your piece (Design):**
+The "You control your data" onboarding screen and its Settings panel counterpart.
+
+**Screen layout (mirror Wispr Flow reference from spec):**
+- Header: "You control your data"
+- Body: one sentence explaining Edge stores calls/facts to work (Memory is the product — can't be disabled)
+- Two cards:
+  - **Help improve Edg3** — copy: "Your calls and transcripts may be used to improve Edg3's features and AI. You can change this anytime." (no special icon)
+  - **Privacy Mode** — copy: "Your data powers only your experience. Never used for training, never shared. Encrypted and exportable anytime." (🔒 lock icon, selected state gets a teal border/check)
+- Default selection: Privacy Mode (pre-selected)
+- CTA: "Continue →"
+- Footer: "You can always change this in Settings."
+
+**Settings panel:** a simple toggle "Help improve Edg3" (off = Privacy Mode). Show brief explainer below the toggle.
+
+**Files:** new `components/ui/DataConsentCard.tsx` + a new step in `app/onboarding/**` (claim Status Board first). Add Settings toggle to the existing settings page (coordinate with Core on where to place it).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (★ FLAGSHIP — First-run Activation Moment, screens + motion)
 
 > Master at `a3053cb`. Sync master (`git merge master`) FIRST — picks up canonical EdgeScoreCard,
