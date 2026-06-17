@@ -19,6 +19,15 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - This is the single most important thing to get right — without it, the moat doesn't compound
 - Test: complete a call where you state a new goal; verify all three outputs exist within 5 minutes
 
+### DC0-1b — After-call memory audit: verify the right things were stored (Core)
+**Derrick's exact feedback (2026-06-17):** "After every call, everything gets stored in memory the right way. With this new approach of how we're thinking about memory, everything should be stored in the right way."
+**The standard:** Every call should produce memory that makes the NEXT call better. Not just any facts — the RIGHT facts. Commitments go in tasks. Goals go in facts under 'goal'. People go in facts under 'people'. Patterns feed pattern detection. Nothing gets lost, nothing gets miscategorized.
+- Audit `lib/facts.ts` extraction: are categories being assigned correctly? Run a spot-check on the last 10 calls — what categories were extracted? Are they accurate?
+- Verify commitment extraction: when a user says "I'll do X by Friday" — does it create a task with `source='edg3'` and a due date? Test explicitly.
+- Verify people extraction: when a user mentions "I'm meeting Sarah tomorrow" — does a people-category fact get created or updated for Sarah?
+- Verify goal extraction: when a user says "my priority this week is fundraising" — does a goal-category fact reflect this?
+- This is the flywheel's engine. If this step is wrong, nothing downstream compounds correctly.
+
 ### DC0-2 — Call-to-briefing latency: facts must land before next morning (Core)
 **The risk:** A user calls at 8am. Sleep-time consolidation runs at 2am. If fact extraction is slow or retries, the consolidated facts may not be ready for the next day's briefing.
 - Audit the pipeline: call ends → transcript stored → facts extracted → sleep-time agent runs → briefing context assembled. What's the worst-case latency at each step?
@@ -54,6 +63,14 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 2 — Briefing quality (the call must deliver value)
 
+### DC2-0 — Get to the point in the first 10 seconds (Core — HIGH PRIORITY)
+**Derrick's exact feedback (2026-06-17):** "Edge should get to the point even sooner in the morning."
+**The problem:** Edge opens with a preamble — greeting, pleasantry, scene-setting — before landing on the first useful thing. By the time the signal arrives, 30–45 seconds are gone.
+- The opener should be: greeting (1 sentence, 5 words max) → the single most important thing right now (1–2 sentences) → done. No warm-up. No "here's what we're going to cover today."
+- Model: "Morning Derrick — your investor meeting is at 2pm and your recovery is low. Want to protect your morning?" That's 3 seconds to signal.
+- Update `lib/vapi.ts` opener instruction: explicitly forbid preamble. "The first words out of your mouth must be the most important thing in the briefing. You have 10 seconds to earn the user's attention. Don't waste them."
+- Test: time the gap between Edge's first word and the first piece of actionable information. Target: under 15 seconds.
+
 ### DC2-1 — Opener quality: meaningful, not routine (Core)
 **The risk:** The briefing opens with "You have a gym session at 7:30am." The user already knew that. They feel like they wasted 3 minutes.
 - Audit the briefing opener instruction in `lib/vapi.ts`: does it explicitly forbid routine/predictable events as the lead?
@@ -71,6 +88,14 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Outstanding commitments from yesterday must appear in section 1 — the first thing Edge says, not buried
 - Edge must ask "did that happen?" before moving to today's priorities
 - Test: make a commitment on Monday's call; verify it opens Tuesday's briefing
+
+### DC2-3b — Whoop data must be present on every call when connected (Core + Security)
+**Derrick's exact feedback (2026-06-17):** "He should have my WHOOP data — I noticed this morning there wasn't my WHOOP data."
+**The problem:** Whoop data is fetched in `lib/briefing.ts` with `.catch(() => null)` — if the fetch fails or is slow, the briefing runs without it silently. The user connected Whoop specifically because they want it in the call.
+- Audit the Whoop fetch in `lib/briefing.ts`: is it hitting the real API or timing out? Add a timing log: `{whoopFetchMs, recoveryNull, sleepNull, strainNull}` per briefing.
+- If Whoop data is null: Edge must acknowledge it ("I couldn't pull your Whoop data this morning — I'll try again") rather than silently omitting the health section. Silence feels like Edge doesn't care about it.
+- If Whoop token is expired: trigger a refresh before the briefing, not during it. The predictive context pack (11pm job) should pre-validate the Whoop token.
+- Test: with Whoop connected, run a briefing — verify recovery score appears. Disconnect Whoop briefly, run again — verify Edge mentions it's unavailable rather than skipping silently.
 
 ### DC2-4 — Briefing length calibration: 3 minutes, not 8 (Core)
 **The risk:** The briefing runs long because Edge tries to cover everything. The user stops picking up.

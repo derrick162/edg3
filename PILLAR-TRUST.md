@@ -7,6 +7,38 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ---
 
+## 🎯 User-facing trust basics — the things that make or break daily trust
+
+> These are not infrastructure items. They are the moment-to-moment product experience that makes a user feel Edge is reliable, smart, and on their side. A user who sees their name spelled wrong, gets a duplicate notification, or hits a stale button loses trust faster than any server outage.
+
+### UX-1 — No stale or wrong UI copy anywhere (Core + Design)
+**Known bugs (log here as found):**
+- ~~`'📅 Book a time'` button on every notification~~ — **FIXED f1e1943** (removed hardcoded action)
+- Landing page copy says "5 minutes" — should be "3 minutes" to match the actual call
+- Any other copy that describes a feature we removed or changed (e.g., references to the async note box)
+- **Process:** when Derrick flags a copy bug, fix it same-session. No ticket needed. Copy bugs are trust destroyers.
+
+### UX-2 — No duplicate contacts, facts, or events (Core)
+**The trust issue:** Derrick sees "Jim (gym)" appear twice in "What Edge knows." He sees the same event on his calendar twice. He sees himself listed as a contact. Each one signals Edge doesn't have it together.
+- Duplicate contacts: people-extraction must check for existing people facts before inserting (fuzzy name match, case-insensitive). Entity grounding filter: block user's own name, "Edge", "Edg3", generic nouns.
+- Duplicate facts: before inserting any fact, check if an identical or near-identical (80-char prefix match) active fact exists — skip if yes, update `last_seen_at` only.
+- Duplicate events: `cleanupDuplicates` tool is live. Verify it runs correctly and that the morning briefing flags duplicate-heavy weeks proactively.
+- Test: run extraction on a transcript that mentions the user, Edge, and a repeated fact — verify none produce duplicates.
+
+### UX-3 — Name spelled correctly everywhere (Core)
+**The trust issue:** STT mishears "Derrick" as "Derek." Edge calls him Derek all morning. He notices. He loses trust in every fact Edge extracted.
+- `correctRecipientNames()` in `lib/outreach.ts` is live for email. Extend the same pattern to fact extraction: before storing any people-category fact, cross-check the name spelling against the user's profile name and known contacts.
+- In `lib/vapi.ts`: Edge must address the user by their profile `firstName` only — never a STT-transcribed version.
+- Test: in a transcript where the user's name is misspelled, verify the stored fact uses the correct spelling.
+
+### UX-4 — No bugs that make users uncertain (Core + Design — ongoing)
+**The standard:** If Derrick has to wonder "did that work?" — it's a bug. Every mutation should produce a clear, honest confirmation. Every failure should produce a clear, honest explanation. No silent successes. No misleading errors.
+- Audit every tool-call response in `app/api/vapi/tool-call/route.ts` — does every success say what happened? Does every failure say why?
+- Audit the dashboard: any loading state that never resolves? Any button that does nothing? Any section that shows stale data?
+- **Bug log (add here as found):** _(empty — log format: `[date] description — fixed in [commit] or open`)_
+
+---
+
 ## 🚨 Tier 0 — Critical (do before anything else tonight)
 
 ### T0-1 — DB durability: off-box backup replication (Security — URGENT)
