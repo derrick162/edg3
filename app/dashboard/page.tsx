@@ -410,7 +410,7 @@ function PrioritiesTab({
                               </span>
                               <button
                                 onClick={() => onMilestoneDelete?.(m.id)}
-                                className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
+                                className="opacity-30 group-hover:opacity-100 text-xs transition-opacity"
                                 style={{ color: 'var(--edg-danger)' }}
                               >
                                 ×
@@ -892,6 +892,13 @@ export default function Dashboard() {
   });
   const [introCalling, setIntroCalling] = useState(false);
   const [showNextCallTip, setShowNextCallTip] = useState(() => isWelcome);
+  const [showActivatedBanner, setShowActivatedBanner] = useState(() => {
+    if (typeof window !== 'undefined' && sessionStorage.getItem('edg3_activated') === '1') {
+      sessionStorage.removeItem('edg3_activated');
+      return true;
+    }
+    return false;
+  });
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
@@ -1651,6 +1658,36 @@ export default function Dashboard() {
 
         {/* Main content */}
         <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
+          {/* Screen 7 — activation arrival banner (dismissible, non-gating) */}
+          {showActivatedBanner && (
+            <div
+              className="flex items-start gap-3 rounded-xl px-4 py-3 mb-5"
+              style={{
+                background: 'var(--edg-accent-08)',
+                border: '1px solid var(--edg-accent-20)',
+                animation: 'score-rise 0.4s ease both',
+              }}
+            >
+              <span style={{ color: 'var(--text-accent)', fontSize: 13, flexShrink: 0, marginTop: 2 }}>✦</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                  Edge has everything it needs.{' '}
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    Until your first call — everything Edge knows about you is in the
+                    &ldquo;What Edge knows&rdquo; tab. You can edit or delete anything there.
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowActivatedBanner(false)}
+                className="flex-shrink-0 text-xs p-1 transition-opacity hover:opacity-80"
+                style={{ color: 'var(--text-faint)' }}
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {/* Header */}
           <div className="flex items-center justify-between mb-4 md:mb-8">
             <div>
@@ -2115,7 +2152,7 @@ export default function Dashboard() {
                                             </p>
                                           )}
                                         </div>
-                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
                                           <button
                                             title="Edit"
                                             onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}

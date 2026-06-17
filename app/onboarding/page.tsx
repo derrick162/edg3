@@ -2,8 +2,8 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ActivationLoading, ActivationReveal, DerivedProposal } from '@/components/ui/ActivationReveal';
-import { ActivationHeroCard, ActivationHeroAligned, HeroSuggestion } from '@/components/ui/ActivationHeroCard';
+import { ActivationLoading, ActivationReveal, ThinDataFallback, DerivedProposal } from '@/components/ui/ActivationReveal';
+import { ActivationHeroCard, ActivationHeroAligned, PlanChange } from '@/components/ui/ActivationHeroCard';
 
 type Step = 'profile' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'done';
 
@@ -257,27 +257,28 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
     if (!popup) window.location.href = data.url;
   }
 
-  // Connected celebration state
+  // Connected — Screen 1 transition state ("Connected. / Edge is reading your calendar now.")
   if (connected) {
     return (
       <StepFade>
         <div className="text-center py-8">
           <div
-            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl mx-auto mb-4"
+            className="w-16 h-16 rounded-full flex items-center justify-center text-xl mx-auto mb-4"
             style={{
-              background: 'rgba(34,197,94,0.12)',
-              border: '2px solid rgba(34,197,94,0.3)',
-              boxShadow: '0 0 24px rgba(34,197,94,0.2)',
+              background: 'var(--edg-success-tint)',
+              border: '2px solid var(--edg-success-border)',
               animation: 'pop-in 0.4s ease both',
             }}
           >
             ✓
           </div>
           <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--text-strong)' }}>
-            Calendar connected
+            Connected.
           </h3>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Edge can now see your schedule and help you align your day.
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            Edge is reading your calendar now.
+            <br />
+            Give it a moment.
           </p>
         </div>
       </StepFade>
@@ -450,13 +451,20 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
 function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: () => void }) {
   const [proposal, setProposal] = useState<DerivedProposal | null>(null);
   const [loading, setLoading] = useState(true);
+  const [thinData, setThinData] = useState(false);
   const [accepting, setAccepting] = useState(false);
 
   useEffect(() => {
     fetch('/api/priorities/derive')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.proposal) setProposal(d.proposal); })
-      .catch(() => {})
+      .then(d => {
+        if (d?.proposal && d.proposal.priorities?.length >= 1) {
+          setProposal(d.proposal);
+        } else {
+          setThinData(true);
+        }
+      })
+      .catch(() => setThinData(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -466,19 +474,30 @@ function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: 
     try {
       await fetch('/api/priorities/derive/accept', { method: 'POST' });
     } catch {
-      // accept is best-effort; still advance
+      // best-effort; still advance
     }
     setAccepting(false);
     onAccept();
   }
 
-  if (loading || !proposal) {
-    // Still fetching OR thin-data (no proposal) — show loading, then skip to manual
-    if (!loading && !proposal) {
-      // No proposal returned — silently advance to manual priorities
-      onTweak();
-      return null;
+  async function handleThinDataSubmit(q1: string, q2: string) {
+    // Save thin-data answers as preference facts, then advance
+    try {
+      await fetch('/api/memory/facts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facts: [
+          { statement: q1, category: 'Goals' },
+          { statement: q2, category: 'Preferences' },
+        ]}),
+      });
+    } catch {
+      // best-effort
     }
+    onTweak(); // advance to manual priorities
+  }
+
+  if (loading) {
     return (
       <StepFade>
         <ActivationLoading />
@@ -486,10 +505,18 @@ function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: 
     );
   }
 
+  if (thinData) {
+    return (
+      <StepFade>
+        <ThinDataFallback onSubmit={handleThinDataSubmit} />
+      </StepFade>
+    );
+  }
+
   return (
     <StepFade>
       <ActivationReveal
-        proposal={proposal}
+        proposal={proposal!}
         onAccept={handleAccept}
         onTweak={onTweak}
         accepting={accepting}
@@ -501,40 +528,44 @@ function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: 
 // ── Step 3b: Hero loop ────────────────────────────────────────────────────────
 
 function HeroStep({ onContinue }: { onContinue: () => void }) {
-  const [suggestion, setSuggestion] = useState<HeroSuggestion | null>(null);
-  const [edgeScore, setEdgeScore] = useState<number | null>(null);
+  const [changes, setChanges] = useState<PlanChange[]>([]);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [scoreBefore, setScoreBefore] = useState<number | null>(null);
+  const [scoreAfter, setScoreAfter] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
   const [aligned, setAligned] = useState(false);
 
   useEffect(() => {
-    // Fetch day-plan suggestion + current edge score in parallel
-    Promise.all([
-      fetch('/api/day-plan').then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/edge-score').then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([plan, score]) => {
-      if (plan?.suggestion) {
-        setSuggestion(plan.suggestion);
-      } else {
-        setAligned(true);
-      }
-      if (score?.clarityScore != null) setEdgeScore(score.clarityScore);
-    }).finally(() => setLoading(false));
+    fetch('/api/day-plan')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.changes?.length > 0) {
+          setChanges(d.changes);
+          setPlanId(d.planId ?? null);
+          setScoreBefore(d.scoreBefore ?? null);
+          setScoreAfter(d.scoreAfter ?? null);
+        } else {
+          setAligned(true);
+          // scoreAfter from an empty plan still has the current score
+          setScoreBefore(d?.scoreBefore ?? null);
+          setScoreAfter(d?.scoreAfter ?? null);
+        }
+      })
+      .catch(() => setAligned(true))
+      .finally(() => setLoading(false));
   }, []);
 
   async function handleApply() {
-    if (!suggestion) return;
+    if (!planId) { setApplied(true); return; }
     setApplying(true);
     try {
-      await fetch('/api/day-plan/apply', {
+      await fetch('/api/day-plan/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ suggestion }),
+        body: JSON.stringify({ planId }),
       });
-      // Refresh edge score after apply
-      const s = await fetch('/api/edge-score').then(r => r.ok ? r.json() : null).catch(() => null);
-      if (s?.clarityScore != null) setEdgeScore(s.clarityScore);
     } catch {
       // best-effort
     }
@@ -546,28 +577,24 @@ function HeroStep({ onContinue }: { onContinue: () => void }) {
     return (
       <StepFade>
         <div className="py-8 space-y-4">
-          <div className="h-6 w-40 rounded-lg animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
-          <div className="rounded-xl p-5 animate-pulse" style={{ background: 'var(--edg-fill-04)', height: 120 }} />
+          <div className="h-6 w-44 rounded-lg animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
+          <div className="rounded-xl animate-pulse" style={{ background: 'var(--edg-fill-04)', height: 110 }} />
+          <div className="rounded-xl animate-pulse" style={{ background: 'var(--edg-fill-04)', height: 88 }} />
           <div className="h-11 rounded-xl animate-pulse" style={{ background: 'var(--edg-fill-04)' }} />
         </div>
       </StepFade>
     );
   }
 
-  // No suggestion and no score — skip this beat entirely
-  if (!suggestion && !aligned) {
-    onContinue();
-    return null;
-  }
-
   return (
     <StepFade>
       {aligned ? (
-        <ActivationHeroAligned edgeScore={edgeScore} onContinue={onContinue} />
+        <ActivationHeroAligned score={scoreAfter ?? scoreBefore} onContinue={onContinue} />
       ) : (
         <ActivationHeroCard
-          suggestion={suggestion!}
-          edgeScore={edgeScore}
+          changes={changes}
+          scoreBefore={scoreBefore}
+          scoreAfter={scoreAfter}
           onApply={handleApply}
           onSkip={onContinue}
           applying={applying}
@@ -618,23 +645,20 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">When should Edge call?</h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Pick a time when you&apos;re awake and have 3 minutes. Edge calls you every morning with what matters today.
+      <h2 className="text-2xl font-bold mb-1">When should Edge call you?</h2>
+      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+        Edge calls you every morning — Monday through Friday. Pick the time that fits before you start work.
       </p>
 
-      {/* Preview of what the call is */}
+      {/* Suggested times note (Esther's copy) */}
       <div
-        className="rounded-xl p-4 mb-6 flex items-start gap-3"
-        style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}
+        className="rounded-xl px-4 py-3 mb-5 flex items-start gap-2"
+        style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
       >
-        <span className="text-xl flex-shrink-0">📞</span>
-        <div>
-          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>What to expect</p>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-            A 3-minute voice call. Edge reviews your day, flags what needs attention, and can move or create calendar events while you talk. You can call Edge anytime too.
-          </p>
-        </div>
+        <span className="text-xs mt-0.5 flex-shrink-0" style={{ color: 'var(--text-accent)' }}>✦</span>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Most design partners pick 7:30 or 8:00 AM — early enough to reshape the day before it starts.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -710,7 +734,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
         </p>
 
         <button type="submit" className="btn-primary w-full" disabled={loading || phone.length < 10}>
-          {loading ? 'Setting up your account…' : "I'm ready — let's go →"}
+          {loading ? 'Setting up your account…' : 'Set call time →'}
         </button>
       </form>
     </StepFade>
@@ -743,6 +767,7 @@ function OnboardingContent() {
       setStep(next);
     } else {
       sessionStorage.setItem('edg3_welcome', '1');
+      sessionStorage.setItem('edg3_activated', '1');
       router.push('/dashboard');
     }
   }

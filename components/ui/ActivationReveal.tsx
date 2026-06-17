@@ -22,96 +22,141 @@ export interface DerivedProposal {
   };
 }
 
-// ── Loading messages ──────────────────────────────────────────────────────────
+// ── Loading messages (Esther's copy, Screen 2) ────────────────────────────────
 
 const SCAN_MESSAGES = [
-  'Reading your last few months…',
-  'Scanning event patterns…',
-  'Finding what gets the most of your time…',
-  'Identifying recurring commitments…',
-  'Weighing what you spend energy on…',
-  'Connecting the threads…',
-  'Almost there…',
+  'Reading the last few months of your calendar…',
+  'Looking for what you keep coming back to…',
+  "Identifying what's getting your time — and what isn't.",
 ];
 
 // ── ActivationLoading ─────────────────────────────────────────────────────────
 
-export function ActivationLoading({ dataLine }: { dataLine?: string }) {
+export function ActivationLoading() {
   const [msgIdx, setMsgIdx] = useState(0);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (msgIdx >= SCAN_MESSAGES.length - 1) return;
+    const t = setTimeout(() => {
       setVisible(false);
       setTimeout(() => {
-        setMsgIdx(i => (i + 1) % SCAN_MESSAGES.length);
+        setMsgIdx(i => Math.min(i + 1, SCAN_MESSAGES.length - 1));
         setVisible(true);
-      }, 200);
-    }, 1800);
-    return () => clearInterval(interval);
-  }, []);
+      }, 250);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [msgIdx]);
 
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      {/* Animated orb ring */}
+    <div className="flex flex-col items-center justify-center py-10 px-4 text-center" role="status" aria-live="polite">
+      {/* Shimmer ring — pulse, not spinner */}
       <div className="relative mb-8">
         <div
           className="w-20 h-20 rounded-full flex items-center justify-center"
           style={{
             background: 'var(--edg-accent-08)',
             border: '1.5px solid var(--edg-accent-20)',
-            boxShadow: '0 0 40px var(--edg-accent-08)',
+            animation: 'pulse 2s ease-in-out infinite',
           }}
         >
-          <span className="text-2xl">✦</span>
+          <span className="text-2xl" style={{ color: 'var(--text-accent)' }}>✦</span>
         </div>
-        {/* Spinning ring */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            border: '1.5px solid transparent',
-            borderTopColor: 'var(--edg-indigo)',
-            borderRightColor: 'var(--edg-accent-25)',
-            animation: 'spin 1.4s linear infinite',
-          }}
-        />
-        {/* Outer pulse ring */}
         <div
           className="absolute rounded-full"
           style={{
-            inset: '-6px',
-            border: '1px solid var(--edg-accent-15)',
-            animation: 'pulse 2s ease-in-out infinite',
+            inset: '-8px',
+            border: '1px solid var(--edg-accent-08)',
+            animation: 'pulse 2s ease-in-out infinite 0.5s',
           }}
         />
       </div>
 
-      <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--text-strong)' }}>
-        Edge is learning about you
+      <h2 className="text-xl font-bold mb-3" style={{ color: 'var(--text-strong)' }}>
+        Edge is learning about you.
       </h2>
 
-      {/* Cycling message */}
+      {/* Rotating subtext — swap ~2.5s, end on last line before reveal */}
       <p
-        className="text-sm mb-3 transition-opacity duration-200"
+        className="text-sm leading-relaxed"
         style={{
           color: 'var(--text-accent)',
           opacity: visible ? 1 : 0,
-          minHeight: '1.5em',
+          transition: 'opacity 0.25s ease',
+          minHeight: '2.5em',
+          maxWidth: '280px',
         }}
       >
         {SCAN_MESSAGES[msgIdx]}
       </p>
-
-      {dataLine && (
-        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-          {dataLine}
-        </p>
-      )}
     </div>
   );
 }
 
-// ── Priority reveal item ──────────────────────────────────────────────────────
+// ── ThinDataFallback (Screen 3b) ──────────────────────────────────────────────
+
+export function ThinDataFallback({
+  onSubmit,
+}: {
+  onSubmit: (q1: string, q2: string) => void;
+}) {
+  const [q1, setQ1] = useState('');
+  const [q2, setQ2] = useState('');
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--text-strong)' }}>
+          Your calendar is pretty clear.
+        </h2>
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Edge doesn&apos;t have enough calendar history yet to know what drives your week — but
+          that changes fast. Answer two quick questions and Edge will have everything it needs to
+          start.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-body)' }}>
+            What&apos;s the most important thing you&apos;re trying to make progress on right now?
+          </label>
+          <textarea
+            className="input"
+            style={{ minHeight: 80, fontSize: 14 }}
+            placeholder="Growing the business, getting healthier, a specific project…"
+            value={q1}
+            onChange={e => setQ1(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-body)' }}>
+            Is there anything you&apos;re trying to protect time for — something that keeps getting
+            squeezed out?
+          </label>
+          <textarea
+            className="input"
+            style={{ minHeight: 80, fontSize: 14 }}
+            placeholder="Deep focus, exercise, time with family…"
+            value={q2}
+            onChange={e => setQ2(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <button
+        className="btn-primary w-full"
+        onClick={() => onSubmit(q1, q2)}
+        disabled={!q1.trim()}
+      >
+        That&apos;s it. Let&apos;s go →
+      </button>
+    </div>
+  );
+}
+
+// ── RevealItem ────────────────────────────────────────────────────────────────
 
 function RevealItem({
   priority,
@@ -123,12 +168,10 @@ function RevealItem({
   delay: number;
 }) {
   const [entered, setEntered] = useState(false);
-  const [chipsIn, setChipsIn] = useState(false);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setEntered(true), delay);
-    const t2 = setTimeout(() => setChipsIn(true), delay + 280);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const t = setTimeout(() => setEntered(true), delay);
+    return () => clearTimeout(t);
   }, [delay]);
 
   const isTop = rank === 1;
@@ -137,8 +180,8 @@ function RevealItem({
     <div
       style={{
         opacity: entered ? 1 : 0,
-        transform: entered ? 'translateY(0)' : 'translateY(12px)',
-        transition: 'opacity 0.4s ease, transform 0.4s ease',
+        transform: entered ? 'translateY(0)' : 'translateY(10px)',
+        transition: 'opacity 0.35s ease, transform 0.35s ease',
       }}
     >
       <div
@@ -149,7 +192,6 @@ function RevealItem({
         }}
       >
         <div className="flex items-start gap-3">
-          {/* Rank circle */}
           <div
             className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
             style={{
@@ -159,35 +201,26 @@ function RevealItem({
           >
             {rank}
           </div>
-
           <div className="flex-1 min-w-0">
-            {/* Priority text */}
-            <p className="text-sm font-semibold leading-snug mb-1.5" style={{ color: 'var(--text-strong)' }}>
+            {/* Priority label — large */}
+            <p className="text-sm font-semibold leading-snug mb-1" style={{ color: 'var(--text-strong)' }}>
               {priority.text}
             </p>
-
-            {/* Rationale */}
-            <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--text-muted)' }}>
+            {/* Evidence line — muted, small */}
+            <p className="text-xs leading-relaxed mb-1.5" style={{ color: 'var(--text-muted)' }}>
               {priority.rationale}
             </p>
-
-            {/* Evidence chips */}
+            {/* Category / evidence tags as optional badges */}
             {priority.evidenceTags.length > 0 && (
-              <div
-                className="flex flex-wrap gap-1.5"
-                style={{
-                  opacity: chipsIn ? 1 : 0,
-                  transition: 'opacity 0.3s ease',
-                }}
-              >
-                {priority.evidenceTags.map((tag, i) => (
+              <div className="flex flex-wrap gap-1.5">
+                {priority.evidenceTags.slice(0, 3).map((tag, i) => (
                   <span
                     key={i}
                     className="text-xs rounded-full px-2 py-0.5"
                     style={{
                       background: 'var(--edg-accent-08)',
                       border: '1px solid var(--edg-accent-15)',
-                      color: 'var(--text-accent)',
+                      color: 'var(--text-faint)',
                     }}
                   >
                     {tag}
@@ -216,40 +249,34 @@ export function ActivationReveal({
   accepting: boolean;
 }) {
   const [headerIn, setHeaderIn] = useState(false);
-  const [ctaIn, setCtaIn] = useState(false);
+  const [footerIn, setFooterIn] = useState(false);
 
-  const staggerBase = 180;
-  const itemDelay = (i: number) => staggerBase + i * 320;
-  const lastDelay = itemDelay(proposal.priorities.length - 1) + 400;
+  const STAGGER_MS = 200;
+  const itemDelay = (i: number) => 120 + i * STAGGER_MS;
+  const lastDelay = itemDelay(proposal.priorities.length - 1) + 350;
 
   useEffect(() => {
-    const t1 = setTimeout(() => setHeaderIn(true), 60);
-    const t2 = setTimeout(() => setCtaIn(true), lastDelay + 200);
+    const t1 = setTimeout(() => setHeaderIn(true), 40);
+    const t2 = setTimeout(() => setFooterIn(true), lastDelay + 100);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [lastDelay]);
 
-  const snap = proposal.dataSnapshot;
-  const dataLine = snap
-    ? [
-        snap.calendarEventCount > 0 && `${snap.calendarEventCount} events`,
-        snap.emailThreadCount > 0 && `${snap.emailThreadCount} emails`,
-        snap.factsCount > 0 && `${snap.factsCount} facts`,
-      ]
-        .filter(Boolean)
-        .join(' · ')
+  // Months of history from dataSnapshot
+  const months = proposal.dataSnapshot?.calendarDaysSpanned
+    ? Math.max(1, Math.round(proposal.dataSnapshot.calendarDaysSpanned / 30))
     : null;
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Header (Screen 3 copy) */}
       <div
         style={{
           opacity: headerIn ? 1 : 0,
           transform: headerIn ? 'translateY(0)' : 'translateY(8px)',
-          transition: 'opacity 0.4s ease, transform 0.4s ease',
+          transition: 'opacity 0.35s ease, transform 0.35s ease',
         }}
       >
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <span style={{ color: 'var(--text-accent)', fontSize: 13 }}>✦</span>
           <span
             className="text-xs font-semibold uppercase tracking-wider"
@@ -259,65 +286,54 @@ export function ActivationReveal({
           </span>
         </div>
         <h2 className="text-xl font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-          Here&apos;s what I already learned about you
+          Here&apos;s what I already know about you.
         </h2>
-        {proposal.summaryLine && (
-          <p className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            {proposal.summaryLine}
+        {months && (
+          <p className="text-sm mt-1" style={{ color: 'var(--text-faint)' }}>
+            From your last {months} {months === 1 ? 'month' : 'months'} of calendar history.
           </p>
         )}
       </div>
 
-      {/* Priority items — staggered reveal */}
-      <div className="space-y-3">
+      {/* Priority cards — staggered reveal */}
+      <div className="space-y-2.5">
         {proposal.priorities.map((p, i) => (
           <RevealItem key={i} priority={p} rank={i + 1} delay={itemDelay(i)} />
         ))}
       </div>
 
-      {/* Data provenance */}
-      {dataLine && (
-        <p
-          className="text-xs text-center"
-          style={{
-            color: 'var(--text-faint)',
-            opacity: ctaIn ? 1 : 0,
-            transition: 'opacity 0.3s ease',
-          }}
-        >
-          Based on {dataLine}
-        </p>
-      )}
-
-      {/* CTAs */}
+      {/* Footer + CTAs */}
       <div
-        className="flex flex-col gap-2 pt-1"
+        className="space-y-3"
         style={{
-          opacity: ctaIn ? 1 : 0,
-          transform: ctaIn ? 'translateY(0)' : 'translateY(8px)',
-          transition: 'opacity 0.4s ease, transform 0.4s ease',
+          opacity: footerIn ? 1 : 0,
+          transform: footerIn ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 0.35s ease, transform 0.35s ease',
         }}
       >
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
+          These are based on your calendar, not a questionnaire. Edge will use them to frame every
+          morning call and score your week.
+        </p>
+
+        {/* Primary — "These look right →" (dominant) */}
         <button
           className="btn-primary w-full"
           onClick={onAccept}
           disabled={accepting}
         >
-          {accepting ? 'Saving…' : 'These look right — accept'}
+          {accepting ? 'Saving…' : 'These look right →'}
         </button>
+
+        {/* Secondary — smaller, lower visual weight */}
         <button
-          className="w-full text-sm py-2.5 text-center transition-opacity hover:opacity-80"
+          className="w-full text-sm py-2 text-center transition-opacity hover:opacity-80"
           style={{ color: 'var(--text-muted)' }}
           onClick={onTweak}
         >
-          Tweak them →
+          Let me adjust →
         </button>
       </div>
     </div>
   );
 }
-
-// ── ActivationReveal (reduced-motion) ─────────────────────────────────────────
-// The CSS prefers-reduced-motion rule in globals.css collapses all transitions
-// to 0.01ms, so the staggered delays still fire but snap instantly. No extra
-// component needed — the same JSX works for both modes.
