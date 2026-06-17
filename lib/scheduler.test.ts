@@ -202,7 +202,7 @@ describe('preference injection into initiateCall', () => {
     expect(h.initiateCall).toHaveBeenCalledWith(
       expect.any(String), expect.any(String), expect.any(String),
       expect.any(Boolean), expect.any(String), false, expect.any(String), '', '', expect.any(String), expect.any(String),
-      expect.stringMatching(/^(male|female)$/),
+      expect.stringMatching(/^(daniel|aria)$/),
     );
   });
 

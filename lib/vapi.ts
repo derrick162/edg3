@@ -23,14 +23,14 @@ const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 // Voice configs — applied per call via assistantOverrides.voice so all tools/prompt stay on
 // the single main assistant; no duplicate assistant needed.
 export const VOICES = {
-  male: {
+  daniel: {
     provider: '11labs' as const,
-    voiceId: '3WqHLnw80rOZqJzW9YRB', // Daniel
+    voiceId: '3WqHLnw80rOZqJzW9YRB',
     model: 'eleven_turbo_v2_5',
     stability: 0.3,
     similarityBoost: 0.75,
   },
-  female: {
+  aria: {
     provider: '11labs' as const,
     voiceId: 'cgSgspJ2msm6clMCkdW9',
     model: 'eleven_flash_v2',
@@ -82,7 +82,7 @@ export async function initiateCall(
   whoopText: string = '',
   callTime: string = '',
   energyText: string = '',
-  voicePref: 'male' | 'female' = 'male',
+  voicePref: 'daniel' | 'aria' = 'daniel',
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');

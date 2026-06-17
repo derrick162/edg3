@@ -8,6 +8,49 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Memory self-learning / "win on context")
+
+> Master at `e7357cc` (episode store + CASA enforcement LIVE). `git merge master` first.
+> **READ FIRST:** `content/memory-research-applied.md` (Esther's MemGPT/Letta + Zep/Graphiti synthesis).
+> Strategy: Edge's moat is accumulated *context*, not the model — two instances of the same model
+> with different context behave as different agents. Build the self-learning flywheel:
+> call → sleep-time consolidation → bi-temporal facts → pattern detection → better briefing → more trust.
+> **NOTE:** the raw episode store (row 6 of the spec's dispatch table) is DONE — shipped this tick.
+> **SEQUENCE:** finish the in-flight People-extraction trust fix + voice switch FIRST, then this in order.
+
+### Ticket 1 — ★ Bi-temporal facts (P1 — the foundation; do first) — on the `facts` table, NOT `memories`
+Depends on Security adding `valid_from`/`valid_until` to the **`facts`** table (dispatched to Vijay this round).
+- In the fact pipeline (`lib/facts.ts` `upsertFact` + `extractAndUpsertFacts` + `consolidateFacts`): when a new
+  fact conflicts with an existing one (same entity+category, contradictory statement), **retire** the old
+  (`valid_until = now()` via `factQueries.retire`) and insert the new — NEVER hard-delete. Active = `valid_until IS NULL`.
+- All briefing/memory reads filter to active facts (`valid_until IS NULL`).
+- This is the STRUCTURAL fix for the fact-collision class (two contradictory priorities; the duplicate-Pfizer/
+  contradiction problem from Derrick's live People-section review). COMPLEMENTS — does not replace — the
+  People-extraction grounding fix (that stops garbage people; this handles legit facts changing over time).
+
+### Ticket 2 — ★ Sleep-time consolidation agent (P1 — highest leverage)
+- Background job triggered after each call completes (off the vapi webhook, fire-and-forget, no user-facing clock).
+- One Haiku call: read the just-ended transcript + current active facts → structured updates
+  `{action:'update'|'retire'|'add', category, entity, old, new, reason}` → apply via the bi-temporal pipeline (T1).
+  Reconcile contradictions. ~$0.001/user/day. Makes every next call better than the last.
+- Degrade silently on failure — NEVER block the call/briefing path.
+
+### Ticket 3 — In-call memory triggers (P2)
+- In the `rememberPreference` (and similar) vapi tool-call handler: on a new preference/fact, check for a
+  conflicting existing fact on the same topic and OVERWRITE immediately (retire+insert) — don't wait for
+  sleep-time. Return spoken confirmation ("Got it — updated your gym time to 7am"). Next-day briefing is correct.
+
+### Ticket 4 — Pattern detection pass (P2) — EXTENDS the existing M3 Pattern Memory
+- We already shipped M3 (`lib/patternMemory.ts`). Deepen it with the temporal history bi-temporal facts now give:
+  a weekly scheduled Haiku pass over 30+ days of fact history → commitments kept vs broken, best-recovery weeks,
+  people-before-stress, stated-vs-actual time. Output structured pattern facts feeding briefing §3 (alignment).
+  Do NOT duplicate M3 — extend it.
+
+> P3 (memory quality scoring + stale-fact surfacing, Core+Design) dispatches after P1/P2 land.
+> Small commits, preflight gate (`npm run preflight` from `C:\Users\Derrick\edg3`), update this changelog + Status Board.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 2 — CASA DB wiring + Focus Scoreboard)
 
 > Master at `30ff3df`. `git merge master` first. Two tickets in priority order.

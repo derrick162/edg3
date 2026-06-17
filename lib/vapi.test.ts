@@ -88,25 +88,25 @@ describe('checkVapiSecret', () => {
 // ── VOICES map ────────────────────────────────────────────────────────────────
 
 describe('VOICES', () => {
-  it('male config uses 11labs provider with Daniel voiceId', () => {
-    expect(VOICES.male.provider).toBe('11labs');
-    expect(VOICES.male.voiceId).toBe('3WqHLnw80rOZqJzW9YRB');
-    expect(VOICES.male.model).toBe('eleven_turbo_v2_5');
-    expect(VOICES.male.stability).toBe(0.3);
-    expect(VOICES.male.similarityBoost).toBe(0.75);
+  it('daniel config uses 11labs provider with Daniel voiceId', () => {
+    expect(VOICES.daniel.provider).toBe('11labs');
+    expect(VOICES.daniel.voiceId).toBe('3WqHLnw80rOZqJzW9YRB');
+    expect(VOICES.daniel.model).toBe('eleven_turbo_v2_5');
+    expect(VOICES.daniel.stability).toBe(0.3);
+    expect(VOICES.daniel.similarityBoost).toBe(0.75);
   });
 
-  it('female config uses 11labs provider with female voiceId', () => {
-    expect(VOICES.female.provider).toBe('11labs');
-    expect(VOICES.female.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
-    expect(VOICES.female.model).toBe('eleven_flash_v2');
-    expect((VOICES.female as { speed?: number }).speed).toBe(1.2);
-    expect(VOICES.female.stability).toBe(0.4);
-    expect(VOICES.female.similarityBoost).toBe(0.7);
+  it('aria config uses 11labs provider with aria voiceId', () => {
+    expect(VOICES.aria.provider).toBe('11labs');
+    expect(VOICES.aria.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
+    expect(VOICES.aria.model).toBe('eleven_flash_v2');
+    expect((VOICES.aria as { speed?: number }).speed).toBe(1.2);
+    expect(VOICES.aria.stability).toBe(0.4);
+    expect(VOICES.aria.similarityBoost).toBe(0.7);
   });
 
-  it('male and female voiceIds are distinct', () => {
-    expect(VOICES.male.voiceId).not.toBe(VOICES.female.voiceId);
+  it('daniel and aria voiceIds are distinct', () => {
+    expect(VOICES.daniel.voiceId).not.toBe(VOICES.aria.voiceId);
   });
 });
 
@@ -133,7 +133,7 @@ describe('initiateCall voice override', () => {
     } as Response);
   }
 
-  it('sends male voice by default (no voicePref arg)', async () => {
+  it('sends daniel voice by default (no voicePref arg)', async () => {
     vi.stubEnv('VAPI_API_KEY', 'test-key');
     vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
@@ -141,18 +141,18 @@ describe('initiateCall voice override', () => {
     const { initiateCall: call, VOICES: V } = await importFresh();
     await call('+15551234567', 'Hello', 'Test User');
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.assistant.voice.voiceId).toBe(V.male.voiceId);
+    expect(body.assistant.voice.voiceId).toBe(V.daniel.voiceId);
   });
 
-  it('sends female voice when voicePref is "female"', async () => {
+  it('sends aria voice when voicePref is "aria"', async () => {
     vi.stubEnv('VAPI_API_KEY', 'test-key');
     vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
     const spy = mockFetch({ id: 'call-3', status: 'queued', phoneNumber: '+1' });
     const { initiateCall: call, VOICES: V } = await importFresh();
-    await call('+15551234567', 'Hello', 'Test User', false, 'America/Vancouver', false, '', '', '', '', '', 'female');
+    await call('+15551234567', 'Hello', 'Test User', false, 'America/Vancouver', false, '', '', '', '', '', 'aria');
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.assistant.voice.voiceId).toBe(V.female.voiceId);
+    expect(body.assistant.voice.voiceId).toBe(V.aria.voiceId);
   });
 
   it('includes voice in assistantOverrides when VAPI_ASSISTANT_ID is set', async () => {
@@ -162,8 +162,8 @@ describe('initiateCall voice override', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
     const spy = mockFetch({ id: 'call-4', status: 'queued', phoneNumber: '+1' });
     const { initiateCall: call, VOICES: V } = await importFresh();
-    await call('+15551234567', 'Hello', 'Test User', false, 'America/Vancouver', false, '', '', '', '', '', 'female');
+    await call('+15551234567', 'Hello', 'Test User', false, 'America/Vancouver', false, '', '', '', '', '', 'aria');
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.assistantOverrides.voice.voiceId).toBe(V.female.voiceId);
+    expect(body.assistantOverrides.voice.voiceId).toBe(V.aria.voiceId);
   });
 });

@@ -61,9 +61,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
 
   const [dataConsent, setDataConsent] = useState<DataConsent>('privacy');
   const [savingConsent, setSavingConsent] = useState(false);
-
-  const [voicePref, setVoicePref] = useState<'male' | 'female'>('male');
-  const [savingVoice, setSavingVoice] = useState(false);
+  const [voicePref, setVoicePref] = useState<'daniel' | 'aria'>('daniel');
 
   useEffect(() => {
     fetch('/api/profile')
@@ -74,21 +72,10 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         if (d.timezone) setTimezone(d.timezone);
         setCurrentTimezone(d.current_timezone || '');
         if (d.data_consent) setDataConsent(d.data_consent as DataConsent);
-        if (d.voice_preference === 'female') setVoicePref('female');
+        if (d.voice_preference === 'aria') setVoicePref('aria');
         setLoading(false);
       });
   }, []);
-
-  async function handleVoiceChange(next: 'male' | 'female') {
-    setVoicePref(next);
-    setSavingVoice(true);
-    await fetch('/api/profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voice_preference: next }),
-    }).catch(() => {});
-    setSavingVoice(false);
-  }
 
   async function handleConsentChange(next: DataConsent) {
     setDataConsent(next);
@@ -191,27 +178,6 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         </form>
       </div>
 
-      {/* Voice */}
-      <div>
-        <h2 className="text-lg font-bold mb-4">Edge&apos;s voice</h2>
-        <div className="glass-card p-6">
-          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edge uses on your calls. Applies to your next call.</p>
-          <div className="flex gap-3">
-            {(['male', 'female'] as const).map(opt => (
-              <button
-                key={opt}
-                onClick={() => handleVoiceChange(opt)}
-                disabled={savingVoice}
-                className={`flex-1 rounded-xl py-3 text-sm font-medium border transition-all ${voicePref === opt ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                {opt === 'male' ? '🎙 Daniel (male)' : '🎙 Female'}
-              </button>
-            ))}
-          </div>
-          {savingVoice && <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Saving…</p>}
-        </div>
-      </div>
-
       {/* Traveling this week */}
       <div>
         <h2 className="text-lg font-bold mb-1">Traveling this week?</h2>
@@ -249,6 +215,44 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
       <div>
         <h2 className="text-lg font-bold mb-4">Data &amp; privacy</h2>
         <DataConsentToggle value={dataConsent} onChange={handleConsentChange} saving={savingConsent} />
+      </div>
+
+      {/* Voice preference */}
+      <div>
+        <h2 className="text-lg font-bold mb-1">Edge&apos;s voice</h2>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edge uses on your morning briefings.</p>
+        <div className="flex gap-3">
+          {([
+            { key: 'daniel', label: 'Daniel', desc: 'Deep, calm' },
+            { key: 'aria',   label: 'Aria',   desc: 'Clear, direct' },
+          ] as { key: 'daniel' | 'aria'; label: string; desc: string }[]).map(opt => {
+            const active = voicePref === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={async () => {
+                  setVoicePref(opt.key);
+                  await fetch('/api/profile/voice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice_preference: opt.key }),
+                  }).catch(() => {});
+                }}
+                className="flex-1 rounded-xl px-4 py-3 text-left transition-colors"
+                style={{
+                  background: active ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)',
+                  border: `1px solid ${active ? 'var(--edg-accent-25, var(--edg-accent-20))' : 'var(--edg-hairline)'}`,
+                  cursor: 'pointer',
+                }}
+                aria-pressed={active}
+              >
+                <p className="text-sm font-semibold mb-0.5" style={{ color: active ? 'var(--text-accent)' : 'var(--text-strong)' }}>{opt.label}</p>
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{opt.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>Applies to your next call.</p>
       </div>
 
       {/* Profile */}
@@ -1214,7 +1218,9 @@ export default function Dashboard() {
   const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
   const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
   const [accountability, setAccountability] = useState<{ done: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; stillOpen: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; completionRate: number | null; lookbackDays: number } | null>(null);
-  const [episodes, setEpisodes] = useState<{ id: number; occurredAt: string; topics: string[]; commitments: string[] }[]>([]);
+  const [episodes, setEpisodes] = useState<{ id: number; source: string; occurredAt: string; topics: string[]; commitments: string[] }[]>([]);
+  const [expandedEpisodes, setExpandedEpisodes] = useState<Set<number>>(new Set());
+  const [dismissedStaleIds, setDismissedStaleIds] = useState<Set<number>>(new Set());
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -2480,6 +2486,72 @@ export default function Dashboard() {
                 );
               })()}
 
+              {/* Memory health card — stale facts */}
+              {facts.length > 0 && (() => {
+                const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000);
+                const staleFacts = facts.filter(f => !dismissedStaleIds.has(f.id) && new Date(f.learned_at) < ninetyDaysAgo);
+                if (staleFacts.length === 0) return null;
+                const CATEGORY_META_HEALTH: Record<string, { label: string; icon: string }> = {
+                  goal: { label: 'Goals', icon: '🎯' }, project: { label: 'Projects', icon: '🗂' },
+                  person: { label: 'People', icon: '👤' }, preference: { label: 'Preferences', icon: '⚡' },
+                  fact: { label: 'Facts', icon: '📌' }, pattern: { label: 'Patterns', icon: '📈' },
+                };
+                const staleCats = [...new Set(staleFacts.map(f => f.category))];
+                return (
+                  <div className="mb-6 rounded-xl px-4 py-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                    <div className="flex items-start gap-3">
+                      <span className="flex-shrink-0 text-base mt-0.5" aria-hidden="true">🔍</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-strong)' }}>Some facts may be outdated</p>
+                        <p className="text-xs mb-2" style={{ color: 'var(--text-faint)' }}>
+                          {staleFacts.length} {staleFacts.length === 1 ? 'fact hasn\'t' : 'facts haven\'t'} been confirmed in 90+ days — worth a quick check.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {staleCats.map(cat => {
+                            const meta = CATEGORY_META_HEALTH[cat] ?? { label: cat, icon: '' };
+                            const count = staleFacts.filter(f => f.category === cat).length;
+                            return (
+                              <span key={cat} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: 'rgba(180,120,0,0.9)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                                {meta.icon} {meta.label} · {count}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <div className="space-y-1.5">
+                          {staleFacts.slice(0, 3).map(f => (
+                            <div key={f.id} className="flex items-start gap-2">
+                              <p className="text-xs flex-1 min-w-0" style={{ color: 'var(--text-muted)' }}>
+                                {f.entity && <span className="font-medium" style={{ color: 'var(--text-body)' }}>{f.entity}: </span>}
+                                {f.statement}
+                              </p>
+                              <div className="flex gap-1.5 flex-shrink-0">
+                                <button
+                                  onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); }}
+                                  className="text-xs px-2 py-0.5 rounded"
+                                  style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => setDismissedStaleIds(prev => new Set(prev).add(f.id))}
+                                  className="text-xs px-2 py-0.5 rounded"
+                                  style={{ color: 'var(--text-faint)' }}
+                                >
+                                  Still true
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          {staleFacts.length > 3 && (
+                            <p className="text-xs" style={{ color: 'var(--text-faint)' }}>+ {staleFacts.length - 3} more stale facts in the sections below.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Structured facts grouped by category */}
               {facts.length > 0 && (() => {
                 const CATEGORY_META: Record<string, { label: string; icon: string }> = {
@@ -2933,38 +3005,104 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Episode history (M5) */}
-              {episodes.length > 0 && (
-                <div className="mb-8">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
-                    <span aria-hidden="true">🗂️</span>
-                    Call history Edge remembers
-                  </h3>
-                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-                    Edge stores what you discussed on each call so it can reference past conversations in future briefings.
-                  </p>
-                  <div className="space-y-2">
-                    {episodes.map(ep => (
-                      <div key={ep.id} className="glass-card px-4 py-3">
-                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
-                          {new Date(ep.occurredAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                        </p>
-                        {ep.topics.length > 0 && (
-                          <p className="text-xs mb-1" style={{ color: 'var(--text-body)' }}>
-                            <span style={{ color: 'var(--text-faint)' }}>Topics: </span>
-                            {ep.topics.slice(0, 4).join(', ')}
-                          </p>
-                        )}
-                        {ep.commitments.length > 0 && (
-                          <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                            Committed: {ep.commitments[0]}{ep.commitments.length > 1 ? ` +${ep.commitments.length - 1} more` : ''}
-                          </p>
-                        )}
+              {/* Episode history timeline (M5) */}
+              {episodes.length > 0 && (() => {
+                const SOURCE_ICON: Record<string, string> = { call: '📞', email: '✉️', calendar: '📅' };
+                const SOURCE_LABEL: Record<string, string> = { call: 'Morning call', email: 'Email', calendar: 'Calendar' };
+                const byDate = episodes.reduce<Record<string, typeof episodes>>((acc, ep) => {
+                  const key = ep.occurredAt.slice(0, 10);
+                  (acc[key] = acc[key] || []).push(ep);
+                  return acc;
+                }, {});
+                const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+                const secCollapsed = collapsedMemorySections.has('episodes');
+                return (
+                  <div className="mb-8">
+                    <button
+                      onClick={() => toggleMemorySection('episodes')}
+                      aria-expanded={!secCollapsed}
+                      className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                      style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
+                      <span aria-hidden="true">🧠</span>
+                      What Edge remembers
+                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {episodes.length} {episodes.length === 1 ? 'session' : 'sessions'}</span>
+                      <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                    </button>
+                    {!secCollapsed && <>
+                      <p className="text-xs mb-4" style={{ color: 'var(--text-faint)' }}>
+                        Every conversation Edge has held onto — the accumulated memory that makes each briefing smarter than the last.
+                      </p>
+                      <div className="pl-4" style={{ borderLeft: '2px solid var(--edg-accent-15)' }}>
+                        {dateKeys.map((dateKey, di) => {
+                          const dayEps = byDate[dateKey];
+                          const dateLabel = new Date(dateKey + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+                          return (
+                            <div key={dateKey} className={di > 0 ? 'mt-5' : ''}>
+                              <div className="flex items-center gap-2 mb-2 relative">
+                                <div
+                                  className="absolute rounded-full"
+                                  style={{ left: -20, top: 3, width: 10, height: 10, background: 'var(--edg-bg)', border: '2px solid var(--edg-accent-30, var(--edg-accent-20))' }}
+                                  aria-hidden="true"
+                                />
+                                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>{dateLabel}</p>
+                              </div>
+                              <div className="space-y-2">
+                                {dayEps.map(ep => {
+                                  const isEpExpanded = expandedEpisodes.has(ep.id);
+                                  return (
+                                    <div key={ep.id} className="glass-card px-4 py-3" style={{ border: '1px solid var(--edg-hairline)' }}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-base flex-shrink-0" aria-hidden="true">{SOURCE_ICON[ep.source] ?? '📞'}</span>
+                                        <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>{SOURCE_LABEL[ep.source] ?? 'Call'}</p>
+                                        <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
+                                          {new Date(ep.occurredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                        </p>
+                                      </div>
+                                      {ep.topics.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mb-2" role="list" aria-label="Topics discussed">
+                                          {ep.topics.slice(0, 5).map((t, i) => (
+                                            <span key={i} role="listitem" className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
+                                              {t}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {ep.commitments.length > 0 && (
+                                        <div>
+                                          <button
+                                            onClick={() => setExpandedEpisodes(prev => { const next = new Set(prev); isEpExpanded ? next.delete(ep.id) : next.add(ep.id); return next; })}
+                                            className="flex items-center gap-1 text-xs"
+                                            style={{ color: 'var(--text-faint)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                            aria-expanded={isEpExpanded}
+                                          >
+                                            <span aria-hidden="true" style={{ fontSize: 10 }}>{isEpExpanded ? '▾' : '▸'}</span>
+                                            {ep.commitments.length} commitment{ep.commitments.length !== 1 ? 's' : ''}
+                                          </button>
+                                          {isEpExpanded && (
+                                            <ul className="mt-2 space-y-1.5 pl-1">
+                                              {ep.commitments.map((c, i) => (
+                                                <li key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                  <span className="flex-shrink-0 font-bold" style={{ color: 'var(--edg-indigo)', lineHeight: '1.4' }} aria-hidden="true">↳</span>
+                                                  {c}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
+                    </>}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Behavioral patterns (M3) */}
               {patterns.length > 0 && (
