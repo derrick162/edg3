@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import Anthropic from '@anthropic-ai/sdk';
 
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('suggestPriorities', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const fullUser = userQueries.findById(user.id);
   if (!fullUser?.profile_summary) return NextResponse.json({ priorities: [] });

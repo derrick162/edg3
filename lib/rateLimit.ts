@@ -53,6 +53,9 @@ export const LIMITS = {
   undoPost:          { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (calendar mutations)
   priorityDerive:    { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (LLM synthesis)
   priorityAccept:    { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (accept proposed priorities)
+  suggestPriorities: { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (LLM onboarding suggestion)
+  accountDelete:     { limit: 3,  windowMs: 60 * 60 * 1000 },  // 3  / hour per user (destructive cascade)
+  accountExport:     { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (full PII decrypt + download)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

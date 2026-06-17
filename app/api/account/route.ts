@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, clearSessionCookie } from '@/lib/auth';
 import { getDb } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 const CONFIRM_PHRASE = 'delete my account';
 
@@ -10,6 +11,9 @@ const CONFIRM_PHRASE = 'delete my account';
 export async function DELETE(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('accountDelete', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: unknown;
   try { body = await req.json(); } catch { body = {}; }
