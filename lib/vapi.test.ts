@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkVapiSecret } from './vapi';
+import { checkVapiSecret, VOICES, initiateCall } from './vapi';
 
 // checkVapiSecret reads process.env — stub it cleanly per test.
 const env = process.env;
@@ -82,5 +82,88 @@ describe('checkVapiSecret', () => {
       expect(result.ok).toBe(false);
       expect(result.status).toBe('rejected');
     });
+  });
+});
+
+// ── VOICES map ────────────────────────────────────────────────────────────────
+
+describe('VOICES', () => {
+  it('male config uses 11labs provider with Daniel voiceId', () => {
+    expect(VOICES.male.provider).toBe('11labs');
+    expect(VOICES.male.voiceId).toBe('3WqHLnw80rOZqJzW9YRB');
+    expect(VOICES.male.model).toBe('eleven_turbo_v2_5');
+    expect(VOICES.male.stability).toBe(0.3);
+    expect(VOICES.male.similarityBoost).toBe(0.75);
+  });
+
+  it('female config uses 11labs provider with female voiceId', () => {
+    expect(VOICES.female.provider).toBe('11labs');
+    expect(VOICES.female.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
+    expect(VOICES.female.model).toBe('eleven_flash_v2');
+    expect((VOICES.female as { speed?: number }).speed).toBe(1.2);
+    expect(VOICES.female.stability).toBe(0.4);
+    expect(VOICES.female.similarityBoost).toBe(0.7);
+  });
+
+  it('male and female voiceIds are distinct', () => {
+    expect(VOICES.male.voiceId).not.toBe(VOICES.female.voiceId);
+  });
+});
+
+// ── initiateCall voice override ───────────────────────────────────────────────
+// Note: VAPI_API_KEY is captured at module-load time, so we can't stub it via vi.stubEnv.
+// Instead we use vi.resetModules() + dynamic import to get a fresh module with the env set.
+
+describe('initiateCall voice override', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  async function importFresh() {
+    vi.resetModules();
+    return import('./vapi');
+  }
+
+  function mockFetch(body: object) {
+    return vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => body,
+    } as Response);
+  }
+
+  it('sends male voice by default (no voicePref arg)', async () => {
+    vi.stubEnv('VAPI_API_KEY', 'test-key');
+    vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
+    const spy = mockFetch({ id: 'call-1', status: 'queued', phoneNumber: '+1' });
+    const { initiateCall: call, VOICES: V } = await importFresh();
+    await call('+15551234567', 'Hello', 'Test User');
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.assistant.voice.voiceId).toBe(V.male.voiceId);
+  });
+
+  it('sends female voice when voicePref is "female"', async () => {
+    vi.stubEnv('VAPI_API_KEY', 'test-key');
+    vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
+    const spy = mockFetch({ id: 'call-3', status: 'queued', phoneNumber: '+1' });
+    const { initiateCall: call, VOICES: V } = await importFresh();
+    await call('+15551234567', 'Hello', 'Test User', false, 'America/Vancouver', false, '', '', '', '', '', 'female');
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.assistant.voice.voiceId).toBe(V.female.voiceId);
+  });
+
+  it('includes voice in assistantOverrides when VAPI_ASSISTANT_ID is set', async () => {
+    vi.stubEnv('VAPI_API_KEY', 'test-key');
+    vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
+    vi.stubEnv('VAPI_ASSISTANT_ID', 'asst-abc123');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
+    const spy = mockFetch({ id: 'call-4', status: 'queued', phoneNumber: '+1' });
+    const { initiateCall: call, VOICES: V } = await importFresh();
+    await call('+15551234567', 'Hello', 'Test User', false, 'America/Vancouver', false, '', '', '', '', '', 'female');
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.assistantOverrides.voice.voiceId).toBe(V.female.voiceId);
   });
 });

@@ -304,6 +304,13 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Voice preference — per-user male/female voice override.**
+  - **`lib/vapi.ts`** — `VOICES` map with both configs (male: Daniel `3WqHLnw80rOZqJzW9YRB` eleven_turbo_v2_5; female: `cgSgspJ2msm6clMCkdW9` eleven_flash_v2). `initiateCall` adds `voicePref` param; wires `VOICES[voicePref]` into BOTH the inline assistant `voice:` block AND `assistantOverrides.voice` so it applies regardless of whether `VAPI_ASSISTANT_ID` is set. No Vapi dashboard step needed.
+  - **`lib/db.ts`** — `voice_preference TEXT NOT NULL DEFAULT 'male'` migration added; `userQueries.setVoicePreference(id, pref)` added; `User.voice_preference` optional field.
+  - **`lib/scheduler.ts`** — both `scheduleBriefingCall` and `scheduleOpenCall` now pass `user.voice_preference` to `initiateCall` (defaulting to `'male'`).
+  - **`app/api/profile/route.ts`** — GET returns `voice_preference`; POST accepts `voice_preference` standalone (no `profile_summary` required); validates against `{'male','female'}`.
+  - **`app/dashboard/page.tsx`** — "Edge's voice" section in ProfileTab: two buttons (Daniel / Female), immediate save on click, "Applies to your next call" note.
+  - 6 new tests (VOICES map shape × 3, initiateCall voice path × 3). No Vapi dashboard step. 1480/1480 green, tsc clean, next build clean.
 - **2026-06-18** — **Memory trust fix — people/goals hallucination guards.**
   - **`isAssistantEntity()`** — new guard blocks Edge/Edg3/AI as person contacts at upsert (and in email path).
   - **`isActivityEntity()`** — blocks gym, workout, lunch, etc. from being filed as people (STT homophone fix).

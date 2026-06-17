@@ -318,7 +318,7 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId));
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'female' ? 'female' : 'male');
       console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -369,7 +369,7 @@ export async function scheduleOpenCall(userId: number) {
 
     try {
       console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId));
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'female' ? 'female' : 'male');
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {

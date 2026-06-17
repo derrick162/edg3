@@ -62,6 +62,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [dataConsent, setDataConsent] = useState<DataConsent>('privacy');
   const [savingConsent, setSavingConsent] = useState(false);
 
+  const [voicePref, setVoicePref] = useState<'male' | 'female'>('male');
+  const [savingVoice, setSavingVoice] = useState(false);
+
   useEffect(() => {
     fetch('/api/profile')
       .then(r => r.json())
@@ -71,9 +74,21 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         if (d.timezone) setTimezone(d.timezone);
         setCurrentTimezone(d.current_timezone || '');
         if (d.data_consent) setDataConsent(d.data_consent as DataConsent);
+        if (d.voice_preference === 'female') setVoicePref('female');
         setLoading(false);
       });
   }, []);
+
+  async function handleVoiceChange(next: 'male' | 'female') {
+    setVoicePref(next);
+    setSavingVoice(true);
+    await fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice_preference: next }),
+    }).catch(() => {});
+    setSavingVoice(false);
+  }
 
   async function handleConsentChange(next: DataConsent) {
     setDataConsent(next);
@@ -174,6 +189,27 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             {settingsSaved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
           </div>
         </form>
+      </div>
+
+      {/* Voice */}
+      <div>
+        <h2 className="text-lg font-bold mb-4">Edge&apos;s voice</h2>
+        <div className="glass-card p-6">
+          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edge uses on your calls. Applies to your next call.</p>
+          <div className="flex gap-3">
+            {(['male', 'female'] as const).map(opt => (
+              <button
+                key={opt}
+                onClick={() => handleVoiceChange(opt)}
+                disabled={savingVoice}
+                className={`flex-1 rounded-xl py-3 text-sm font-medium border transition-all ${voicePref === opt ? 'btn-primary' : 'btn-secondary'}`}
+              >
+                {opt === 'male' ? '🎙 Daniel (male)' : '🎙 Female'}
+              </button>
+            ))}
+          </div>
+          {savingVoice && <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Saving…</p>}
+        </div>
       </div>
 
       {/* Traveling this week */}

@@ -20,6 +20,27 @@ const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 
+// Voice configs — applied per call via assistantOverrides.voice so all tools/prompt stay on
+// the single main assistant; no duplicate assistant needed.
+export const VOICES = {
+  male: {
+    provider: '11labs' as const,
+    voiceId: '3WqHLnw80rOZqJzW9YRB', // Daniel
+    model: 'eleven_turbo_v2_5',
+    stability: 0.3,
+    similarityBoost: 0.75,
+  },
+  female: {
+    provider: '11labs' as const,
+    voiceId: 'cgSgspJ2msm6clMCkdW9',
+    model: 'eleven_flash_v2',
+    speed: 1.2,
+    style: 0.5,
+    stability: 0.4,
+    similarityBoost: 0.7,
+  },
+} as const;
+
 // Public URL Vapi calls back when a call starts/ends. Must be a real https domain —
 // a localhost value (e.g. in local dev) is unreachable by Vapi, so fall back to prod.
 function resolveWebhookUrl(): string {
@@ -61,6 +82,7 @@ export async function initiateCall(
   whoopText: string = '',
   callTime: string = '',
   energyText: string = '',
+  voicePref: 'male' | 'female' = 'male',
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
@@ -214,13 +236,7 @@ Always end with warmth. This person is building something — remind them of tha
         url: resolveWebhookUrl(),
         ...(process.env.VAPI_SERVER_SECRET ? { secret: process.env.VAPI_SERVER_SECRET } : {}),
       },
-      voice: {
-        provider: '11labs',
-        voiceId: '3WqHLnw80rOZqJzW9YRB', // Daniel
-        model: 'eleven_turbo_v2_5',
-        stability: 0.3,
-        similarityBoost: 0.75,
-      },
+      voice: VOICES[voicePref],
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
@@ -283,6 +299,7 @@ Always end with warmth. This person is building something — remind them of tha
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
+      voice: VOICES[voicePref],
       model: { systemPrompt },
       messagePlan: {
         idleMessages: [

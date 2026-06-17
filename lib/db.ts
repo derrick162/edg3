@@ -472,6 +472,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
+    "ALTER TABLE users ADD COLUMN voice_preference TEXT NOT NULL DEFAULT 'male'",
     "ALTER TABLE people_profiles ADD COLUMN email TEXT",
   ];
   for (const migration of migrations) {
@@ -509,6 +510,9 @@ export const userQueries = {
   },
   setDataConsent: (id: number, consent: 'improve' | 'privacy') => {
     return getDb().prepare('UPDATE users SET data_consent = ? WHERE id = ?').run(consent, id);
+  },
+  setVoicePreference: (id: number, pref: 'male' | 'female') => {
+    return getDb().prepare("UPDATE users SET voice_preference = ? WHERE id = ?").run(pref, id);
   },
 };
 
@@ -1188,6 +1192,7 @@ export interface User {
   // 'improve' = user opts in to product improvement use; 'privacy' = inference-only.
   // Optional here so reads are safe before the column exists in the DB.
   data_consent?: 'improve' | 'privacy' | null;
+  voice_preference?: 'male' | 'female' | null;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,
