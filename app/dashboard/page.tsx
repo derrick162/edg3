@@ -1187,6 +1187,11 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
+  const [collapsedMemorySections, setCollapsedMemorySections] = useState<Set<string>>(
+    new Set(['call-notes', 'people-m2', 'patterns-m3', 'accountability', 'fact', 'preference'])
+  );
+  const toggleMemorySection = (key: string) =>
+    setCollapsedMemorySections(prev => { const next = new Set(prev); prev.has(key) ? next.delete(key) : next.add(key); return next; });
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
@@ -2578,13 +2583,21 @@ export default function Dashboard() {
                       // ── Goals: elevated anchor cards with rank number ──
                       if (cat === 'goal') {
                         const firstName = (user?.name || '').split(' ')[0];
+                        const secCollapsed = collapsedMemorySections.has(cat);
                         return (
                           <div key={cat}>
-                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                            <button
+                              onClick={() => toggleMemorySection(cat)}
+                              aria-expanded={!secCollapsed}
+                              className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                              style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                            >
                               <span aria-hidden="true">{meta.icon}</span>
                               {meta.label}
-                            </h3>
-                            <div className="space-y-2">
+                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
+                              <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                            </button>
+                            {!secCollapsed && <div className="space-y-2">
                               {catItems.map((f, idx) => {
                                 const isEditing = editingFactId === f.id;
                                 const justSaved = savedFactId === f.id;
@@ -2661,7 +2674,7 @@ export default function Dashboard() {
                                   </div>
                                 );
                               })}
-                            </div>
+                            </div>}
                           </div>
                         );
                       }
@@ -2676,14 +2689,21 @@ export default function Dashboard() {
                         const entities = Object.keys(byEntity);
                         const PERSON_LIMIT = 8;
                         const visibleEntities = entities.length > PERSON_LIMIT && !isExpanded ? entities.slice(0, PERSON_LIMIT) : entities;
+                        const secCollapsed = collapsedMemorySections.has(cat);
                         return (
                           <div key={cat}>
-                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                            <button
+                              onClick={() => toggleMemorySection(cat)}
+                              aria-expanded={!secCollapsed}
+                              className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                              style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                            >
                               <span aria-hidden="true">{meta.icon}</span>
                               {meta.label}
-                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>{entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
-                            </h3>
-                            <div className="space-y-2">
+                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
+                              <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                            </button>
+                            {!secCollapsed && <div className="space-y-2">
                               {visibleEntities.map(entity => {
                                 const personFacts = byEntity[entity];
                                 const firstName = (user?.name || '').split(' ')[0];
@@ -2719,22 +2739,30 @@ export default function Dashboard() {
                               >
                                 {isExpanded ? 'Show less' : `Show all (${entities.length} people)`}
                               </button>
-                            )}
+                            )}</div>}
                           </div>
                         );
                       }
 
                       // ── All other categories: flat list ──
+                      const secCollapsed = collapsedMemorySections.has(cat);
                       const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       return (
                         <div key={cat}>
-                          <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                          <button
+                            onClick={() => toggleMemorySection(cat)}
+                            aria-expanded={!secCollapsed}
+                            className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                            style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                          >
                             <span aria-hidden="true">{meta.icon}</span>
                             {meta.label}
-                          </h3>
-                          <div className="space-y-1.5">
+                            <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
+                            <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                          </button>
+                          {!secCollapsed && <div className="space-y-1.5">
                             {visible.map(f => <FactRow key={f.id} f={f} />)}
-                          </div>
+                          </div>}
                           {catItems.length > FACTS_CAT_LIMIT && (
                             <button
                               onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
@@ -2803,13 +2831,17 @@ export default function Dashboard() {
               {/* Past commitments (M4 accountability) */}
               {accountability && (accountability.stillOpen.length > 0 || accountability.done.length > 0) && (
                 <div className="mb-8">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-body)' }}>
-                      <span aria-hidden="true">✅</span>
-                      Past commitments
-                    </h3>
+                  <button
+                    onClick={() => toggleMemorySection('accountability')}
+                    aria-expanded={!collapsedMemorySections.has('accountability')}
+                    className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
+                    style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
+                    <span aria-hidden="true">✅</span>
+                    Past commitments
+                    <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {accountability.stillOpen.length + accountability.done.length}</span>
                     {accountability.completionRate !== null && (
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium"
                         style={{
                           background: accountability.completionRate >= 0.7 ? 'rgba(34,197,94,0.1)' : 'var(--edg-fill-04)',
                           color: accountability.completionRate >= 0.7 ? 'var(--edg-success)' : 'var(--text-faint)',
@@ -2817,7 +2849,9 @@ export default function Dashboard() {
                         {Math.round(accountability.completionRate * 100)}% done
                       </span>
                     )}
-                  </div>
+                    <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('accountability') ? '▸' : '▾'}</span>
+                  </button>
+                  {!collapsedMemorySections.has('accountability') && <>
                   <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
                     What you&apos;ve committed to on calls — Edge checks in when they stay open.
                   </p>
@@ -2857,16 +2891,25 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
+                  </>}
                 </div>
               )}
 
               {/* Behavioral patterns (M3) */}
               {patterns.length > 0 && (
                 <div className="mb-8">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: 'var(--text-body)' }}>
+                  <button
+                    onClick={() => toggleMemorySection('patterns-m3')}
+                    aria-expanded={!collapsedMemorySections.has('patterns-m3')}
+                    className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
+                    style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
                     <span aria-hidden="true">📈</span>
                     Patterns Edge has noticed
-                  </h3>
+                    <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {patterns.length}</span>
+                    <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('patterns-m3') ? '▸' : '▾'}</span>
+                  </button>
+                  {!collapsedMemorySections.has('patterns-m3') && <>
                   <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
                     Detected from your calendar and health data — used to protect your best time.
                   </p>
@@ -2897,6 +2940,7 @@ export default function Dashboard() {
                       );
                     })}
                   </div>
+                  </>}
                 </div>
               )}
 
@@ -2906,10 +2950,18 @@ export default function Dashboard() {
                 const topPeople = people.slice(0, PEOPLE_LIMIT);
                 return (
                   <div className="mb-8">
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: 'var(--text-body)' }}>
+                    <button
+                      onClick={() => toggleMemorySection('people-m2')}
+                      aria-expanded={!collapsedMemorySections.has('people-m2')}
+                      className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
+                      style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
                       <span aria-hidden="true">🤝</span>
                       People you meet with
-                    </h3>
+                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {people.length}</span>
+                      <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('people-m2') ? '▸' : '▾'}</span>
+                    </button>
+                    {!collapsedMemorySections.has('people-m2') && <>
                     <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
                       Built from your calendar — sorted by how often you meet.
                     </p>
@@ -2956,6 +3008,7 @@ export default function Dashboard() {
                         );
                       })}
                     </div>
+                    </>}
                   </div>
                 );
               })()}
@@ -2968,11 +3021,18 @@ export default function Dashboard() {
                 const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
                 return (
                   <div>
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <button
+                      onClick={() => toggleMemorySection('call-notes')}
+                      aria-expanded={!collapsedMemorySections.has('call-notes')}
+                      className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                      style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
                       <span aria-hidden="true">📋</span>
                       Call notes
-                    </h3>
-                    <div className="space-y-3">
+                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {memories.length}</span>
+                      <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('call-notes') ? '▸' : '▾'}</span>
+                    </button>
+                    {!collapsedMemorySections.has('call-notes') && <div className="space-y-3">
                       {pageItems.map(m => (
                         <div key={m.id} className="glass-card p-4">
                           <div className="flex items-center gap-2 mb-2">
@@ -3013,7 +3073,7 @@ export default function Dashboard() {
                           Next
                         </button>
                       </div>
-                    )}
+                    )}</div>}
                   </div>
                 );
               })()}
