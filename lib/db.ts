@@ -533,41 +533,49 @@ export const energyLogQueries = {
 };
 
 // Memory queries
+// Memory content is PII (transcripts, insights, personal context) — encrypted at rest.
+// Legacy plaintext rows transparently pass through decryptField (see lib/crypto.ts design).
+function decryptMemoryRow(r: Memory): Memory {
+  return { ...r, content: decryptField(r.content) };
+}
+
+// Special content tags that determine priority in getWeighted().
+// These are stored inside the (encrypted) content; getWeighted() fetches a
+// generous window and filters after decryption so LIKE can't be used.
+const HIGH_PRIORITY_TAGS = ['[USER NOTE]', '[PRIORITY CHANGE]', '[TRAVEL TIMEZONE]'];
+
 export const memoryQueries = {
   create: (userId: number, type: string, content: string, metadata?: string) => {
     return getDb().prepare(
       'INSERT INTO memories (user_id, type, content, metadata) VALUES (?, ?, ?, ?)'
-    ).run(userId, type, content, metadata || null);
+    ).run(userId, type, encryptField(content), metadata || null);
   },
   getRecent: (userId: number, limit = 20) => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM memories WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
-    ).all(userId, limit) as Memory[];
+    ).all(userId, limit) as Memory[]).map(decryptMemoryRow);
   },
   getWeighted: (userId: number, limit = 20) => {
-    const wdb = getDb();
+    // Content is encrypted — LIKE queries can't search it. Fetch a generous window
+    // (200 most recent rows) and apply priority filtering in JS after decryption.
+    const all = (getDb().prepare(
+      'SELECT * FROM memories WHERE user_id = ? ORDER BY created_at DESC LIMIT 200'
+    ).all(userId) as Memory[]).map(decryptMemoryRow);
+
     // Priority: explicit user notes and priority changes always first,
-    // then recent insights, then transcripts (deduped to avoid noise)
-    const high = wdb.prepare(
-      `SELECT * FROM memories WHERE user_id = ? AND (
-        content LIKE '%[USER NOTE]%' OR
-        content LIKE '%[PRIORITY CHANGE]%' OR
-        content LIKE '%[TRAVEL TIMEZONE]%'
-      ) ORDER BY created_at DESC LIMIT 10`
-    ).all(userId) as Memory[];
-
-    const insights = wdb.prepare(
-      `SELECT * FROM memories WHERE user_id = ? AND type = 'insight'
-       ORDER BY created_at DESC LIMIT 8`
-    ).all(userId) as Memory[];
-
-    const recent = wdb.prepare(
-      `SELECT * FROM memories WHERE user_id = ? AND type NOT IN ('profile', 'transcript')
-       AND content NOT LIKE '%[USER NOTE]%'
-       AND content NOT LIKE '%[PRIORITY CHANGE]%'
-       AND content NOT LIKE '%[TRAVEL TIMEZONE]%'
-       ORDER BY created_at DESC LIMIT 5`
-    ).all(userId) as Memory[];
+    // then recent insights, then transcripts (deduped to avoid noise).
+    const high = all
+      .filter(m => HIGH_PRIORITY_TAGS.some(t => m.content.includes(t)))
+      .slice(0, 10);
+    const insights = all
+      .filter(m => m.type === 'insight')
+      .slice(0, 8);
+    const recent = all
+      .filter(m =>
+        !['profile', 'transcript'].includes(m.type) &&
+        !HIGH_PRIORITY_TAGS.some(t => m.content.includes(t))
+      )
+      .slice(0, 5);
 
     // Deduplicate by id and return up to limit
     const seen = new Set<number>();
@@ -581,14 +589,17 @@ export const memoryQueries = {
     return result;
   },
   getByType: (userId: number, type: string, limit = 10) => {
-    return getDb().prepare(
+    return (getDb().prepare(
       'SELECT * FROM memories WHERE user_id = ? AND type = ? ORDER BY created_at DESC LIMIT ?'
-    ).all(userId, type, limit) as Memory[];
+    ).all(userId, type, limit) as Memory[]).map(decryptMemoryRow);
   },
+  // NOTE: searchContent and countTopicMentions use LIKE on content — they are
+  // unused (no callers) and would not function on encrypted content. Left defined
+  // in case a caller is added; a future caller must switch to in-JS filtering.
   searchContent: (userId: number, keyword: string) => {
-    return getDb().prepare(
+    return (getDb().prepare(
       "SELECT * FROM memories WHERE user_id = ? AND content LIKE ? ORDER BY created_at DESC LIMIT 10"
-    ).all(userId, `%${keyword}%`) as Memory[];
+    ).all(userId, `%${keyword}%`) as Memory[]).map(decryptMemoryRow);
   },
   countTopicMentions: (userId: number, keyword: string, days = 30) => {
     const result = getDb().prepare(
