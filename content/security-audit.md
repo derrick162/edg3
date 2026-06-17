@@ -252,6 +252,8 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `text` capped at 500 chars | `POST /api/tasks` |
 | `profile_summary` capped at 2000 chars (flows into LLM prompts) | `POST /api/onboarding/profile`, `POST /api/profile` |
 | `statement` capped at 500 chars | `rememberPreference` tool handler in `vapi/tool-call` |
+| LLM-extracted task text capped at 500 chars (2 paths) | `app/api/vapi/webhook/route.ts` — `extractTasksFromBriefing` + `extractTasksFromTranscript` |
+| LLM-extracted memory note (missed promises) capped at 2000 chars | `lib/verifyPromises.ts` `memoryQueries.create` call |
 
 ### Error Leak Fixes
 

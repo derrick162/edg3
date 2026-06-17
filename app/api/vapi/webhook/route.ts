@@ -204,7 +204,7 @@ ${briefingContent}`,
     if (!match) return;
     const tasks: string[] = JSON.parse(match[0]);
     for (const text of tasks.slice(0, 5)) {
-      if (text?.trim()) taskQueries.create(userId, text.trim(), today, 'edg3');
+      if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), today, 'edg3');
     }
   } catch {
     // ignore parse errors
@@ -327,7 +327,7 @@ ${transcript}`,
     if (!match) return;
     const tasks: string[] = JSON.parse(match[0]);
     for (const text of tasks.slice(0, 5)) {
-      if (text?.trim()) taskQueries.create(userId, text.trim(), today, 'edg3');
+      if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), today, 'edg3');
     }
   } catch {
     // ignore parse errors

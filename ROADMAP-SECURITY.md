@@ -50,6 +50,15 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Round 4: LLM-output storage caps — task text + missed-promises memory note (1200 green).**
+
+  Closed two remaining paths where LLM-extracted content was written to the DB without a length cap.
+
+  1. **Task text cap** — `app/api/vapi/webhook/route.ts`: both `extractTasksFromBriefing` and `extractTasksFromTranscript` now call `.slice(0, 500)` on LLM-extracted task text before `taskQueries.create`. Matches the existing 500-char cap on `POST /api/tasks` (user-created tasks). Prevents unbounded task rows if the model returns overly long text.
+  2. **Missed-promises memory cap** — `lib/verifyPromises.ts`: the `memoryQueries.create` call that stores the missed-promises calendar_note now caps the content at 2000 chars. Matches the established policy for all memory content from LLM paths (`briefing.ts` memory caps set in Round 3).
+  3. **Security audit doc updated** — two new rows in Input Validation Fixes table.
+  1200/1200 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Round 3: additional hardening sweep — rate limits, error leaks, input caps (1200 green).**
 
   Continued security hardening after Round 2 integration tests shipped. Focused on closing remaining low/medium gaps in rate-limit coverage, error-detail exposure, and input-size caps.
