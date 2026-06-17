@@ -119,6 +119,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Email signal quality fix — exclude Promotions/Social/Forums from inbox signal (1529 green).**
+  - `lib/gmail.ts` `getRecentEmailSignal`: two-layer filter stops marketing/newsletter mail from entering fact extraction, meeting-prep, and priority derivation pipelines.
+    1. **Query filter (primary):** `q` now appends `-category:promotions -category:social -category:forums` — keeps Primary + Updates (transactional/meeting signal); drops bulk marketing tabs using Gmail's own classifier. No third-party API.
+    2. **Label safety-net (defense-in-depth):** after `threads.get`, any thread whose message labels include `CATEGORY_PROMOTIONS`, `CATEGORY_SOCIAL`, or `CATEGORY_FORUMS` is dropped before assembling `items`.
+  - 2 new tests in `lib/gmail.test.ts`: query contains all three exclusions; label filter drops 3 bulk threads and passes the 1 primary thread. 79 test files / 1529 tests.
 - **2026-06-18** — **Round 5 — Bi-temporal fact schema + M2/M3 encryption audit (1527 green).**
   - **Ticket 1 — Bi-temporal columns on `facts`:**
     - DDL: added `valid_from TEXT NOT NULL DEFAULT (datetime('now'))` + `valid_until TEXT` to `facts` table; `CREATE INDEX idx_facts_active ON facts(user_id, category, valid_until)`.

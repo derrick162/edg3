@@ -269,10 +269,12 @@ export async function getRecentEmailSignal(
   const gmail = gmailClientFor(userId);
 
   // List recent INBOX threads — Gmail returns id + snippet in the list response.
+  // Exclude Promotions/Social/Forums (Gmail's own categories) so only Primary +
+  // Updates flow into fact extraction and meeting-prep signals.
   const listRes = await gmail.users.threads.list({
     userId: 'me',
     labelIds: ['INBOX'],
-    q: `newer_than:${days}d`,
+    q: `newer_than:${days}d -category:promotions -category:social -category:forums`,
     maxResults: max,
   });
   const threads = listRes.data.threads ?? [];
@@ -296,6 +298,9 @@ export async function getRecentEmailSignal(
           (h) => h.name?.toLowerCase() === name.toLowerCase(),
         )?.value ?? '';
       const allLabels = messages.flatMap((m) => m.labelIds ?? []);
+      // Safety-net: drop bulk categories that Gmail's query filter may let slip through.
+      const BULK_CATEGORIES = ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS'];
+      if (BULK_CATEGORIES.some((c) => allLabels.includes(c))) return null;
       return {
         threadId: t.id!,
         sender: hdr(firstMsg, 'From'),
@@ -309,7 +314,7 @@ export async function getRecentEmailSignal(
   );
 
   const items = settled
-    .filter((r): r is PromiseFulfilledResult<EmailSignalItem> => r.status === 'fulfilled')
+    .filter((r): r is PromiseFulfilledResult<EmailSignalItem> => r.status === 'fulfilled' && r.value !== null)
     .map((r) => r.value);
 
   // Audit: thread count in argsJson; subjects encrypted in snapshotAfter so the
