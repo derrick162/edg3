@@ -2146,9 +2146,10 @@ export default function Dashboard() {
                 {/* Collapsible categories */}
                 {catEntries.length > 0 && (
                   <div className="space-y-1.5 mb-6">
-                    {catEntries.map(([cat, catItems]) => {
+                    {catEntries.map(([cat, catItems], catIdx) => {
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
-                      const isSectionOpen = expandedMemorySections.has(cat);
+                      // Auto-open first category when nothing is explicitly expanded yet
+                      const isSectionOpen = expandedMemorySections.size === 0 ? catIdx === 0 : expandedMemorySections.has(cat);
                       const isShowAll = expandedFactCats.has(cat);
                       const visible = isShowAll ? catItems : catItems.slice(0, CAT_PREVIEW);
                       const toggleSection = () => setExpandedMemorySections(prev => {
