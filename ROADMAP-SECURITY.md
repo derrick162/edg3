@@ -95,6 +95,29 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Audit log coverage sweep — Round 4 Ticket 1 complete (1362 green).**
+
+  PM dispatch: verify audit_log covers every user-triggered mutation and close gaps.
+
+  **Code changes:**
+  - `POST /api/onboarding/priorities` → `priorities_set` audit entry (includes added/removed diff vs prior week)
+  - `POST /api/priorities/derive/accept` → `priorities_accepted` audit entry
+  - `POST /api/open-loops` (resolve/dismiss/snooze) → `loop_resolve` / `loop_dismiss` / `loop_snooze` audit entries
+  - Fixed `app/api/priorities/derive/route.test.ts` mock (was missing `auditLogQueries` → 3 tests failed)
+
+  **Documentation** (`content/security-audit.md`):
+  - New "Audit Log Coverage" section: 12 action types covered, 17 routes intentionally not logged (with justification each)
+  - Rate-limit gap check for routes added since Round 3 sweep
+  - Readiness Summary: updated audit-log bullet + test count (64 files / 1362 tests)
+  - CASA section: consent_update audit now confirmed live
+
+  **Intentionally not logged (top decisions):**
+  - `DELETE /api/account` — GDPR: cascade deletes audit_log records as part of the deletion; server log provides operator visibility
+  - Auth events (login/signup/logout) — session_version tracks invalidation; not Activity-tab data
+  - Minor state operations (notifications markRead, energy log, milestone toggles, reminder setup/teardown)
+
+  1362/1362 green, tsc clean, next build clean.
+
 - **2026-06-18** — **Backup coverage fix + consent route + data_consent migration (1340 green).**
 
   Three hardening tasks shipped in one session:
