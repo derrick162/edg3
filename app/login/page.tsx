@@ -47,10 +47,12 @@ export default function LoginPage() {
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Email</label>
+              <label htmlFor="login-email" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Email</label>
               <input
+                id="login-email"
                 className="input"
                 type="email"
+                autoComplete="email"
                 placeholder="you@example.com"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
@@ -58,10 +60,12 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Password</label>
               <input
+                id="login-password"
                 className="input"
                 type="password"
+                autoComplete="current-password"
                 placeholder="Your password"
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}

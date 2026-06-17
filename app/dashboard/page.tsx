@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
 
@@ -1149,7 +1149,7 @@ export default function Dashboard() {
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
@@ -1209,10 +1209,14 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
+  const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [activationFacts, setActivationFacts] = useState<string[]>([]);
+  const [activationDismissed, setActivationDismissed] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1261,6 +1265,12 @@ export default function Dashboard() {
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
+    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
+    fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.isFresh && d.recentFacts?.length > 0) {
+        setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
+      }
+    }).catch(() => {});
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1309,12 +1319,22 @@ export default function Dashboard() {
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    const prevScore = calendarFit?.edgeScore ?? null;
     await fetch('/api/focus/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ areas }),
     });
     setFocusRecDismissed(true);
+    // Refetch Edge Score; if it rose, trigger the spark celebration
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+      if (!s) return;
+      setCalendarFit(s);
+      if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
+        setEdgeScoreCelebrating(true);
+        setTimeout(() => setEdgeScoreCelebrating(false), 1500);
+      }
+    }).catch(() => {});
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -1680,10 +1700,13 @@ export default function Dashboard() {
               { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
               { id: 'profile', label: 'Profile', icon: '👤' },
+              { id: 'help', label: 'Help', icon: '?' },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
+                aria-label={tab.label}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
                 className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
@@ -1691,7 +1714,7 @@ export default function Dashboard() {
                   border: activeTab === tab.id ? '1px solid var(--edg-accent-20)' : '1px solid transparent',
                 }}
               >
-                <span>{tab.icon}</span>
+                <span aria-hidden="true">{tab.icon}</span>
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
             ))}
@@ -2016,11 +2039,20 @@ export default function Dashboard() {
           {/* ── Home tab — morning cockpit ──────────────────────────── */}
           {activeTab === 'home' && (
             <div className="space-y-6">
+              {/* Activation card — "here's what I already know" — pre-first-briefing only */}
+              {briefings.length === 0 && !activationDismissed && activationFacts.length > 0 && (
+                <ActivationCard
+                  facts={activationFacts}
+                  name={user?.name?.split(' ')[0] ?? undefined}
+                  onDismiss={() => setActivationDismissed(true)}
+                />
+              )}
               {/* Edge Score — hero */}
               <EdgeScoreCard
                 fit={calendarFit}
                 loading={calendarFitLoading}
                 sparse={priorities.length === 0 || calendarConnected === false}
+                celebrating={edgeScoreCelebrating}
                 onRequestFix={() => {/* DayPlanCard below handles fixes */}}
               />
               {/* Today's focus recommendations */}
@@ -2043,6 +2075,22 @@ export default function Dashboard() {
                   appliedScore={dayPlanAppliedScore}
                 />
               )}
+              {/* Open loops — commitments Edge is tracking */}
+              {openLoops.length > 0 && (
+                <OpenLoopsSection
+                  loops={openLoops}
+                  onResolve={async (id) => {
+                    await fetch(`/api/open-loops/${id}/resolve`, { method: 'POST' }).catch(() => {});
+                    setOpenLoops(prev => prev.map(l => l.id === id ? { ...l, status: 'done' as const } : l));
+                  }}
+                  onDismiss={async (id) => {
+                    await fetch(`/api/open-loops/${id}/dismiss`, { method: 'POST' }).catch(() => {});
+                    setOpenLoops(prev => prev.map(l => l.id === id ? { ...l, status: 'dismissed' as const } : l));
+                  }}
+                />
+              )}
+              {/* Content cards — education for the home tab */}
+              <ContentSection />
             </div>
           )}
 
@@ -2884,6 +2932,12 @@ export default function Dashboard() {
 
           {activeTab === 'profile' && (
             <ProfileTab onSettingsSaved={loadData} />
+          )}
+
+          {activeTab === 'help' && (
+            <div className="max-w-2xl mx-auto">
+              <HelpSupportSection />
+            </div>
           )}
         </main>
       </div>

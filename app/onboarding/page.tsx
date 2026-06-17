@@ -202,10 +202,11 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+        <label htmlFor="onboard-summary" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
           Paste your summary here
         </label>
         <textarea
+          id="onboard-summary"
           className="input"
           style={{ minHeight: 'clamp(120px, 30vw, 180px)', fontSize: 13 }}
           placeholder="Paste your full ChatGPT summary here — goals, strengths, current challenges, what you're working toward…"
@@ -690,10 +691,11 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+            <label htmlFor="onboard-call-time" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
               Call time
             </label>
             <input
+              id="onboard-call-time"
               className="input"
               type="time"
               value={callTime}
@@ -702,10 +704,11 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+            <label htmlFor="onboard-timezone" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
               Timezone
             </label>
             <select
+              id="onboard-timezone"
               className="input"
               style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}
               value={timezone}
@@ -723,7 +726,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+          <label htmlFor="onboard-phone" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
             Phone number
           </label>
           <div className="flex gap-2">
@@ -734,9 +737,11 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
               +1
             </div>
             <input
+              id="onboard-phone"
               className="input flex-1"
               type="tel"
               inputMode="tel"
+              autoComplete="tel-national"
               placeholder="(555) 000-0000"
               value={phone}
               onChange={e => {

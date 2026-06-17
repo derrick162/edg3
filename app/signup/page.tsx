@@ -47,18 +47,21 @@ export default function SignupPage() {
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Full name</label>
-              <input className="input" type="text" placeholder="Your name" value={form.name}
+              <label htmlFor="signup-name" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Full name</label>
+              <input id="signup-name" className="input" type="text" autoComplete="name"
+                placeholder="Your name" value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Email</label>
-              <input className="input" type="email" placeholder="you@example.com" value={form.email}
+              <label htmlFor="signup-email" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Email</label>
+              <input id="signup-email" className="input" type="email" autoComplete="email"
+                placeholder="you@example.com" value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Password</label>
-              <input className="input" type="password" placeholder="At least 8 characters" value={form.password}
+              <label htmlFor="signup-password" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Password</label>
+              <input id="signup-password" className="input" type="password" autoComplete="new-password"
+                placeholder="At least 8 characters" value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={8} />
             </div>
 
