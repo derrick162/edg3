@@ -428,6 +428,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
     "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -461,6 +462,9 @@ export const userQueries = {
   },
   incrementSessionVersion: (id: number) => {
     return getDb().prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?').run(id);
+  },
+  updateConsent: (id: number, consent: 'improve' | 'privacy') => {
+    return getDb().prepare('UPDATE users SET data_consent = ? WHERE id = ?').run(consent, id);
   },
 };
 

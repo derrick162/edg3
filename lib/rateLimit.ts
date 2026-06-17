@@ -61,6 +61,7 @@ export const LIMITS = {
   onboardingProfile:    { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (profile write + LLM prompt input)
   onboardingCallTime:   { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (triggers Google Calendar API)
   profileUpdate:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (profile write + LLM prompt input)
+  consentUpdate:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (privacy setting change)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
