@@ -304,6 +304,29 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **M4 Accountability Memory — commitment outcome tracking + briefing reflection.**
+  - **`lib/accountabilityMemory.ts`** (new, pure, zero I/O):
+    - `buildAccountabilitySnapshot(tasks, openLoops, today, lookbackDays=7)` — takes edg3-source tasks
+      + `commitment_made` open_loops for the last N days; splits into `done` vs `stillOpen` with
+      `daysOpen`, `completionRate`, and `dueDate` metadata. `completionRate` is null when < 2
+      commitments (avoids misleading "100%" on first use). Today's open tasks excluded (too fresh).
+    - `formatAccountabilityForBriefing(snapshot)` — formats done/open list with age/due-date labels.
+      Caps `stillOpen` display at 3 + overflow note. Returns '' when nothing to surface.
+    - `accountabilityBriefingInstruction(snapshot)` — if open items exist: ask about most overdue
+      in section 4 ACTION ITEMS, offer to reschedule or drop ("never shame — curious, not judgmental").
+      If all done: encourage briefly in GREETING or closing. Returns '' when no commitments.
+  - **`lib/briefing.ts`**: ACCOUNTABILITY block injected into the briefing prompt when
+    `accountabilitySnapshot` has past commitments. Falls back to old single-line `YESTERDAY'S
+    COMMITMENT` block when snapshot is empty (backwards-compatible). Fixed `require('./db')` ESM
+    bug — now uses the already-imported `openLoopQueries` at top level. Inputs: all 7-day tasks
+    (done + incomplete) + open+done open_loops; zero new API calls.
+  - **`GET /api/accountability`** (new): returns `buildAccountabilitySnapshot` for the current user
+    scoped to 7 days; rate-limited via `meetingContext` (30/hr).
+  - **`app/dashboard/page.tsx`**: `accountability` state + `/api/accountability` fetch. Memory tab
+    "Past commitments" section: ⏳ stillOpen cards (age + due date) + ✓ done cards + completion
+    rate badge. Appears above "Patterns Edge has noticed".
+  - **`lib/accountabilityMemory.test.ts`** (new): 18 tests — all snapshot, format, and instruction
+    pure-function paths. All 1407/1407 green, tsc clean, next build clean.
 - **2026-06-18** — **M3 Pattern Memory — behavioral patterns from calendar + Whoop history.**
   - **`lib/patternMemory.ts`** (new, pure, zero I/O): 4 detectors:
     - `detectProductiveDayPattern` — which days have the most uninterrupted ≥60min blocks (proxy for deep work)
