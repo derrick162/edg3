@@ -79,6 +79,11 @@ export function tagCommitmentsFromTasks(taskTexts: string[]): string[] {
 /**
  * Persist a call as an episode. Called fire-and-forget from the Vapi webhook
  * after transcript is available. Never throws (caller should .catch() anyway).
+ *
+ * Consent note: episodes store data to power the USER'S OWN experience (briefing
+ * recall, pattern detection) — this is valid under BOTH consent modes. Do NOT
+ * gate episode storage on isImproveConsented. Gate any future improvement/training
+ * PIPELINE that READS episodes on isImproveConsented at the consumption side.
  */
 export function persistCallEpisode(
   userId: number,

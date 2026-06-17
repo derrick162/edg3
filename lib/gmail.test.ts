@@ -417,6 +417,53 @@ describe('getRecentEmailSignal (email prioritization signal)', () => {
       labelIds: ['INBOX'],
     }));
   });
+
+  it('query excludes Promotions, Social, and Forums categories', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    await getRecentEmailSignal(1, { days: 7 });
+    const call = (h.threadsList.mock.calls as any[][])[0]?.[0];
+    expect(call?.q).toContain('-category:promotions');
+    expect(call?.q).toContain('-category:social');
+    expect(call?.q).toContain('-category:forums');
+    expect(call?.q).toContain('newer_than:7d');
+  });
+
+  it('label safety-net drops threads tagged CATEGORY_PROMOTIONS, CATEGORY_SOCIAL, or CATEGORY_FORUMS', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: {
+        threads: [
+          { id: 'promo_thread', snippet: 'Sale 50% off' },
+          { id: 'social_thread', snippet: 'Someone liked your post' },
+          { id: 'forums_thread', snippet: 'New reply in thread' },
+          { id: 'primary_thread', snippet: 'Meeting tomorrow' },
+        ],
+      },
+    } as any);
+    h.threadsGet
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm1', labelIds: ['INBOX', 'CATEGORY_PROMOTIONS'], payload: { headers: [] } }] },
+      } as any)
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm2', labelIds: ['INBOX', 'CATEGORY_SOCIAL'], payload: { headers: [] } }] },
+      } as any)
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm3', labelIds: ['INBOX', 'CATEGORY_FORUMS'], payload: { headers: [] } }] },
+      } as any)
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm4', labelIds: ['INBOX', 'UNREAD'], payload: { headers: [
+          { name: 'From', value: 'contact@example.com' },
+          { name: 'Subject', value: 'Meeting tomorrow' },
+          { name: 'Date', value: 'Mon, 14 Jun 2026' },
+        ] } }] },
+      } as any);
+
+    const result = await getRecentEmailSignal(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].threadId).toBe('primary_thread');
+    expect(result.items[0].subject).toBe('Meeting tomorrow');
+  });
 });
 
 // ── getEmailSignalSubjects ────────────────────────────────────────────────────

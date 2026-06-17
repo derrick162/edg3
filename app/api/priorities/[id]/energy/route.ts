@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { priorityQueries } from '@/lib/db';
+import { priorityQueries, auditLogQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('priorityEnergy', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const { id: idStr } = await params;
   const id = parseInt(idStr, 10);
@@ -22,5 +26,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   priorityQueries.setEnergyCost(user.id, id, (cost ?? null) as 'high' | 'medium' | 'low' | null);
+  auditLogQueries.record({ userId: user.id, action: 'setEnergyTag', argsJson: JSON.stringify({ priorityId: id, energy_cost: cost ?? null }), ok: true });
   return NextResponse.json({ success: true });
 }
