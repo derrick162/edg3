@@ -116,7 +116,7 @@ export function ActivationHeroCard({
           }}
         >
           <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-accent)', letterSpacing: '0.08em' }}>
-            Your Edge Score
+            Your Edg3 Score
           </p>
           {/* Large score — the first time they see their number */}
           <div
@@ -205,7 +205,7 @@ export function ActivationHeroAligned({
           Your calendar looks good.
         </h2>
         <p className="text-sm mt-2 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Your top priorities already have protected time this week. Edge didn&apos;t need to change
+          Your top priorities already have protected time this week. Edg3 didn&apos;t need to change
           much.
         </p>
       </div>
@@ -220,7 +220,7 @@ export function ActivationHeroAligned({
           }}
         >
           <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-accent)', letterSpacing: '0.08em' }}>
-            Your Edge Score
+            Your Edg3 Score
           </p>
           <div
             className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold mb-3"
@@ -234,7 +234,7 @@ export function ActivationHeroAligned({
             {score}
           </div>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)', maxWidth: 240 }}>
-            Edge will keep watching. If something shifts, you&apos;ll hear about it on your morning
+            Edg3 will keep watching. If something shifts, you&apos;ll hear about it on your morning
             call.
           </p>
         </div>
