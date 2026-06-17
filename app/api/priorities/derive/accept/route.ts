@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { priorityQueries, memoryQueries, factQueries } from '@/lib/db';
 import { getWeekOf } from '@/lib/briefing';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
+
+const MAX_PRIORITY_TEXT = 200;
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('priorityAccept', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: { priorities?: string[] };
   try {
@@ -15,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   const texts = (body.priorities ?? [])
-    .map((t: string) => t?.trim())
+    .map((t: string) => t?.trim().slice(0, MAX_PRIORITY_TEXT))
     .filter(Boolean)
     .slice(0, 3);
 

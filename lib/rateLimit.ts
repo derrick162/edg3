@@ -52,6 +52,7 @@ export const LIMITS = {
   tasksWrite:        { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (create / complete)
   undoPost:          { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (calendar mutations)
   priorityDerive:    { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (LLM synthesis)
+  priorityAccept:    { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (accept proposed priorities)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
