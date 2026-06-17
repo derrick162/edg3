@@ -217,7 +217,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 ## Fixes Applied This Session
 
-### Rate Limit Additions (10 new limit types)
+### Rate Limit Additions (26 new limit types — flagship + Round 2/3)
 
 | New Type | Limit | Applied To |
 |---|---|---|
@@ -234,6 +234,9 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `accountExport` | 5/hr/user | `GET /api/account/export` |
 | `onboardingPriorities` | 10/hr/user | `POST /api/onboarding/priorities` |
 | `prioritiesKeep` | 20/hr/user | `POST /api/priorities/keep` |
+| `onboardingProfile` | 5/hr/user | `POST /api/onboarding/profile` |
+| `onboardingCallTime` | 10/hr/user | `POST /api/onboarding/call-time` |
+| `profileUpdate` | 10/hr/user | `POST /api/profile` |
 
 ### Input Validation Fixes
 
@@ -247,6 +250,19 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `timezone` validated with `isValidTimeZone()` | `POST /api/onboarding/call-time`, `POST /api/profile/timezone` |
 | `phone_number` type + length check | `POST /api/onboarding/call-time` |
 | `text` capped at 500 chars | `POST /api/tasks` |
+| `profile_summary` capped at 2000 chars (flows into LLM prompts) | `POST /api/onboarding/profile`, `POST /api/profile` |
+| `statement` capped at 500 chars | `rememberPreference` tool handler in `vapi/tool-call` |
+
+### Error Leak Fixes
+
+Removed internal error details (`err.message`, `String(err).slice(0,120)`) from user-facing responses; replaced with safe generic messages. Internal details still logged to console for ops diagnosis.
+
+| Route | Old (leaked) | New (safe) |
+|---|---|---|
+| `POST /api/calendar/book` | `errMsg.slice(0, 120)` | generic reconnect message |
+| `POST /api/briefing/call` | `err.message` | "Failed to initiate call — please try again shortly." |
+| `POST /api/briefing/open-call` | `err.message` | "Failed to start call — please try again shortly." |
+| `POST /api/briefing/retry-call` | `err.message` | "Failed to initiate call — please try again shortly." |
 
 ---
 
@@ -256,7 +272,8 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 - **Authentication:** JWT cookie with `session_version` (logout invalidates tokens immediately)
 - **Authorization:** Every route gates on `getSession()` and scopes all DB queries to `user.id` — no cross-user data leakage
-- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (33 rate-limit types total)
+- **Rate limiting:** All 78 routes reviewed; every mutation + expensive read now covered (36 rate-limit types total)
+- **Error leak hardening:** Internal error details (`err.message`, raw `String(err)`) removed from all user-facing non-admin routes; generic safe messages returned instead
 - **Parameterized SQL:** No raw string interpolation in queries (better-sqlite3 prepared statements everywhere)
 - **Prompt injection defense:** `sanitize()` strips `\r\n\t` on calendar event titles in `lib/alignment.ts`; newline-strip in `lib/calendar.ts` `formatEventsForBriefing`
 - **Input validation:** length caps, type checks, enum validation on all mutation endpoints

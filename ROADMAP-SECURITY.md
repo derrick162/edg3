@@ -50,6 +50,25 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Round 3: additional hardening sweep — rate limits, error leaks, input caps (1200 green).**
+
+  Continued security hardening after Round 2 integration tests shipped. Focused on closing remaining low/medium gaps in rate-limit coverage, error-detail exposure, and input-size caps.
+
+  1. **Rate limits — 8 more unprotected routes covered** (36 total limit types):
+     - `GET /api/onboarding/suggest-priorities` (5/hr): was an unguarded LLM (Haiku) call
+     - `DELETE /api/account` (3/hr): destructive cascade, confirm-phrase alone insufficient
+     - `GET /api/account/export` (5/hr): decrypts all user PII on every call
+     - `POST /api/onboarding/priorities` (10/hr): writes to 3 tables (priorities + memory + facts)
+     - `POST /api/priorities/keep` (20/hr): delete + re-insert priorities
+     - `POST /api/onboarding/profile` (5/hr): profile flows into LLM prompts
+     - `POST /api/onboarding/call-time` (10/hr): triggers Google Calendar API resync
+     - `POST /api/profile` (10/hr): same LLM input concern as onboarding/profile
+  2. **Error leak fixes** — removed raw `err.message` / `String(err).slice(0,120)` from user-facing responses; replaced with safe generic messages. All details still logged to console for ops. Routes: `calendar/book`, `briefing/call`, `briefing/open-call`, `briefing/retry-call`.
+  3. **Input size caps** — `profile_summary` capped at 2000 chars on `POST /api/onboarding/profile` and `POST /api/profile` (both flow into LLM prompts). `rememberPreference` tool handler in `vapi/tool-call` now caps fact `statement` at 500 chars, matching the PATCH route's existing cap.
+  4. **Post-merge fix** — removed stale `WhoopFlag` re-export from `components/ui/index.ts` after Design's latest merge removed it from `RecoveryCard.tsx` (broke tsc).
+  5. **Security audit doc** — updated route tables, rate-limit additions table, error-leak section, readiness summary. 36 rate-limit types now documented.
+  1200/1200 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Round 2: security integration tests + backup coverage + trust content (1200 green).**
 
   1. **Security integration tests (22 new in `lib/auth.test.ts`):** JWT round-trip, tamper detection, expired/wrong-secret token, session_version revocation (stale token → null), legacy token grandfathering, cookie flags (httpOnly, sameSite:lax, maxAge 30d), bcrypt round-trip. Route-level authz tests already existed for facts, email-receipt, and day-plan confirm.
