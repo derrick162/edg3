@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { focusMilestoneQueries } from '@/lib/db';
+import { focusMilestoneQueries, auditLogQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const rl = checkRateLimit('milestoneWrite', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   const { id: idStr } = await params;
   const priorityId = parseInt(idStr, 10);
   if (!Number.isFinite(priorityId) || priorityId < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
@@ -31,6 +35,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!title) return NextResponse.json({ error: 'title is required' }, { status: 400 });
 
   const result = focusMilestoneQueries.create(user.id, priorityId, title) as { lastInsertRowid: number };
+  auditLogQueries.record({ userId: user.id, action: 'milestoneCreate', argsJson: JSON.stringify({ priorityId, title }), ok: true });
   const milestones = focusMilestoneQueries.listForPriority(user.id, priorityId);
   return NextResponse.json({ success: true, id: result.lastInsertRowid, milestones }, { status: 201 });
 }

@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   dbRun: vi.fn(),
   dbGet: vi.fn<() => unknown>(() => undefined),
   dbAll: vi.fn<() => unknown[]>(() => []),
+  preparedSqls: [] as string[],
 }));
 
 // ── module mocks ───────────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/db', () => ({
   getDb: () => ({
-    prepare: (_sql: string) => ({ run: h.dbRun, get: h.dbGet, all: h.dbAll }),
+    prepare: (sql: string) => { h.preparedSqls.push(sql); return { run: h.dbRun, get: h.dbGet, all: h.dbAll }; },
   }),
   userQueries: {
     findById: (_id: number) => h.user,
@@ -100,6 +101,7 @@ beforeEach(() => {
   h.tasks = [];
   h.briefings = [];
   h.drafts = [];
+  h.preparedSqls = [];
   h.dbAll.mockReturnValue([]);
 });
 
@@ -234,11 +236,22 @@ describe('DELETE /api/account — deletion', () => {
     expect(body.success).toBe(true);
   });
 
-  it('issues DELETE statements for all user tables', async () => {
+  it('issues DELETE statements for all user tables including recently-added ones', async () => {
     await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
-    const sqlCalls = h.dbRun.mock.calls.length;
-    // 18 tables including the users row itself (open_loops added 2026-06-16)
-    expect(sqlCalls).toBeGreaterThanOrEqual(17);
+    const deleteSqls = h.preparedSqls.filter(s => s.startsWith('DELETE FROM'));
+    // Must cover all tables added through 2026-06-18 (briefing_context_packs,
+    // episodes, people_profiles, pattern_cache, failed_webhooks, background_job_failures)
+    expect(deleteSqls.length).toBeGreaterThanOrEqual(30);
+  });
+
+  it('explicitly deletes briefing_context_packs (no ON DELETE CASCADE — would block user deletion otherwise)', async () => {
+    await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
+    expect(h.preparedSqls.some(s => s.includes('briefing_context_packs'))).toBe(true);
+  });
+
+  it('explicitly deletes episodes for the user', async () => {
+    await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
+    expect(h.preparedSqls.some(s => s.includes('episodes'))).toBe(true);
   });
 
   it('clears the session cookie on success', async () => {

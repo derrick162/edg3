@@ -23,12 +23,13 @@ After every ticket:
 
 **In all other cases: keep going.** You do not need PM approval between tickets. Commit small, run preflight, move to the next ticket.
 
-**When the dispatch is exhausted → move to the pillars:**
-1. Read `PILLAR-TRUST.md` — pick up any Trust items tagged (Design): data-transparency UI, "What Edge knows" completeness (T3-1)
-2. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Design): Memory tab UI, episode timeline, confidence display
-3. When both pillars are exhausted → run the QA checklists in `PILLAR-TRUST.md` and `PILLAR-MEMORY.md`
-4. Log QA results in `content/qa-log.md` (create if it doesn't exist)
-5. If QA is also done: speculative polish on `app/globals.css` and `components/ui/` — your domain, no dispatch needed
+**When the dispatch is exhausted → move to the pillars (in this order):**
+1. Read `PILLAR-DAILY-CALL.md` — call UX, OS selection UI, voice consistency (Design owns DC3, DC4 UI)
+2. Read `PILLAR-TRUST.md` — pick up any Trust items tagged (Design): data-transparency UI, "What Edge knows" completeness (T3-1)
+3. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Design): Memory tab UI, episode timeline, confidence display, "learned [date]" per fact
+4. When all three pillars are exhausted → run the QA checklists in all three pillar files
+5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
+6. If QA is also done: speculative polish on `app/globals.css` and `components/ui/` — your domain, no dispatch needed
 
 ## Mandate
 Own the **design system** (`app/globals.css`) and the **visual/UX** of the app. Improve
@@ -47,6 +48,52 @@ more trusted/usable for September?"
   look/layout/copy. **Claim them in the Status Board first**, keep diffs small, merge often.
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
+
+## 📥 PM DISPATCH — 2026-06-18 (★ LANDING PAGE REDESIGN — Derrick's direct feedback)
+
+> Master at `f1e1943`. Sync master first. File to edit: `app/page.tsx` (claim Status Board). Inspiration reference: **ramp.com** — study it before touching a line of code.
+>
+> **Ramp design principles to steal:** Hero is a single bold statement + one CTA, not a paragraph. Product screenshots or motion, not bullets. Sections breathe — generous whitespace between blocks. Icons are custom/illustrated, not generic circles. Social proof is numbers, not testimonials. Every section earns its scroll.
+
+**Derrick's exact feedback (2026-06-17) — implement all of this:**
+
+### T1 — Calendar section: kill the text wall, add imagery
+Current: "Your calendar is full. The right things aren't getting done." + dense paragraph.
+Fix:
+- Keep the headline. Cut the body copy to ONE line — the sharpest version of the pain.
+- Add a visual: a mock calendar screenshot, a blurred/stylized calendar grid, or a subtle animation showing a chaotic week → a focused week. Something that shows rather than tells.
+- Ramp uses product screenshots with a slight shadow/glow — consider the same with a mock Edge dashboard or briefing transcript.
+
+### T2 — "Edge fixes your week in 5" → fix branding + add imagery
+- **BRANDING FIX:** "Edge" must always be spelled **"Edg3"** everywhere on the landing page (and anywhere public-facing). Find and replace all instances.
+- Headline expansion: "Edg3 fixes your week in 5 minutes every morning." — fuller, more concrete.
+- This section also needs imagery. Consider: a phone showing the call UI, a waveform, or an abstract visual of the morning call moment.
+
+### T3 — "Your daily readout" — tighten the copy
+Current: "Three things every morning." + a paragraph that's too long.
+Fix:
+- Keep: "Three things every morning." — love it.
+- Keep: "Most AI forgets. Edg3 remembers." — love it. Make this larger/bolder, it's the headline.
+- Cut: the paragraph below it. Replace with 2–3 short punchy lines max, or a feature list with no more than 6 words per line.
+
+### T4 — Icons: replace generic circles with meaningful icons
+Current: sections like "Your goals as they evolve" use plain circle icons.
+Fix:
+- Replace every generic circle/dot icon with a purposeful one. Not emoji — a consistent icon set (Lucide, Phosphor, or custom SVG).
+- "Goals" → target or compass icon. "Calendar" → calendar grid. "Memory" → brain or layers. "Energy" → lightning or heart-rate. "Daily call" → phone wave or microphone.
+- Icons should feel like they belong to Edg3's design language — dark-mode, slightly glowing, consistent stroke weight.
+- Reference: Ramp uses clean line icons with subtle brand-color fills. Same direction.
+
+### T5 — General: whitespace + breathing room
+- Every section currently runs into the next. Add more vertical padding between sections.
+- The page reads as one long scroll of text. The goal: each section should feel like a separate "moment" the user lands on.
+- Ramp uses a lot of negative space — the product feels premium because it's not crammed.
+
+**Files:** `app/page.tsx` (primary). May need new SVG icon components in `components/ui/`. Claim `app/page.tsx` in the Status Board before editing.
+
+**Do NOT change:** the overall section order, the waitlist form logic, or any API routes. Visual and copy changes only.
+
+---
 
 ## 📥 PM DISPATCH — 2026-06-18 (Data control onboarding screen — CASA requirement)
 

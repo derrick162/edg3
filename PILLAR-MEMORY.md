@@ -119,6 +119,14 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 - Semantic facts are stored with category `semantic` and carry a `source_episode_ids` reference
 - Test: insert 5 episodes with a shared theme, trigger consolidation, verify semantic fact is generated
 
+### M4-3b — Memory block versioning + rollback (Core)
+**The gap (Kevin):** Letta uses git-backed memory — every write is a commit, every bad extraction is a revert. Edge has no equivalent. A bad extraction run can overwrite accurate facts with no recovery path and no audit trail of when Edge learned something.
+- Extend `fact_history` (from M1-4) to be the versioned log: every fact write (insert or retire) appends a row with `{factId, statement, action: 'created'|'retired', at, source: 'extraction'|'manual'|'consolidation'}`
+- Add a `rollback_fact(factId, toVersion)` function: retire the current fact and restore the version from `fact_history`
+- In the "What Edge knows" UI: show "learned [date]" per fact. If a fact was updated, show "updated [date]" with an expand to see the previous version.
+- This enables: (a) Derrick can see when Edge learned something, (b) Vijay can roll back a bad extraction batch by reverting all facts inserted in a time window
+- Test: insert a fact, update it, verify `fact_history` has both versions, verify rollback restores the previous version
+
 ### M4-4 — Social mental models: per-person context (Core)
 **BLOCKED:** Gated on People-extraction cleanup merge (hallucinated contacts must be fixed first).
 - When unblocked: `people_models` table stores relationship state per person (goals, communication style, health score, last interaction, what they likely need from Derrick now)
@@ -129,6 +137,8 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 ---
 
 ## QA Checklist — run when pillar backlog is exhausted
+
+> **QA rule (Kevin):** When this backlog is exhausted, the lane writes and runs END-TO-END tests for each pillar item — not unit tests. Unit tests verify code. End-to-end tests verify the live path.
 
 Work through each item manually. Log result (pass/fail/partial) in `content/qa-log.md` with date and notes.
 
@@ -162,3 +172,9 @@ Work through each item manually. Log result (pass/fail/partial) in `content/qa-l
 - [ ] Is there anything Edge should know that it doesn't? Tell it on the next call
 - [ ] Is there anything Edge thinks it knows that's wrong? Delete or correct it
 - [ ] Does the briefing feel like it knows you, or does it feel generic? Note which sections feel weakest
+
+### ★ End-to-end smoke test — run this first, every time
+- [ ] **★ 7am live-path test:** trigger a call → say something new → verify transcript stored within 5 min → verify fact extracted and in `facts` table → verify NEXT MORNING's briefing references that fact. This is the single most important thing to verify. 1592 unit tests do NOT cover this path. If this fails, everything else is secondary.
+- [ ] Run `tests/e2e/call-to-briefing.test.ts` if it exists (Darren owns writing it — PILLAR-TRUST T0-3)
+- [ ] **Correction path:** say "actually X is Y now" on a call. Verify by next briefing the old fact is retired and the new one is active.
+- [ ] **Rollback path:** find a fact in `fact_history`, roll it back, verify the previous version is now active.

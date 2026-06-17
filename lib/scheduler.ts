@@ -4,7 +4,8 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, effectiveTimezone, User } from './db';
+import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
 
@@ -150,6 +151,74 @@ async function currentEnergyText(userId: number): Promise<string> {
   } catch { return ''; }
 }
 
+// ── Nightly context-pack pre-warmer (11pm UTC daily) ─────────────────────────
+// Assembles tomorrow's briefing context for each active user so morning calls
+// read a pre-warmed pack rather than running live queries. Activates automatically
+// once Core exports buildBriefingContextPack from lib/briefing.ts.
+export async function runNightlyContextPacks(now: Date = new Date()): Promise<void> {
+  const BriefingLib = await import('./briefing');
+  const buildContextPack = (BriefingLib as Record<string, unknown>)['buildBriefingContextPack'] as
+    ((userId: number) => Promise<string>) | undefined;
+
+  if (typeof buildContextPack !== 'function') {
+    console.log('[scheduler] buildBriefingContextPack not yet exported from lib/briefing — skipping nightly context pack prep');
+    return;
+  }
+
+  const db = getDb();
+  const users = db.prepare(`
+    SELECT * FROM users
+    WHERE onboarding_complete = 1
+    AND phone_number IS NOT NULL
+    AND call_time IS NOT NULL
+  `).all() as User[];
+
+  let built = 0;
+  for (const user of users) {
+    try {
+      const tz = effectiveTimezone(user);
+      // "Tomorrow" in the user's local timezone — the date the pack will prime.
+      const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+        .toLocaleDateString('en-CA', { timeZone: tz });
+
+      const contextPack = await buildContextPack(user.id);
+      briefingContextPackQueries.upsert(user.id, tomorrowLocal, contextPack);
+      built++;
+
+      // Only log pack details for users who've consented to improvement data.
+      if (!isPrivacyMode(user)) {
+        console.log(`[scheduler] Context pack ready for ${user.name} (${tomorrowLocal})`);
+      }
+    } catch (err) {
+      console.error(`[scheduler] Context pack failed for user ${user.id}:`, err);
+      backgroundJobFailureQueries.record('nightly_context_packs', user.id, String(err));
+    }
+  }
+
+  // Prune packs older than 7 days (runs alongside the pack build to stay clean).
+  try { briefingContextPackQueries.prune(); } catch (e) { console.error('[scheduler] context pack prune failed:', e); }
+  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built`);
+}
+
+// ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────
+// Decays confidence_score on active facts by category tier. Facts that decay below
+// 0.3 surface to Core's reconfirmation trigger during the next morning briefing.
+const VOLATILE_CATEGORIES = ['priorities', 'projects', 'current_focus'];
+const STABLE_CATEGORIES   = ['personality', 'working_style', 'relationships'];
+const VOLATILE_DECAY = 0.1;
+const STABLE_DECAY   = 0.02;
+
+export function decayFactConfidenceScores(): void {
+  try {
+    factQueries.decayByCategories(VOLATILE_CATEGORIES, VOLATILE_DECAY);
+    factQueries.decayByCategories(STABLE_CATEGORIES, STABLE_DECAY);
+    console.log('[scheduler] Weekly confidence decay applied');
+  } catch (e) {
+    console.error('[scheduler] Confidence decay failed:', e);
+    backgroundJobFailureQueries.record('decay_fact_confidence', null, String(e));
+  }
+}
+
 let schedulerRunning = false;
 
 export function startScheduler() {
@@ -168,7 +237,27 @@ export function startScheduler() {
     try { oauthStateQueries.prune(); } catch (e) { console.error('[scheduler] oauthStateQueries.prune failed:', e); }
     try { auditLogQueries.pruneEmailSubjects(); } catch (e) { console.error('[scheduler] pruneEmailSubjects failed:', e); }
     try { episodeQueries.pruneAll(); } catch (e) { console.error('[scheduler] episodeQueries.pruneAll failed:', e); }
+    try { failedWebhookQueries.prune(); } catch (e) { console.error('[scheduler] failedWebhookQueries.prune failed:', e); }
+    try { backgroundJobFailureQueries.prune(); } catch (e) { console.error('[scheduler] backgroundJobFailureQueries.prune failed:', e); }
     maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
+    // Health check: log warnings if any failures accumulated in the last 24h.
+    try {
+      const webhookFails = failedWebhookQueries.recentCount(24);
+      const jobFails = backgroundJobFailureQueries.recentCount(24);
+      if (webhookFails > 0) console.error(`[health] WARN: ${webhookFails} webhook(s) in dead-letter queue in last 24h — check Railway logs`);
+      if (jobFails > 0) console.error(`[health] WARN: ${jobFails} background job failure(s) in last 24h — check Railway logs`);
+    } catch (e) { console.error('[scheduler] daily health check failed:', e); }
+  });
+
+  // Nightly at 11pm UTC: pre-warm tomorrow's briefing context for all active users.
+  // Activates once Core exports buildBriefingContextPack from lib/briefing.ts.
+  cron.schedule('0 23 * * *', () => {
+    runNightlyContextPacks().catch(e => console.error('[scheduler] runNightlyContextPacks failed:', e));
+  });
+
+  // Weekly at 4am UTC every Sunday: decay confidence scores on active facts.
+  cron.schedule('0 4 * * 0', () => {
+    decayFactConfidenceScores();
   });
 
   console.log('EDG3 scheduler started');
@@ -229,6 +318,29 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       await scheduleBriefingCall(user.id);
     } catch (err) {
       console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
+    }
+  }
+
+  // DB-flagged retries: missed calls whose retry_after timestamp has now passed.
+  // This is the durable retry path — survives server restarts unlike the old in-memory setTimeout.
+  const pendingRetries = db.prepare(`
+    SELECT id, user_id FROM briefings
+    WHERE status = 'missed'
+    AND retry_attempted = 1
+    AND retry_after IS NOT NULL
+    AND retry_after <= datetime('now')
+  `).all() as Array<{ id: number; user_id: number }>;
+
+  for (const row of pendingRetries) {
+    try {
+      // Clear retry_after first so we don't double-fire on the next tick.
+      db.prepare('UPDATE briefings SET retry_after = NULL WHERE id = ?').run(row.id);
+      console.log(`[scheduler] Firing DB-flagged retry for briefing ${row.id} (user ${row.user_id})`);
+      await scheduleBriefingCall(row.user_id, { force: true });
+    } catch (err) {
+      console.error(`[scheduler] DB-flagged retry failed for briefing ${row.id} (user ${row.user_id}):`, err);
+      // Write to dead-letter queue — all retries exhausted for this briefing.
+      failedWebhookQueries.record(row.user_id, null, row.id, String(err));
     }
   }
 }

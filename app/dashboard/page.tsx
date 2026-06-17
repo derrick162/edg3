@@ -1728,7 +1728,7 @@ export default function Dashboard() {
                 body: n.body,
                 read: !!n.read,
                 createdAt: n.created_at,
-                actions: [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }],
+                actions: [],
               }))}
               onDismiss={() => {}}
             />

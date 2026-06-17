@@ -62,6 +62,12 @@ export const LIMITS = {
   onboardingCallTime:   { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (triggers Google Calendar API)
   profileUpdate:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (profile write + LLM prompt input)
   consentUpdate:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (privacy setting change)
+  calendarDisconnect:   { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (OAuth revocation)
+  whoopDisconnect:      { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (OAuth revocation)
+  calendarReminder:     { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (recurring calendar event set/remove)
+  profileTimezone:      { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (travel timezone override)
+  priorityEnergy:       { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (priority energy-cost tag)
+  milestoneWrite:       { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (milestone create/complete/delete)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

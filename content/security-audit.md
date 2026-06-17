@@ -89,8 +89,8 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `POST /api/calendar/book` | ✅ | **ADDED** 20/hr | title/date/time format | Idempotent (dedupe key); audited |
 | `GET /api/calendar/callback` | CSRF state | — | — | Rejects invalid/expired state; logs warning |
 | `GET /api/calendar/connect` | ✅ | — | — | Generates crypto CSRF state |
-| `POST /api/calendar/disconnect` | ✅ | — | — | |
-| `GET,DELETE,POST /api/calendar/reminder` | ✅ | — | — | Idempotent: removes before adding |
+| `POST /api/calendar/disconnect` | ✅ | **ADDED** 5/hr | — | Audited (ok + failure paths) |
+| `GET,DELETE,POST /api/calendar/reminder` | ✅ | **ADDED** 10/hr | — | Audited (reminderDelete, reminderCreate); idempotent: removes before adding |
 | `GET /api/calendar/status` | ✅ | — | — | |
 
 ### Day-Plan Routes
@@ -142,24 +142,24 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
 | `GET /api/milestones` | ✅ | — | — | User-scoped |
-| `PATCH /api/milestones/[id]` | ✅ | — | **FIXED** id: Number.isFinite + >0 | User-scoped |
-| `DELETE /api/milestones/[id]` | ✅ | — | **FIXED** id: Number.isFinite + >0 | User-scoped |
+| `PATCH /api/milestones/[id]` | ✅ | **ADDED** 60/hr | **FIXED** id: Number.isFinite + >0 | Audited (milestoneComplete / milestoneUncomplete); user-scoped |
+| `DELETE /api/milestones/[id]` | ✅ | **ADDED** 60/hr | **FIXED** id: Number.isFinite + >0 | Audited (milestoneDelete); user-scoped |
 
 ### Onboarding Routes
 
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
-| `POST /api/onboarding/call-time` | ✅ | — | **FIXED**: HH:MM format + isValidTimeZone + phone len | |
+| `POST /api/onboarding/call-time` | ✅ | ✅ 10/hr | **FIXED**: HH:MM format + isValidTimeZone + phone len | Audited (updateCallTime) |
 | `GET,POST /api/onboarding/priorities` | ✅ | **ADDED** 10/hr on POST | Array check; text trimmed | Writes priorities + memory + facts |
-| `POST /api/onboarding/profile` | ✅ | — | Trim + empty check | |
+| `POST /api/onboarding/profile` | ✅ | ✅ 5/hr | Trim + empty check | Audited (updateProfile) |
 | `GET /api/onboarding/suggest-priorities` | ✅ | **ADDED** 5/hr | — | LLM call; rate-limited to prevent cost abuse |
 
 ### Priorities Routes
 
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
-| `PATCH /api/priorities/[id]/energy` | ✅ | — | **FIXED** id: Number.isFinite + >0; energy_cost enum | User-scoped |
-| `GET,POST /api/priorities/[id]/milestones` | ✅ | — | **FIXED** id: Number.isFinite + >0 | User-scoped |
+| `PATCH /api/priorities/[id]/energy` | ✅ | **ADDED** 30/hr | **FIXED** id: Number.isFinite + >0; energy_cost enum | Audited (setEnergyTag); user-scoped |
+| `GET,POST /api/priorities/[id]/milestones` | ✅ | **ADDED** 60/hr on POST | **FIXED** id: Number.isFinite + >0 | Audited (milestoneCreate); user-scoped |
 | `POST /api/priorities/keep` | ✅ | **ADDED** 20/hr | — | |
 
 ### Profile Routes
@@ -167,7 +167,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | Route | Authn | RL | Validation | Notes |
 |---|---|---|---|---|
 | `GET,POST /api/profile` | ✅ | — | Trim + empty check | |
-| `POST /api/profile/timezone` | ✅ | — | **FIXED**: isValidTimeZone (was just `/` check) | |
+| `POST /api/profile/timezone` | ✅ | **ADDED** 20/hr | **FIXED**: isValidTimeZone (was just `/` check) | Audited (updateTimezone) |
 
 ### Tasks Routes
 
@@ -203,7 +203,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `GET /api/calendar/connect` | ✅ session | Generates crypto state |
 | `GET /api/whoop/callback` | CSRF state token | Same pattern |
 | `GET /api/whoop/connect` | ✅ session | |
-| `POST /api/whoop/disconnect` | ✅ session | |
+| `POST /api/whoop/disconnect` | ✅ session | **ADDED** 5/hr | Audited (whoopDisconnect; ok + failure paths) |
 | `GET /api/whoop/recovery` | ✅ session | User-scoped |
 | `GET /api/whoop/status` | ✅ session | User-scoped |
 
@@ -217,7 +217,7 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 
 ## Fixes Applied This Session
 
-### Rate Limit Additions (26 new limit types — flagship + Round 2/3)
+### Rate Limit Additions (32 new limit types — flagship + Round 2/3/4)
 
 | New Type | Limit | Applied To |
 |---|---|---|
@@ -237,6 +237,12 @@ All admin routes gated by `checkAdminAuth` (cookie HMAC) or `checkAdminSecretAut
 | `onboardingProfile` | 5/hr/user | `POST /api/onboarding/profile` |
 | `onboardingCallTime` | 10/hr/user | `POST /api/onboarding/call-time` |
 | `profileUpdate` | 10/hr/user | `POST /api/profile` |
+| `calendarDisconnect` | 5/hr/user | `POST /api/calendar/disconnect` — **Round 4** |
+| `whoopDisconnect` | 5/hr/user | `POST /api/whoop/disconnect` — **Round 4** |
+| `calendarReminder` | 10/hr/user | `DELETE,POST /api/calendar/reminder` — **Round 4** |
+| `profileTimezone` | 20/hr/user | `POST /api/profile/timezone` — **Round 4** |
+| `priorityEnergy` | 30/hr/user | `PATCH /api/priorities/[id]/energy` — **Round 4** |
+| `milestoneWrite` | 60/hr/user | `POST /api/priorities/[id]/milestones`, `PATCH,DELETE /api/milestones/[id]` — **Round 4** |
 
 ### Input Validation Fixes
 
@@ -299,7 +305,7 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 - **`memories.content` encrypted at rest (FIXED 2026-06-18):** Previously stored as plaintext — now encrypted via `encryptField` in `memoryQueries.create`; all read paths decrypted. Legacy plaintext rows pass through transparently on read (no migration needed).
 - **Consent helper:** `lib/consent.ts` — `isImproveConsented(user)` / `isPrivacyMode(user)`. Safe default: null/undefined consent → Privacy Mode (opt-IN required for improvement use). Ready for wiring once Core adds `users.data_consent` column.
 - **Memory authz:** `GET /api/memory` user-scoped to `user.id`; cross-user leakage tests confirm one user cannot read another's memories or facts.
-- **Test coverage:** 64 test files, 1362 tests (2026-06-18). Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout+consent. Lib-level: auth/JWT, crypto, idempotency, backup path traversal + table coverage (20 tables), vapi secret, consent helper.
+- **Test coverage:** 77 test files, 1501 tests (2026-06-18 Round 4). Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout+consent, support, calendar/disconnect, whoop/disconnect, profile/timezone, priorities/[id]/energy, priorities/[id]/milestones, milestones/[id]. Lib-level: auth/JWT, crypto, idempotency, backup path traversal + table coverage (20 tables), vapi secret, consent helper, db encryption (focus_milestones + support_messages).
 
 ### ⚠️ Known Gaps (Accepted / Tracked)
 
@@ -437,6 +443,17 @@ The `audit_log` table feeds Core's Activity tab and provides the security/compli
 | `POST /api/priorities/derive/accept` | `priorities_accepted` | **Added 2026-06-18** — Edge-proposed priorities accepted |
 | `POST /api/onboarding/priorities` | `priorities_set` | **Added 2026-06-18** — User sets/updates priorities |
 | `POST /api/open-loops` (resolve/dismiss/snooze) | `loop_resolve`, `loop_dismiss`, `loop_snooze` | **Added 2026-06-18** — Loop state changes |
+| `POST /api/onboarding/call-time` | `updateCallTime` | **Added Round 4** — includes phone-number-set flag (not value) |
+| `POST /api/onboarding/profile` | `updateProfile` | **Added Round 4** — content length logged, not raw text |
+| `POST /api/profile/timezone` | `updateTimezone` | **Added Round 4** |
+| `PATCH /api/priorities/[id]/energy` | `setEnergyTag` | **Added Round 4** |
+| `POST /api/priorities/[id]/milestones` | `milestoneCreate` | **Added Round 4** |
+| `PATCH /api/milestones/[id]` | `milestoneComplete` / `milestoneUncomplete` | **Added Round 4** |
+| `DELETE /api/milestones/[id]` | `milestoneDelete` | **Added Round 4** |
+| `DELETE /api/calendar/reminder` | `reminderDelete` | **Added Round 4** |
+| `POST /api/calendar/reminder` | `reminderCreate` | **Added Round 4** — failure path also logged |
+| `POST /api/calendar/disconnect` | `calendarDisconnect` | **Added Round 4** — ok + failure paths |
+| `POST /api/whoop/disconnect` | `whoopDisconnect` | **Added Round 4** — ok + failure paths |
 
 ### Intentionally NOT logged (with justification)
 
@@ -447,29 +464,30 @@ The `audit_log` table feeds Core's Activity tab and provides the security/compli
 | `POST /api/notifications` (markRead) | Read-state toggle — no user data is created or deleted. |
 | `POST /api/onboarding/consent` | Consent changes are now logged via `POST /api/auth/consent` (which is the settings-level endpoint with audit). Both routes call `setDataConsent`; the auth/consent route is the one with audit logging. |
 | `POST /api/priorities/keep` | Refreshes `week_of` timestamp only — no text changes. Cosmetic operation; no meaningful data change to audit. |
-| `PATCH /api/priorities/[id]/energy` | Energy-cost annotation — low-sensitivity tag change. |
-| `POST /api/priorities/[id]/milestones` | Sub-tasks of priorities. Low-risk creation; volume would dilute Activity tab. |
-| `PATCH,DELETE /api/milestones/[id]` | Same as above — milestone completion/deletion. |
-| `POST,DELETE /api/calendar/reminder` | Google Calendar setup operation. Edg3-managed recurring event, not a user data mutation. |
-| `POST /api/calendar/disconnect`, `/api/whoop/disconnect` | Connectivity changes. OAuth tokens are deleted; no user content data modified. |
 | `POST /api/energy/today` | Energy level log entry — informational, low-sensitivity. |
-| `POST /api/profile`, `/api/profile/timezone` | Profile meta-data updates. |
+| `POST /api/profile` | Full profile update — logged structurally (length only, not content) via `POST /api/onboarding/profile`. Identical DB path; no separate audit needed. |
 | `POST /api/briefing/**` (call triggers) | Operational voice-call initiation. The resulting briefing is already recorded in the `briefings` table. |
 | `POST /api/tasks`, `PATCH/DELETE /api/tasks/**` | Task lifecycle managed via the vapi tool-call path; those mutations ARE in audit_log. Web-side task endpoints are low-priority; task deletions are minor. |
 | `POST /api/support` | Support message submission — goes to the `support_messages` table, not user data. |
 | `POST /api/waitlist` | Public endpoint; pre-auth; not user data. |
 | Admin routes (`/api/admin/**`) | Operator-tier; gated by `checkAdminAuth`. Admin actions are tracked by `vapi_auth_log` and server logs, not the user-facing audit trail. |
 
-### Rate-limit coverage (Ticket 2 check)
+### Rate-limit coverage (Ticket 2 check — Round 4 update)
 
-New routes added since the Round 3 sweep: `/api/auth/consent`, `/api/onboarding/consent` (Core), `/api/scoreboard` (Core). Spot-check:
+New routes added since the Round 3 sweep: `/api/auth/consent`, `/api/onboarding/consent` (Core), `/api/scoreboard` (Core), and the routes closed in Round 4:
 
 | Route | Rate limit | Status |
 |---|---|---|
 | `POST /api/auth/consent` | `consentUpdate` 10/hr/user | ✅ Added this session |
 | `POST /api/onboarding/consent` | via Core's dispatch | ✅ Core added `onboardingConsent` RL key |
 | `GET /api/scoreboard` | — | ✅ Read-only; no rate limit needed |
-| `PATCH /api/milestones/[id]` | No rate limit | ⚠️ Low risk (authenticated, no external API calls) — acceptable for pre-beta |
+| `POST /api/calendar/disconnect` | `calendarDisconnect` 5/hr | ✅ **Added Round 4** |
+| `POST /api/whoop/disconnect` | `whoopDisconnect` 5/hr | ✅ **Added Round 4** |
+| `DELETE,POST /api/calendar/reminder` | `calendarReminder` 10/hr | ✅ **Added Round 4** |
+| `POST /api/profile/timezone` | `profileTimezone` 20/hr | ✅ **Added Round 4** |
+| `PATCH /api/priorities/[id]/energy` | `priorityEnergy` 30/hr | ✅ **Added Round 4** |
+| `POST /api/priorities/[id]/milestones` | `milestoneWrite` 60/hr | ✅ **Added Round 4** |
+| `PATCH,DELETE /api/milestones/[id]` | `milestoneWrite` 60/hr | ✅ **Added Round 4** |
 
 ---
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { userQueries } from '@/lib/db';
+import { userQueries, auditLogQueries } from '@/lib/db';
 import { resyncBriefingReminder } from '@/lib/calendar';
 import { isValidTimeZone } from '@/lib/time';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
   }
 
   userQueries.completeOnboarding(user.id);
+  auditLogQueries.record({
+    userId: user.id,
+    action: 'updateCallTime',
+    argsJson: JSON.stringify({ call_time, timezone, phone_number: phone_number ? '[set]' : undefined }),
+    ok: true,
+  });
 
   // Sync the recurring calendar reminder to the new call time — fire-and-forget.
   // Only updates if the user already has a reminder set up; never force-creates one.

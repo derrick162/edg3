@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, Briefing } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, Briefing, getDb } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
@@ -11,30 +11,12 @@ const MISSED_CALL_REASONS = [
   'pipeline-error', 'twilio-failed-to-connect-call',
 ];
 
-async function retryCall(briefingId: number, userId: number) {
-  try {
-    const { userQueries: uq } = await import('@/lib/db');
-    const user = uq.findById(userId);
-    if (!user?.phone_number) return;
-
-    console.log(`[webhook] Retrying call for user ${userId} in 10 minutes...`);
-    await new Promise(resolve => setTimeout(resolve, 10 * 60 * 1000));
-
-    const db = (await import('@/lib/db')).getDb();
-    const briefing = db.prepare('SELECT * FROM briefings WHERE id = ?').get(briefingId) as Briefing | undefined;
-    if (briefing?.status === 'completed') return; // user already got their call in the meantime
-
-    // Regenerate a FRESH briefing with the CURRENT time + full context (correct timezone,
-    // priorities, preferences, Whoop) rather than re-dialing the original. A retry that
-    // connects hours later must not read stale time-relative advice ("block 9:30–11:15" when
-    // it's now past), and must use the user's real timezone — the old re-dial defaulted to
-    // America/Vancouver and reused the original 9:30 script.
-    const { scheduleBriefingCall } = await import('@/lib/scheduler');
-    await scheduleBriefingCall(userId, { force: true });
-    console.log(`[webhook] Retry call initiated for user ${userId} (fresh briefing, full context)`);
-  } catch (err) {
-    console.error('[webhook] Retry failed:', err);
-  }
+// Schedule a retry by stamping retry_after in the DB. The minute-cron in lib/scheduler.ts
+// detects this and fires the retry call, so server restarts during the 10-minute window
+// do NOT drop the retry silently (the flag survives in the DB).
+function scheduleRetry(db: ReturnType<typeof getDb>, briefingId: number, userId: number) {
+  db.prepare("UPDATE briefings SET retry_after = datetime('now', '+10 minutes') WHERE id = ?").run(briefingId);
+  console.log(`[webhook] Retry stamped for briefing ${briefingId} (user ${userId}) — minute-cron fires in ~10 min`);
 }
 
 // Vapi webhook handler for call status updates
@@ -89,7 +71,7 @@ export async function POST(req: NextRequest) {
       if (wasMissed && !briefing.retry_attempted) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
-        retryCall(briefing.id, briefing.user_id); // fire and forget — waits 10 min then retries
+        scheduleRetry(db, briefing.id, briefing.user_id);
         return NextResponse.json({ received: true });
       }
 
@@ -121,9 +103,6 @@ export async function POST(req: NextRequest) {
       if (userResponse) {
         await analyzeUserResponse(briefing.user_id, userResponse);
       }
-
-      // Opportunistic durability: self-throttling daily DB snapshot (fire-and-forget).
-      import('@/lib/backup').then(m => m.maybeDailyBackup()).catch(() => {});
 
       // POST-CALL PROCESSING — simplified to three things only
       // All calendar changes happen LIVE via tool calling. Nothing here should touch the calendar.
@@ -218,7 +197,7 @@ export async function POST(req: NextRequest) {
       briefingQueries.update(briefing.id, { status: 'missed' });
       if (!briefing.retry_attempted) {
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
-        retryCall(briefing.id, briefing.user_id);
+        scheduleRetry(db, briefing.id, briefing.user_id);
       }
     }
 

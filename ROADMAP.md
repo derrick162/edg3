@@ -12,6 +12,13 @@
 >
 > Read this constitution, then read **only your own lane's roadmap**. Do not plan
 > from memory or from `docs/EDG3-Roadmap.xlsx` — **that spreadsheet is deprecated.**
+>
+> **The Edg3 Flywheel:** Daily Call → Memory → Trust → Daily Call → repeat. Every item in every roadmap and pillar serves one of these three. When in doubt about priority, ask: which pillar does this strengthen?
+>
+> **Three permanent pillars** (infinite fallback backlogs, ordered by flywheel sequence):
+> - 📞 **[`PILLAR-DAILY-CALL.md`](PILLAR-DAILY-CALL.md)** — connection reliability, briefing quality, OS framework (Phase 2)
+> - 🧠 **[`PILLAR-MEMORY.md`](PILLAR-MEMORY.md)** — storage, learning, retrieval, compounding
+> - 🔒 **[`PILLAR-TRUST.md`](PILLAR-TRUST.md)** — durability, accuracy, transparency, resilience
 
 We optimize for **speed through isolation**: each lane runs flat-out in its own
 worktree and branch, and integrates to `master` in small, frequent merges.
@@ -101,8 +108,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(🔧 **Round 5 DONE; starting trust bug fixes (focus audit dedup, goal dedup)** — ROUND 5 COMPLETE (1506 green): T1 bi-temporal, T2 sleep-time consolidation, T3 in-call triggers, T4 historical patterns. Now: BUG 1 focus-confirm dedup, BUG 2 goal dedup, score transparency.)_ | `app/api/focus/confirm/route.ts`, `lib/activityLabels.ts`, `lib/facts.ts` | 2026-06-18 |
-| 🔒 Security | `security` | _(✅ **MEMORY ENCRYPTION + CONSENT HELPER (1331 green)**: memories.content encrypted at rest (was plaintext — PII gap closed). lib/consent.ts built — isImproveConsented(user) safe-defaults to Privacy Mode. Memory authz tests (cross-user leakage). data-protection.md updated with memory moat + two-setting consent table. Awaiting PM dispatch.)_ | — | 2026-06-18 |
+| 🛠️ Core | `core` | _(✅ **M4 ACCOUNTABILITY MEMORY COMPLETE (1407 green, preflight clean)**: `lib/accountabilityMemory.ts` (pure: buildAccountabilitySnapshot + format + instruction) + `GET /api/accountability` + briefing ACCOUNTABILITY block + Memory tab "Past commitments" section. Previous: M2 Relationship Memory, M3 Pattern Memory. Awaiting PM merge.)_ | `lib/accountabilityMemory.ts`, `lib/briefing.ts`, `app/api/accountability/route.ts`, `app/dashboard/page.tsx` | 2026-06-18 |
+| 🔒 Security | `security` | _(✅ **PILLAR-TRUST T1-5+T3-4+T4-3 COMPLETE (1596 green)**: T1-5 rate limit sweep clean (37/37 routes protected); T4-3 WAL+busy_timeout confirmed; T3-4 BUG FIX — `briefing_context_packs` no CASCADE would block account deletion with foreign_keys=ON — fixed + 3 new tests. Awaiting PM merge.)_ | `app/api/account/route.ts`, `app/api/account/account.test.ts` | 2026-06-18 |
 | 🔧 PM | `master` | _(✅ **Round 6 dispatched — memory self-learning next wave.** Research on MemGPT/Letta/Zep → 6 theories → top 3 with Kevin. Dispatched to Vijay: predictive context loading (11pm pre-call prep job) + confidence decay schema. Dispatched to Darren: `buildBriefingContextPack` export, mid-call reconfirmation trigger, outcome-weighted memory (extends M4). Social mental models blocked on people-data cleanup. Full spec: `content/memory-research-applied.md`. ⚠️ Derrick action items: push to prod, Twilio follow-up, 5 design-partner names, CASA video.)_ | `content/**`, `ROADMAP*.md` | 2026-06-18 |
 | 🎨 Design | `design` | _(idle — ✅ **Episode timeline + memory health + voice selector**: episode section rebuilt as reverse-chronological timeline (date groups, source icons, topic chips, expandable commitments); memory health card surfaces stale >90-day facts with edit/dismiss; voice selector in ProfileTab (Daniel/Aria cards, graceful until Core wires API). 1407 green. Awaiting PM dispatch.)_ | `app/dashboard/page.tsx` | 2026-06-18 |
 
