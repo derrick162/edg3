@@ -3,6 +3,7 @@ import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQuer
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
+import { claimWebhookEvent } from '@/lib/idempotency';
 import Anthropic from '@anthropic-ai/sdk';
 
 // Reasons that indicate the user didn't answer — worth retrying
@@ -43,6 +44,14 @@ export async function POST(req: NextRequest) {
     if (!briefingRaw) return NextResponse.json({ received: true });
     // Decrypt PII columns at rest (transcript / user_response) before any use.
     const briefing = dbmod.decryptBriefingRow(briefingRaw);
+
+    // T4-4: Atomic idempotency gate — eliminates the TOCTOU race in the status-flag check.
+    // SQLite INSERT OR IGNORE is serialized within the DB; the second concurrent webhook
+    // for the same (callId, type) gets changes=0 and returns immediately.
+    if ((type === 'call-ended' || type === 'end-of-call-report') && !claimWebhookEvent(call.id, type)) {
+      console.log(`[webhook] Duplicate ${type} for call ${call.id} — skipped`);
+      return NextResponse.json({ received: true });
+    }
 
     if ((type === 'call-ended' || type === 'end-of-call-report') && briefing.status !== 'completed') {
       // Fetch full transcript from Vapi API — webhook payload often only has partial transcript

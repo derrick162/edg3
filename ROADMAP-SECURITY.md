@@ -217,6 +217,14 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T4-4 — Write-idempotency sweep (1672 green).**
+  - **Audit findings:** `createEvent/copyDayEvents` already protected by `event_dedupe_keys` (5-min TTL). `deleteEvent/cleanupEvents/cleanupDuplicates/applyCalendarPlan` protected by `delete_confirm_tokens`. `moveEvent/colorEvent/colorEventsByEnergy/draftEmail` unguarded — can double-execute on Vapi retry. Webhook end-of-call-report had a TOCTOU race in the `status !== 'completed'` check.
+  - **`webhook_dedup_keys` table** added to `lib/db.ts`: `(event_key TEXT PRIMARY KEY, processed_at)`. `webhookDedupeQueries.claim(eventKey)` uses atomic `INSERT OR IGNORE` — eliminates the TOCTOU race. Pruned at 24h via 3am cron.
+  - **`tool_call_dedup_keys` table** added: `(toolcall_id TEXT PRIMARY KEY, result TEXT, processed_at)`. `toolCallDedupeQueries.claim/recordResult/getCached/prune` exported from `lib/db.ts`. 10-minute TTL matches Vapi retry window.
+  - **`lib/idempotency.ts`** extended: `claimWebhookEvent(callId, type)` + `claimToolCall(toolCallId)` + `recordToolCallResult(toolCallId, result)` + `getToolCallCached(toolCallId)`. All fail open (never block on DB fault).
+  - **`app/api/vapi/webhook/route.ts`**: atomic `claimWebhookEvent` gate added before the soft `status !== 'completed'` check — duplicate retries return immediately.
+  - **`app/api/vapi/tool-call/route.ts`**: `claimToolCall` gate wraps `executeTool` for all tool calls with a Vapi toolCallId. Duplicate returns cached result (or in-flight message). `recordToolCallResult` writes result back for concurrent retries to consume.
+  - **Tests:** 10 new tests in `lib/idempotency.test.ts` covering `claimWebhookEvent`, `claimToolCall`, `recordToolCallResult`, `getToolCallCached` (first call, duplicate, fail-open). 86 test files / 1672 total.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC1-3 — Scheduled call time accuracy audit (1662 green).**
   - **Audit result:** calls fire within 0–60 seconds of scheduled time (cron granularity) + briefing generation overhead (typically 5–20s). The 120-minute grace window handles cold-starts correctly — if Railway restarts after call_time, the first cron tick fires the call within 1 minute of restart.
   - **Timing delta log added** to `checkAndInitiateCalls`: `[scheduler] Calling user X — scheduled HH:MM TZ, Nmin late (cold-start/missed-tick catch-up)` or `(on time)`. Visible in Railway logs.

@@ -5,14 +5,22 @@ const h = vi.hoisted(() => ({
   claim: vi.fn(() => true),
   issue: vi.fn(() => 'AB12CD34'),
   consume: vi.fn(() => true),
+  webhookClaim: vi.fn(() => true),
+  webhookPrune: vi.fn(),
+  tcClaim: vi.fn(() => true),
+  tcRecord: vi.fn(),
+  tcGetCached: vi.fn<() => string | null>(() => null),
+  tcPrune: vi.fn(),
 }));
 
 vi.mock('./db', () => ({
   eventDedupeQueries: { claim: h.claim },
   deleteConfirmQueries: { issue: h.issue, consume: h.consume },
+  webhookDedupeQueries: { claim: h.webhookClaim, prune: h.webhookPrune },
+  toolCallDedupeQueries: { claim: h.tcClaim, recordResult: h.tcRecord, getCached: h.tcGetCached, prune: h.tcPrune },
 }));
 
-import { buildEventDedupeKey, claimEventCreate, issueDeleteToken, consumeDeleteToken } from './idempotency';
+import { buildEventDedupeKey, claimEventCreate, issueDeleteToken, consumeDeleteToken, claimWebhookEvent, claimToolCall, recordToolCallResult, getToolCallCached } from './idempotency';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -113,5 +121,67 @@ describe('consumeDeleteToken', () => {
     h.consume.mockImplementation(() => { throw new Error('db fault'); });
     // A fault during token validation should DENY the delete, not allow it (fail closed).
     expect(consumeDeleteToken(1, 'any')).toBe(false);
+  });
+});
+
+// ── T4-4: claimWebhookEvent ──────────────────────────────────────────────────
+describe('claimWebhookEvent', () => {
+  it('returns true on first delivery (new event key)', () => {
+    h.webhookClaim.mockReturnValue(true);
+    expect(claimWebhookEvent('call_abc', 'end-of-call-report')).toBe(true);
+    expect(h.webhookClaim).toHaveBeenCalledWith('call_abc:end-of-call-report');
+  });
+
+  it('returns false on duplicate delivery (same callId + type)', () => {
+    h.webhookClaim.mockReturnValue(false);
+    expect(claimWebhookEvent('call_abc', 'end-of-call-report')).toBe(false);
+  });
+
+  it('scopes the key to callId+type so different types on same call are independent', () => {
+    claimWebhookEvent('call_xyz', 'call-ended');
+    expect(h.webhookClaim).toHaveBeenCalledWith('call_xyz:call-ended');
+  });
+
+  it('fails open — returns true if DB layer throws', () => {
+    h.webhookClaim.mockImplementation(() => { throw new Error('db fault'); });
+    expect(claimWebhookEvent('call_err', 'end-of-call-report')).toBe(true);
+  });
+});
+
+// ── T4-4: claimToolCall / recordToolCallResult / getToolCallCached ────────────
+describe('claimToolCall', () => {
+  it('returns true on first invocation (new toolCallId)', () => {
+    h.tcClaim.mockReturnValue(true);
+    expect(claimToolCall('tc_001')).toBe(true);
+    expect(h.tcClaim).toHaveBeenCalledWith('tc_001');
+  });
+
+  it('returns false on duplicate (same toolCallId — Vapi retry)', () => {
+    h.tcClaim.mockReturnValue(false);
+    expect(claimToolCall('tc_001')).toBe(false);
+  });
+
+  it('fails open — returns true if DB layer throws', () => {
+    h.tcClaim.mockImplementation(() => { throw new Error('db fault'); });
+    expect(claimToolCall('tc_err')).toBe(true);
+  });
+});
+
+describe('recordToolCallResult', () => {
+  it('delegates to the DB layer with toolCallId and result', () => {
+    recordToolCallResult('tc_001', 'Created event "Lunch" at 12:00');
+    expect(h.tcRecord).toHaveBeenCalledWith('tc_001', 'Created event "Lunch" at 12:00');
+  });
+});
+
+describe('getToolCallCached', () => {
+  it('returns the cached result when available', () => {
+    h.tcGetCached.mockReturnValue('Moved "Gym" to 7am');
+    expect(getToolCallCached('tc_001')).toBe('Moved "Gym" to 7am');
+  });
+
+  it('returns null when no cached result exists (first call still in flight)', () => {
+    h.tcGetCached.mockReturnValue(null);
+    expect(getToolCallCached('tc_002')).toBeNull();
   });
 });

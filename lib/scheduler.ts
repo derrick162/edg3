@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -292,6 +292,8 @@ export function startScheduler() {
     try { episodeQueries.pruneAll(); } catch (e) { console.error('[scheduler] episodeQueries.pruneAll failed:', e); }
     try { failedWebhookQueries.prune(); } catch (e) { console.error('[scheduler] failedWebhookQueries.prune failed:', e); }
     try { backgroundJobFailureQueries.prune(); } catch (e) { console.error('[scheduler] backgroundJobFailureQueries.prune failed:', e); }
+    try { webhookDedupeQueries.prune(); } catch (e) { console.error('[scheduler] webhookDedupeQueries.prune failed:', e); }
+    try { toolCallDedupeQueries.prune(); } catch (e) { console.error('[scheduler] toolCallDedupeQueries.prune failed:', e); }
     maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
     // Health check: log warnings if any failures accumulated in the last 24h.
     try {

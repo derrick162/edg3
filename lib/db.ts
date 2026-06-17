@@ -197,6 +197,23 @@ function initSchema(db: Database.Database) {
       used INTEGER NOT NULL DEFAULT 0
     );
 
+    -- T4-4 — Webhook-level idempotency gate. Prevents double-processing when Vapi retries
+    -- the same end-of-call-report. event_key = "<callId>:<type>". INSERT OR IGNORE is atomic
+    -- in SQLite — eliminates the TOCTOU race in the status-flag check. Pruned at 24h via 3am cron.
+    CREATE TABLE IF NOT EXISTS webhook_dedup_keys (
+      event_key    TEXT PRIMARY KEY,
+      processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- T4-4 — Tool-call idempotency gate. Prevents double-execution of mutations when Vapi
+    -- retries a tool call after a transient timeout. toolcall_id comes from Vapi's toolCallList[i].id.
+    -- result is stored so concurrent retries can return the same response. Pruned at 10min via 3am cron.
+    CREATE TABLE IF NOT EXISTS tool_call_dedup_keys (
+      toolcall_id  TEXT PRIMARY KEY,
+      result       TEXT NOT NULL DEFAULT '',
+      processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Day-1 preview briefing — generated once on first dashboard load after onboarding.
     -- UNIQUE on user_id ensures a single preview per user; INSERT OR IGNORE handles races.
     CREATE TABLE IF NOT EXISTS preview_briefings (
@@ -1106,6 +1123,43 @@ export const deleteConfirmQueries = {
       db.prepare('UPDATE delete_confirm_tokens SET used = 1 WHERE token = ?').run(token);
       return true;
     })();
+  },
+};
+
+// T4-4 — Webhook-level idempotency (prevents double-processing on Vapi webhook retries).
+export const webhookDedupeQueries = {
+  claim: (eventKey: string): boolean => {
+    try {
+      const r = getDb().prepare('INSERT OR IGNORE INTO webhook_dedup_keys (event_key) VALUES (?)').run(eventKey);
+      return r.changes === 1; // true = first occurrence, false = duplicate
+    } catch { return true; } // fail open — never block webhook processing on a DB fault
+  },
+  prune: (): void => {
+    getDb().prepare("DELETE FROM webhook_dedup_keys WHERE processed_at < datetime('now', '-24 hours')").run();
+  },
+};
+
+// T4-4 — Tool-call idempotency (prevents double-execution on Vapi retry storms).
+export const toolCallDedupeQueries = {
+  claim: (toolCallId: string): boolean => {
+    try {
+      const r = getDb().prepare('INSERT OR IGNORE INTO tool_call_dedup_keys (toolcall_id) VALUES (?)').run(toolCallId);
+      return r.changes === 1; // true = new, false = duplicate
+    } catch { return true; } // fail open
+  },
+  recordResult: (toolCallId: string, result: string): void => {
+    try {
+      getDb().prepare('UPDATE tool_call_dedup_keys SET result = ? WHERE toolcall_id = ?').run(result.slice(0, 2000), toolCallId);
+    } catch { /* non-critical */ }
+  },
+  getCached: (toolCallId: string): string | null => {
+    try {
+      const row = getDb().prepare('SELECT result FROM tool_call_dedup_keys WHERE toolcall_id = ?').get(toolCallId) as { result: string } | undefined;
+      return row && row.result ? row.result : null;
+    } catch { return null; }
+  },
+  prune: (): void => {
+    getDb().prepare("DELETE FROM tool_call_dedup_keys WHERE processed_at < datetime('now', '-10 minutes')").run();
   },
 };
 

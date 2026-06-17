@@ -57,6 +57,8 @@ vi.mock('./db', () => ({
   callAttemptQueries: { record: vi.fn(), failedCount: vi.fn(() => 0), getRecent: vi.fn(() => []), prune: vi.fn() },
   calendarQueries: { get: vi.fn(), recordAuthFailure: vi.fn(), clearAuthFailures: vi.fn(), needsReconnect: vi.fn(() => false) },
   notificationQueries: { create: vi.fn() },
+  webhookDedupeQueries: { claim: vi.fn(() => true), prune: vi.fn() },
+  toolCallDedupeQueries: { claim: vi.fn(() => true), recordResult: vi.fn(), getCached: vi.fn(() => null), prune: vi.fn() },
   briefingContextPackQueries: { upsert: vi.fn(), prune: vi.fn() },
   episodeQueries: { pruneAll: vi.fn() },
   openLoopQueries: { prune: vi.fn() },
