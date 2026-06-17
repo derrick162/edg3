@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // ── Types (contract with Core — matches lib/calendarPlan.ts output) ───────────
 
@@ -62,6 +62,31 @@ function scoreDeltaColor(delta: number): string {
 
 // ── DayPlanCard ───────────────────────────────────────────────────────────────
 
+function useScoreTicker(target: number, trigger: string | undefined): number {
+  const [displayed, setDisplayed] = useState(target);
+  const rafRef = useRef<number>(0);
+  useEffect(() => {
+    setDisplayed(prev => {
+      const start = prev;
+      const end = target;
+      if (start === end) return end;
+      const duration = 700;
+      const t0 = performance.now();
+      function tick(now: number) {
+        const p = Math.min(1, (now - t0) / duration);
+        const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        setDisplayed(Math.round(start + (end - start) * eased));
+        if (p < 1) rafRef.current = requestAnimationFrame(tick);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+      return start;
+    });
+    return () => cancelAnimationFrame(rafRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger]);
+  return displayed;
+}
+
 export function DayPlanCard({
   plan,
   loading = false,
@@ -73,6 +98,7 @@ export function DayPlanCard({
 }: DayPlanCardProps) {
   const [confirming, setConfirming] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const animatedAfter = useScoreTicker(plan?.scoreAfter ?? 0, plan?.planId);
 
   async function handleConfirm() {
     if (!plan) return;
@@ -246,36 +272,42 @@ export function DayPlanCard({
         )}
       </div>
 
-      {/* Diagnoses — why this plan is needed */}
+      {/* Diagnoses — insight bullets, not error flags */}
       {diagnoses && diagnoses.length > 0 && (
-        <div className="mt-3 mb-1 space-y-1">
+        <div className="mt-3 mb-1 space-y-1.5">
           {diagnoses.map((d, i) => (
             <div
               key={i}
-              className="flex items-start gap-2 px-3 py-1.5 rounded-lg"
-              style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)' }}
+              className="flex items-start gap-2.5 px-3 py-2 rounded-lg"
+              style={{ background: 'var(--edg-accent-04)', border: '1px solid var(--edg-accent-08)' }}
             >
-              <span className="flex-shrink-0 text-xs font-bold mt-0.5" style={{ color: 'var(--edg-danger)' }}>!</span>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{d}</p>
+              <span className="flex-shrink-0 text-xs mt-0.5" style={{ color: 'var(--text-accent)', opacity: 0.7 }}>◆</span>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{d}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Score delta preview */}
+      {/* Score delta — animated reveal */}
       <div className="flex items-center gap-3 mb-4 mt-3">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
-          <span className="text-sm font-black tabular-nums" style={{ color: 'var(--text-faint)' }}>
+        <div
+          className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+          style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}
+        >
+          <span className="text-lg font-black tabular-nums leading-none" style={{ color: 'var(--text-faint)' }}>
             {plan.scoreBefore}
           </span>
-          <span className="text-xs" style={{ color: 'var(--text-faint)' }}>→</span>
+          <span className="text-sm" style={{ color: 'var(--text-faint)' }}>→</span>
           <span
-            className="text-sm font-black tabular-nums"
+            className="text-2xl font-black tabular-nums leading-none"
             style={{ color: scoreDeltaColor(delta) }}
           >
-            {plan.scoreAfter}
+            {animatedAfter}
           </span>
-          <span className="text-xs font-semibold" style={{ color: scoreDeltaColor(delta) }}>
+          <span
+            className="text-xs font-bold px-1.5 py-0.5 rounded-md"
+            style={{ background: `${scoreDeltaColor(delta)}18`, color: scoreDeltaColor(delta) }}
+          >
             +{delta}
           </span>
         </div>

@@ -486,6 +486,7 @@ function ActivityTab() {
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [receiptSubjects, setReceiptSubjects] = useState<Record<number, string[] | 'loading' | null>>({});
 
   async function load() {
     setLoading(true);
@@ -513,6 +514,17 @@ function ActivityTab() {
     } else {
       setUndoError(d.error || 'Could not undo — please check your calendar.');
       setTimeout(() => setUndoError(null), 4000);
+    }
+  }
+
+  async function fetchReceipt(id: number) {
+    setReceiptSubjects(prev => ({ ...prev, [id]: 'loading' }));
+    try {
+      const r = await fetch(`/api/activity/email-receipt/${id}`);
+      const d = r.ok ? await r.json().catch(() => ({})) : {};
+      setReceiptSubjects(prev => ({ ...prev, [id]: d.subjects ?? null }));
+    } catch {
+      setReceiptSubjects(prev => ({ ...prev, [id]: null }));
     }
   }
 
@@ -631,7 +643,14 @@ function ActivityTab() {
                       <div
                         className="px-4 py-3 flex items-center gap-3"
                         style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-                        onClick={() => hasDetail && setExpandedId(isExpanded ? null : item.id)}
+                        onClick={() => {
+                          if (!hasDetail) return;
+                          const next = !isExpanded;
+                          setExpandedId(next ? item.id : null);
+                          if (next && isInboxRead(item) && receiptSubjects[item.id] === undefined) {
+                            fetchReceipt(item.id);
+                          }
+                        }}
                         role={hasDetail ? 'button' : undefined}
                         aria-expanded={hasDetail ? isExpanded : undefined}
                       >
@@ -708,25 +727,27 @@ function ActivityTab() {
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
                         >
-                          {/* Inbox receipt — subjects list */}
+                          {/* Inbox receipt — fetched subjects from S4 endpoint */}
                           {isInboxRead(item) && (() => {
-                            const subjects = item.detail?.sections.filter(s => s.label.toLowerCase().includes('subject') || s.label.toLowerCase().includes('thread')) ?? [];
+                            const fetched = receiptSubjects[item.id];
                             return (
                               <div className="mt-3">
                                 <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)' }}>
                                   THREADS EDGE REVIEWED
                                 </p>
-                                {subjects.length > 0 ? (
+                                {fetched === 'loading' ? (
+                                  <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>Loading…</p>
+                                ) : fetched && fetched.length > 0 ? (
                                   <div className="space-y-1">
-                                    {subjects.map((s, i) => (
+                                    {fetched.map((subject, i) => (
                                       <p key={i} className="text-xs px-2 py-1.5 rounded" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)', borderLeft: '2px solid var(--edg-hairline)' }}>
-                                        {s.value}
+                                        {subject}
                                       </p>
                                     ))}
                                   </div>
                                 ) : (
                                   <p className="text-xs italic" style={{ color: 'var(--text-faint)' }}>
-                                    Subject details will appear here once Core wires the data.
+                                    No subject details available.
                                   </p>
                                 )}
                               </div>
