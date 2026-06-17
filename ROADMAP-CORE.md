@@ -449,6 +449,9 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-DAILY-CALL DC0-1b — after-call memory audit: due date extraction fix.**
+  - `app/api/vapi/webhook/route.ts` `extractTasksFromTranscript`: previously hardcoded all commitment tasks to "tomorrow." Now extracts explicit due dates from the transcript ("by Friday", "this week", "next week") and resolves them to YYYY-MM-DD. Return format changed from `string[]` to `{text, dueDate}[]`. Validation falls back to tomorrow if date is malformed. People + goal extraction already correct in `lib/facts.ts` extraction prompt.
+  - 1652/1652 green, tsc clean, next build clean.
 - **2026-06-18** — **Round 6 T1 + PILLAR-DAILY-CALL DC2-0/DC2-1/DC2-3/DC2-3b — context pack + briefing quality.**
   - **Round 6 T1 — `buildBriefingContextPack(userId)` exported** (`lib/briefing.ts`): New async export collects stable personal context (priorities, salient facts by category, Whoop snapshot, accountability block, open loops, episode memory, weighted memories) and returns it as a labeled string. Calendar events excluded — time-sensitive, must be fetched live. The 11pm scheduler's `runNightlyContextPacks` was already wired and dynamically imports this fn — it activates automatically now that the export exists. 1652/1652 green.
   - **DC2-3b — Whoop timing log + "connected but unavailable" acknowledgment** (`lib/briefing.ts`): Added timing log `{whoopFetchMs, recoveryNull, sleepNull, strainNull}` after the main parallel fetch. Added `hasWhoopConnected(userId)` check — if Whoop is connected but data came back null, briefs Edge to acknowledge once in Part 1 ("Your Whoop data didn't come through this morning — I'll keep trying") rather than silently skipping. Import: `hasWhoopConnected` added to whoop import.
