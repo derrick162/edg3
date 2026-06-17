@@ -61,6 +61,7 @@ export type ActivityItem = {
   undoId: number | null;
   undoLabel: string | null;
   undone: number | null; // null = no undo entry; 0 = available; 1 = already undone
+  emailReceiptId?: number | null; // set for email_signal_fetch items; used to load subjects
 };
 
 // ── Label ────────────────────────────────────────────────────────────────────
@@ -146,6 +147,16 @@ export function buildLabel(
       const title = trunc(str(args.title), 40);
       const color = str(args.color);
       return title ? `Colored '${title}'${color ? ` · ${color}` : ''}` : 'Colored event';
+    }
+
+    case 'email_signal_fetch': {
+      const count = typeof args.threadCount === 'number' ? args.threadCount : null;
+      return count !== null ? `Reviewed ${count} inbox threads` : 'Reviewed inbox';
+    }
+
+    case 'applyDayPlan': {
+      const count = typeof args.actionCount === 'number' ? args.actionCount : null;
+      return count !== null ? `Applied day plan · ${count} calendar change${count !== 1 ? 's' : ''}` : 'Applied day plan';
     }
 
     case 'setMyTimezone':
@@ -288,6 +299,23 @@ export function buildDetail(
       return sections.length ? { sections } : null;
     }
 
+    case 'email_signal_fetch': {
+      const count = typeof args.threadCount === 'number' ? args.threadCount : null;
+      const days = typeof args.days === 'number' ? args.days : null;
+      if (count !== null) sections.push({ label: 'Threads reviewed', value: String(count) });
+      if (days !== null) sections.push({ label: 'Window', value: `Last ${days} days` });
+      // Note: subjects are loaded separately via GET /api/activity/email-receipt/[id].
+      sections.push({ label: 'Detail', value: 'Expand to see which emails Edge reviewed.' });
+      return sections.length ? { sections } : null;
+    }
+
+    case 'applyDayPlan': {
+      const count = typeof args.actionCount === 'number' ? args.actionCount : null;
+      if (count !== null) sections.push({ label: 'Changes', value: `${count} calendar action${count !== 1 ? 's' : ''}` });
+      if (resultText) sections.push({ label: 'Actions', value: trunc(resultText, 300) });
+      return sections.length ? { sections } : null;
+    }
+
     default:
       if (resultText) return { sections: [{ label: 'Result', value: trunc(resultText, 400) }] };
       return null;
@@ -315,9 +343,20 @@ export function buildActivityItems(
   limit = 50,
 ): ActivityItem[] {
   const usedUndoIds = new Set<number>();
+  // Collapse repeated email_signal_fetch entries: keep only the most recent per UTC day.
+  const seenEmailFetchDays = new Set<string>();
 
-  return auditRows
-    .filter(ar => !READ_ONLY_ACTIONS.has(ar.action) && ar.ok === 1)
+  const filtered = auditRows.filter(ar => {
+    if (!ar.ok || READ_ONLY_ACTIONS.has(ar.action)) return false;
+    if (ar.action === 'email_signal_fetch') {
+      const day = ar.created_at.slice(0, 10); // UTC date YYYY-MM-DD
+      if (seenEmailFetchDays.has(day)) return false;
+      seenEmailFetchDays.add(day);
+    }
+    return true;
+  });
+
+  return filtered
     .map(ar => {
       const arMs = new Date(ar.created_at).getTime();
       let matched: UndoInput | null = null;
@@ -339,6 +378,7 @@ export function buildActivityItems(
         undoId: matched?.id ?? null,
         undoLabel: matched?.label ?? null,
         undone: matched ? matched.undone : null,
+        emailReceiptId: ar.action === 'email_signal_fetch' ? ar.id : null,
       };
     })
     .slice(0, limit);

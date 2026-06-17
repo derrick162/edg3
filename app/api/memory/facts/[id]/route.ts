@@ -25,7 +25,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   factQueries.updateFact(user.id, id, statement.trim(), entity ?? null);
-  return NextResponse.json({ success: true });
+  // Return the updated fact so the caller can reflect the change without a full refetch.
+  // updateFact also clears confidence → 'high' (removes the ⚠ verify flag).
+  const updated = factQueries.getById(user.id, id);
+  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  return NextResponse.json({ ok: true, fact: updated });
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
@@ -37,5 +42,5 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!id) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
   factQueries.deleteFact(user.id, id);
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

@@ -1313,9 +1313,17 @@ export const factQueries = {
   },
 
   updateFact: (userId: number, id: number, statement: string, entity: string | null): void => {
+    // User-initiated edits always clear the ⚠ verify flag (confidence → 'high').
     getDb().prepare(
-      "UPDATE facts SET statement=?, entity=?, learned_at=datetime('now') WHERE id=? AND user_id=?"
+      "UPDATE facts SET statement=?, entity=?, confidence='high', learned_at=datetime('now') WHERE id=? AND user_id=?"
     ).run(encryptField(statement), entity, id, userId);
+  },
+
+  getById: (userId: number, id: number): Fact | null => {
+    const row = getDb().prepare(
+      'SELECT * FROM facts WHERE id=? AND user_id=?'
+    ).get(id, userId) as Fact | undefined;
+    return row ? decryptFactRow(row) : null;
   },
 
   deleteFact: (userId: number, id: number): void => {
