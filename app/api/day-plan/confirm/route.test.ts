@@ -48,11 +48,20 @@ vi.mock('@/lib/db', () => ({
   priorityQueries: { getMostRecent: () => [] },
   calendarQueries: { get: () => h.calendarToken },
   calendarScoreQueries: { upsert: vi.fn() },
-  effectiveTimezone: (profile: unknown) => 'UTC',
+  effectiveTimezone: () => 'UTC',
   auditLogQueries: { record: (...args: unknown[]) => { h.auditRecordArgs.push(args); } },
-  calendarPlanQueries: {
-    markApplied: (...args: unknown[]) => { h.markAppliedArgs.push(args); },
-  },
+  calendarPlanQueries: { markApplied: (...args: unknown[]) => { h.markAppliedArgs.push(args); } },
+  openLoopQueries: { list: () => [] },
+  whoopQueries: { get: () => null },
+  factQueries: { getAll: () => [] },
+  memoryQueries: { getRecent: () => [] },
+  briefingQueries: { getRecent: () => [] },
+  dailyFocusQueries: { getToday: () => null },
+  getDb: () => ({ prepare: () => ({ get: () => ({ n: 0 }) }) }),
+}));
+
+vi.mock('@/lib/streak', () => ({
+  computeCallStreak: () => 0,
 }));
 
 vi.mock('@/lib/calendar', () => ({
