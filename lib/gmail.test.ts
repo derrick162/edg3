@@ -8,6 +8,7 @@ const h = vi.hoisted(() => {
   const messagesSend = vi.fn(); // must NEVER be called — draft-only guarantee
   const threadsGet = vi.fn(async () => ({ data: { messages: [] } }));
   const threadsList = vi.fn(async () => ({ data: { threads: [] } }));
+  const dbGet = vi.fn<() => unknown>(() => undefined);
   return {
     draftsCreate,
     draftsDelete,
@@ -20,11 +21,15 @@ const h = vi.hoisted(() => {
     logDraft: vi.fn(),
     auditRecord: vi.fn(),
     oauthClient: { setCredentials: vi.fn(), on: vi.fn() },
+    dbGet,
   };
 });
 
 vi.mock('./calendar', () => ({ getOAuthClient: () => h.oauthClient }));
 vi.mock('./db', () => ({
+  getDb: () => ({
+    prepare: (_sql: string) => ({ get: h.dbGet }),
+  }),
   calendarQueries: { get: h.calGet, upsert: h.upsert },
   gmailQueries: { countSince: h.countSince, logDraft: h.logDraft },
   auditLogQueries: { record: h.auditRecord },
@@ -41,7 +46,7 @@ vi.mock('googleapis', () => ({
   },
 }));
 
-import { createDraft, deleteDraft, userHasGmailScope, readThread, getRecentEmailSignal, GmailScopeError, GmailRateLimitError } from './gmail';
+import { createDraft, deleteDraft, userHasGmailScope, readThread, getRecentEmailSignal, getEmailSignalSubjects, GmailScopeError, GmailRateLimitError } from './gmail';
 
 const WITH_GMAIL = { access_token: 'a', refresh_token: 'r', expiry: null, scope: GOOGLE_SCOPES.join(' ') };
 const CAL_ONLY = { access_token: 'a', refresh_token: 'r', expiry: null, scope: CALENDAR_SCOPES.join(' ') };
@@ -337,25 +342,45 @@ describe('getRecentEmailSignal (email prioritization signal)', () => {
     expect(result.items[0].threadId).toBe('th_ok');
   });
 
-  it('records an audit entry with thread count but no email content', async () => {
+  it('records an audit entry: threadCount in argsJson, subjects encrypted in snapshotAfter, never in argsJson', async () => {
     h.calGet.mockReturnValue(WITH_GMAIL);
     h.threadsList.mockResolvedValue({
-      data: { threads: [{ id: 'th_1', snippet: 'Test' }] },
+      data: { threads: [{ id: 'th_1', snippet: 'Test snippet' }] },
     } as any);
     h.threadsGet.mockResolvedValue({
-      data: { messages: [{ id: 'm1', labelIds: [], payload: { headers: [] } }] },
+      data: {
+        messages: [{
+          id: 'm1', labelIds: [], payload: {
+            headers: [{ name: 'Subject', value: 'Important update' }],
+          },
+        }],
+      },
     } as any);
 
     await getRecentEmailSignal(1, { days: 7 });
     expect(h.auditRecord).toHaveBeenCalledOnce();
-    const entry = h.auditRecord.mock.calls[0][0];
+    const entry = h.auditRecord.mock.calls[0][0] as Record<string, unknown>;
     expect(entry.action).toBe('email_signal_fetch');
-    const args = JSON.parse(entry.argsJson);
+    const args = JSON.parse(entry.argsJson as string) as Record<string, unknown>;
     expect(args.days).toBe(7);
     expect(args.threadCount).toBe(1);
-    // The audit entry must NOT contain any email content
+    // argsJson must NEVER contain email content
     expect(entry.argsJson).not.toContain('snippet');
     expect(entry.argsJson).not.toContain('subject');
+    expect(entry.argsJson).not.toContain('Important');
+    // Subjects stored in snapshotAfter (encrypted — or plaintext in test env without DATA_ENCRYPTION_KEY)
+    expect(entry.snapshotAfter).toBeTruthy();
+    const snap = JSON.parse(entry.snapshotAfter as string) as { subjects: string[] };
+    expect(snap.subjects).toContain('Important update');
+  });
+
+  it('sets snapshotAfter to null when no threads are returned', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+
+    await getRecentEmailSignal(1, { days: 7 });
+    const entry = h.auditRecord.mock.calls[0][0] as Record<string, unknown>;
+    expect(entry.snapshotAfter).toBeNull();
   });
 
   it('caps max threads at EMAIL_SIGNAL_CAP (50) regardless of opts.max', async () => {
@@ -374,5 +399,52 @@ describe('getRecentEmailSignal (email prioritization signal)', () => {
     expect(h.threadsList).toHaveBeenCalledWith(expect.objectContaining({
       labelIds: ['INBOX'],
     }));
+  });
+});
+
+// ── getEmailSignalSubjects ────────────────────────────────────────────────────
+
+describe('getEmailSignalSubjects', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns subjects from a valid email_signal_fetch audit entry', () => {
+    const payload = JSON.stringify({ subjects: ['Invoice due', 'Meeting tomorrow'] });
+    h.dbGet.mockReturnValue({ snapshot_after: payload });
+    const result = getEmailSignalSubjects(1, 42);
+    expect(result).toEqual(['Invoice due', 'Meeting tomorrow']);
+  });
+
+  it('returns null when the audit entry does not exist (wrong user or ID)', () => {
+    h.dbGet.mockReturnValue(undefined);
+    expect(getEmailSignalSubjects(1, 999)).toBeNull();
+  });
+
+  it('returns null when snapshot_after is null (no threads were reviewed)', () => {
+    h.dbGet.mockReturnValue({ snapshot_after: null });
+    expect(getEmailSignalSubjects(1, 10)).toBeNull();
+  });
+
+  it('returns null when snapshot_after is malformed JSON', () => {
+    h.dbGet.mockReturnValue({ snapshot_after: 'not-valid-json' });
+    expect(getEmailSignalSubjects(1, 10)).toBeNull();
+  });
+
+  it('returns null when subjects field is missing from the parsed object', () => {
+    h.dbGet.mockReturnValue({ snapshot_after: JSON.stringify({ other: 'data' }) });
+    expect(getEmailSignalSubjects(1, 10)).toBeNull();
+  });
+
+  it('filters out non-string entries in the subjects array', () => {
+    const payload = JSON.stringify({ subjects: ['Good subject', 42, null, 'Another'] });
+    h.dbGet.mockReturnValue({ snapshot_after: payload });
+    const result = getEmailSignalSubjects(1, 10);
+    expect(result).toEqual(['Good subject', 'Another']);
+  });
+
+  it('passes userId and auditId to the DB query (user-scoped, no cross-user)', () => {
+    h.dbGet.mockReturnValue(undefined);
+    getEmailSignalSubjects(7, 123);
+    // h.dbGet is called by prepare(...).get(id, userId)
+    expect(h.dbGet).toHaveBeenCalledWith(123, 7);
   });
 });

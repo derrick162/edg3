@@ -50,6 +50,19 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **S4 Activity email receipts — encrypted subject storage + read path (1045 green).**
+  - **Decision:** store reviewed thread subjects encrypted at rest on the `email_signal_fetch` audit entry so users can see exactly which emails Edge reviewed in the Activity tab. No schema change — repurposes the existing `audit_log.snapshot_after` column (already TEXT, already used for calendar state). Subjects stored as `{"subjects":[...]}` JSON encrypted with `encryptField` (AES-256-GCM). Bodies, senders, and snippets are never stored.
+  - **`lib/gmail.ts` changes:**
+    - Added `getDb`, `auditLogQueries`, `encryptField`, `decryptField` imports.
+    - `getRecentEmailSignal`: `auditLogQueries.record()` call updated — `snapshotAfter` now stores `encryptField(JSON.stringify({ subjects: items.map(i => i.subject) }))` when threads exist, `null` when no threads. `argsJson` unchanged (thread count only — no subjects in plaintext anywhere).
+    - New exported `getEmailSignalSubjects(userId, auditId): string[] | null` — user-scoped read (`WHERE id = ? AND user_id = ? AND action = 'email_signal_fetch'`), decrypts + parses on read, fails silently (returns null) on any error (missing row, wrong user, bad JSON, key rotation). Core calls this via the new API endpoint.
+  - **`app/api/activity/email-receipt/[id]/route.ts`** (new) — `GET` handler for Core to fetch subjects for a given audit entry. Auth-gated (`getSession`), validates numeric id ≥ 1, returns 401/400/404/200. `getEmailSignalSubjects` enforces `user_id` scoping — no cross-user leakage possible even if the route validation is bypassed.
+  - **Privacy policy + FAQ updated:** `app/privacy/page.tsx` (two locations: inbox-signal bullet + Google Limited Use list), `content/faq.md` (three locations: Gmail description, encryption bullet, "does Edge read every email" answer). All now accurately state: "Thread subject lines are stored encrypted at rest (AES-256-GCM) for 90 days; senders, snippets, and bodies are never stored."
+  - **Tests (15 new — total 1045):**
+    - `lib/gmail.test.ts`: `getEmailSignalSubjects` — valid entry, wrong user (undefined row), null snapshot, malformed JSON, missing subjects field, non-string entries filtered, userId+auditId param order verified. Updated existing audit test to assert `snapshotAfter` is set (was "no email content"). Added null-snapshot test for empty-thread case.
+    - `app/api/activity/email-receipt/[id]/route.test.ts` (new, 7 tests): 401 unauthenticated, 400 non-numeric id, 400 id=0, 400 negative id, 404 not-found, 200 with subjects, 200 empty array.
+  - 1045/1045 green, tsc clean, next build clean.
+
 - **2026-06-17** — **S3 hero-loop APPLY path hardened (1030 green).**
   - **Audit findings:**
     - ✅ **Idempotency / double-apply**: `consumeDeleteToken(userId, planId)` runs inside a SQLite transaction (atomic read+mark-used). Double-click or retry gets 400 "Invalid or expired plan ID" immediately. Confirmed clean.
