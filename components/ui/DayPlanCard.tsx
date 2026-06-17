@@ -82,7 +82,7 @@ export function DayPlanCard({
       <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
         <div className="flex items-center gap-2 mb-4">
           <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
-          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Edge is building your plan…</span>
+          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Edg3 is building your plan…</span>
         </div>
         <div className="space-y-2">
           {[1, 2, 3].map(i => (
@@ -102,7 +102,7 @@ export function DayPlanCard({
           Your day looks good
         </p>
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          No changes needed — Edge will keep watching.
+          No changes needed — Edg3 will keep watching.
         </p>
       </div>
     );
@@ -142,8 +142,8 @@ export function DayPlanCard({
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {noChanges
-                ? 'Nothing needed changing — your Edge Score is up top.'
-                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edge Score updated up top`}
+                ? 'Nothing needed changing — your Edg3 Score is up top.'
+                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edg3 Score updated up top`}
             </p>
           </div>
         </div>
@@ -211,7 +211,7 @@ export function DayPlanCard({
             +{delta}
           </span>
         </div>
-        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Edge Score</span>
+        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Edg3 Score</span>
       </div>
 
       {/* Change list */}
