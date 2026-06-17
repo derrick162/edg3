@@ -109,10 +109,12 @@ export function DayPlanCard({
   }
 
   const delta = plan.scoreAfter - plan.scoreBefore;
-  const finalScore = applied ? (appliedScore ?? plan.scoreAfter) : plan.scoreAfter;
 
   // ── Applied / celebration state
+  // NO standalone EDGE SCORE here — there is ONE Edge Score (the headline EdgeScoreCard,
+  // which refetches after apply). A second number here read as a competing score.
   if (applied) {
+    const noChanges = plan.changes.length === 0;
     return (
       <div
         className="glass-card p-5"
@@ -122,7 +124,7 @@ export function DayPlanCard({
           animation: 'score-rise 0.4s ease both',
         }}
       >
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3">
           <span
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
             style={{
@@ -136,25 +138,18 @@ export function DayPlanCard({
           </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-              Your day just got better
+              {noChanges ? 'Your day was already aligned' : 'Your day just got better'}
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {plan.changes.length} change{plan.changes.length !== 1 ? 's' : ''} applied to your calendar
+              {noChanges
+                ? 'Nothing needed changing — your Edge Score is up top.'
+                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edge Score updated up top`}
             </p>
-          </div>
-          <div className="flex-shrink-0 text-right">
-            <p
-              className="text-2xl font-black tabular-nums leading-none"
-              style={{ color: scoreDeltaColor(delta) }}
-            >
-              {finalScore}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>EDGE SCORE</p>
           </div>
         </div>
-        {delta > 0 && (
+        {!noChanges && delta > 0 && (
           <div
-            className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold"
+            className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold mt-3"
             style={{
               background: 'rgba(34,197,94,0.08)',
               color: scoreDeltaColor(delta),
