@@ -50,6 +50,15 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Round 2: security integration tests + backup coverage + trust content (1200 green).**
+
+  1. **Security integration tests (22 new in `lib/auth.test.ts`):** JWT round-trip, tamper detection, expired/wrong-secret token, session_version revocation (stale token → null), legacy token grandfathering, cookie flags (httpOnly, sameSite:lax, maxAge 30d), bcrypt round-trip. Route-level authz tests already existed for facts, email-receipt, and day-plan confirm.
+  2. **Backup table coverage expanded** (`lib/backup.ts`): `verifyBackup` now checks 15 tables (added `milestones`, `notifications`, `daily_focus`, `calendar_scores`) giving a fuller restore sanity-check signal.
+  3. **Trust content finalized:** `content/how-edge-protects-you.md` §1-4 verified accurate — Gmail format:metadata confirmed code-level, Whoop token revocation confirmed, Google revocation confirmed, encryption list updated with daily focus + open loops. Tagged ready for Cam + legal review.
+  4. **Rate-limit tuning review:** all 28 keys reviewed. Limits appropriate for pre-beta. Note for post-launch: `briefingGenerate` (5/hr) and `dayPlanConfirm` (5/hr) may need raising under real traffic.
+  5. **Security audit doc updated:** backlog marked ✅ complete; integration test table added.
+  1200/1200 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Post-flagship backlog: undo audit gap + encryption verification + session/auth review + npm audit (1133 green).**
 
   1. **Undo audit gap CLOSED** — `POST /api/undo` now writes `action='undo_applied'` to `audit_log` after every reversal (success or partial-failure). Every calendar mutation including reversals now has a full audit trail.
