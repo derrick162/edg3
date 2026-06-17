@@ -6,6 +6,14 @@ import type { CalendarFit, ScoreResult, ScoreTopFix } from './CalendarFitCard';
 // Re-export the type so consumers can import from here too
 export type { CalendarFit };
 
+export interface ScoreChange {
+  delta: number;
+  direction: 'up' | 'down' | 'flat';
+  sinceLabel: string;  // e.g. "since yesterday", "since 3 hours ago"
+  reason: string;      // e.g. "focus not confirmed yet"
+  asOf: string;        // e.g. "2:14 PM"
+}
+
 export interface EdgeScoreCardProps {
   fit: CalendarFit | null;
   loading?: boolean;
@@ -14,6 +22,7 @@ export interface EdgeScoreCardProps {
   calibratingHalf?: 'focus' | 'energy' | 'both';  // which half is still calibrating
   previousScore?: number;   // yesterday's score — shows movement delta
   celebrating?: boolean;    // in-session score rose — triggers spark burst
+  change?: ScoreChange | null;  // recent delta + reason from Core — null = no prior data
   onRequestFix?: () => void;
 }
 
@@ -400,6 +409,7 @@ export function EdgeScoreCard({
   calibratingHalf,
   previousScore,
   celebrating = false,
+  change,
   onRequestFix,
 }: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -521,9 +531,21 @@ export function EdgeScoreCard({
               </span>
             ) : null}
           </div>
-          <p className="text-sm font-bold mb-2 leading-snug" style={{ color: 'var(--text-strong)' }}>
+          <p className="text-sm font-bold mb-1 leading-snug" style={{ color: 'var(--text-strong)' }}>
             {scoreSummary(s)}
           </p>
+
+          {/* Recent change line — shown when Core provides delta + reason */}
+          {change && change.direction !== 'flat' && (
+            <p className="text-xs mb-2 leading-snug" style={{
+              color: change.direction === 'down'
+                ? 'rgba(245,158,11,0.9)'
+                : 'var(--gauge-peak)',
+            }}>
+              {change.direction === 'down' ? '↓' : '↑'} {Math.abs(change.delta)} {change.sinceLabel} · {change.reason}
+              <span style={{ color: 'var(--text-faint)' }}> · updated {change.asOf}</span>
+            </p>
+          )}
 
           {/* Breakdown toggle */}
           <button
