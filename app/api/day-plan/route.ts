@@ -4,7 +4,7 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import {
   userQueries, priorityQueries, effectiveTimezone,
   calendarQueries, whoopQueries, factQueries, memoryQueries,
-  briefingQueries, dailyFocusQueries, getDb,
+  briefingQueries, dailyFocusQueries, openLoopQueries, getDb,
 } from '@/lib/db';
 import { getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
@@ -108,9 +108,18 @@ export async function GET() {
     }
   })();
 
+  // Open loops due today — drive Path C (focus block to clear commitments).
+  const openLoopsDueToday = (() => {
+    try {
+      return openLoopQueries.list(user.id, 'open')
+        .filter(l => l.dueDate === today)
+        .map(l => l.description);
+    } catch { return []; }
+  })();
+
   // H1: pass alignment + recovery so buildCalendarPlan can draw on all diagnosis signals.
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep, 45, clarityInputs, momentumInputs);
-  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory);
+  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday);
   const diagnoses = buildDiagnoses(alignment, weekEvents, recoveryHistory, userTz);
 
   // Always issue a token (well-aligned state also renders the card).
@@ -138,9 +147,9 @@ export async function GET() {
         op: 'create' as const,
         title: action.title ?? 'Focus block',
         detail,
-        reason: action.addresses === 'focus'
+        reason: action.reason ?? (action.addresses === 'focus'
           ? 'No focused time blocked for this priority this week'
-          : 'Align to your peak energy window',
+          : 'Align to your peak energy window'),
       };
     }
     const detail = action.newDate ? `Today → ${fmtDate(action.newDate)}` : 'Move to tomorrow';
@@ -148,9 +157,9 @@ export async function GET() {
       op: 'move' as const,
       title: action.eventTitle ?? 'Event',
       detail,
-      reason: action.addresses === 'energy'
+      reason: action.reason ?? (action.addresses === 'energy'
         ? 'Recovery is low — protect your energy today'
-        : 'Not aligned to your priorities this week',
+        : 'Not aligned to your priorities this week'),
     };
   });
 

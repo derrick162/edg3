@@ -159,6 +159,43 @@ export function buildLabel(
       return count !== null ? `Applied day plan · ${count} calendar change${count !== 1 ? 's' : ''}` : 'Applied day plan';
     }
 
+    case 'cleanupEvents': {
+      const events = Array.isArray(args.events) ? args.events as { title?: string }[] : [];
+      const count = events.length;
+      if (count === 1) return `Deleted '${trunc(str(events[0].title), 40)}'`;
+      if (count > 1) return `Deleted ${count} events`;
+      return 'Deleted events';
+    }
+
+    case 'cleanupDuplicates': {
+      const match = resultText?.match(/Found and removed (\d+) duplicate/);
+      if (match) return `Removed ${match[1]} duplicate events`;
+      return 'Removed duplicate events';
+    }
+
+    case 'colorEventsByEnergy': {
+      const count = typeof args.count === 'number' ? args.count : null;
+      return count !== null ? `Color-coded ${count} events by energy` : 'Color-coded events by energy';
+    }
+
+    case 'rememberPreference': {
+      const pref = str(args.preference);
+      return pref ? `Remembered preference: "${trunc(pref, 60)}"` : 'Saved a preference';
+    }
+
+    case 'setEnergyLevel': {
+      const level = str(args.level);
+      return level ? `Set energy level to ${level}` : 'Updated energy level';
+    }
+
+    case 'confirmFocus':
+      return 'Confirmed focus session';
+
+    case 'applyCalendarPlan': {
+      const count = typeof args.actionCount === 'number' ? args.actionCount : null;
+      return count !== null ? `Applied day plan · ${count} calendar change${count !== 1 ? 's' : ''}` : 'Applied day plan';
+    }
+
     case 'setMyTimezone':
       return `Updated timezone to ${str(args.timezone) || 'unknown'}`;
 
