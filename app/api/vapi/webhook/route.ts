@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, Briefing } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, Briefing } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
@@ -91,6 +91,23 @@ export async function POST(req: NextRequest) {
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
         retryCall(briefing.id, briefing.user_id); // fire and forget — waits 10 min then retries
         return NextResponse.json({ received: true });
+      }
+
+      // T4: Canonicalize STT homophones before storing the transcript —
+      // fixes e.g. "Derek" → "Derrick" (user's own name) and contacts from facts.
+      if (transcript.length > 0) {
+        try {
+          const userForGrounding = userQueries.findById(briefing.user_id);
+          if (userForGrounding?.name) {
+            const { groundProperNouns, canonicalNamesFromProfile } = await import('@/lib/grounding');
+            const nameTokens = canonicalNamesFromProfile(userForGrounding.name);
+            const personFacts = factQueries.getAll(briefing.user_id)
+              .filter(f => f.category === 'person' && f.entity?.trim())
+              .map(f => f.entity as string);
+            const allNames = [...new Set([...nameTokens, ...personFacts])];
+            if (allNames.length) transcript = groundProperNouns(transcript, allNames);
+          }
+        } catch { /* grounding is best-effort — never blocks storage */ }
       }
 
       const userResponse = extractUserResponseFromTranscript(transcript);
@@ -252,16 +269,23 @@ async function saveCallSummaryToCalendar(briefing: { id: number; user_id: number
     if (labels.length) toolSummary = labels.map(l => `- ${l}`).join('\n');
   } catch { /* ignore */ }
 
-  // Apply Tier-1 grounding before summarization: correct STT near-miss names (Gym→Jim, Onsi→Ansi).
+  // T4: Canonicalize STT homophones before summarization.
+  // Sources: user name, person facts, and today's calendar event titles (for event-specific names).
   let transcript = briefing.transcript ?? '';
   try {
-    const { factQueries } = await import('@/lib/db');
-    const { groundProperNouns } = await import('@/lib/grounding');
-    const storedFacts = factQueries.getAll(briefing.user_id);
-    const knownNames = storedFacts
+    const { groundProperNouns, canonicalNamesFromProfile, extractNamesFromEventTitles } = await import('@/lib/grounding');
+    const nameTokens = canonicalNamesFromProfile(user.name);
+    const personFacts = factQueries.getAll(briefing.user_id)
       .filter(f => f.category === 'person' && f.entity?.trim())
       .map(f => f.entity as string);
-    transcript = groundProperNouns(transcript, knownNames);
+    let eventNames: string[] = [];
+    try {
+      const { getCalendarEvents } = await import('@/lib/calendar');
+      const events = await getCalendarEvents(briefing.user_id);
+      eventNames = extractNamesFromEventTitles(events.map(e => e.summary ?? '').filter(Boolean));
+    } catch { /* calendar fetch is best-effort */ }
+    const allNames = [...new Set([...nameTokens, ...personFacts, ...eventNames])];
+    if (allNames.length) transcript = groundProperNouns(transcript, allNames);
   } catch { /* grounding is best-effort */ }
 
   const firstName = (user.name || 'the user').split(' ')[0];

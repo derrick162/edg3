@@ -97,6 +97,24 @@ export function groundProperNouns(text: string, canonicalNames: string[]): strin
   });
 }
 
+/**
+ * Extract proper-noun tokens from a user profile name for use as canonical names.
+ * "Derrick Fung" → ["Derrick", "Fung"]. Tokens < 3 characters are skipped (too
+ * short for safe phonetic matching). Deduplicates automatically.
+ * Pure — no I/O.
+ */
+export function canonicalNamesFromProfile(userName: string): string[] {
+  if (!userName) return [];
+  return [
+    ...new Set(
+      userName
+        .split(/\s+/)
+        .map(t => t.replace(/[^a-zA-Z]/g, ''))
+        .filter(t => t.length >= 3)
+    ),
+  ];
+}
+
 // Words stripped when extracting person names from calendar event titles.
 const EVENT_STOP_WORDS = new Set([
   'with', 'and', 'the', 'or', 'for', 'from', 'a', 'an',

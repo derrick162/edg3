@@ -829,7 +829,18 @@ Tasks:`
 
   const insightContent = insight.content[0];
   if (insightContent.type === 'text') {
-    memoryQueries.create(userId, 'transcript', response.slice(0, 2000));
+    // T4: Canonicalize STT homophones in user response before storing as call note.
+    let groundedResponse = response;
+    try {
+      const { groundProperNouns, canonicalNamesFromProfile } = await import('@/lib/grounding');
+      const nameTokens = user?.name ? canonicalNamesFromProfile(user.name) : [];
+      const personFacts = factQueries.getAll(userId)
+        .filter(f => f.category === 'person' && f.entity?.trim())
+        .map(f => f.entity as string);
+      const allNames = [...new Set([...nameTokens, ...personFacts])];
+      if (allNames.length) groundedResponse = groundProperNouns(groundedResponse, allNames);
+    } catch { /* grounding is best-effort */ }
+    memoryQueries.create(userId, 'transcript', groundedResponse.slice(0, 2000));
     memoryQueries.create(userId, 'insight', insightContent.text.slice(0, 500));
   }
 

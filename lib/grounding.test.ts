@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { editDistance, normalizeForPhonetics, groundProperNouns, extractNamesFromEventTitles } from './grounding';
+import { editDistance, normalizeForPhonetics, groundProperNouns, extractNamesFromEventTitles, canonicalNamesFromProfile } from './grounding';
 
 describe('editDistance', () => {
   it('returns 0 for identical strings', () => {
@@ -108,6 +108,35 @@ describe('groundProperNouns', () => {
     const result = groundProperNouns('meet Onsi', ['Ansi', 'Insi']);
     // Either replacement is valid; important thing is it is replaced
     expect(result).not.toBe('meet Onsi');
+  });
+});
+
+describe('canonicalNamesFromProfile', () => {
+  it('splits a full name into tokens', () => {
+    expect(canonicalNamesFromProfile('Derrick Fung')).toEqual(['Derrick', 'Fung']);
+  });
+
+  it('returns single-token name as a one-element array', () => {
+    expect(canonicalNamesFromProfile('Derrick')).toEqual(['Derrick']);
+  });
+
+  it('returns empty array for empty string', () => {
+    expect(canonicalNamesFromProfile('')).toEqual([]);
+  });
+
+  it('filters out tokens shorter than 3 chars', () => {
+    expect(canonicalNamesFromProfile('Al Wong')).toEqual(['Wong']);
+  });
+
+  it('deduplicates repeated tokens', () => {
+    expect(canonicalNamesFromProfile('Anne Anne')).toEqual(['Anne']);
+  });
+
+  it('profile name feeds groundProperNouns to fix Derick → Derrick (1-edit off)', () => {
+    // "Derick" differs from "Derrick" by 1 char (missing one 'r') — within Tier-1 threshold.
+    // "Derek" is 3 edits away and requires Tier-2 (Haiku) — conservatively left unchanged.
+    const canonicals = canonicalNamesFromProfile('Derrick Fung');
+    expect(groundProperNouns('Derick mentioned this', canonicals)).toBe('Derrick mentioned this');
   });
 });
 
