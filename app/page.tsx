@@ -160,30 +160,111 @@ export default function LandingPage() {
 
         {/* ── Edge Score ── */}
         <section className="max-w-4xl mx-auto px-6 md:px-8 py-14">
-          <div className="glass-card p-8 md:p-12 text-center" style={{ borderColor: 'var(--edg-accent-20)' }}>
-            <h2 className="text-3xl font-black tracking-tight mb-4" style={{ color: 'var(--text-strong)' }}>
-              One number. Your daily readout.
-            </h2>
-            <p className="text-base mb-8 max-w-2xl mx-auto" style={{ color: 'var(--text-muted)' }}>
-              Your Edge Score tells you how set up you are for a focused, energized, sustainable day — before it starts.
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              {[
-                { label: 'Focus',    desc: 'Does your calendar reflect your top priorities?' },
-                { label: 'Energy',   desc: 'How\'s your capacity today?' },
-                { label: 'Clarity',  desc: 'How well does Edge know you?' },
-                { label: 'Momentum', desc: 'Are you showing up consistently?' },
-              ].map(s => (
-                <div key={s.label} className="glass-card p-4 text-left">
-                  <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-accent)' }}>{s.label}</p>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>{s.desc}</p>
-                </div>
-              ))}
+          <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
+            One number. Your daily readout.
+          </h2>
+          <p className="text-base mb-10 max-w-2xl mx-auto text-center" style={{ color: 'var(--text-muted)' }}>
+            Your Edge Score tells you how set up you are for a focused, energized, sustainable day — before it starts.
+          </p>
+
+          {/* Product preview — inline Edge Score card */}
+          <div
+            className="glass-card mx-auto"
+            style={{
+              maxWidth: 420,
+              borderColor: 'var(--edg-accent-20)',
+              padding: '28px 28px 24px',
+              boxShadow: '0 0 40px rgba(99,102,241,0.10)',
+            }}
+          >
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>Edge Score</p>
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Wednesday — your day ahead</p>
+              </div>
+              {/* Sparkline */}
+              <svg width="56" height="22" viewBox="0 0 56 22" fill="none" aria-hidden="true">
+                <polyline
+                  points="0,16 9,18 18,12 27,14 36,8 45,10 56,4"
+                  stroke="var(--gauge-high)"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <circle cx="56" cy="4" r="2.5" fill="var(--gauge-high)" />
+              </svg>
             </div>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              The score isn&apos;t just a number. It&apos;s a diagnosis. And Edge can raise it.
-            </p>
+
+            {/* Arc gauge + score */}
+            <div className="flex items-center gap-6 mb-5">
+              <div style={{ position: 'relative', flexShrink: 0, width: 100, height: 60 }}>
+                <svg width="100" height="60" viewBox="0 0 100 60" aria-hidden="true">
+                  {/* Track */}
+                  <path
+                    d="M 10 54 A 40 40 0 0 1 90 54"
+                    fill="none"
+                    stroke="var(--gauge-bg)"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                  />
+                  {/* Fill — 74% of arc */}
+                  <path
+                    d="M 10 54 A 40 40 0 0 1 90 54"
+                    fill="none"
+                    stroke="var(--gauge-high)"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray="125.6"
+                    strokeDashoffset="32.7"
+                  />
+                </svg>
+                {/* Score number */}
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  textAlign: 'center', lineHeight: 1,
+                }}>
+                  <span style={{ fontSize: 28, fontWeight: 900, color: 'var(--gauge-high)', letterSpacing: '-0.03em' }}>74</span>
+                </div>
+              </div>
+
+              {/* Component bars */}
+              <div className="flex-1 space-y-2">
+                {[
+                  { label: 'Focus',    pct: 68, color: 'var(--gauge-high)' },
+                  { label: 'Energy',   pct: 80, color: 'var(--gauge-peak)' },
+                  { label: 'Clarity',  pct: 72, color: 'var(--gauge-high)' },
+                  { label: 'Momentum', pct: 75, color: 'var(--gauge-high)' },
+                ].map(({ label, pct, color }) => (
+                  <div key={label}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>{label}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-faint)', fontVariantNumeric: 'tabular-nums' }}>{pct}</span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 3, background: 'var(--gauge-bg)', overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Diagnosis chip */}
+            <div
+              className="rounded-xl px-3 py-2.5 text-xs leading-snug"
+              style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
+            >
+              <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Edge: </span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                Focus is solid — but your 9 AM deep-work block is sandwiched between two meetings. Want me to move them?
+              </span>
+            </div>
           </div>
+
+          <p className="text-sm mt-6 text-center" style={{ color: 'var(--text-faint)' }}>
+            The score isn&apos;t just a number. It&apos;s a diagnosis. And Edge can raise it.
+          </p>
         </section>
 
         {/* ── How it works ── */}
