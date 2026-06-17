@@ -359,8 +359,9 @@ Query: ${query}` }],
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title, timezone, color, overrideConflicts, allDay, endDate, description, location } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string };
-    if (!title) return "I didn't catch what to call that event — what's the title?";
+    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string };
+    if (!rawCreateTitle) return "I didn't catch what to call that event — what's the title?";
+    const title = groundTitle(rawCreateTitle);
 
     // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
     // Google's end.date is exclusive, so we store the day after. One spanning event for a range —
