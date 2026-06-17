@@ -314,7 +314,7 @@ Current status: submitted; no response received.
 
 **2. Five design partner names**
 
-The outreach templates are ready (`content/design-partner-outreach.md`). The ICP archetypes are defined (`content/design-partner-profiles.md`). What's missing are the actual names.
+The outreach templates are ready (`content/design-partner-outreach-kit.md`). The ICP archetypes are defined (`content/icp-target-profiles.md`). What's missing are the actual names.
 
 Target cohort composition:
 - 1 × Type 1 (Recovering Founder) — ICP validation + credible testimonial
@@ -391,19 +391,19 @@ This is discipline. Each user should be a clean, high-quality experience before 
 
 ## Appendix A — Activation moment copy (all variants)
 
-See `content/beta-readiness.md §Activation moment copy` for the full copy set.
+See `content/onboarding-copy.md §Screen 5` for the full 4-variant activation copy set.
 
 ## Appendix B — Outreach templates
 
-See `content/design-partner-outreach.md` for the full initial + follow-up + onboarding + week-1 check-in templates.
+See `content/design-partner-outreach-kit.md` for the full initial + follow-up + onboarding + week-1 check-in templates.
 
 ## Appendix C — ICP archetypes
 
-See `content/design-partner-profiles.md` for the 7 archetypes and first-cohort composition recommendation.
+See `content/icp-target-profiles.md` for the 4 ICP profiles, and `content/icp-cheat-sheet.md` for the quick-reference discovery guide.
 
 ## Appendix D — Trust gates
 
-See `content/beta-readiness.md` for the full trust-pillar go/no-go checklist.
+See `content/beta-launch-checklist.md` for the full trust-pillar go/no-go checklist.
 
 ---
 
