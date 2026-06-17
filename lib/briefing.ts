@@ -31,6 +31,7 @@ import {
   pickBestPattern,
   formatPatternForBriefing,
 } from './patternMemory';
+import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction } from './accountabilityMemory';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -382,6 +383,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const edg3Commitment = incompleteTasks
     .filter(t => t.source === 'edg3' && t.date < today)
     .at(-1) ?? null;
+  // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
+  const accountabilitySnapshot = (() => {
+    try {
+      const recentTasks = taskQueries.getRecent(userId, 7);
+      const loops = [
+        ...openLoopQueries.list(userId, 'open'),
+        ...openLoopQueries.list(userId, 'done'),
+      ];
+      return buildAccountabilitySnapshot(recentTasks, loops, today, 7);
+    } catch { return null; }
+  })();
+  const accountabilityBlock = accountabilitySnapshot ? formatAccountabilityForBriefing(accountabilitySnapshot) : '';
+  const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot) : '';
   // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
   // Degrades to [] if Gmail read access isn't granted yet or anything errors.
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
@@ -695,7 +709,10 @@ ENERGY PROFILE: Not set yet. Since Whoop is connected, add ONE brief invite at t
 ` : '')}${hygieneFlag ? `
 CALENDAR HYGIENE FLAG (one concrete overload pattern — surface this in section 4):
 ${hygieneFlag}
-` : ''}${edg3Commitment ? `
+` : ''}${accountabilityBlock ? `
+${accountabilityBlock}
+${accountabilityInstruction}
+` : edg3Commitment ? `
 YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said they'd do it):
 - ${edg3Commitment.text}
 ` : ''}${openLoopsBlock ? `
