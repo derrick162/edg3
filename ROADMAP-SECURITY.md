@@ -7,6 +7,25 @@
 > ships work, and claim files in the constitution's Status Board before touching
 > anything in the ⚠️ Shared list.
 
+## 📥 PM DISPATCH — 2026-06-17 (S3 — harden the hero-loop apply path)
+
+> Master at `4f68720` (1015 green). S1+S2 shipped ✅. Sync master first.
+
+**S3 — Audit + harden the hero-loop APPLY path.** Core (Ticket H) is deepening the hero loop —
+the one-click **Apply** executes a batch of real calendar mutations (create/move) via
+`/api/day-plan/confirm`. As it gets richer + more prominent, that path must be safe:
+1. **Idempotency / double-apply** — `/api/day-plan/confirm` uses a `planId` (`issueDeleteToken`).
+   Verify a double-click / retry can't apply the same plan twice (duplicate events / double moves).
+   Confirm the token is consumed atomically and reuse is rejected.
+2. **Undo grouping** — a multi-action plan must be undoable as a unit (recordUndo per action, grouped
+   by planId). Verify the undo path covers every applied action.
+3. **Rate limit** — confirm `dayPlanConfirm` limit is sane for one-click use.
+4. **Authz** — a planId issued for user A must not be applicable by user B (user-scoped).
+Coordinate with Darren (he's editing `/api/day-plan/**` for H). Tests. Ship small / green /
+full preflight / log changelog.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-16 EVENING (Vijay)
 
 > Master at `2c73f5b` (997 green). Sync master first. Two contained tasks:

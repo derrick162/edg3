@@ -25,6 +25,28 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-17 (P0 reconcile + hero-loop prominence)
+
+> Master at `4f68720` (1015 green).
+
+**⚠️ P0 — RECONCILE YOUR DIVERGED BRANCH (blocked 26h).** `origin/design` tip is 68beb28
+(pre-clarityScore) and does NOT descend from master — nothing you build can merge until you fix
+this. `git merge master` into design, resolve conflicts FAVORING MASTER's current model:
+clarityScore (NOT intelligenceScore); EdgeScoreCard = canonical 4-component `fit.edgeScore` +
+7-day trend sparkline (`EdgeTrendSparkline`) + green ▲/red ▼ arrow + `history`; Focus =
+ratio×coverage; momentum confirmedToday +20; CSP `'self' 'unsafe-inline'`. Push once green +
+descending from master. If stuck on a specific hunk, flag the file to PM.
+
+**Hero-loop card PROMINENCE.** Core (Ticket H) is deepening `/api/day-plan` so it always returns
+a state (rich diagnosis when there's something to fix, or "well-aligned — nothing to reshape").
+Today the `DayPlanCard` hides when empty and the diagnosis is buried behind the "Improve my day"
+button. Make it FRONT AND CENTER on the home tab — Edge should *greet* the user with "Here's
+what's off today" / "Your day's well-aligned", not bury it. Coordinate with Darren in
+`app/dashboard/**` (Core owns logic, you own visual/layout). Then **D (spark at Apply→rescore)** +
+**E (stock images)** below.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-16 (Derrick live feedback)
 
 > Sync master first (preflight green). Two tickets, Cam:
