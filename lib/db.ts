@@ -1612,6 +1612,12 @@ export const calendarScoreQueries = {
       'SELECT * FROM calendar_scores WHERE user_id = ? ORDER BY date DESC LIMIT 1'
     ).get(userId) as CalendarScore | undefined;
   },
+
+  getPrior: (userId: number, beforeDate: string): CalendarScore | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM calendar_scores WHERE user_id = ? AND date < ? ORDER BY date DESC LIMIT 1'
+    ).get(userId, beforeDate) as CalendarScore | undefined;
+  },
 };
 
 export interface EnergyProfile {

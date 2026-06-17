@@ -9,6 +9,7 @@ import { computeAlignment } from '@/lib/alignment';
 import { computeCalendarFit, type ClarityInputs, type MomentumInputs } from '@/lib/calendarScore';
 import { computeCallStreak } from '@/lib/streak';
 import { maybeCreateScoreChangeNotif } from '@/lib/notifications';
+import { summarizeScoreChange } from '@/lib/scoreChange';
 
 export async function GET() {
   const user = await getSession();
@@ -158,5 +159,14 @@ export async function GET() {
     // Non-fatal — trend is additive; scoring still returns without it.
   }
 
-  return NextResponse.json({ ...fit, history });
+  // Score change summary — diff vs most-recent prior snapshot for transparency.
+  let change = null;
+  try {
+    const prior = calendarScoreQueries.getPrior(user.id, today);
+    change = summarizeScoreChange(fit.edgeScore, { focusScore: fit.focusScore, energyScore: fit.energyScore }, prior ?? null, today);
+  } catch {
+    // Non-fatal — change is additive context only.
+  }
+
+  return NextResponse.json({ ...fit, history, ...(change ? { change } : {}) });
 }
