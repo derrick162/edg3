@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
 
@@ -1140,13 +1140,16 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
+  const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
+  const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
+  const [accountability, setAccountability] = useState<{ done: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; stillOpen: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; completionRate: number | null; lookbackDays: number } | null>(null);
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
@@ -1206,10 +1209,14 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
+  const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [activationFacts, setActivationFacts] = useState<string[]>([]);
+  const [activationDismissed, setActivationDismissed] = useState(false);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1246,6 +1253,9 @@ export default function Dashboard() {
     };
     retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
+    fetch('/api/relationships').then(r => r.ok ? r.json() : null).then(d => { if (d?.profiles) setPeople(d.profiles); }).catch(() => {});
+    fetch('/api/patterns').then(r => r.ok ? r.json() : null).then(d => { if (d?.patterns) setPatterns(d.patterns); }).catch(() => {});
+    fetch('/api/accountability').then(r => r.ok ? r.json() : null).then(d => { if (d?.snapshot) setAccountability(d.snapshot); }).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
@@ -1255,6 +1265,12 @@ export default function Dashboard() {
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
+    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
+    fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.isFresh && d.recentFacts?.length > 0) {
+        setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
+      }
+    }).catch(() => {});
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1303,12 +1319,22 @@ export default function Dashboard() {
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    const prevScore = calendarFit?.edgeScore ?? null;
     await fetch('/api/focus/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ areas }),
     });
     setFocusRecDismissed(true);
+    // Refetch Edge Score; if it rose, trigger the spark celebration
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+      if (!s) return;
+      setCalendarFit(s);
+      if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
+        setEdgeScoreCelebrating(true);
+        setTimeout(() => setEdgeScoreCelebrating(false), 1500);
+      }
+    }).catch(() => {});
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -1674,10 +1700,13 @@ export default function Dashboard() {
               { id: 'activity', label: 'Activity', icon: '⏪' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
               { id: 'profile', label: 'Profile', icon: '👤' },
+              { id: 'help', label: 'Help', icon: '?' },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
+                aria-label={tab.label}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
                 className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
@@ -1685,7 +1714,7 @@ export default function Dashboard() {
                   border: activeTab === tab.id ? '1px solid var(--edg-accent-20)' : '1px solid transparent',
                 }}
               >
-                <span>{tab.icon}</span>
+                <span aria-hidden="true">{tab.icon}</span>
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
             ))}
@@ -2010,11 +2039,20 @@ export default function Dashboard() {
           {/* ── Home tab — morning cockpit ──────────────────────────── */}
           {activeTab === 'home' && (
             <div className="space-y-6">
+              {/* Activation card — "here's what I already know" — pre-first-briefing only */}
+              {briefings.length === 0 && !activationDismissed && activationFacts.length > 0 && (
+                <ActivationCard
+                  facts={activationFacts}
+                  name={user?.name?.split(' ')[0] ?? undefined}
+                  onDismiss={() => setActivationDismissed(true)}
+                />
+              )}
               {/* Edge Score — hero */}
               <EdgeScoreCard
                 fit={calendarFit}
                 loading={calendarFitLoading}
                 sparse={priorities.length === 0 || calendarConnected === false}
+                celebrating={edgeScoreCelebrating}
                 onRequestFix={() => {/* DayPlanCard below handles fixes */}}
               />
               {/* Today's focus recommendations */}
@@ -2037,6 +2075,22 @@ export default function Dashboard() {
                   appliedScore={dayPlanAppliedScore}
                 />
               )}
+              {/* Open loops — commitments Edge is tracking */}
+              {openLoops.length > 0 && (
+                <OpenLoopsSection
+                  loops={openLoops}
+                  onResolve={async (id) => {
+                    await fetch(`/api/open-loops/${id}/resolve`, { method: 'POST' }).catch(() => {});
+                    setOpenLoops(prev => prev.map(l => l.id === id ? { ...l, status: 'done' as const } : l));
+                  }}
+                  onDismiss={async (id) => {
+                    await fetch(`/api/open-loops/${id}/dismiss`, { method: 'POST' }).catch(() => {});
+                    setOpenLoops(prev => prev.map(l => l.id === id ? { ...l, status: 'dismissed' as const } : l));
+                  }}
+                />
+              )}
+              {/* Content cards — education for the home tab */}
+              <ContentSection />
             </div>
           )}
 
@@ -2700,6 +2754,166 @@ export default function Dashboard() {
                 <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
               )}
 
+              {/* Past commitments (M4 accountability) */}
+              {accountability && (accountability.stillOpen.length > 0 || accountability.done.length > 0) && (
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">✅</span>
+                      Past commitments
+                    </h3>
+                    {accountability.completionRate !== null && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          background: accountability.completionRate >= 0.7 ? 'rgba(34,197,94,0.1)' : 'var(--edg-fill-04)',
+                          color: accountability.completionRate >= 0.7 ? 'var(--edg-success)' : 'var(--text-faint)',
+                        }}>
+                        {Math.round(accountability.completionRate * 100)}% done
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
+                    What you&apos;ve committed to on calls — Edge checks in when they stay open.
+                  </p>
+                  {accountability.stillOpen.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Still open</p>
+                      {accountability.stillOpen.slice(0, 5).map(c => {
+                        const urgent = c.daysOpen >= 7;
+                        return (
+                          <div key={`ol-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3"
+                            style={urgent ? { borderColor: 'rgba(245,158,11,0.25)' } : undefined}>
+                            <span className="mt-0.5 flex-shrink-0 text-base" aria-hidden="true"
+                              style={{ color: urgent ? 'rgba(245,158,11,0.8)' : 'var(--text-faint)' }}>
+                              {urgent ? '⚠' : '⏳'}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
+                              <p className="text-xs mt-0.5" style={{ color: urgent ? 'rgba(245,158,11,0.7)' : 'var(--text-faint)' }}>
+                                Open {c.daysOpen === 1 ? '1 day' : `${c.daysOpen} days`}
+                                {c.dueDate ? ` · due ${c.dueDate}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {accountability.done.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Completed</p>
+                      {accountability.done.slice(0, 3).map(c => (
+                        <div key={`done-${c.id}-${c.source}`} className="flex items-start gap-3 px-4 py-2.5 rounded-xl"
+                          style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
+                          <span className="mt-0.5 flex-shrink-0 text-sm" aria-hidden="true" style={{ color: 'var(--edg-success)' }}>✓</span>
+                          <p className="text-sm leading-snug" style={{ color: 'var(--text-muted)' }}>{c.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Behavioral patterns (M3) */}
+              {patterns.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">📈</span>
+                    Patterns Edge has noticed
+                  </h3>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
+                    Detected from your calendar and health data — used to protect your best time.
+                  </p>
+                  <div className="space-y-2">
+                    {patterns.map((p, i) => {
+                      const isHigh = p.confidence === 'high';
+                      return (
+                        <div key={i} className="glass-card px-4 py-3 flex items-start gap-3">
+                          <span className="flex-shrink-0 mt-0.5 text-base" aria-hidden="true">
+                            {p.type === 'energy' ? '⚡' : p.type === 'meeting' ? '📅' : p.type === 'focus' ? '🎯' : '〰'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{p.summary}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                                style={{
+                                  background: isHigh ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                                  color: isHigh ? 'var(--edg-success)' : 'rgba(245,158,11,0.9)',
+                                }}>
+                                {isHigh ? 'High' : 'Medium'} confidence
+                              </span>
+                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                                {p.sampleDays} data point{p.sampleDays !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* People profiles (M2) */}
+              {people.length > 0 && (() => {
+                const PEOPLE_LIMIT = 15;
+                const topPeople = people.slice(0, PEOPLE_LIMIT);
+                return (
+                  <div className="mb-8">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">🤝</span>
+                      People you meet with
+                    </h3>
+                    <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
+                      Built from your calendar — sorted by how often you meet.
+                    </p>
+                    <div className="space-y-2">
+                      {topPeople.map(p => {
+                        const initial = p.canonical_name.trim()[0]?.toUpperCase() ?? '?';
+                        const lastDate = p.last_interaction
+                          ? new Date(p.last_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                          : null;
+                        const nextDate = p.upcoming_interaction
+                          ? new Date(p.upcoming_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                          : null;
+                        const isFrequent = p.interaction_count >= 5;
+                        return (
+                          <div key={p.canonical_name} className="glass-card px-4 py-3 flex items-center gap-3">
+                            {/* Avatar */}
+                            <div className="flex-shrink-0 flex items-center justify-center rounded-full text-sm font-bold select-none"
+                              style={{
+                                width: 36, height: 36,
+                                background: isFrequent ? 'var(--edg-accent-15)' : 'var(--edg-fill-hover)',
+                                color: isFrequent ? 'var(--edg-indigo-bright)' : 'var(--text-muted)',
+                                border: isFrequent ? '1px solid var(--edg-accent-20)' : '1px solid transparent',
+                              }}>
+                              {initial}
+                            </div>
+                            {/* Name + stats */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold leading-snug truncate" style={{ color: 'var(--text-strong)' }}>
+                                {p.canonical_name}
+                              </p>
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                                {p.interaction_count} meeting{p.interaction_count !== 1 ? 's' : ''}
+                                {lastDate && <> · last {lastDate}</>}
+                              </p>
+                            </div>
+                            {/* Next meeting pill */}
+                            {nextDate && (
+                              <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium"
+                                style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
+                                {nextDate}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Raw memories — paginated */}
               {memories.length > 0 && (() => {
                 const PAGE_SIZE = 20;
@@ -2772,6 +2986,12 @@ export default function Dashboard() {
 
           {activeTab === 'profile' && (
             <ProfileTab onSettingsSaved={loadData} />
+          )}
+
+          {activeTab === 'help' && (
+            <div className="max-w-2xl mx-auto">
+              <HelpSupportSection />
+            </div>
           )}
         </main>
       </div>

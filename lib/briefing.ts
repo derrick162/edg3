@@ -22,6 +22,17 @@ import { recommendFocusAreas, type FocusRecommendation } from './focusRecommenda
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
 import { isImproveConsented } from './consent';
+import { buildRelationshipContextBlock, syncPeopleProfiles } from './relationships';
+import { peopleProfileQueries, patternCacheQueries } from './db';
+import {
+  detectProductiveDayPattern,
+  detectLightDayPattern,
+  detectMeetingLoadRecoveryPattern,
+  detectFocusWindowPattern,
+  pickBestPattern,
+  formatPatternForBriefing,
+} from './patternMemory';
+import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction } from './accountabilityMemory';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -303,6 +314,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     // Also extract open loops from the inbox (fire-and-forget).
     extractAndUpsertOpenLoops(userId, { emailSignal, today }).catch(() => {});
   }
+  // Refresh people profiles from calendar history (fire-and-forget — never blocks the briefing).
+  syncPeopleProfiles(userId, pastCalendarHistory, calendarEvents, user.email).catch(() => {});
+  // Compute and cache behavioral patterns (fire-and-forget).
+  try {
+    const recoveryHistoryPoints = recoveryHistory.map(r => ({ date: r.date, recoveryScore: r.recoveryScore }));
+    const bestPattern = pickBestPattern([
+      detectProductiveDayPattern(pastCalendarHistory, userTimezone),
+      detectLightDayPattern(pastCalendarHistory, userTimezone),
+      detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryHistoryPoints, userTimezone),
+      detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+    ]);
+    patternCacheQueries.upsert(userId, JSON.stringify(bestPattern ? [bestPattern] : []));
+  } catch { /* never block briefing */ }
 
   // Urgent open loops — pure DB read, fetch before focus rec so they can modulate recommendations.
   const urgentLoopsEarly = (() => { try { return getUrgentOpenLoops(userId, focusDate); } catch { return []; } })();
@@ -364,6 +388,19 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const edg3Commitment = incompleteTasks
     .filter(t => t.source === 'edg3' && t.date < today)
     .at(-1) ?? null;
+  // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
+  const accountabilitySnapshot = (() => {
+    try {
+      const recentTasks = taskQueries.getRecent(userId, 7);
+      const loops = [
+        ...openLoopQueries.list(userId, 'open'),
+        ...openLoopQueries.list(userId, 'done'),
+      ];
+      return buildAccountabilitySnapshot(recentTasks, loops, today, 7);
+    } catch { return null; }
+  })();
+  const accountabilityBlock = accountabilitySnapshot ? formatAccountabilityForBriefing(accountabilitySnapshot) : '';
+  const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot) : '';
   // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
   // Degrades to [] if Gmail read access isn't granted yet or anything errors.
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
@@ -403,6 +440,26 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
         { lookAheadHours: 12, now: new Date().toISOString() },
       );
       return formatMeetingContextsForBriefing(contexts, userTimezone);
+    } catch { return ''; }
+  })();
+  // Relationship context: historical interaction data for today's meeting attendees.
+  const relationshipContextBlock = (() => {
+    try {
+      const profiles = peopleProfileQueries.listForUser(userId);
+      return buildRelationshipContextBlock(calendarEvents, profiles, user.email);
+    } catch { return ''; }
+  })();
+  // Pattern memory: best behavioral pattern detected from calendar + Whoop history.
+  const patternMemoryBlock = (() => {
+    try {
+      const recoveryForPatterns = recoveryHistory.map(r => ({ date: r.date, recoveryScore: r.recoveryScore }));
+      const best = pickBestPattern([
+        detectProductiveDayPattern(pastCalendarHistory, userTimezone),
+        detectLightDayPattern(pastCalendarHistory, userTimezone),
+        detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryForPatterns, userTimezone),
+        detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+      ]);
+      return formatPatternForBriefing(best);
     } catch { return ''; }
   })();
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
@@ -657,7 +714,10 @@ ENERGY PROFILE: Not set yet. Since Whoop is connected, add ONE brief invite at t
 ` : '')}${hygieneFlag ? `
 CALENDAR HYGIENE FLAG (one concrete overload pattern — surface this in section 4):
 ${hygieneFlag}
-` : ''}${edg3Commitment ? `
+` : ''}${accountabilityBlock ? `
+${accountabilityBlock}
+${accountabilityInstruction}
+` : edg3Commitment ? `
 YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said they'd do it):
 - ${edg3Commitment.text}
 ` : ''}${openLoopsBlock ? `
@@ -669,6 +729,12 @@ Use RECURRING OPEN LOOPS only if one matches today's context — mention it brie
 ` : ''}${meetingContextBlock ? `
 ${meetingContextBlock}
 Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE specific observation for the most important upcoming meeting: relevant email thread, a fact you know about the person, or an open loop they should close before walking in. Keep it to one sentence per event — don't read every bullet. Only reference meetings that actually appear in the calendar data.
+` : ''}${relationshipContextBlock ? `
+${relationshipContextBlock}
+Use RELATIONSHIP CONTEXT to make ONE warm, specific observation about a person you're meeting today — "you've worked with Alice seven times" or "last time you connected with Bob was two months ago — might be worth an update." One line only; weave it into section 2 or 3 naturally. Never read the full list.
+` : ''}${patternMemoryBlock ? `
+${patternMemoryBlock}
+Use PATTERN INSIGHT in section 5 (CALENDAR BLOCKS) — reference the pattern naturally when it strengthens a scheduling suggestion (e.g. "Tuesdays tend to be your clearest — want to protect this Tuesday morning for deep work?"). One mention only; never read the stats aloud.
 ` : ''}${calendarPatternsBlock ? `
 ${calendarPatternsBlock}
 Use CALENDAR PATTERNS in section 5 (CALENDAR BLOCKS) — suggest time blocks that align with the inferred focus window and avoid the historically-packed meeting window. Reference patterns only when they strengthen a recommendation (e.g. "Tuesday mornings are usually light for you — good slot for deep work"). Do not read the whole block aloud.

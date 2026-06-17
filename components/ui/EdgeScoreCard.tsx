@@ -13,6 +13,7 @@ export interface EdgeScoreCardProps {
   calibrating?: boolean;    // energy score still learning (< 10 calls)
   calibratingHalf?: 'focus' | 'energy' | 'both';  // which half is still calibrating
   previousScore?: number;   // yesterday's score — shows movement delta
+  celebrating?: boolean;    // in-session score rose — triggers spark burst
   onRequestFix?: () => void;
 }
 
@@ -360,6 +361,37 @@ function EdgeTrendSparkline({ history }: { history: { date: string; score: numbe
 
 // ── EdgeScoreCard ─────────────────────────────────────────────────────────────
 
+// Sparkle ring around the arc gauge — 8 particles that fly outward in all directions.
+// Keyframe goes straight up; each particle is rotated around the circle center so the
+// net effect is a radial burst. Skipped entirely when prefers-reduced-motion is set.
+function SparkBurst() {
+  return (
+    <div className="absolute inset-0 pointer-events-none" aria-hidden>
+      {Array.from({ length: 8 }, (_, i) => {
+        const angle = i * 45;
+        const delay = i * 60;
+        const color = i % 3 === 0 ? 'var(--gauge-peak)' : i % 3 === 1 ? 'var(--edg-indigo)' : 'rgba(251,191,36,0.9)';
+        return (
+          <span
+            key={i}
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: 5,
+              height: 5,
+              borderRadius: '50%',
+              background: color,
+              transform: `rotate(${angle}deg) translateX(52px) translateY(-50%)`,
+              animation: `spark-fly 1.1s ${delay}ms ease-out both`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function EdgeScoreCard({
   fit,
   loading = false,
@@ -367,6 +399,7 @@ export function EdgeScoreCard({
   calibrating = false,
   calibratingHalf,
   previousScore,
+  celebrating = false,
   onRequestFix,
 }: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -466,9 +499,11 @@ export function EdgeScoreCard({
       }}
     >
       <div className="flex items-center gap-3">
-        {/* Arc gauge */}
-        <div className="flex-shrink-0">
+        {/* Arc gauge — wrapped in relative for spark overlay */}
+        <div className="flex-shrink-0 relative"
+          style={celebrating ? { animation: 'celebrate-glow 1.2s ease both' } : undefined}>
           <ArcGauge score={s} color={color} glow={glow} />
+          {celebrating && <SparkBurst />}
         </div>
 
         {/* Right panel */}

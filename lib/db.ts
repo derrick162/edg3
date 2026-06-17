@@ -377,6 +377,31 @@ function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- Relationship Memory (M2) — per-person interaction index.
+    -- Built from calendar attendees; tracks how often + when each person interacts.
+    -- updated_at set on every sync so staleness can be detected.
+    CREATE TABLE IF NOT EXISTS people_profiles (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      canonical_name       TEXT NOT NULL,
+      email                TEXT,
+      interaction_count    INTEGER NOT NULL DEFAULT 0,
+      last_interaction     TEXT,      -- ISO date of most recent past event with this person
+      upcoming_interaction TEXT,      -- ISO date of next future event (if any)
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_people_profiles_unique
+      ON people_profiles(user_id, canonical_name);
+
+    -- Pattern cache: computed behavioral patterns from calendar + Whoop history.
+    -- One row per user, refreshed on each briefing call (fire-and-forget).
+    -- Stores a JSON array of PatternInsight objects; computed_at for freshness.
+    CREATE TABLE IF NOT EXISTS pattern_cache (
+      user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      patterns    TEXT NOT NULL DEFAULT '[]',
+      computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- OAuth CSRF state tokens — one-time-use, short-lived (10 min).
     -- Generated in /api/[calendar|whoop]/connect; consumed (verified + deleted) in /api/[...]/callback.
     CREATE TABLE IF NOT EXISTS oauth_state (
@@ -407,6 +432,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_daily_focus_user_date ON daily_focus(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_calendar_plan_executions_user ON calendar_plan_executions(user_id, plan_id);
     CREATE INDEX IF NOT EXISTS idx_open_loops_user ON open_loops(user_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
   `);
 
   // Migrations for existing databases
@@ -429,6 +455,7 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
+    "ALTER TABLE people_profiles ADD COLUMN email TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -1430,6 +1457,64 @@ export const focusMilestoneQueries = {
     return getDb().prepare(
       'DELETE FROM focus_milestones WHERE id = ? AND user_id = ?'
     ).run(id, userId);
+  },
+};
+
+export interface PeopleProfile {
+  id: number;
+  user_id: number;
+  canonical_name: string;
+  email: string | null;
+  interaction_count: number;
+  last_interaction: string | null;    // ISO date
+  upcoming_interaction: string | null; // ISO date
+  updated_at: string;
+}
+
+export const peopleProfileQueries = {
+  listForUser: (userId: number): PeopleProfile[] => {
+    return getDb().prepare(
+      'SELECT * FROM people_profiles WHERE user_id = ? ORDER BY interaction_count DESC, last_interaction DESC'
+    ).all(userId) as PeopleProfile[];
+  },
+  getByName: (userId: number, canonicalName: string): PeopleProfile | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM people_profiles WHERE user_id = ? AND LOWER(canonical_name) = LOWER(?)'
+    ).get(userId, canonicalName) as PeopleProfile | undefined;
+  },
+  upsert: (
+    userId: number,
+    canonicalName: string,
+    email: string | null,
+    interactionCount: number,
+    lastInteraction: string | null,
+    upcomingInteraction: string | null,
+  ) => {
+    return getDb().prepare(`
+      INSERT INTO people_profiles (user_id, canonical_name, email, interaction_count, last_interaction, upcoming_interaction, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id, canonical_name) DO UPDATE SET
+        email = excluded.email,
+        interaction_count = excluded.interaction_count,
+        last_interaction = excluded.last_interaction,
+        upcoming_interaction = excluded.upcoming_interaction,
+        updated_at = datetime('now')
+    `).run(userId, canonicalName, email, interactionCount, lastInteraction, upcomingInteraction);
+  },
+};
+
+// Pattern cache queries — one row per user, refreshed on each briefing.
+export const patternCacheQueries = {
+  get: (userId: number): string | null => {
+    const row = getDb().prepare('SELECT patterns FROM pattern_cache WHERE user_id = ?').get(userId) as { patterns: string } | undefined;
+    return row?.patterns ?? null;
+  },
+  upsert: (userId: number, patternsJson: string) => {
+    getDb().prepare(`
+      INSERT INTO pattern_cache (user_id, patterns, computed_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET patterns = excluded.patterns, computed_at = datetime('now')
+    `).run(userId, patternsJson);
   },
 };
 
