@@ -478,6 +478,7 @@ interface ActivityItem {
   undoId: number | null;
   undoLabel: string | null;
   undone: number | null;
+  emailReceiptId?: number | null;
 }
 
 function ActivityTab() {
@@ -486,6 +487,8 @@ function ActivityTab() {
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error'
+  const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error'>>({});
 
   async function load() {
     setLoading(true);
@@ -497,6 +500,26 @@ function ActivityTab() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function handleExpandItem(item: ActivityItem) {
+    const isExpanded = expandedId === item.id;
+    setExpandedId(isExpanded ? null : item.id);
+    // Eagerly load email subjects when expanding an email receipt row.
+    if (!isExpanded && item.emailReceiptId && emailSubjects[item.emailReceiptId] === undefined) {
+      setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'loading' }));
+      try {
+        const r = await fetch(`/api/activity/email-receipt/${item.emailReceiptId}`);
+        if (r.ok) {
+          const d = await r.json();
+          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: d.subjects ?? [] }));
+        } else {
+          setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
+        }
+      } catch {
+        setEmailSubjects(prev => ({ ...prev, [item.emailReceiptId!]: 'error' }));
+      }
+    }
+  }
 
   async function handleUndo(undoId: number) {
     setUndoingId(undoId);
@@ -611,7 +634,7 @@ function ActivityTab() {
                       <div
                         className="px-4 py-3 flex items-center gap-3"
                         style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-                        onClick={() => hasDetail && setExpandedId(isExpanded ? null : item.id)}
+                        onClick={() => hasDetail && handleExpandItem(item)}
                         role={hasDetail ? 'button' : undefined}
                         aria-expanded={hasDetail ? isExpanded : undefined}
                       >
@@ -678,7 +701,33 @@ function ActivityTab() {
                           className="px-4 pb-4"
                           style={{ borderTop: '1px solid var(--edg-hairline)' }}
                         >
-                          {item.detail.sections.length > 0 && (
+                          {/* Email receipt: show thread subjects when loaded */}
+                          {item.emailReceiptId && (() => {
+                            const state = emailSubjects[item.emailReceiptId];
+                            if (state === 'loading') return (
+                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>Loading emails…</p>
+                            );
+                            if (state === 'error') return (
+                              <p className="mt-3 text-xs" style={{ color: 'var(--text-faint)' }}>Could not load email subjects.</p>
+                            );
+                            if (Array.isArray(state) && state.length > 0) return (
+                              <div className="mt-3">
+                                <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-faint)' }}>
+                                  Emails Edge reviewed
+                                </p>
+                                <div className="space-y-1">
+                                  {state.map((subject, i) => (
+                                    <p key={i} className="text-xs px-2 py-1 rounded" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)' }}>
+                                      {subject}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                            return null;
+                          })()}
+                          {/* Only show generic detail sections for non-email-receipt rows */}
+                          {!item.emailReceiptId && item.detail.sections.length > 0 && (
                             <div className="mt-3 space-y-2">
                               {item.detail.sections.map((sec, i) => (
                                 <div key={i} className="flex gap-3">

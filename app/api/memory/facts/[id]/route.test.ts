@@ -130,6 +130,13 @@ describe('PATCH /api/memory/facts/[id]', () => {
     expect(audit.ok).toBe(true);
   });
 
+  it('returns the updated fact in the response body', async () => {
+    const res = await PATCH(...patchReq({ statement: 'Updated statement' }));
+    const body = await res.json() as { ok: boolean; fact: unknown };
+    expect(body.ok).toBe(true);
+    expect(body.fact).toBeTruthy();
+  });
+
   it('trims statement before saving', async () => {
     await PATCH(...patchReq({ statement: '  Padded  ' }));
     const call = h.updateArgs[0] as unknown[];

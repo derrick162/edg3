@@ -59,7 +59,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     ok: true,
   });
 
-  return NextResponse.json({ success: true });
+  // Return the updated fact so the UI reflects the change without a refetch.
+  // updateFact also clears confidence → 'high' (removes the ⚠ verify flag).
+  const updated = factQueries.getById(user.id, id);
+  return NextResponse.json({ ok: true, fact: updated });
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
@@ -99,5 +102,5 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     ok: true,
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

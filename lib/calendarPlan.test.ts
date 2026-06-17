@@ -4,7 +4,7 @@ import type { Priority } from './db';
 import type { CalendarFit, ScoreResult } from './calendarScore';
 import type { AlignmentResult } from './alignment';
 import type { WhoopRecoveryDay } from './whoop';
-import { findFreeSlot, buildCalendarPlan, buildDiagnoses, findHeaviestDeferrableEvent, patchAlignmentForPlan } from './calendarPlan';
+import { findFreeSlot, buildCalendarPlan, buildDiagnoses, findHeaviestDeferrableEvent, patchAlignmentForPlan, findFirstTightGap } from './calendarPlan';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
@@ -392,7 +392,7 @@ describe('buildCalendarPlan — H1 new action sources', () => {
   const PRIORITIES = [makeP('Fundraising'), makeP('Product roadmap', 2)];
 
   it('creates a focus block from hygiene flag when focusScore has no topFix', () => {
-    // 3 back-to-back meetings → hygiene flag fires → plan creates a focus block
+    // 3 back-to-back meetings → hygiene flag fires → focus block + buffer
     const events = [
       timedEvent('Meeting A', 9, 10),
       timedEvent('Meeting B', 10.1, 11),
@@ -400,10 +400,10 @@ describe('buildCalendarPlan — H1 new action sources', () => {
     ];
     const fit = makeFit({ edgeScore: 75 }); // no topFix
     const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ);
-    expect(plan.actions).toHaveLength(1);
-    expect(plan.actions[0].type).toBe('create');
-    expect(plan.actions[0].description).toMatch(/Fundraising/);
-    expect(plan.actions[0].description).toMatch(/deep-work time/i);
+    const focusAction = plan.actions.find(a => a.type === 'create' && a.title?.includes('Focus'));
+    expect(focusAction).toBeDefined();
+    expect(focusAction!.description).toMatch(/Fundraising/);
+    expect(focusAction!.description).toMatch(/deep-work time/i);
   });
 
   it('creates a recovery move when recovery ≤ 33 and deferrable events exist', () => {
@@ -464,5 +464,147 @@ describe('buildCalendarPlan — H1 new action sources', () => {
     expect(plan.actions.length).toBeGreaterThanOrEqual(2);
     expect(plan.actions.some(a => a.type === 'create')).toBe(true);
     expect(plan.actions.some(a => a.type === 'move' && a.addresses === 'energy')).toBe(true);
+  });
+
+  // ── Path C: open loops ──────────────────────────────────────────────────────
+  it('creates a 60-min focus block when open loops are due today and no other path fires', () => {
+    const fit = makeFit({ edgeScore: 80 }); // no topFix, no hygiene flag
+    const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ, null, undefined, ['Reply to Ansi', 'Send pitch deck']);
+    expect(plan.actions).toHaveLength(1);
+    const a = plan.actions[0];
+    expect(a.type).toBe('create');
+    expect(a.addresses).toBe('focus');
+    expect(a.title).toBe('Commitments — clear open loops');
+    expect(a.description).toContain('2 open commitments');
+    expect(a.reason).toContain('2 commitment');
+  });
+
+  it('Path C: singular wording when exactly 1 open loop', () => {
+    const fit = makeFit({ edgeScore: 80 });
+    const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ, null, undefined, ['Reply to Ansi']);
+    const a = plan.actions[0];
+    expect(a.description).toContain('1 open commitment due today');
+    expect(a.reason).toContain('1 commitment due today');
+  });
+
+  it('Path C: does not fire when hygiene flag path already produced a block', () => {
+    // Hygiene flag fires first (3 back-to-back meetings) → Path C skipped
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.1, 11),
+      timedEvent('Meeting C', 11.1, 12),
+    ];
+    const fit = makeFit({ edgeScore: 80 });
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, null, undefined, ['Reply to Ansi']);
+    // No open-loops block should appear — hygiene path ran instead
+    expect(plan.actions.every(a => a.title !== 'Commitments — clear open loops')).toBe(true);
+    // The focus block from hygiene IS there
+    expect(plan.actions.some(a => a.type === 'create' && a.title?.includes('Focus'))).toBe(true);
+  });
+
+  it('Path C: does not fire when openLoopsDueToday is empty', () => {
+    const fit = makeFit({ edgeScore: 80 });
+    const plan = buildCalendarPlan([], fit, PRIORITIES, DATE, TZ, null, undefined, []);
+    expect(plan.actions).toHaveLength(0);
+  });
+});
+
+// ─── findFirstTightGap ───────────────────────────────────────────────────────
+
+describe('findFirstTightGap', () => {
+  const DATE = '2026-06-15';
+
+  it('returns null when no events', () => {
+    expect(findFirstTightGap([], DATE, TZ)).toBeNull();
+  });
+
+  it('returns null when no gap is tight (gap ≥ 15 min)', () => {
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.5, 11.5), // 30-min gap — not tight
+    ];
+    expect(findFirstTightGap(events, DATE, TZ)).toBeNull();
+  });
+
+  it('returns null when events are butted end-to-end with 0-min gap', () => {
+    const events = [
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10, 11), // exactly 0 gap
+    ];
+    expect(findFirstTightGap(events, DATE, TZ)).toBeNull();
+  });
+
+  it('returns the tight gap (5-min) between two meetings', () => {
+    const events = [
+      timedEvent('Standup', 9, 10),
+      timedEvent('Client call', 10 + 5/60, 11 + 5/60), // 5-min gap
+    ];
+    const result = findFirstTightGap(events, DATE, TZ);
+    expect(result).not.toBeNull();
+    expect(result!.beforeTitle).toBe('Standup');
+    expect(result!.afterTitle).toBe('Client call');
+    expect(result!.startDateTime).toContain('10:00');
+    expect(result!.endDateTime).toContain('10:05');
+  });
+
+  it('returns the first tight gap when multiple exist', () => {
+    const events = [
+      timedEvent('A', 9, 10),
+      timedEvent('B', 10 + 5/60, 11 + 5/60),  // tight gap after A
+      timedEvent('C', 11 + 10/60, 12 + 10/60), // tight gap after B
+    ];
+    const result = findFirstTightGap(events, DATE, TZ);
+    expect(result!.beforeTitle).toBe('A');
+    expect(result!.afterTitle).toBe('B');
+  });
+
+  it('ignores all-day events', () => {
+    const events = [
+      allDayEvent('Conference'),
+      timedEvent('Meeting A', 9, 10),
+      timedEvent('Meeting B', 10.5, 11.5),
+    ];
+    expect(findFirstTightGap(events, DATE, TZ)).toBeNull();
+  });
+});
+
+// ─── buildCalendarPlan — buffer action ───────────────────────────────────────
+
+describe('buildCalendarPlan — buffer action (Action 4)', () => {
+  const DATE = '2026-06-15';
+  const PRIORITIES = [makeP('Fundraising')];
+
+  it('adds a buffer when a tight gap exists and no focus block was created', () => {
+    // No topFix, no hygiene flag, no recovery, no open loops — but a tight gap
+    const events = [
+      timedEvent('Standup', 9, 10),
+      timedEvent('Client call', 10 + 5/60, 11 + 5/60), // 5-min gap
+    ];
+    const fit = makeFit({ edgeScore: 80 });
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ);
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0].type).toBe('create');
+    expect(plan.actions[0].reason).toContain('Back-to-back meetings');
+    expect(plan.actions[0].title).toBe('Buffer');
+  });
+
+  it('does not add buffer when there are already 3 actions', () => {
+    // Set up 3 actions first (topFix create + recovery move + alignment move)
+    const events = [
+      timedEvent('Client call', 14, 16, 'evt-client'),
+      timedEvent('Team sync', 10, 12, 'evt-sync'),
+      // tight gap somewhere
+      timedEvent('Standup', 9, 10),
+    ];
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 0 }]);
+    alignment.topUnaligned = [{ title: 'Team sync', hours: 2 }];
+    alignment.unalignedHours = 2;
+    const fit = makeFit({
+      edgeScore: 50,
+      focusTopFix: { description: 'Block time for "Fundraising"', op: 'create' },
+    });
+    const recoveryHistory = [recovDay(DATE, 20)];
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, alignment, recoveryHistory);
+    expect(plan.actions.length).toBeLessThanOrEqual(3);
   });
 });

@@ -20,6 +20,8 @@ export interface PlanAction {
   description: string;
   /** Which score dimension this action addresses. */
   addresses: 'focus' | 'energy';
+  /** Optional specific reason shown in the DayPlanCard; overrides the generic reason. */
+  reason?: string;
   // create:
   title?: string;         // event title (handler prepends ⚡)
   startDateTime?: string; // wall-clock in user tz: "2026-06-15T09:00:00"
@@ -165,6 +167,51 @@ export function findHeaviestDeferrableEvent(
   );
 }
 
+// ─── findFirstTightGap ───────────────────────────────────────────────────────
+
+/**
+ * Find the first pair of consecutive timed events today with a gap < 15 minutes.
+ * Returns the gap as a wall-clock slot (startDateTime / endDateTime in user tz).
+ * Used to propose a buffer create action between back-to-back meetings.
+ * Pure — no I/O.
+ */
+export function findFirstTightGap(
+  events: calendar_v3.Schema$Event[],
+  date: string,
+  tz: string,
+): { beforeTitle: string; afterTitle: string; startDateTime: string; endDateTime: string } | null {
+  const timed = events
+    .filter(e => e.start?.dateTime && e.end?.dateTime)
+    .map(e => {
+      const s  = localHourMinute(e.start!.dateTime!, tz);
+      const en = localHourMinute(e.end!.dateTime!, tz);
+      if (!s || !en) return null;
+      return {
+        title:   (e.summary ?? 'Meeting').trim(),
+        startH:  s.hour + s.minute / 60,
+        endH:    en.hour + en.minute / 60,
+        startMs: new Date(e.start!.dateTime!).getTime(),
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b !== null)
+    .sort((a, b) => a.startMs - b.startMs);
+
+  const GAP_MIN_H  = 1 / 60;     // at least 1 min gap (skip exactly-overlapping events)
+  const TIGHT_H    = 15 / 60;    // < 15 min = back-to-back
+
+  for (let i = 1; i < timed.length; i++) {
+    const gapH = timed[i].startH - timed[i - 1].endH;
+    if (gapH >= GAP_MIN_H && gapH < TIGHT_H) {
+      return {
+        beforeTitle:   timed[i - 1].title,
+        afterTitle:    timed[i].title,
+        ...makeSlot(date, timed[i - 1].endH, timed[i].startH),
+      };
+    }
+  }
+  return null;
+}
+
 // ─── patchAlignmentForPlan ────────────────────────────────────────────────────
 
 /**
@@ -219,9 +266,10 @@ export function patchAlignmentForPlan(
  * Compose 1–3 deterministic actions to improve today's day.
  *
  * Action sources (in priority order, cap 3):
- *   1. Focus block — focusScore.topFix says create, OR hygiene flag says no deep-work time
+ *   1. Focus block — focusScore.topFix says create, OR hygiene flag, OR open loops due today
  *   2. Recovery move — latest recovery ≤33% → move heaviest deferrable event to tomorrow
  *   3. Alignment gap move — biggest unaligned sink today → move to tomorrow
+ *   4. Buffer — first back-to-back pair with a tight gap → create a breathing-room event
  *
  * Pure — no I/O. Deterministic given the same inputs.
  */
@@ -233,6 +281,7 @@ export function buildCalendarPlan(
   tz: string,
   alignment?: AlignmentResult | null,
   recoveryHistory?: WhoopRecoveryDay[],
+  openLoopsDueToday?: string[],
 ): CalendarPlan {
   const actions: PlanAction[] = [];
 
@@ -250,6 +299,7 @@ export function buildCalendarPlan(
         type: 'create',
         description: `Block 90 minutes for "${priorityName}" at ${formatWallHour(startDecimalH)}`,
         addresses: 'focus',
+        reason: `No time blocked for "${priorityName}" this week`,
         title: `Focus — ${priorityName}`,
         startDateTime: slot.startDateTime,
         endDateTime:   slot.endDateTime,
@@ -270,7 +320,27 @@ export function buildCalendarPlan(
           type: 'create',
           description: `Block 90 minutes for "${priorityName}" at ${formatWallHour(startDecimalH)} — protect deep-work time`,
           addresses: 'focus',
+          reason: 'Schedule is packed — protect deep-work time',
           title: `Focus — ${priorityName}`,
+          startDateTime: slot.startDateTime,
+          endDateTime:   slot.endDateTime,
+        });
+      }
+    }
+    // Path C: open loops due today and no focus block yet → create a 60-min slot to clear them
+    else if (openLoopsDueToday && openLoopsDueToday.length > 0 && actions.length === 0) {
+      const slot = findFreeSlot(todayEvents, date, 1, tz);
+      if (slot) {
+        const count = openLoopsDueToday.length;
+        const startDecimalH =
+          parseInt(slot.startDateTime.slice(11, 13), 10) +
+          parseInt(slot.startDateTime.slice(14, 16), 10) / 60;
+        actions.push({
+          type: 'create',
+          description: `Block 60 minutes at ${formatWallHour(startDecimalH)} to clear ${count} open commitment${count !== 1 ? 's' : ''} due today`,
+          addresses: 'focus',
+          reason: `${count} commitment${count !== 1 ? 's' : ''} due today with no time blocked`,
+          title: 'Commitments — clear open loops',
           startDateTime: slot.startDateTime,
           endDateTime:   slot.endDateTime,
         });
@@ -289,6 +359,7 @@ export function buildCalendarPlan(
           type: 'move',
           description: `Move "${heaviest.summary ?? 'event'}" to tomorrow — recovery is ${latestRec.recoveryScore}%, protect your energy today`,
           addresses: 'energy',
+          reason: `Recovery ${latestRec.recoveryScore}% — protect your energy`,
           eventId:    heaviest.id,
           eventTitle: heaviest.summary ?? undefined,
           newDate:    nextDateString(date),
@@ -315,11 +386,36 @@ export function buildCalendarPlan(
           type: 'move',
           description: `Move "${match.summary}" to tomorrow — ${topSink.hours}h that isn't aligned to your priorities`,
           addresses: 'focus',
+          reason: `${topSink.hours}h on "${topSink.title}" isn't aligned to your priorities`,
           eventId:    match.id,
           eventTitle: match.summary ?? undefined,
           newDate:    nextDateString(date),
         });
       }
+    }
+  }
+
+  // ── 4. Buffer between back-to-back meetings ────────────────────────────────
+  // Only when there's room and a tight gap exists today.
+  if (actions.length < 3) {
+    const gap = findFirstTightGap(todayEvents, date, tz);
+    if (gap) {
+      const gapStartH =
+        parseInt(gap.startDateTime.slice(11, 13), 10) +
+        parseInt(gap.startDateTime.slice(14, 16), 10) / 60;
+      const gapMins = Math.round(
+        (parseInt(gap.endDateTime.slice(11, 13), 10) * 60 + parseInt(gap.endDateTime.slice(14, 16), 10)) -
+        (parseInt(gap.startDateTime.slice(11, 13), 10) * 60 + parseInt(gap.startDateTime.slice(14, 16), 10))
+      );
+      actions.push({
+        type: 'create',
+        description: `Protect the ${gapMins}-min gap at ${formatWallHour(gapStartH)} between "${gap.beforeTitle}" and "${gap.afterTitle}"`,
+        addresses: 'focus',
+        reason: 'Back-to-back meetings with no breathing room',
+        title: 'Buffer',
+        startDateTime: gap.startDateTime,
+        endDateTime:   gap.endDateTime,
+      });
     }
   }
 
