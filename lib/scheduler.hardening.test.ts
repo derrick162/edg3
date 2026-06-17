@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
   findById:              vi.fn(() => MOCK_USER),
   initiateCall:          vi.fn(async () => ({ id: 'call_retry_123' })),
   generateDailyBriefing: vi.fn(async () => 'Retry briefing content'),
+  fetchMock:             vi.fn<() => Promise<{ ok: boolean; status: number }>>(() => Promise.resolve({ ok: true, status: 200 })),
 }));
 
 // ── module mocks ──────────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ vi.mock('./db', () => ({
   healthLogQueries: { write: vi.fn(), prune: vi.fn(), getLatest: vi.fn() },
   callAttemptQueries: { record: vi.fn(), failedCount: vi.fn(() => 0), getRecent: vi.fn(() => []), prune: vi.fn() },
   calendarQueries: { get: vi.fn(), recordAuthFailure: vi.fn(), clearAuthFailures: vi.fn(), needsReconnect: vi.fn(() => false) },
+  notificationQueries: { create: vi.fn() },
   briefingContextPackQueries: { upsert: vi.fn(), prune: vi.fn() },
   episodeQueries: { pruneAll: vi.fn() },
   openLoopQueries: { prune: vi.fn() },
@@ -73,6 +75,9 @@ vi.mock('./db', () => ({
 
 vi.mock('./backup', () => ({ maybeDailyBackup: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./vapi',   () => ({ initiateCall: h.initiateCall }));
+
+// Stub global fetch so pingVapiHealth returns true (healthy) by default in all tests.
+vi.stubGlobal('fetch', h.fetchMock);
 vi.mock('./briefing', () => ({
   generateDailyBriefing: h.generateDailyBriefing,
   getWeekOf: vi.fn(() => '2026-06-17'),
@@ -101,6 +106,7 @@ beforeEach(() => {
   h.initiateCall.mockResolvedValue({ id: 'call_retry_123' });
   h.generateDailyBriefing.mockResolvedValue('Retry briefing content');
   h.findById.mockReturnValue(MOCK_USER);
+  h.fetchMock.mockResolvedValue({ ok: true, status: 200 });
   process.env.VAPI_API_KEY = 'test-key';
 });
 

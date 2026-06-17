@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -411,6 +411,24 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
   }
 }
 
+// T4-2 — Lightweight Vapi API health probe. Makes a GET to the phone-number list endpoint
+// (cheapest authenticated call). Returns true if reachable (2xx), false otherwise.
+// Used before initiating calls so a service outage fails fast with a user notification.
+async function pingVapiHealth(): Promise<boolean> {
+  const apiKey = process.env.VAPI_API_KEY;
+  if (!apiKey) return true; // no key = dev/test mode, skip check
+  try {
+    const res = await fetch('https://api.vapi.ai/phone-number', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000), // 8-second timeout
+    });
+    return res.ok || res.status === 404; // 404 = no numbers, but API is reachable
+  } catch {
+    return false;
+  }
+}
+
 export async function scheduleBriefingCall(userId: number, opts: { force?: boolean } = {}) {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -493,6 +511,23 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     const recentMemories = memoryQueries.getRecent(userId, 1);
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
+    // T4-2 — Pre-call Vapi health check: ping Vapi API before generating the briefing
+    // call so a service outage fails fast with a user notification instead of wasting
+    // a full LLM gen call that can never be delivered.
+    const vapiHealthy = await pingVapiHealth();
+    if (!vapiHealthy) {
+      briefingQueries.update(briefingId, { status: 'failed', error_code: 'vapi_error' });
+      try {
+        notificationQueries.create(
+          userId,
+          'call_failed',
+          "Edge couldn't place your call this morning",
+          "We couldn't reach the call service — your briefing will resume tomorrow. Check your connection settings in the dashboard if this keeps happening.",
+        );
+      } catch { /* best effort */ }
+      throw new CallError("Edge couldn't reach Vapi this morning — your briefing will resume tomorrow.", 'vapi_error');
+    }
+
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
@@ -503,6 +538,15 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
       console.error(`[scheduler] Vapi call failed for user ${userId}:`, err);
       const callErr = classifyVapiError(err);
       briefingQueries.update(briefingId, { status: 'failed', error_code: callErr.code });
+      // Write a notification so the user sees the failure in the dashboard.
+      try {
+        notificationQueries.create(
+          userId,
+          'call_failed',
+          "Edge couldn't place your call this morning",
+          callErr.userMessage,
+        );
+      } catch { /* best effort */ }
       throw callErr;
     }
   } else {

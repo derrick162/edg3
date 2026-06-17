@@ -217,6 +217,14 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T4-2 + DC1-2 — Vapi pre-call health check + retry at T+5min (1660 green).**
+  - **T4-2 — Vapi pre-call health check with dashboard notification:**
+    - `pingVapiHealth()` private fn in `lib/scheduler.ts`: lightweight GET to `https://api.vapi.ai/phone-number` (8s timeout, no-op when `VAPI_API_KEY` unset → returns true). Returns true on 2xx/404, false on error/timeout.
+    - Inserted before `initiateCall` in `scheduleBriefingCall`: if ping fails → marks briefing `failed` with `error_code='vapi_error'`, creates a `call_failed` notification ("Edge couldn't place your call this morning"), throws `CallError` to surface cleanly. Notification also written on `initiateCall` failure.
+    - Tests: global `fetch` stub (`vi.stubGlobal`) added to both scheduler test files — returns `{ ok: true }` by default, restored after each `vi.resetAllMocks()`.
+  - **DC1-2 — Retry at T+5min (was T+10min):**
+    - `app/api/vapi/webhook/route.ts` `scheduleRetry` path: changed `'+10 minutes'` → `'+5 minutes'` so DB-flagged retries fire sooner after call setup failures.
+  - 86 test files / 1660 tests total.
 - **2026-06-18** — **PILLAR-TRUST T0-2(partial) + T1-3(completion) + T4-1 + DC1-1 — Encryption key rotation doc + 6am health digest + Google token auth tracking + call attempt log (1660 green).**
   - **T0-2 — Encryption key rotation protocol:** `content/encryption-key-rotation.md` written. Documents: the single rule (never rotate without a re-encryption migration), when rotation is necessary, step-by-step safe rotation process with template migration script, what `safeDecryptField` does vs. throwing variant, and the catastrophic recovery note. Accepted gaps and `DATA_ENCRYPTION_KEY` backup location placeholder included.
   - **T1-3 completion — 6am health digest + health_log table:**

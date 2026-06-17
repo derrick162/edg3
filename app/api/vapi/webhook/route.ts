@@ -12,11 +12,11 @@ const MISSED_CALL_REASONS = [
 ];
 
 // Schedule a retry by stamping retry_after in the DB. The minute-cron in lib/scheduler.ts
-// detects this and fires the retry call, so server restarts during the 10-minute window
-// do NOT drop the retry silently (the flag survives in the DB).
+// detects this and fires the retry call, so server restarts during the 5-minute window
+// do NOT drop the retry silently (the flag survives in the DB). DC1-2: retry once at T+5min.
 function scheduleRetry(db: ReturnType<typeof getDb>, briefingId: number, userId: number) {
-  db.prepare("UPDATE briefings SET retry_after = datetime('now', '+10 minutes') WHERE id = ?").run(briefingId);
-  console.log(`[webhook] Retry stamped for briefing ${briefingId} (user ${userId}) — minute-cron fires in ~10 min`);
+  db.prepare("UPDATE briefings SET retry_after = datetime('now', '+5 minutes') WHERE id = ?").run(briefingId);
+  console.log(`[webhook] Retry stamped for briefing ${briefingId} (user ${userId}) — minute-cron fires in ~5 min`);
 }
 
 // Vapi webhook handler for call status updates
