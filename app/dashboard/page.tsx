@@ -1143,6 +1143,7 @@ export default function Dashboard() {
   const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
   const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
   const [accountability, setAccountability] = useState<{ done: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; stillOpen: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; completionRate: number | null; lookbackDays: number } | null>(null);
+  const [episodes, setEpisodes] = useState<{ id: number; occurredAt: string; topics: string[]; commitments: string[] }[]>([]);
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -1256,6 +1257,7 @@ export default function Dashboard() {
     fetch('/api/relationships').then(r => r.ok ? r.json() : null).then(d => { if (d?.profiles) setPeople(d.profiles); }).catch(() => {});
     fetch('/api/patterns').then(r => r.ok ? r.json() : null).then(d => { if (d?.patterns) setPatterns(d.patterns); }).catch(() => {});
     fetch('/api/accountability').then(r => r.ok ? r.json() : null).then(d => { if (d?.snapshot) setAccountability(d.snapshot); }).catch(() => {});
+    fetch('/api/episodes').then(r => r.ok ? r.json() : null).then(d => { if (d?.episodes) setEpisodes(d.episodes); }).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
@@ -2795,6 +2797,39 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Episode history (M5) */}
+              {episodes.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">🗂️</span>
+                    Call history Edge remembers
+                  </h3>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                    Edge stores what you discussed on each call so it can reference past conversations in future briefings.
+                  </p>
+                  <div className="space-y-2">
+                    {episodes.map(ep => (
+                      <div key={ep.id} className="glass-card px-4 py-3">
+                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(ep.occurredAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </p>
+                        {ep.topics.length > 0 && (
+                          <p className="text-xs mb-1" style={{ color: 'var(--text-body)' }}>
+                            <span style={{ color: 'var(--text-faint)' }}>Topics: </span>
+                            {ep.topics.slice(0, 4).join(', ')}
+                          </p>
+                        )}
+                        {ep.commitments.length > 0 && (
+                          <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                            Committed: {ep.commitments[0]}{ep.commitments.length > 1 ? ` +${ep.commitments.length - 1} more` : ''}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
