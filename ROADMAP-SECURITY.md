@@ -50,6 +50,17 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **S3 hero-loop APPLY path hardened (1030 green).**
+  - **Audit findings:**
+    - ✅ **Idempotency / double-apply**: `consumeDeleteToken(userId, planId)` runs inside a SQLite transaction (atomic read+mark-used). Double-click or retry gets 400 "Invalid or expired plan ID" immediately. Confirmed clean.
+    - ✅ **Authz**: `consumeDeleteToken` checks `row.user_id !== userId` — user B's session cannot consume user A's token. Calendar mutations use `calendarQueries.get(user.id)` — all ops scoped to the authenticated user. Confirmed clean.
+    - ✅ **Rate limit**: `dayPlanConfirm` — 5/hr per user. Sane for one-click use.
+    - 🐛 **Undo grouping (BUG — fixed)**: `recordUndo()` was called without `planId`, so undo entries had no `plan_id` in the DB. `undoPlan(userId, planId, cal)` calls `undoQueries.getByPlanId()` which returns empty — the whole plan could not be undone as a unit. **Fix:** pass `planId` as the 4th arg to `recordUndo()`.
+    - 🐛 **Execution tracking (gap — fixed)**: `calendarPlanQueries.markApplied()` was never called. The `calendar_plan_executions` table row was never written, so `undoPlan` had nothing to `markReverted` and Core couldn't idempotency-check via `calendarPlanQueries.get()`. **Fix:** call `calendarPlanQueries.markApplied(user.id, planId, doneDescs.length)` after ops complete.
+  - **Files changed:** `app/api/day-plan/confirm/route.ts` (2-line fix: pass `planId` to `recordUndo`, add `markApplied` call), `app/api/day-plan/confirm/route.test.ts` (new, 15 tests).
+  - **Tests added (15):** auth gate (401), rate limit (429), double-submit rejected (400), token for wrong user rejected (400), planId passed to recordUndo, no recordUndo when no actions, markApplied called on success, markApplied not called on bad token, markApplied called even on partial success, calendar-not-connected (400), full success path (200, ok+count).
+  - 1030/1030 green, tsc clean, next build clean.
+
 - **2026-06-16** — **S1 waitlist hardening + S2 CSP decision closed (1015 green).**
   - **[S1] `/api/waitlist` audit + hardening — COMPLETE:**
     - Audited rate-limiting (5/hr per IP via `waitlist` key, rightmost XFF — spoofing-resistant), email validation (254-char cap, `EMAIL_RE`, header-injection characters blocked by the regex), and idempotency (`ON CONFLICT DO NOTHING` + generic `{ ok: true }` on duplicate — no enumeration leak). All clean; no additional hardening required.

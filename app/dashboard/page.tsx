@@ -854,6 +854,7 @@ export default function Dashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
   const [calendarFitLoading, setCalendarFitLoading] = useState(false);
+  const [celebrateFromScore, setCelebrateFromScore] = useState<number | null>(null);
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
@@ -972,6 +973,7 @@ export default function Dashboard() {
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
+    const oldScore = typeof calendarFit?.edgeScore === 'number' ? calendarFit.edgeScore : null;
     await fetch('/api/focus/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -979,9 +981,16 @@ export default function Dashboard() {
     });
     // Transition card to confirmed state (don't dismiss — the locked view fills the slot)
     setConfirmedFocusAreas(areas);
-    // Re-fetch Edge Score: Focus component now reads today's confirmed daily_focus,
-    // so the score updates live instead of showing a stale pre-confirm value.
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    // Re-fetch Edge Score — Momentum bonus fires on confirm so the number rises.
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+      if (s) {
+        setCalendarFit(s);
+        // Trigger celebration animation when score genuinely rose
+        if (oldScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > oldScore) {
+          setCelebrateFromScore(oldScore);
+        }
+      }
+    }).catch(() => {});
   }
 
   async function handleCompleteArea(idOrTitle: string) {
@@ -1001,6 +1010,7 @@ export default function Dashboard() {
   }
 
   async function handleConfirmDayPlan(planId: string) {
+    const oldScore = typeof calendarFit?.edgeScore === 'number' ? calendarFit.edgeScore : null;
     const res = await fetch('/api/day-plan/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1010,7 +1020,14 @@ export default function Dashboard() {
     setDayPlanApplied(true);
     if (d.newScore != null) {
       setDayPlanAppliedScore(d.newScore);
-      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+        if (s) {
+          setCalendarFit(s);
+          if (oldScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > oldScore) {
+            setCelebrateFromScore(oldScore);
+          }
+        }
+      }).catch(() => {});
     }
   }
 
@@ -1258,7 +1275,13 @@ export default function Dashboard() {
                 body: n.body,
                 read: !!n.read,
                 createdAt: n.created_at,
-                actions: [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }],
+                // "Book a time" belongs ONLY on reply notifications (its whole purpose:
+                // schedule with whoever replied). It was wrongly attached to EVERY
+                // notification — incl. Edge Score changes — which read as nonsensical.
+                // Gate it to reply notifications (their title contains "replied").
+                actions: (n.title || '').includes('replied')
+                  ? [{ label: '📅 Book a time', variant: 'secondary' as const, onClick: () => openBook(n) }]
+                  : undefined,
               }))}
               onDismiss={() => {}}
             />
@@ -1646,6 +1669,18 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Hero loop — always-first greeting card: "Here's what's off" or "You're well-aligned" */}
+              <div ref={dayPlanRef} className="mb-6">
+                <DayPlanCard
+                  plan={dayPlan}
+                  loading={dayPlanLoading}
+                  onConfirm={handleConfirmDayPlan}
+                  onDismiss={dayPlan ? () => setDayPlan(null) : undefined}
+                  applied={dayPlanApplied}
+                  appliedScore={dayPlanAppliedScore}
+                />
+              </div>
+
               {/* Edge Score */}
               <div className="mb-6">
                 <EdgeScoreCard
@@ -1660,6 +1695,7 @@ export default function Dashboard() {
                       ? 'energy'
                       : undefined
                   }
+                  celebrateFromScore={celebrateFromScore}
                   onRequestFix={() => {
                     setActiveTab('home');
                     setTimeout(() => {
@@ -1696,19 +1732,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Day plan — Fix It target */}
-              {calendarConnected !== false && (
-                <div ref={dayPlanRef} className="mb-6">
-                  <DayPlanCard
-                    plan={dayPlan}
-                    loading={dayPlanLoading}
-                    onConfirm={handleConfirmDayPlan}
-                    onDismiss={() => setDayPlan(null)}
-                    applied={dayPlanApplied}
-                    appliedScore={dayPlanAppliedScore}
-                  />
-                </div>
-              )}
 
               {/* Time allocation viz — where time actually went vs priorities */}
               {timeAllocation && (

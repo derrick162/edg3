@@ -8,6 +8,45 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-17 (Trust bugs T1 + T2 — Derrick live feedback)
+
+> Two concrete trust-erosion bugs Derrick hit. Queue AFTER Ticket H unless trivial.
+
+**T1 — "Read 20 inbox threads for prioritization" looks robotic + opaque.** `getRecentEmailSignal`
+(lib/gmail.ts:313 — **Security-owned file, coordinate with Vijay**) records an `email_signal_fetch`
+audit entry every time it runs (briefing, focus rec, scores) → the Activity tab shows the SAME
+"20 inbox threads read" line repeatedly. Always 20 because `max:20` cap + user has ≥20 recent
+threads. Two trust problems: (a) identical repetition with no detail, (b) you can't see WHICH emails.
+By design the audit stores ZERO email content (privacy). **Fix (Core display + Security storage
+decision):** (1) collapse/dedupe repeated identical reads in the Activity feed (or filter
+`email_signal_fetch` as a read-only internal step like `readCalendar`); (2) make it expandable to
+show the actual thread SUBJECTS Edge reviewed — store subjects **encrypted at rest** (we have field
+encryption) so it's transparent to the USER about their OWN data while staying protected. Decide the
+privacy tradeoff with Vijay. This is the flagship "show your work" trust example.
+
+**T2 — Contact name misread: calendar says "Onsi", memory stored "Ansi".** A People fact reads
+"Ansi: …needs to follow up with. ⚠ verify" but the calendar event spells it **Onsi**. Same class as
+the earlier Faiza→Pfizer STT/LLM error. **Fix:** (a) when extracting a person fact from a calendar
+event, prefer the event's EXACT spelling over a re-transcribed/LLM-normalized version; (b) ship a way
+for the user to CORRECT a fact in the "What Edge knows" tab, not just delete it (inline edit →
+updates the fact + clears the ⚠ verify flag). Accuracy + user-correctable facts is a core trust
+pillar. (Coordinate any People/fact UI with Design.)
+
+**T3 — Calendar/memory GROUNDING layer (generalizes T2; Derrick's idea — high value).** Root class:
+Edge trusts the STT transcript over the canonical source. Live example — a call note says "shorten
+**Jim's** appointment" when Derrick clearly said **Gym**; also Onsi→Ansi, Faiza→Pfizer. Derrick's
+insight: *if Edge already knows which event the user means and that event's title is literally on the
+calendar, pull the name from the CALENDAR, not the transcript.* **Build a grounding pass** that, before
+saving any fact / call note / event reference, cross-references transcribed proper nouns against (a)
+the user's actual calendar event titles (today + this week) and (b) known contacts/facts in memory,
+and CORRECTS near-matches to the canonical spelling (fuzzy match — "Jim"≈"Gym", "Ansi"≈"Onsi"). Apply
+in the transcript→facts and transcript→notes extraction paths (lib/facts.ts, briefing summary). When
+a transcribed token closely matches a calendar title or known name, prefer the canonical form; only
+keep the transcript spelling when there's no calendar/memory match. This kills the whole misread class
+at the source. Tests with the Gym/Jim, Onsi/Ansi, Faiza/Pfizer cases.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (Ticket H — DEEPEN the hero loop; supersedes G)
 
 > Master at `75d32da` (1015 green). Sync master first. **CORRECTION: the hero-loop
