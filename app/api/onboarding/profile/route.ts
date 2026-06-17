@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { userQueries, memoryQueries } from '@/lib/db';
+import { userQueries, memoryQueries, auditLogQueries } from '@/lib/db';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 const MAX_PROFILE_SUMMARY = 2000;
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
 
   userQueries.updateProfile(user.id, summary);
   memoryQueries.create(user.id, 'profile', summary);
+  auditLogQueries.record({ userId: user.id, action: 'updateProfile', argsJson: JSON.stringify({ length: summary.length }), ok: true });
 
   return NextResponse.json({ success: true });
 }

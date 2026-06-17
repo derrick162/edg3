@@ -95,6 +95,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Round 4 — Audit log coverage + rate-limit sweep (1501 green).**
+  - **Ticket 1 — Audit log coverage:** Added `auditLogQueries.record(...)` to 12 previously-ungapped routes: `calendar/disconnect` (ok+fail), `whoop/disconnect` (ok+fail), `calendar/reminder` DELETE + POST (ok+fail), `onboarding/call-time`, `onboarding/profile`, `profile/timezone`, `priorities/[id]/energy`, `priorities/[id]/milestones` POST, `milestones/[id]` PATCH (complete/uncomplete) + DELETE. Full coverage map updated in `content/security-audit.md`.
+  - **Ticket 2 — Rate-limit sweep:** Added 6 new `LIMITS` entries to `lib/rateLimit.ts`: `calendarDisconnect` (5/hr), `whoopDisconnect` (5/hr), `calendarReminder` (10/hr), `profileTimezone` (20/hr), `priorityEnergy` (30/hr), `milestoneWrite` (60/hr). Applied to all corresponding routes. Rate-limit inventory in `content/security-audit.md` updated to 42 total keys.
+  - **Tests:** 6 new route test files (calendar/disconnect, whoop/disconnect, profile/timezone, priorities/[id]/energy, priorities/[id]/milestones, milestones/[id]) — 45 new tests covering 401, 429, 400 validation, 200 happy path, audit record assertions. 77 test files / 1501 tests total.
 - **2026-06-18** — **Episode store — ground-truth episodic memory tier, schema + encryption (1456 green).**
 
   PM dispatch (Kevin — cross-session): build the missing episodic memory tier per `specs/episode-store.md`.
