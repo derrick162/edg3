@@ -44,6 +44,15 @@ function isRoutineTitle(title: string): boolean {
   return [...ROUTINE_TITLES_ALIGNMENT].some(r => t.includes(r));
 }
 
+// Fitness/weight goals are advanced BY exercise — which the routine set above would
+// otherwise discard. When the user has a fitness/weight priority, exercise events
+// (gym/walk/run/lift…) must count TOWARD it ("Gym" IS the "Get to 130 lbs" work),
+// not get dropped into routine/unaligned. Without this, the briefing said the weight
+// goal "only got 2.5 hours" while gym hours vanished — a trust-eroding false signal.
+// Mirrors the GOAL_CATEGORIES fix in timeAllocation.ts (dashboard) — this is the briefing path.
+const FITNESS_PRIORITY_RE = /\b(weight|lbs?|kgs?|pounds?|fitness|gym|workout|muscle|strength|lean|physique|bodyweight|cardio|in shape|lose fat)\b/i;
+const EXERCISE_EVENT_RE = /\b(gym|workout|work out|lift|lifting|weights?|training|train|cardio|run|running|jog|walk|hike|yoga|pilates|spin|swim|cycle|cycling|ride|exercise|weigh|fitness)\b/i;
+
 /**
  * Classify this week's calendar events against the user's stated priorities via one Haiku call.
  * Returns a structured result with hours-per-priority and unaligned time sinks.
@@ -128,6 +137,10 @@ Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","p
     const unalignedList: { title: string; hours: number }[] = [];
     let routineHoursTotal = 0;
 
+    // 1-based index of a fitness/weight priority (0 = none). Exercise events the model
+    // marks "none" get credited here instead of routine — gym IS the weight-goal work.
+    const fitnessIdx = priorities.findIndex(p => FITNESS_PRIORITY_RE.test(p.text)) + 1;
+
     // Match the model's echoed title back to our event robustly — exact-string match was
     // fragile (any case/whitespace drift dropped the event and silently zeroed its hours).
     const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -138,6 +151,9 @@ Output format: [{"event":"EXACT TITLE","priority":"1"},{"event":"EXACT TITLE","p
       const idx = parseInt(c.priority, 10);
       if (!isNaN(idx) && idx >= 1 && idx <= priorities.length) {
         hoursMap.set(idx, (hoursMap.get(idx) ?? 0) + ev.hours);
+      } else if (fitnessIdx > 0 && EXERCISE_EVENT_RE.test(ev.title)) {
+        // Exercise event + the user has a fitness/weight goal → credit it to that goal.
+        hoursMap.set(fitnessIdx, (hoursMap.get(fitnessIdx) ?? 0) + ev.hours);
       } else {
         if (isRoutineTitle(ev.title)) routineHoursTotal += ev.hours;
         unalignedList.push({ title: ev.title, hours: ev.hours });
