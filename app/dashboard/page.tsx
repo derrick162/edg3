@@ -899,6 +899,7 @@ export default function Dashboard() {
   const [whoopData, setWhoopData] = useState<{
     recoveryScore: number | null;
     tier: 'high' | 'medium' | 'low' | null;
+    sleepScore: number | null;
     sleepHours: number | null;
     strain: number | null;
     history: { date: string; score: number }[];
@@ -1036,10 +1037,11 @@ export default function Dashboard() {
     });
     const d = await res.json().catch(() => ({}));
     setDayPlanApplied(true);
-    if (d.newScore != null) {
-      setDayPlanAppliedScore(d.newScore);
-      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
-    }
+    if (d.newScore != null) setDayPlanAppliedScore(d.newScore);
+    // ALWAYS refetch the canonical Edge Score so the HEADLINE moves to the real new
+    // value — otherwise the headline stayed stale (e.g. 63) while the plan card showed
+    // its projected number (67). One Edge Score, and it's the headline.
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
   }
 
   async function retryBriefingCall() {
@@ -1603,6 +1605,7 @@ export default function Dashboard() {
                     <RecoveryCard
                       recoveryScore={whoopData.recoveryScore}
                       tier={whoopData.tier}
+                      sleepScore={whoopData.sleepScore ?? undefined}
                       sleepHours={whoopData.sleepHours ?? undefined}
                       strain={whoopData.strain ?? undefined}
                       history={whoopData.history}

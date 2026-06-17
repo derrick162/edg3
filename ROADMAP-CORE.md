@@ -8,6 +8,27 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## 📥 PM DISPATCH — 2026-06-17 (T4 — clean call transcript/notes against canonical sources)
+
+> From Derrick's live morning call. Master at HEAD. The SPOKEN call is fine (Edge addresses
+> him via `firstName` from profile + references calendar event titles), but the **raw
+> speech-to-text TRANSCRIPT + extracted call notes** show homophone errors: "Derrick"→"Derek",
+> "Gym"→"Jim". These are what the user reads in the dashboard (call summary / transcript / notes),
+> so they erode trust even though the audio was correct.
+
+**T4 — Canonicalize transcript-derived text before storing/displaying.** Extend the T3 grounding:
+when saving the call summary, call notes, and any transcript shown in the dashboard, run a cleanup
+pass that replaces STT homophones with canonical spellings from (a) the user's profile **firstName /
+full name** (Derrick, not Derek), and (b) the user's **calendar event titles** for that day (Gym,
+not Jim). Fuzzy/phonetic match, conservative (only replace clear near-matches of known canonical
+tokens). Apply in `lib/briefing.ts` call-summary path + the transcript/notes the dashboard renders.
+- ⚠️ ALSO verify the source of `firstName`: confirm the user's profile name is actually stored as
+  "Derrick" (if onboarding captured it via STT it may literally be "Derek" in the DB → real bug, not
+  just transcript). If so, ensure the profile name is editable + correct. Coordinate profile-edit UI
+  with Design.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (Trust features — fact API + T3 undo toast)
 
 > Master at `9c2ed83` (1051 green). Sync master first. Full specs in `specs/trust-features.md`.

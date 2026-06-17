@@ -111,6 +111,9 @@ Full content library is committed to `content/`. This morning's additions:
 | `content/twilio-followup-email.md` | Ready-to-send follow-up + escalation options |
 | `content/design-partner-guide.md` | "Your first week" reference for new users |
 | `content/founding-story-post.md` | Now has Draft D (A+C combined, recommended) |
+| `content/content-calendar-july-august.md` | 8-week LinkedIn + Twitter posting plan for Phase 2 waitlist |
+| `content/external-comms-kit.md` | Advisor update template, journalist pitch, Product Hunt copy |
+| `content/beta-user-feedback.md` | Per-user tracking template — create entries as design partners go live |
 
 ---
 

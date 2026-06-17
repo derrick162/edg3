@@ -1,5 +1,7 @@
 # Edge — Design Partner Outreach
-_Templates for Derrick to send personally. Fill in [NAME] and [PERSONALIZED LINE]. Send from derrick@deltaedg3.com or personal email._
+_Templates for Derrick to send personally. Fill in [NAME] and [PERSONALIZED LINE]. Send from derrick@edg3.ai or personal email._
+_For who to target and personalization angles per archetype, see `content/design-partner-outreach-kit.md`.
+These two docs are complementary: the kit has the archetypes + angles; this file has the email templates + tracking._
 
 ---
 
