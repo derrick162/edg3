@@ -220,6 +220,18 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **FLAGSHIP — Activation Moment: derive-and-reveal after calendar connect (increment 1).**
+  - **Replaces the manual priorities step with `ActivationStep`** in `app/onboarding/page.tsx`. New step order: `profile → calendar → activation → calltime`.
+  - On mount, `ActivationStep` immediately fires `GET /api/priorities/derive` (no user action needed — auto-starts the moment the step renders, right after the 1.4s calendar-connect celebration).
+  - **5 internal states:**
+    1. `loading` — shows `PriorityDerivationLoadingCard` (animated skeleton) + "Edge is reading your last few months…"
+    2. `proposal` — shows `PriorityDerivationCard` with 2–3 derived anchors, one-line rationale per anchor, evidence tags, data provenance ("Based on N events · M emails · K facts from the last 90 days").
+    3. `accepting` — "Setting…" disabled state while POST `/api/priorities/derive/accept` runs, then advances to calltime.
+    4. `tweaking` — inline edit mode with pre-filled inputs (Edge's texts); "← Back" returns to proposal.
+    5. `fallback` — for sparse calendar / derive failure: loads `/api/onboarding/suggest-priorities` (profile-based suggestions) + shows manual 3-input form identical to the old priorities step. User's entries saved to `/api/onboarding/priorities`.
+  - **Graceful degradation:** users who skip calendar connect land in fallback automatically (no calendar events → derive returns null → fallback triggers). No fabricated priorities on thin data.
+  - Reuses `PriorityDerivationCard` + `PriorityDerivationLoadingCard` from `components/ui/PriorityDerivationCard.tsx` (Design-owned; no new visual components needed).
+  - 1240/1240 green (master-merged tests included), tsc clean, next build clean.
 - **2026-06-18** — **Night-queue continuation — priority derivation, T3 grounding complete, score truth, activity labels.**
   - **33 tests for `lib/priorityDerivation.ts` pure helpers** (`normalizeThemeTitle`, `extractCalendarThemes`, `calendarSpanDays`, `buildDerivePrompt`). Fixed 3 test-authoring errors (stop-word set, word-length filter, newline-sanitize assertion). All 33 green.
   - **T3 grounding complete — `createEvent` now grounds its title.** `createEvent` was the only of the 9 mutation tools that skipped `groundTitle`. Raw STT-transcribed meeting titles (e.g., "Meeting with Pfizer" for Faiza) now go through the phonetic correction pass before being written to Google Calendar. All 9 tools now consistently apply Tier-1 grounding.
