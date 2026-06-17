@@ -196,10 +196,12 @@ export function DataConsentToggle({
           aria-label={isImprove ? 'Disable — switch to Privacy Mode' : 'Enable — share data to help improve Edg3'}
         >
           <span
-            className="absolute top-0.5 w-5 h-5 rounded-full transition-transform"
+            className="absolute h-5 w-5 rounded-full transition-transform"
             style={{
+              top: '50%',
+              left: '2px',
               background: '#fff',
-              transform: isImprove ? 'translateX(21px)' : 'translateX(2px)',
+              transform: isImprove ? 'translateY(-50%) translateX(18px)' : 'translateY(-50%) translateX(0)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
             }}
           />

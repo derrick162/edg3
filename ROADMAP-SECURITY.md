@@ -95,6 +95,115 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Episode store — ground-truth episodic memory tier, schema + encryption (1456 green).**
+
+  PM dispatch (Kevin — cross-session): build the missing episodic memory tier per `specs/episode-store.md`.
+
+  **`episodes` table** added to `lib/db.ts` (additive migration, `CREATE TABLE IF NOT EXISTS`):
+  - `id, user_id (FK+idx), source ('call'|'calendar'|'email'), occurred_at (ISO; compound idx with user_id), content_raw TEXT (AES-256-GCM encrypted — rawest PII we hold), topics TEXT (JSON arr), commitments TEXT (JSON arr), created_at`
+  - Compound index `(user_id, occurred_at DESC)` for temporally-ordered user lookups.
+
+  **`episodeQueries`** (exported from `lib/db.ts`):
+  - `insert(userId, source, occurredAt, contentRaw, topics?, commitments?)` — encrypts `content_raw` via `encryptField`. JSDoc gates: callers MUST check `isImproveConsented(user)` before calling — episodes hold raw PII and must not persist for Privacy Mode users.
+  - `recent(userId, limit?)` — newest-first, user-scoped at SQL level.
+  - `search(userId, {topic?, since?, unresolvedCommitments?, limit?})` — `since`/`unresolvedCommitments` filtered in SQL; `topic` post-filtered (JSON array substring match).
+  - `prune(retentionDays?)` — default 365 days; deletes by `occurred_at` age to bound storage while preserving the year-of-history moat value.
+
+  **`lib/episodes.test.ts`** — 18 new tests: insert encryption, recent user-scoping + decryption, search filters, authz (no cross-user leakage), prune smoke tests.
+
+  **Coordination note for Core (Darren):** `episodeQueries` is ready. Wire the write path after each call ends: check `isImproveConsented(user)` → `episodeQueries.insert(userId, 'call', occurredAt, groundedTranscript, topics, commitments)`. Wire the query path in `lib/briefing.ts` for prior-commitment recall.
+
+- **2026-06-18** — **Memory moat audit — M1–M4 encryption gaps closed (1384 green).**
+
+  Audit of new memory-moat tables from Core's recent sprint. Two encryption gaps found and fixed.
+
+  **`focus_milestones.title` — encrypted at rest.** Previously stored plaintext. Added `decryptFocusMilestoneRow` helper (same pattern as `decryptOpenLoopRow`). `create()` now wraps with `encryptField(title)`; `listForUser()` and `listForPriority()` map through the helper on read. Legacy plaintext rows pass through transparently (existing `decryptField` behavior).
+
+  **`support_messages.message` — encrypted at rest.** `insert()` now wraps with `encryptField(message)`; `list()` decrypts on read. Added admin-only JSDoc comment to `list()` — it has no `WHERE user_id` clause intentionally (admin view), but that scope gap is now documented so it's never accidentally called from a user-facing route. No user-facing route currently calls `list()`.
+
+  **All other M1–M4 tables verified clean:** `daily_focus.focus_areas` already encrypted; `event_energy_tags` no PII; `calendar_plan_executions` no PII; `open_loops.description` already encrypted with `decryptOpenLoopRow`.
+
+  **S3 audit complete:** `/api/day-plan/confirm` already has all 4 required properties — idempotency (atomic `consumeDeleteToken` transaction), user-scoped authz at DB level, undo grouping by planId, rate limiting. Existing 13-test suite covers all S3 requirements. No code changes needed.
+
+  **Tests:** 8 route tests (`app/api/support/route.test.ts` — auth, rate limit, validation, success path) + 8 DB-level encryption tests (`lib/db.encryption.test.ts` — verifies `encryptField`/`decryptField` called correctly for both tables). 1384 green total.
+
+- **2026-06-18** — **CASA consent enforcement wired — Privacy Mode now blocks improvement-data storage (1368 green).**
+
+  PM dispatch (Kevin — Round 4 continuation): wire `isImproveConsented(user)` into the actual LLM improvement paths.
+
+  **What changed:**
+
+  1. **`lib/briefing.ts` — enforcement gate.** `analyzeUserResponse()` now gates the two post-call memory writes on `isImproveConsented(user)`:
+     - `memoryQueries.create(userId, 'transcript', ...)` — raw grounded call transcript
+     - `memoryQueries.create(userId, 'insight', ...)` — LLM-extracted insight from the call
+     - Both are omitted for Privacy Mode users. The briefing generation itself (all Anthropic inference calls) still runs for both modes — the product still works. Only the long-term improvement-data corpus is gated.
+     - Added `import { isImproveConsented } from './consent'` to briefing.ts imports.
+     - Updated the module-level comment to document that enforcement is now live at `analyzeUserResponse`.
+
+  2. **`lib/facts.ts` + `lib/outreach.ts` — sentinel comments clarified.** Both were carrying "DATA CONSENT SENTINEL" markers left by the prior session. Replaced with clear explanatory comments: these paths are inference-only (no improvement-data storage), so there's nothing to gate here. The sentinel meaning is preserved (future callers who store must check consent), but the ambiguous language is gone.
+
+  3. **`lib/briefing.consent.test.ts`** — 6 new tests proving the gate works:
+     - Privacy Mode (`data_consent: 'privacy'`) → `transcript` + `insight` memory NOT written
+     - Null consent (new-user default) → same as Privacy Mode (opt-IN required)
+     - Undefined consent → same as Privacy Mode
+     - Improve-consented (`data_consent: 'improve'`) → BOTH memories ARE written
+     - Improve-consented → transcript content matches the grounded user response
+     - Privacy Mode + tasks → tasks still extracted (tasks are not improvement data; gate is narrow)
+     - Key fix discovered: vitest mock paths must match the actual import specifier used in the tested module (`'./db'` not `'@/lib/db'` for relative imports in `lib/briefing.ts`).
+
+  **Privacy Mode trade-off (documented):** Privacy Mode users still receive a full briefing — all LLM inference runs, the `facts` table still accumulates structured knowledge, and all calendar/task operations still work. The only difference: their raw call transcripts and extracted insights are not written to the `memories` table. Edge's in-context memory of past calls is slightly less rich for Privacy Mode users, but the product remains fully functional.
+
+  1368/1368 green, tsc clean, next build clean.
+
+- **2026-06-18** — **Audit log coverage sweep — Round 4 Ticket 1 complete (1362 green).**
+
+  PM dispatch: verify audit_log covers every user-triggered mutation and close gaps.
+
+  **Code changes:**
+  - `POST /api/onboarding/priorities` → `priorities_set` audit entry (includes added/removed diff vs prior week)
+  - `POST /api/priorities/derive/accept` → `priorities_accepted` audit entry
+  - `POST /api/open-loops` (resolve/dismiss/snooze) → `loop_resolve` / `loop_dismiss` / `loop_snooze` audit entries
+  - Fixed `app/api/priorities/derive/route.test.ts` mock (was missing `auditLogQueries` → 3 tests failed)
+
+  **Documentation** (`content/security-audit.md`):
+  - New "Audit Log Coverage" section: 12 action types covered, 17 routes intentionally not logged (with justification each)
+  - Rate-limit gap check for routes added since Round 3 sweep
+  - Readiness Summary: updated audit-log bullet + test count (64 files / 1362 tests)
+  - CASA section: consent_update audit now confirmed live
+
+  **Intentionally not logged (top decisions):**
+  - `DELETE /api/account` — GDPR: cascade deletes audit_log records as part of the deletion; server log provides operator visibility
+  - Auth events (login/signup/logout) — session_version tracks invalidation; not Activity-tab data
+  - Minor state operations (notifications markRead, energy log, milestone toggles, reminder setup/teardown)
+
+  1362/1362 green, tsc clean, next build clean.
+
+- **2026-06-18** — **Backup coverage fix + consent route + data_consent migration (1340 green).**
+
+  Three hardening tasks shipped in one session:
+
+  1. **`lib/backup.ts` — bug fix + expanded table coverage.**
+     - **Bug**: `verifyBackup` was checking `'milestones'` (always returned `-1`) but the
+       actual table is `'focus_milestones'`. Fixed.
+     - Added 5 missing user-data tables to the verification list: `energy_profile`,
+       `event_energy_tags`, `calendar_plan_executions`, `undo_log`, `gmail_drafts_log`.
+     - 2 new tests: asserts all 20 required tables appear in `rowCounts`; confirms
+       the stale `'milestones'` key is gone and `'focus_milestones'` is present.
+     - Fixed `better-sqlite3` mock to use `function` keyword (required for `new` constructor calls in vitest).
+
+  2. **`POST /api/auth/consent`** — new route for users to switch between Privacy Mode and Help-improve-Edg3.
+     - Auth-gated (`getSession()` → 401), rate-limited (`consentUpdate`: 10/hr per user).
+     - Validates input strictly: only `'improve'` | `'privacy'` accepted → 400 otherwise.
+     - Calls `userQueries.updateConsent(userId, consent)` + writes `consent_update` audit log entry with `prev` and `new` consent values.
+     - 7 tests: 401 unauthenticated, 400 invalid value, 400 missing field, 200 `privacy`, 200 `improve`, audit record shape, 429 rate limit.
+
+  3. **`data_consent` column migration** (`lib/db.ts`):
+     - Added `ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))` to the migrations array.
+     - Safe and idempotent (wrapped in try-catch per existing pattern).
+     - Unblocks CASA enforcement — column is now live on startup; the `/api/auth/consent` route can write to it immediately. No Core deploy required for the column to exist.
+
+  1340/1340 green, tsc clean, next build clean.
+
 - **2026-06-18** — **Memory encryption + consent helper + memory authz tests (1331 green).**
 
   PM dispatch: memory is the moat — every memory field encrypted, user-scoped, consent-gated.

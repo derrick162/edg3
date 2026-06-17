@@ -21,6 +21,7 @@ import { computeCalendarFit } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
+import { isImproveConsented } from './consent';
 import { buildRelationshipContextBlock, syncPeopleProfiles } from './relationships';
 import { peopleProfileQueries, patternCacheQueries } from './db';
 import {
@@ -60,11 +61,15 @@ function extractCommitments(briefings: { user_response: string | null; scheduled
     .join('\n');
 }
 
-// DATA CONSENT SENTINEL: All anthropic.messages.create() calls in this file send user
-// data to Anthropic for INFERENCE ONLY (required to power the briefing service).
-// No data is submitted for training or improvement via these calls.
-// If a fine-tuning or training pathway is ever added here, it MUST check
-// user.data_consent === 'improve' before including any user-specific content.
+// All anthropic.messages.create() calls in this file send user data to Anthropic for
+// INFERENCE ONLY (required to power the briefing service). No data is submitted for
+// training or improvement via these calls.
+//
+// IMPROVEMENT-DATA ENFORCEMENT: the only post-call storage path that accumulates user
+// data for potential future improvement use is analyzeUserResponse() — specifically the
+// 'transcript' and 'insight' memory writes. Those are now gated on isImproveConsented().
+// Privacy Mode users still receive a full briefing (all inference paths run) but their
+// call data is not written to the long-term memory corpus.
 // See content/security-audit.md §"Data consent and Privacy Mode".
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -923,8 +928,10 @@ Tasks:`
       const allNames = [...new Set([...nameTokens, ...personFacts])];
       if (allNames.length) groundedResponse = groundProperNouns(groundedResponse, allNames);
     } catch { /* grounding is best-effort */ }
-    memoryQueries.create(userId, 'transcript', groundedResponse.slice(0, 2000));
-    memoryQueries.create(userId, 'insight', insightContent.text.slice(0, 500));
+    if (user && isImproveConsented(user)) {
+      memoryQueries.create(userId, 'transcript', groundedResponse.slice(0, 2000));
+      memoryQueries.create(userId, 'insight', insightContent.text.slice(0, 500));
+    }
   }
 
   const tasksContent = tasksResult.content[0];

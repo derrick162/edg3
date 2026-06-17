@@ -53,6 +53,7 @@ vi.mock('@/lib/db', () => ({
     create: h.priorityCreate,
   },
   memoryQueries: { create: h.memoryCreate },
+  auditLogQueries: { record: vi.fn() },
   calendarQueries: { get: () => h.calendarTokenRow },
 }));
 

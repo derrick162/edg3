@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { openLoopQueries } from '@/lib/db';
+import { openLoopQueries, auditLogQueries } from '@/lib/db';
 import type { OpenLoopType } from '@/lib/openLoops';
 
 // GET /api/open-loops
@@ -64,6 +64,17 @@ export async function POST(req: NextRequest) {
   if (action === 'resolve') openLoopQueries.resolve(user.id, id);
   else if (action === 'dismiss') openLoopQueries.dismiss(user.id, id);
   else openLoopQueries.snooze(user.id, id, until as string);
+
+  auditLogQueries.record({
+    userId: user.id,
+    briefingId: null,
+    action: `loop_${action}`,
+    argsJson: JSON.stringify({ id, description: existing.description?.slice(0, 80), until: action === 'snooze' ? until : undefined }),
+    resultText: `Open loop ${action}d`,
+    ok: true,
+    snapshotBefore: null,
+    snapshotAfter: null,
+  });
 
   return NextResponse.json({ ok: true, id, action, until: action === 'snooze' ? until : undefined });
 }

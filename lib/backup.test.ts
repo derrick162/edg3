@@ -3,12 +3,14 @@
  *
  * Focuses on security-critical invariants:
  * - verifyBackup neutralizes path traversal via path.basename before joining with BACKUP_DIR
+ * - verifyBackup rowCounts covers all required user-data tables
  * - litstreamEnabled reflects the env var correctly
  * - maybeDailyBackup never throws (fire-and-forget contract)
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
+import fs from 'node:fs';
 
 // ── hoisted mocks ─────────────────────────────────────────────────────────────
 
@@ -27,12 +29,16 @@ vi.mock('@/lib/db', () => ({
 }));
 
 // Mock better-sqlite3 (used by verifyBackup when opening a snapshot).
+// Must use `function` keyword — arrow functions don't work correctly as `new` constructors.
 vi.mock('better-sqlite3', () => {
-  const MockDatabase = vi.fn(() => ({
-    prepare: (_sql: string) => ({ get: () => ({ integrity_check: 'ok', n: 0 }) }),
-    exec: vi.fn(),
-    close: vi.fn(),
-  }));
+  // eslint-disable-next-line prefer-arrow-callback
+  const MockDatabase = vi.fn(function () {
+    return {
+      prepare: (_sql: string) => ({ get: () => ({ integrity_check: 'ok', n: 0 }) }),
+      exec: vi.fn(),
+      close: vi.fn(),
+    };
+  });
   return { default: MockDatabase };
 });
 
@@ -86,6 +92,58 @@ describe('verifyBackup — path traversal neutralization', () => {
     expect(result).toHaveProperty('rowCounts');
     expect(result).toHaveProperty('integrityOk');
     expect(result).toHaveProperty('error');
+  });
+});
+
+// ── verifyBackup — table coverage ────────────────────────────────────────────
+//
+// Verifies that all expected user-data tables appear in rowCounts when a backup
+// file physically exists (the better-sqlite3 mock returns n=0 for every query).
+// Guards against regressions where a new table is added to the schema but not
+// to the verification list (silent -1 in the admin endpoint).
+
+const REQUIRED_TABLES = [
+  'users', 'briefings', 'calendar_tokens', 'whoop_tokens',
+  'priorities', 'focus_milestones', 'memories', 'tasks', 'facts',
+  'open_loops', 'notifications', 'daily_focus', 'calendar_scores',
+  'audit_log', 'waitlist',
+  'energy_profile', 'event_energy_tags', 'calendar_plan_executions',
+  'undo_log', 'gmail_drafts_log',
+];
+
+describe('verifyBackup — table coverage', () => {
+  const tmpDir = path.join(os.tmpdir(), 'edg3-coverage-test');
+  const fileName = 'edg3-coverage.db';
+
+  afterEach(() => {
+    vi.resetModules();
+    delete process.env.BACKUP_DIR;
+    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('rowCounts includes all required user-data tables', async () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, fileName), '');
+    process.env.BACKUP_DIR = tmpDir;
+
+    const { verifyBackup } = await import('./backup');
+    const result = verifyBackup(fileName);
+
+    for (const t of REQUIRED_TABLES) {
+      expect(result.rowCounts, `expected rowCounts to include '${t}'`).toHaveProperty(t);
+    }
+  });
+
+  it('rowCounts does NOT include the stale "milestones" key (table is "focus_milestones")', async () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, fileName), '');
+    process.env.BACKUP_DIR = tmpDir;
+
+    const { verifyBackup } = await import('./backup');
+    const result = verifyBackup(fileName);
+
+    expect(result.rowCounts).not.toHaveProperty('milestones');
+    expect(result.rowCounts).toHaveProperty('focus_milestones');
   });
 });
 

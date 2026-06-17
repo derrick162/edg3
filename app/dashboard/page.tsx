@@ -3067,7 +3067,7 @@ export default function Dashboard() {
                       <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {memories.length}</span>
                       <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('call-notes') ? '▸' : '▾'}</span>
                     </button>
-                    {!collapsedMemorySections.has('call-notes') && <div className="space-y-3">
+                    {!collapsedMemorySections.has('call-notes') && <><div className="space-y-3">
                       {pageItems.map(m => (
                         <div key={m.id} className="glass-card p-4">
                           <div className="flex items-center gap-2 mb-2">
@@ -3087,7 +3087,7 @@ export default function Dashboard() {
                           </p>
                         </div>
                       ))}
-                    </div>}
+                    </div>
                     {totalPages > 1 && (
                       <div className="flex items-center justify-between mt-4">
                         <button
@@ -3108,7 +3108,7 @@ export default function Dashboard() {
                           Next
                         </button>
                       </div>
-                    )}
+                    )}</>}
                   </div>
                 );
               })()}
