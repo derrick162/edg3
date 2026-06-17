@@ -7,6 +7,41 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ---
 
+## 🚨 Tier 0 — Critical (do before anything else tonight)
+
+### T0-1 — DB durability: off-box backup replication (Security — URGENT)
+**The risk:** `lib/backup.ts` stores backups on the SAME Railway volume as the database. Volume loss = database AND backups gone simultaneously. The entire memory moat — every fact, episode, pattern ever learned — lives in one SQLite file with no off-box copy. We also don't know if the Railway volume is persistent or ephemeral. If ephemeral, data may already be resetting on redeploys.
+- **Step 1:** Verify Railway volume type — persistent or ephemeral? Check Railway dashboard → Volume settings. If ephemeral, this is a production data-loss incident happening right now.
+- **Step 2:** Stand up off-box replication — at minimum, a daily SQLite dump to Railway's object storage or an external S3-compatible store. The backup must live in a different failure domain than the DB.
+- **Step 3:** Update `lib/backup.ts` to write to the off-box destination in addition to (not instead of) the on-volume location.
+- Test: simulate volume replacement, verify backup is restorable from off-box location
+
+### T0-2 — Encryption key: backup + graceful fallback (Security — URGENT)
+**The risk:** `DATA_ENCRYPTION_KEY` has no backup and no versioning. If the key is lost, rotated, or accidentally changed on Railway, every encrypted field in the database becomes permanently unreadable. Currently `decryptField` throws on key mismatch — which would crash reads across the entire app simultaneously.
+- **Step 1:** Back up `DATA_ENCRYPTION_KEY` to a second secure location (Railway secret + an external vault). Document the backup location in `content/security-audit.md` (the location, not the key itself).
+- **Step 2:** Make `decryptField` degrade gracefully — if decryption fails, return `null` and log the failure rather than throwing. Callers already handle null (most use `.catch(()=>null)` patterns). A null is recoverable. A crash is not.
+- **Step 3:** Add a key-presence health check on app startup — if `DATA_ENCRYPTION_KEY` is missing, log a critical error and disable write operations rather than starting in a broken state.
+- Test: temporarily remove the key, verify app degrades gracefully rather than crashing; restore key, verify reads resume
+
+### T0-3 — End-to-end smoke test: the "7am path" (Core — HIGH PRIORITY)
+**The risk:** 1,407 unit tests verify individual functions. None of them verify the full production path: call connects → transcript stored → facts extracted → sleep-time consolidation runs → next morning's briefing has accurate context. This path has never been automatically tested. It could be silently broken.
+- Write a `tests/e2e/call-to-briefing.test.ts` smoke test that:
+  1. Simulates a completed call (posts a mock webhook payload)
+  2. Verifies transcript is stored in the briefings table
+  3. Verifies at least one fact is extracted and stored in the facts table
+  4. Verifies episode record is created
+  5. Calls the briefing builder and verifies the new fact appears in the output
+- This test runs as part of preflight. If the 7am path breaks, this catches it before deploy.
+- Note: this is an integration test, not a unit test — it hits the real database layer
+
+### T0-4 — In-process scheduler resilience (Security)
+**The risk:** The morning call scheduler runs as an in-process `setTimeout`. If Railway restarts the app (redeploy, crash, memory limit), the scheduled call drops silently. The user wakes up, no call, no explanation.
+- Move scheduled jobs to a persistent queue rather than in-memory setTimeout — at minimum, write the next scheduled call time to the database on startup and restore it on restart
+- On app startup: check if any scheduled calls were missed in the last 2 hours (comparing `call_time` to `now()`). If yes, trigger immediately rather than waiting until tomorrow.
+- Test: restart the app 10 minutes before a scheduled call, verify the call still fires
+
+---
+
 ## Tier 1 — Foundation (hardening the path data travels)
 
 ### T1-1 — Webhook reliability: retry + dead-letter queue (Security)
