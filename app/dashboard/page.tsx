@@ -874,7 +874,7 @@ interface Memory {
 interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
   statement: string;
   entity: string | null;
   learned_at: string;
@@ -1799,9 +1799,17 @@ export default function Dashboard() {
               />
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
               {!briefingsLoaded ? (
-                <div className="glass-card p-8 text-center">
-                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block mb-3" />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading your briefings…</p>
+                <div className="space-y-3 animate-pulse">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="glass-card p-5">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-3 rounded w-20" style={{ background: 'var(--edg-fill-04)' }} />
+                        <div className="h-3 rounded w-12" style={{ background: 'var(--edg-fill-04)' }} />
+                      </div>
+                      <div className="h-3 rounded w-full mb-2" style={{ background: 'var(--edg-fill-04)' }} />
+                      <div className="h-3 rounded w-3/4" style={{ background: 'var(--edg-fill-04)' }} />
+                    </div>
+                  ))}
                 </div>
               ) : briefings.length === 0 ? (
                 previewLoading ? (
@@ -2039,6 +2047,47 @@ export default function Dashboard() {
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
                 Built from your calls — not filled out by hand. Correcting anything here makes Edge smarter.
               </p>
+
+              {/* Recently learned — newest 5 facts across all categories */}
+              {facts.length > 0 && (() => {
+                const recent = [...facts]
+                  .sort((a, b) => new Date(b.learned_at).getTime() - new Date(a.learned_at).getTime())
+                  .slice(0, 5);
+                const CATEGORY_ICONS: Record<string, string> = {
+                  goal: '🎯', project: '🗂', person: '👤', preference: '⚡', fact: '📌', pattern: '📈',
+                };
+                const firstName = (user?.name || '').split(' ')[0];
+                return (
+                  <div className="mb-8">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">✦</span>
+                      Recently learned
+                    </h3>
+                    <div className="space-y-1.5">
+                      {recent.map(f => (
+                        <div key={f.id} className="glass-card px-4 py-3 flex items-start gap-3" style={{ border: '1px solid var(--edg-accent-08)' }}>
+                          <span className="text-xs mt-0.5 flex-shrink-0" aria-hidden="true">
+                            {CATEGORY_ICONS[f.category] ?? '📌'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                              {f.entity && (
+                                <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>
+                                  {correctName(f.entity, firstName)}:{' '}
+                                </span>
+                              )}
+                              {correctName(f.statement, firstName)}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                              learned {format(new Date(f.learned_at), 'MMM d')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Structured facts grouped by category */}
               {facts.length > 0 && (() => {
