@@ -23,12 +23,13 @@ After every ticket:
 
 **In all other cases: keep going.** You do not need PM approval between tickets. Commit small, run preflight, move to the next ticket.
 
-**When the dispatch is exhausted → move to the pillars:**
-1. Read `PILLAR-TRUST.md` — pick up any Trust items tagged (Design): data-transparency UI, "What Edge knows" completeness (T3-1)
-2. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Design): Memory tab UI, episode timeline, confidence display
-3. When both pillars are exhausted → run the QA checklists in `PILLAR-TRUST.md` and `PILLAR-MEMORY.md`
-4. Log QA results in `content/qa-log.md` (create if it doesn't exist)
-5. If QA is also done: speculative polish on `app/globals.css` and `components/ui/` — your domain, no dispatch needed
+**When the dispatch is exhausted → move to the pillars (in this order):**
+1. Read `PILLAR-DAILY-CALL.md` — call UX, OS selection UI, voice consistency (Design owns DC3, DC4 UI)
+2. Read `PILLAR-TRUST.md` — pick up any Trust items tagged (Design): data-transparency UI, "What Edge knows" completeness (T3-1)
+3. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Design): Memory tab UI, episode timeline, confidence display, "learned [date]" per fact
+4. When all three pillars are exhausted → run the QA checklists in all three pillar files
+5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
+6. If QA is also done: speculative polish on `app/globals.css` and `components/ui/` — your domain, no dispatch needed
 
 ## Mandate
 Own the **design system** (`app/globals.css`) and the **visual/UX** of the app. Improve

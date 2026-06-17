@@ -12,6 +12,13 @@
 >
 > Read this constitution, then read **only your own lane's roadmap**. Do not plan
 > from memory or from `docs/EDG3-Roadmap.xlsx` — **that spreadsheet is deprecated.**
+>
+> **The Edg3 Flywheel:** Daily Call → Memory → Trust → Daily Call → repeat. Every item in every roadmap and pillar serves one of these three. When in doubt about priority, ask: which pillar does this strengthen?
+>
+> **Three permanent pillars** (infinite fallback backlogs, ordered by flywheel sequence):
+> - 📞 **[`PILLAR-DAILY-CALL.md`](PILLAR-DAILY-CALL.md)** — connection reliability, briefing quality, OS framework (Phase 2)
+> - 🧠 **[`PILLAR-MEMORY.md`](PILLAR-MEMORY.md)** — storage, learning, retrieval, compounding
+> - 🔒 **[`PILLAR-TRUST.md`](PILLAR-TRUST.md)** — durability, accuracy, transparency, resilience
 
 We optimize for **speed through isolation**: each lane runs flat-out in its own
 worktree and branch, and integrates to `master` in small, frequent merges.

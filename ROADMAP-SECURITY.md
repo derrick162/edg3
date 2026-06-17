@@ -23,11 +23,12 @@ After every ticket:
 
 **In all other cases: keep going.** You do not need PM approval between tickets. Commit small, run preflight, move to the next ticket.
 
-**When the dispatch is exhausted → move to the pillars:**
-1. Read `PILLAR-TRUST.md` — work through items in order, highest tier first (Security owns Tier 1 and Tier 4)
-2. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Security) that aren't done
-3. When both pillars are exhausted → run the QA checklists in `PILLAR-TRUST.md` and `PILLAR-MEMORY.md`
-4. Log QA results in `content/qa-log.md` (create if it doesn't exist)
+**When the dispatch is exhausted → move to the pillars (in this order):**
+1. Read `PILLAR-TRUST.md` — work through items in order, highest tier first (Security owns Tier 0 and Tier 1 and Tier 4)
+2. Read `PILLAR-DAILY-CALL.md` — connection reliability and scheduler items (Security owns DC1, DC3-2)
+3. Read `PILLAR-MEMORY.md` — pick up any Memory items tagged (Security) that aren't done
+4. When all three pillars are exhausted → run the QA checklists in all three pillar files
+5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay schema)
 
