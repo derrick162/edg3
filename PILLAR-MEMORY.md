@@ -173,7 +173,8 @@ Work through each item manually. Log result (pass/fail/partial) in `content/qa-l
 - [ ] Is there anything Edge thinks it knows that's wrong? Delete or correct it
 - [ ] Does the briefing feel like it knows you, or does it feel generic? Note which sections feel weakest
 
-### End-to-end smoke test (run for every major memory change)
-- [ ] **7am path:** complete a call, say something new. Within 1 hour: verify episode record, fact extracted, appears in NEXT briefing. Run `tests/e2e/call-to-briefing.test.ts`.
-- [ ] **Correction path:** say "actually X is Y now" on a call. Verify by next briefing that the old fact is retired and the new one is active.
+### ★ End-to-end smoke test — run this first, every time
+- [ ] **★ 7am live-path test:** trigger a call → say something new → verify transcript stored within 5 min → verify fact extracted and in `facts` table → verify NEXT MORNING's briefing references that fact. This is the single most important thing to verify. 1592 unit tests do NOT cover this path. If this fails, everything else is secondary.
+- [ ] Run `tests/e2e/call-to-briefing.test.ts` if it exists (Darren owns writing it — PILLAR-TRUST T0-3)
+- [ ] **Correction path:** say "actually X is Y now" on a call. Verify by next briefing the old fact is retired and the new one is active.
 - [ ] **Rollback path:** find a fact in `fact_history`, roll it back, verify the previous version is now active.

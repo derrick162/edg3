@@ -52,6 +52,7 @@ vi.mock('@/lib/db', () => ({
     upsert: (...args: unknown[]) => { h.upsertCalled = true; void args; },
     getLatest: () => h.latestScore,
     getRange: () => h.scoreHistory,
+    getPrior: () => null,
   },
   dailyFocusQueries: { getToday: () => h.dailyFocus },
   calendarQueries: { get: () => h.calToken },
@@ -92,6 +93,10 @@ vi.mock('@/lib/streak', () => ({
 
 vi.mock('@/lib/notifications', () => ({
   maybeCreateScoreChangeNotif: (...args: unknown[]) => { h.notifCalled = true; void args; },
+}));
+
+vi.mock('@/lib/scoreChange', () => ({
+  summarizeScoreChange: () => null,
 }));
 
 vi.mock('date-fns', () => ({

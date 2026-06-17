@@ -7,7 +7,7 @@ _Technical accuracy reviewed against Vijay's security delivery (June 2026). Rout
 
 ## The short version
 
-Edge only stores what it needs to do its job. Everything sensitive is encrypted with bank-grade encryption. You can see everything Edge knows about you, correct anything that's wrong, and disconnect your accounts at any time. Your data is never sold. It's never used to train AI without your explicit permission.
+Edge only stores what it needs to do its job. Everything sensitive is encrypted with bank-grade encryption and backed up off-device so your data is never at risk of being lost. You can see everything Edge knows about you, correct anything that's wrong, and disconnect your accounts at any time. Your data is never sold. It's never used to train AI without your explicit permission.
 
 ---
 
@@ -43,7 +43,7 @@ You can see everything Edge knows about you in the "What Edge knows" tab, correc
 
 ---
 
-## What's encrypted
+## What's encrypted and how it's protected
 
 Every piece of sensitive data stored on Edge's servers is encrypted using **AES-256-GCM** — the same standard used by banks and healthcare systems. "Encrypted at rest" means that even if someone gained unauthorized access to our database, they would see random bytes — not your data.
 
@@ -57,6 +57,10 @@ What's encrypted:
 - Inbox subject lines reviewed during email scans
 - Dashboard notifications
 - Focus plans generated for you
+
+**If a decryption error ever occurs** — for example, during a system update — Edge degrades gracefully. The affected section of your briefing is skipped with a clear notice rather than crashing. Your data is never corrupted; it simply waits until the issue is resolved.
+
+**Your database is backed up continuously** to a separate storage location outside the primary server. A server failure does not mean data loss — your memory is preserved on an independent system and can be restored within minutes.
 
 ---
 
@@ -115,4 +119,4 @@ Every query Edge makes to its database filters by your account. There is no quer
 ---
 
 _Technical accuracy: Security (Vijay), June 2026. Copy: Esther (CoS), June 2026._
-_CASA note: this page accurately reflects the `data_consent` column (default `'privacy'`), `lib/consent.ts` `isImproveConsented()` behavior, AES-256-GCM encryption across all sensitive tables, and user-scoped query enforcement on all endpoints._
+_CASA note: this page accurately reflects the `data_consent` column (default `'privacy'`), `lib/consent.ts` `isImproveConsented()` behavior, AES-256-GCM encryption across all sensitive tables, user-scoped query enforcement on all endpoints, graceful `decryptField` degradation (returns null, does not crash), and off-box database replication via Litestream (in progress — Vijay T0-1/T0-2). Update the Litestream note to "complete" once Vijay ships T0-1._

@@ -243,6 +243,21 @@ function initSchema(db: Database.Database) {
       last_confirmed_at  TEXT DEFAULT (datetime('now'))
     );
 
+    -- Immutable audit trail: snapshot of a fact's value before it was retired or updated.
+    -- Written before every retire/update — never modified after insert.
+    CREATE TABLE IF NOT EXISTS fact_history (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      fact_id     INTEGER NOT NULL,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      statement   TEXT NOT NULL,
+      entity      TEXT,
+      category    TEXT NOT NULL,
+      retired_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      reason      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_fact_history_fact ON fact_history(fact_id);
+    CREATE INDEX IF NOT EXISTS idx_fact_history_user ON fact_history(user_id, retired_at DESC);
+
     -- Whoop OAuth tokens (health data PII — encrypted at rest).
     -- expires_at is epoch ms for easy Date.now() comparison.
     CREATE TABLE IF NOT EXISTS whoop_tokens (
@@ -531,6 +546,8 @@ function initSchema(db: Database.Database) {
     "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
     // Retry durability: DB-flagged retry time survives server restarts (replaces in-memory setTimeout)
     "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
+    // Learning pipeline reliability: per-call extraction status (success/partial/failed)
+    "ALTER TABLE briefings ADD COLUMN learning_status TEXT",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -745,6 +762,16 @@ export const briefingQueries = {
     const values = entries.map(([k, v]) => (ENCRYPTED_BRIEFING_FIELDS.has(k) && typeof v === 'string') ? encryptField(v) : v);
     return getDb().prepare(`UPDATE briefings SET ${fields} WHERE id = ?`).run(...values, id);
   },
+  updateLearningStatus: (briefingId: number, update: Record<string, unknown>): void => {
+    try {
+      const row = getDb().prepare('SELECT learning_status FROM briefings WHERE id = ?').get(briefingId) as { learning_status: string | null } | undefined;
+      let current: Record<string, unknown> = {};
+      try { if (row?.learning_status) current = JSON.parse(row.learning_status); } catch { /* ok */ }
+      getDb().prepare('UPDATE briefings SET learning_status = ? WHERE id = ?')
+        .run(JSON.stringify({ ...current, ...update }), briefingId);
+    } catch { /* non-fatal — learning status is observability only */ }
+  },
+
   getRecent: (userId: number, limit = 10) => {
     return (getDb().prepare(
       'SELECT * FROM briefings WHERE user_id = ? ORDER BY scheduled_for DESC LIMIT ?'
@@ -1474,6 +1501,21 @@ function decryptFactRow(r: Fact): Fact {
   return { ...r, statement: safeDecryptField(r.statement, 'fact.statement') };
 }
 
+// Snapshot a fact's current value to fact_history before retirement or user edit.
+// Copies the raw (encrypted) statement byte-for-byte — no re-encryption.
+function snapshotFactToHistory(factId: number, userId: number, reason: string): void {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      'SELECT statement, entity, category FROM facts WHERE id=? AND user_id=?'
+    ).get(factId, userId) as { statement: string; entity: string | null; category: string } | undefined;
+    if (!row) return;
+    db.prepare(
+      'INSERT INTO fact_history (fact_id, user_id, statement, entity, category, reason) VALUES (?,?,?,?,?,?)'
+    ).run(factId, userId, row.statement, row.entity ?? null, row.category, reason);
+  } catch { /* non-fatal — fact_history is audit-only */ }
+}
+
 export const factQueries = {
   // Active facts only by default. Pass includeRetired:true to include history (e.g. pattern detection).
   getAll: (userId: number, opts?: { includeRetired?: boolean }): Fact[] => {
@@ -1493,6 +1535,7 @@ export const factQueries = {
   // Retire a fact bi-temporally (sets valid_until = now). Preserves history — never hard-deletes.
   // Guarded with `AND valid_until IS NULL` so a second call never overwrites the original retire timestamp.
   retire: (userId: number, id: number): void => {
+    snapshotFactToHistory(id, userId, 'retired');
     getDb().prepare(
       "UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=? AND valid_until IS NULL"
     ).run(id, userId);
@@ -1533,17 +1576,24 @@ export const factQueries = {
     }
 
     if (existingId !== undefined) {
+      const sameStatement = existingStatement!.toLowerCase() === statement.toLowerCase();
       // User-corrected facts (confidence='high') are not overwritten by new extractions.
       if (existingConfidence === 'high') {
+        // Refresh learned_at so facts seen again don't drift toward "stale".
+        if (sameStatement) db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
         return;
       }
-      if (existingStatement!.toLowerCase() !== statement.toLowerCase()) {
-        // Bi-temporal: retire the old fact and insert the updated one (history preserved).
+      if (!sameStatement) {
+        // Bi-temporal: snapshot then retire the old fact and insert the updated one.
+        snapshotFactToHistory(existingId, userId, 'extraction-update');
         db.prepare("UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?")
           .run(existingId, userId);
         db.prepare(
           "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
         ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
+      } else {
+        // Same statement, low confidence: just refresh freshness.
+        db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
       }
     } else {
       db.prepare(
@@ -1561,6 +1611,7 @@ export const factQueries = {
   },
 
   updateFact: (userId: number, id: number, statement: string, entity: string | null): void => {
+    snapshotFactToHistory(id, userId, 'user-edit');
     // User-initiated edits always clear the ⚠ verify flag (confidence → 'high').
     getDb().prepare(
       "UPDATE facts SET statement=?, entity=?, confidence='high', learned_at=datetime('now') WHERE id=? AND user_id=?"
@@ -1605,6 +1656,31 @@ export const factQueries = {
     getDb().prepare(
       `UPDATE facts SET confidence_score = MAX(0.0, confidence_score - ?) WHERE valid_until IS NULL AND category IN (${placeholders})`
     ).run(amount, ...categories);
+  },
+};
+
+export interface FactHistory {
+  id: number;
+  fact_id: number;
+  user_id: number;
+  statement: string;
+  entity: string | null;
+  category: string;
+  retired_at: string;
+  reason: string | null;
+}
+
+export const factHistoryQueries = {
+  getForFact: (factId: number, userId: number): FactHistory[] => {
+    return (getDb().prepare(
+      'SELECT * FROM fact_history WHERE fact_id=? AND user_id=? ORDER BY retired_at DESC'
+    ).all(factId, userId) as FactHistory[]).map(r => ({ ...r, statement: decryptField(r.statement) }));
+  },
+
+  getRecentForUser: (userId: number, limit = 20): FactHistory[] => {
+    return (getDb().prepare(
+      'SELECT * FROM fact_history WHERE user_id=? ORDER BY retired_at DESC LIMIT ?'
+    ).all(userId, limit) as FactHistory[]).map(r => ({ ...r, statement: decryptField(r.statement) }));
   },
 };
 
@@ -1791,6 +1867,12 @@ export const calendarScoreQueries = {
     return getDb().prepare(
       'SELECT * FROM calendar_scores WHERE user_id = ? ORDER BY date DESC LIMIT 1'
     ).get(userId) as CalendarScore | undefined;
+  },
+
+  getPrior: (userId: number, beforeDate: string): CalendarScore | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM calendar_scores WHERE user_id = ? AND date < ? ORDER BY date DESC LIMIT 1'
+    ).get(userId, beforeDate) as CalendarScore | undefined;
   },
 };
 

@@ -231,13 +231,16 @@ Work through each item manually. Log the result (pass/fail/partial) in a `conten
 - [ ] Check the audit log after a calendar mutation. Is the action logged with the correct userId?
 - [ ] Attempt to access another user's data via a direct API call. Verify it returns 404
 
+### ★ End-to-end smoke test — run this first, every time
+- [ ] **★ 7am live-path test:** trigger a call → verify transcript stored in `briefings` table within 5 min → verify at least 1 fact extracted and in `facts` table → verify next morning's briefing references that fact. This is the single most important thing to verify. 1592 unit tests do NOT cover this path. If this fails, everything else is secondary.
+- [ ] Run `tests/e2e/call-to-briefing.test.ts` if it exists (Darren owns writing it — T0-3)
+
 ### Reliability
 - [ ] Check Railway logs for the last 24h. Any 500 errors? Any failed background jobs?
 - [ ] Check Vapi dashboard: did all scheduled calls connect? Any failures?
 - [ ] Check the failed_webhooks table. Any entries?
 - [ ] Check the `health_log` table — did the 6am health digest run? Status: OK or DEGRADED?
 - [ ] **Restore drill:** take a recent backup snapshot, restore it to a test DB, verify the app reads from it correctly. "Backups you've never restored are not backups."
-- [ ] **End-to-end smoke test (7am path):** trigger a call, verify transcript stored → fact extracted → appears in next briefing. Run `tests/e2e/call-to-briefing.test.ts` if it exists.
 - [ ] Run `npm run preflight`. Should be green
 
 ### Transparency

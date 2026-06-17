@@ -39,15 +39,15 @@ Each stream is valuable alone. Together, they're something no single-surface too
 
 | Layer | What it knows | Status |
 |---|---|---|
-| **State** | What's happening right now — today's calendar, today's recovery | ✅ Built |
-| **Goal** | What you're optimizing for this week, this quarter | ✅ Built |
-| **Pattern** | What makes your weeks work or fall apart | In progress |
-| **Decision** | What you chose and why | Planned |
-| **Relationship** | Who matters, their context, what you've discussed | In progress |
-| **Narrative** | Your arc — where you've been, where you're going | Planned |
-| **Accountability** | Whether you followed through on what you said | In progress |
+| **State** | What's happening right now — today's calendar, today's recovery | ✅ Live |
+| **Goal** | What you're optimizing for this week, this quarter | ✅ Live |
+| **Pattern** | What makes your weeks work or fall apart | ✅ Live |
+| **Decision** | What you chose and why — tracked via episodic memory | ✅ Live |
+| **Relationship** | Who matters, their context, what you've discussed | ✅ Live |
+| **Narrative** | Your arc — where you've been, where you're going | In progress |
+| **Accountability** | Whether you followed through — outcome-weighted memory | ✅ Live |
 
-Layers 1 and 2 are live today and already producing value. Layers 3–7 compound the moat — the longer you use Edge, the harder it becomes to get this context anywhere else.
+Five of seven layers are live and compounding today. The self-learning flywheel is fully operational: bi-temporal fact storage (facts have a valid_from / valid_until — no data is ever deleted, only superseded), sleep-time consolidation (a background agent runs between calls to reconcile and deepen memory), pattern detection (identifies what makes your weeks work or fall apart from call history), and predictive context loading (memory pack assembled the night before so the 7am call opens with the right context already loaded). The longer someone uses Edg3, the faster this compounds — and none of it transfers to another app.
 
 ---
 
