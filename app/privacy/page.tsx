@@ -49,7 +49,7 @@ export default function PrivacyPage() {
                 <p>If you grant Gmail access, we use it in two ways:</p>
                 <ul className="mt-2 space-y-2 pl-1">
                   <li><strong style={{ color: 'var(--text-strong)' }}>Draft creation:</strong> Edge creates email drafts on your behalf for outreach you asked for. <strong style={{ color: 'var(--text-strong)' }}>Edge never sends email</strong> — it only creates drafts for you to review and send yourself.</li>
-                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox signal (metadata only):</strong> Edge reads <em>metadata</em> from recent inbox threads — sender name, subject line, and the auto-generated snippet Google provides. <strong style={{ color: 'var(--text-strong)' }}>Edge never reads email body content.</strong> This metadata is used to compute your daily Focus score and to recognize replies to outreach Edge drafted for you. No inbox metadata is stored; it is used in-memory for your briefing session only, and we log a count (not content) for audit purposes.</li>
+                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox signal (metadata only):</strong> Edge reads <em>metadata</em> from recent inbox threads — sender name, subject line, and the auto-generated snippet Google provides. <strong style={{ color: 'var(--text-strong)' }}>Edge never reads email body content.</strong> This metadata is used to compute your daily Focus score and to recognize replies to outreach Edge drafted for you. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edge reviewed — visible only to you in your Activity tab. Subjects are retained for 90 days then automatically deleted. Senders, snippets, and bodies are never stored.</li>
                 </ul>
                 <p className="mt-2">You can disconnect Gmail at any time from your dashboard, which immediately revokes both draft and read access.</p>
               </div>
@@ -107,7 +107,7 @@ export default function PrivacyPage() {
                 'We do not allow humans to read your Google Calendar or Gmail data except for security, to comply with the law, or with your explicit consent',
                 'We do not transfer Google user data to third parties except as necessary to provide the service or as required by law',
                 'We do not use Google user data for any purpose unrelated to the features you requested',
-                'For Gmail specifically: Edge creates drafts only (it never sends email); it reads inbox thread metadata (sender, subject, auto-snippet — never message bodies) in-memory to compute your Focus score and recognize replies. No email content is stored.',
+                'For Gmail specifically: Edge creates drafts only (it never sends email); it reads inbox thread metadata (sender, subject, auto-snippet — never message bodies) to compute your Focus score and recognize replies. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and bodies are never stored.',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>
