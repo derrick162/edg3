@@ -2396,6 +2396,94 @@ export default function Dashboard() {
                       const isExpanded = expandedFactCats.has(cat);
                       const meta = CATEGORY_META[cat] ?? { label: cat, icon: '' };
 
+                      // ── Goals: elevated anchor cards with rank number ──
+                      if (cat === 'goal') {
+                        const firstName = (user?.name || '').split(' ')[0];
+                        return (
+                          <div key={cat}>
+                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                              <span aria-hidden="true">{meta.icon}</span>
+                              {meta.label}
+                            </h3>
+                            <div className="space-y-2">
+                              {catItems.map((f, idx) => {
+                                const isEditing = editingFactId === f.id;
+                                const justSaved = savedFactId === f.id;
+                                const isConfirmingDelete = deletingFactId === f.id;
+                                return (
+                                  <div
+                                    key={f.id}
+                                    className="glass-card px-4 py-3 group"
+                                    style={{ border: `1px solid ${idx === 0 ? 'var(--edg-accent-20)' : 'var(--edg-hairline)'}`, background: idx === 0 ? 'var(--edg-accent-04)' : undefined }}
+                                  >
+                                    {isEditing ? (
+                                      <div className="flex items-start gap-2">
+                                        <div className="flex-1">
+                                          <textarea
+                                            autoFocus
+                                            value={editFactText}
+                                            onChange={e => setEditFactText(e.target.value)}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }
+                                              if (e.key === 'Escape') setEditingFactId(null);
+                                            }}
+                                            rows={2}
+                                            className="input text-sm w-full resize-none"
+                                            style={{ padding: '6px 10px', lineHeight: '1.4' }}
+                                          />
+                                        </div>
+                                        <div className="flex flex-col gap-1 pt-0.5 flex-shrink-0">
+                                          <button onClick={() => { if (editFactText.trim()) saveFact(f.id, editFactText.trim()); }} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: 'var(--edg-accent-15)', color: 'var(--edg-indigo-bright)', border: '1px solid var(--edg-accent-25)' }}>Save</button>
+                                          <button onClick={() => setEditingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Cancel</button>
+                                        </div>
+                                      </div>
+                                    ) : isConfirmingDelete ? (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Remove this goal?</p>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          <button onClick={() => deleteFact(f.id)} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}>Remove</button>
+                                          <button onClick={() => setDeletingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Keep</button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-start gap-3">
+                                        <div
+                                          className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+                                          style={{ background: idx === 0 ? 'var(--edg-indigo)' : 'var(--edg-accent-15)', color: idx === 0 ? '#fff' : 'var(--text-accent)' }}
+                                          aria-hidden="true"
+                                        >
+                                          {idx + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          {justSaved ? (
+                                            <p className="text-sm font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edge updated</p>
+                                          ) : (
+                                            <>
+                                              <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
+                                                {correctName(f.statement, firstName)}
+                                              </p>
+                                              {f.source_briefing_id ? (
+                                                <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>learned from your {format(new Date(f.learned_at), 'MMM d')} call ↗</a>
+                                              ) : (
+                                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pt-0.5">
+                                          <button title="Edit" onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }} className="p-1 rounded" style={{ color: 'var(--text-faint)', lineHeight: 1 }} aria-label="Edit goal">✎</button>
+                                          <button title="Remove" onClick={() => { setDeletingFactId(f.id); setEditingFactId(null); }} className="p-1 rounded" style={{ color: 'var(--text-faint)', lineHeight: 1 }} aria-label="Remove goal">&#x2715;</button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+
                       // ── People: group by entity into relationship profile cards ──
                       if (cat === 'person') {
                         const byEntity = catItems.reduce<Record<string, Fact[]>>((acc, f) => {
@@ -2481,20 +2569,46 @@ export default function Dashboard() {
                 );
               })()}
 
-              {/* Patterns placeholder — ready to receive M3 data from Core */}
-              {facts.filter(f => f.category === 'pattern').length === 0 && facts.length > 0 && (
-                <div className="mb-8">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
-                    <span aria-hidden="true">📈</span>
-                    Patterns
-                  </h3>
-                  <div
-                    className="rounded-xl px-4 py-4"
-                    style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}
-                  >
-                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                      Edge is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out. Check back after a few more calls.
-                    </p>
+              {/* Memory layer placeholders — shown until Core ships the relevant data */}
+              {facts.length > 0 && (
+                <div className="space-y-4 mb-8">
+                  {/* Patterns (M3) */}
+                  {facts.filter(f => f.category === 'pattern').length === 0 && (
+                    <div>
+                      <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                        <span aria-hidden="true">📈</span>
+                        Patterns
+                      </h3>
+                      <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
+                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                          Edge is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Decisions (M4/L4) */}
+                  <div>
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">🔑</span>
+                      Decisions
+                    </h3>
+                    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
+                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                        Major decisions and their rationale — so Edge never re-litigates what you&apos;ve already resolved.
+                      </p>
+                    </div>
+                  </div>
+                  {/* Accountability (L7) */}
+                  <div>
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">✓</span>
+                      Commitments &amp; outcomes
+                    </h3>
+                    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
+                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                        What you committed to, and what actually happened. Edge uses this to learn from reality, not just your intentions.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
