@@ -25,6 +25,54 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-18 (★ FLAGSHIP — First-run Activation Moment, screens + motion)
+
+> Master at `a3053cb`. Sync master (`git merge master`) FIRST — picks up canonical EdgeScoreCard,
+> hero-loop card, DayPlanCard, globals.css tokens. Full spec: `specs/activation-moment.md`.
+> Copy doc (every screen's exact words): `content/activation-moment-copy.md`.
+> Darren owns flow + data; you own the screens + motion.
+
+**What to build:** The activation screens in `app/onboarding/**` — shown immediately after
+calendar connect. Two ★ moments: the priorities reveal and the first hero-loop.
+
+**Screen-by-screen (copy in `content/activation-moment-copy.md`):**
+
+1. **Screen 2 — Loading ("Edge is learning about you"):** Rotating subtext (3 lines, swap ~2.5s).
+   Pulse/shimmer, not a spinner. No percentage or progress bar.
+
+2. **★ Screen 3 — Priorities reveal:** Header "Here's what I already know about you." + subheader
+   with [N] months. Priority cards appear **one by one, ~200ms stagger**. Each card: priority label
+   (large) + evidence line (muted, small) + optional category badge. Respect `prefers-reduced-motion`
+   (show all at once, no animation). Primary CTA: "These look right →" (80% of users). Secondary
+   (smaller): "Let me adjust →".
+
+3. **Screen 3b — Thin-data fallback:** Two text inputs, conversational tone, no animation.
+   Different visual register from the reveal — lighter, question-based.
+
+4. **Screen 4 — Adjust priorities:** Editable fields pre-filled with derived anchors. Only shown
+   to users who tap "Let me adjust."
+
+5. **★ Screen 5 — First hero-loop ("Here's what I'd change today"):** 1–3 plan action cards.
+   Primary CTA: "Make it happen →". Post-apply: Edge Score appears with visual weight — first
+   time user sees their number; treat it as a reward, not a stat.
+
+6. **Screen 5b — Positive state:** Shown when calendar is already aligned. Score visible. Calm,
+   confident tone.
+
+7. **Screen 6 — Call time picker:** Time input with suggested times note.
+
+8. **Screen 7 — Dashboard arrival:** One ambient banner (not a modal), dismissible. Doesn't gate
+   the dashboard.
+
+**Key design decisions:**
+- Edge Score reveal (Screen 5, post-apply) needs real weight — large, prominent, first-ever view.
+- "These look right" is the primary CTA on Screen 3; don't visually compete with "Let me adjust."
+- Mobile-first (375px). "Here's what I already know about you" may need a line break before "know."
+- Claim `app/onboarding/**` in the Status Board before editing — Darren is also touching those files.
+  Coordinate: you own the visual layer, Darren wires the data. Merge frequently to stay in sync.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (T2 — Expandable inbox receipts in Activity tab)
 
 > Master at `9c2ed83` (1051 green). Sync master first. Full spec in `specs/trust-features.md §T2`.
