@@ -399,10 +399,10 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   font-weight: 600;
 }
 
-.badge-success { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-.badge-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-.badge-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-.badge-info { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+.badge-success { background: var(--edg-success-tint); color: var(--edg-success); }
+.badge-pending { background: var(--edg-warning-tint); color: var(--edg-warning); }
+.badge-danger  { background: var(--edg-danger-tint);  color: var(--edg-danger);  }
+.badge-info    { background: var(--edg-accent-15);    color: var(--text-accent); }
 
 /* ── Whoop recovery component classes ── */
 
