@@ -120,6 +120,9 @@ Full content library is committed to `content/`. This morning's additions:
 | `content/design-partner-welcome-call-script.md` | 20-min T+30 call script: expectations, priority review, feedback loop setup |
 | `content/day-7-checkin-script.md` | 20-min interview script: habit signal, trust, day plan, honest assessment |
 | `content/angel-outreach-strategy.md` | Advisor warmup → intro requests → first investor call; pipeline tracker + timing |
+| `content/wave-2-readiness-checklist.md` | Product/ops/content gates before inviting users 6–15 |
+| `content/press-one-pager.md` | 2-page brief for journalists, podcast hosts, and advisors |
+| `content/pitch-deck-outline.md` | 12-slide structure for August angel conversations (build when you have 30-day retention data) |
 
 ---
 
