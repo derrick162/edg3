@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   auditLogQueries.record({
     userId: user.id,
     action: 'fact_update',
-    argsJson: JSON.stringify({ factId: id, category: existing.category }),
+    argsJson: JSON.stringify({ factId: id, category: existing.category, entity: entityStr ?? existing.entity }),
     resultText: `Updated fact in category "${existing.category}"`,
     ok: true,
   });
@@ -97,7 +97,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   auditLogQueries.record({
     userId: user.id,
     action: 'fact_delete',
-    argsJson: JSON.stringify({ factId: id, category: existing.category, entity: existing.entity }),
+    argsJson: JSON.stringify({ factId: id, category: existing.category, entity: existing.entity ?? null }),
     resultText: `Deleted fact in category "${existing.category}"`,
     ok: true,
   });
