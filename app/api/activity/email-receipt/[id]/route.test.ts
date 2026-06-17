@@ -6,6 +6,7 @@ import { NextRequest } from 'next/server';
 const h = vi.hoisted(() => ({
   session: null as { id: number; email: string; name: string } | null,
   subjects: null as string[] | null,
+  rateLimitAllowed: true,
 }));
 
 // ── module mocks ───────────────────────────────────────────────────────────────
@@ -16,6 +17,11 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/gmail', () => ({
   getEmailSignalSubjects: (_userId: number, _auditId: number) => h.subjects,
+}));
+
+vi.mock('@/lib/rateLimit', () => ({
+  checkRateLimit: () => ({ allowed: h.rateLimitAllowed, remaining: 59, resetAt: Date.now() + 60_000 }),
+  rateLimitResponse: () => new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 }),
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -33,12 +39,20 @@ describe('GET /api/activity/email-receipt/[id]', () => {
   beforeEach(() => {
     h.session = null;
     h.subjects = null;
+    h.rateLimitAllowed = true;
   });
 
   it('returns 401 when unauthenticated', async () => {
     h.session = null;
     const res = await GET(...makeReq('42'));
     expect(res.status).toBe(401);
+  });
+
+  it('returns 429 when rate limited', async () => {
+    h.session = { id: 1, email: 'a@b.com', name: 'A' };
+    h.rateLimitAllowed = false;
+    const res = await GET(...makeReq('42'));
+    expect(res.status).toBe(429);
   });
 
   it('returns 400 for a non-numeric id', async () => {

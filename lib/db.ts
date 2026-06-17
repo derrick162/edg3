@@ -988,6 +988,22 @@ export const auditLogQueries = {
     ).get(userId, `-${days} days`) as { n: number };
     return row.n;
   },
+
+  /**
+   * Clear encrypted email subjects from audit entries older than `days` days.
+   * Nulls snapshot_after on email_signal_fetch rows — the "N threads reviewed"
+   * record survives, but the subject content is purged on schedule.
+   * Runs nightly from the scheduler; also triggers the standard 1%-chance full prune.
+   */
+  pruneEmailSubjects: (days = 90): void => {
+    getDb().prepare(
+      `UPDATE audit_log
+         SET snapshot_after = NULL
+       WHERE action = 'email_signal_fetch'
+         AND snapshot_after IS NOT NULL
+         AND created_at < datetime('now', ?)`
+    ).run(`-${days} days`);
+  },
 };
 
 // Task queries
@@ -1316,6 +1332,13 @@ export const factQueries = {
     getDb().prepare(
       "UPDATE facts SET statement=?, entity=?, learned_at=datetime('now') WHERE id=? AND user_id=?"
     ).run(encryptField(statement), entity, id, userId);
+  },
+
+  getById: (userId: number, id: number): Fact | undefined => {
+    const row = getDb().prepare(
+      'SELECT * FROM facts WHERE id = ? AND user_id = ?'
+    ).get(id, userId) as Fact | undefined;
+    return row ? decryptFactRow(row) : undefined;
   },
 
   deleteFact: (userId: number, id: number): void => {

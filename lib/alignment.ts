@@ -57,13 +57,21 @@ export async function computeAlignment(
   try {
     if (!priorities.length) return null;
 
+    // sanitizeForPrompt: strip newlines (prevent prompt injection via multiline titles),
+    // then cap length. Calendar titles and descriptions come from user-controlled Google
+    // Calendar data — an attacker could set a title to inject instructions into the
+    // classifier prompt. The output is parsed as structured JSON so injection is low-risk,
+    // but defense-in-depth is cheap here.
+    const sanitize = (s: string, maxLen: number) =>
+      s.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen);
+
     const events = weekEvents
       .slice(0, 40) // cap to avoid oversized prompts
       .map(e => ({
-        title: (e.summary || 'Untitled').trim(),
+        title: sanitize(e.summary || 'Untitled', 100),
         // Include the event description so user-added context ("- Edg3 MVP", agendas, notes)
         // is visible to the classifier — generic titles alone often don't reveal the focus area.
-        description: (e.description || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+        description: sanitize(e.description || '', 200),
         hours: eventDurationHours(e),
       }))
       .filter(e => e.hours > 0);
