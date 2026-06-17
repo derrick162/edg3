@@ -95,6 +95,24 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Episode store — ground-truth episodic memory tier, schema + encryption (1456 green).**
+
+  PM dispatch (Kevin — cross-session): build the missing episodic memory tier per `specs/episode-store.md`.
+
+  **`episodes` table** added to `lib/db.ts` (additive migration, `CREATE TABLE IF NOT EXISTS`):
+  - `id, user_id (FK+idx), source ('call'|'calendar'|'email'), occurred_at (ISO; compound idx with user_id), content_raw TEXT (AES-256-GCM encrypted — rawest PII we hold), topics TEXT (JSON arr), commitments TEXT (JSON arr), created_at`
+  - Compound index `(user_id, occurred_at DESC)` for temporally-ordered user lookups.
+
+  **`episodeQueries`** (exported from `lib/db.ts`):
+  - `insert(userId, source, occurredAt, contentRaw, topics?, commitments?)` — encrypts `content_raw` via `encryptField`. JSDoc gates: callers MUST check `isImproveConsented(user)` before calling — episodes hold raw PII and must not persist for Privacy Mode users.
+  - `recent(userId, limit?)` — newest-first, user-scoped at SQL level.
+  - `search(userId, {topic?, since?, unresolvedCommitments?, limit?})` — `since`/`unresolvedCommitments` filtered in SQL; `topic` post-filtered (JSON array substring match).
+  - `prune(retentionDays?)` — default 365 days; deletes by `occurred_at` age to bound storage while preserving the year-of-history moat value.
+
+  **`lib/episodes.test.ts`** — 18 new tests: insert encryption, recent user-scoping + decryption, search filters, authz (no cross-user leakage), prune smoke tests.
+
+  **Coordination note for Core (Darren):** `episodeQueries` is ready. Wire the write path after each call ends: check `isImproveConsented(user)` → `episodeQueries.insert(userId, 'call', occurredAt, groundedTranscript, topics, commitments)`. Wire the query path in `lib/briefing.ts` for prior-commitment recall.
+
 - **2026-06-18** — **Memory moat audit — M1–M4 encryption gaps closed (1384 green).**
 
   Audit of new memory-moat tables from Core's recent sprint. Two encryption gaps found and fixed.
