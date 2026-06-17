@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { userQueries, priorityQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries } from '@/lib/db';
+import { userQueries, priorityQueries, calendarScoreQueries, effectiveTimezone, calendarQueries, auditLogQueries, calendarPlanQueries } from '@/lib/db';
 import { getOAuthClient, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeCalendarFit } from '@/lib/calendarScore';
@@ -106,8 +106,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (undoOps.length) {
-    recordUndo(user.id, `day plan — ${doneDescs.length} action${doneDescs.length !== 1 ? 's' : ''}`, undoOps);
+    // Pass planId so undoPlan() can locate and revert the whole batch by planId.
+    recordUndo(user.id, `day plan — ${doneDescs.length} action${doneDescs.length !== 1 ? 's' : ''}`, undoOps, planId);
   }
+
+  // Record the execution so undoPlan() can markReverted and Core can idempotency-check.
+  calendarPlanQueries.markApplied(user.id, planId, doneDescs.length);
 
   auditLogQueries.record({
     userId: user.id,
