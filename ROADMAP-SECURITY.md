@@ -216,6 +216,13 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T1-4 — Encryption audit + coverage map in content/data-protection.md.**
+  - Full audit of all 28 tables in `lib/db.ts`: verified encrypt-on-write and decrypt-on-read call sites for each table.
+  - 14 tables confirmed encrypted at rest (AES-256-GCM): briefings, calendar_tokens, whoop_tokens, episodes, briefing_context_packs, memories, facts, pattern_cache, focus_milestones, open_loops, notifications, daily_focus, gmail_drafts_log, watched_threads.
+  - 3 accepted gaps documented with rationale: `people_profiles.canonical_name`/`.email` (plaintext for `LOWER()` lookup, same tier as users.name), `priorities.text` (needed for full-text alignment queries), `undo_log.payload` (calendar event JSON, low-risk).
+  - `safeDecryptField`/`safeDecryptNullable` used on all content-path reads; auth token reads use throwing `decryptField` (misconfiguration surfaces clearly).
+  - `content/data-protection.md`: added full internal encryption coverage map (table × PII level × write/read coverage × notes). No code changes — documentation only.
+  - No test changes — audit is observational. 82 test files / 1594 tests still green.
 - **2026-06-18** — **PILLAR-TRUST T1-1 + T1-3 — Dead-letter queue + background job failure logging (1594 green).**
   - **T1-1 — Webhook dead-letter queue:**
     - `failed_webhooks` table in `lib/db.ts`: `(id, user_id, vapi_call_id, briefing_id, failed_at, error)`. Index on `failed_at DESC`.
