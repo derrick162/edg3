@@ -1395,9 +1395,10 @@ export const factQueries = {
   },
 
   // Retire a fact bi-temporally (sets valid_until = now). Preserves history — never hard-deletes.
+  // Guarded with `AND valid_until IS NULL` so a second call never overwrites the original retire timestamp.
   retire: (userId: number, id: number): void => {
     getDb().prepare(
-      "UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?"
+      "UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=? AND valid_until IS NULL"
     ).run(id, userId);
   },
 
