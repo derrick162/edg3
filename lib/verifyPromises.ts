@@ -79,9 +79,8 @@ Transcript:\n${transcript}`,
   // band-aid existed). Surface the gap in memory so the NEXT briefing addresses it directly,
   // and on the dashboard via edge_promises (saved above).
   const missedList = unfulfilled.map(u => `- ${u.promise}`).join('\n');
-  memoryQueries.create(user.id, 'calendar_note',
-    `[EDGE MISSED] Promised on the last call but not completed:\n${missedList}\nOpen the next briefing by addressing these directly.`
-  );
+  const noteContent = `[EDGE MISSED] Promised on the last call but not completed:\n${missedList}\nOpen the next briefing by addressing these directly.`;
+  memoryQueries.create(user.id, 'calendar_note', noteContent.slice(0, 2000));
 
   return { promises, unfulfilled };
 }

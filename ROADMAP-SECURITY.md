@@ -69,6 +69,105 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Data consent enforcement — CASA requirement (1267 green).**
+
+  PM dispatch: enforce Privacy Mode and document for CASA / Google OAuth verification.
+  Core hasn't landed `users.data_consent` yet — all changes are additive and forward-compatible.
+
+  1. **`User` interface** (`lib/db.ts`): Added `data_consent?: 'improve' | 'privacy' | null` — optional field so reads are safe before Core adds the DB column. `SELECT *` returns it automatically once the column exists.
+
+  2. **Data export** (`app/api/account/export/route.ts`): Added `dataConsent: profile.data_consent ?? null` to the export payload under `profile`. Returns null until Core adds the column; works automatically after the column is added. Users can verify their own consent setting in the export.
+
+  3. **Sentinel comments** — added to the three highest-volume LLM call sites:
+     - `lib/briefing.ts` (module-level — covers all briefing-generation calls)
+     - `lib/facts.ts` (transcript fact extraction)
+     - `lib/outreach.ts` (email drafting)
+     Each sentinel states: inference-only use today; any future fine-tuning path MUST gate on `user.data_consent === 'improve'`.
+
+  4. **CASA documentation** (`content/security-audit.md`): New section "Data consent and Privacy Mode" — two-setting table, data-flow inventory (Anthropic inference, Google Calendar OAuth, Vapi voice), enforcement state (no training pipeline today), sentinel comment locations, audit trail, and a CASA/Google OAuth verification checklist.
+
+  No code-path enforcement added yet — that's Core's column + Security's DB check when the column lands.
+  1267/1267 green, tsc clean, next build clean.
+
+- **2026-06-17** — **Auth login tests — anti-enumeration + brute-force (1263 green).**
+
+  10 new tests in `app/api/auth/login/route.test.ts`. Key security invariants verified:
+  - Rate limit 10/15min per IP → 429 (brute-force prevention)
+  - Unknown email + wrong password both return `401 'Invalid credentials'` — same status, same message (anti-enumeration)
+  - Direct assertion that both paths produce identical error text
+  - Successful login → 200 + session cookie set
+  - `onboarding_complete` flag forwarded correctly
+  - `verifyPassword` throw → generic 500, bcrypt error string not exposed to client
+  1263/1263 green, tsc clean, next build clean.
+
+- **2026-06-17** — **Integration test sweep — signup + backup route + backup lib (1253 green).**
+
+  Closed the three largest remaining test gaps:
+
+  1. **`POST /api/auth/signup`** (18 new tests, `app/api/auth/signup/route.test.ts`) — all pre-beta audit fixes verified: password > 128 chars → 400 (bcrypt DoS cap), password < 8 → 400, name > 100 → 400, email > 254 → 400 (RFC 5321), missing fields → 400, duplicate email → 409 (no account detail leaked), DB error → generic 500 (SQLITE_CONSTRAINT not exposed), rate-limit → 429, successful signup → 200 + session cookie.
+
+  2. **`GET,POST /api/admin/backup`** (14 new route tests, `app/api/admin/backup/route.test.ts`) — auth gate (GET+POST → 401 without admin cookie), filename regex path-traversal prevention (`../../etc/passwd` → 400, Windows separators → 400, non-matching pattern → 400, leading path → 400), valid pattern accepted → verifyBackup called, createBackup error → 500 with safe message, empty body defaults to backup action.
+
+  3. **`lib/backup.ts`** (7 new lib tests, `lib/backup.test.ts`) — verifyBackup path traversal neutralization (`../../etc/passwd` strips to `passwd` via `path.basename` → File not found — no escape from BACKUP_DIR), `litstreamEnabled` env-var reflection, `maybeDailyBackup` fire-and-forget (disk-full error swallowed; no throw propagated to caller).
+
+  **Bug fix**: `admin/backup` route filename regex was `^edg3-[\d-]+\.db$` which rejected ALL valid backup filenames — they contain `T` and `Z` from ISO8601 format. Fixed to `^edg3-[0-9TZ-]+\.db$` matching the actual `ts()` output `edg3-YYYY-MM-DDTHH-MM-SS-mmmZ.db`.
+
+  **Security audit doc** updated with full "✅ Covered" bullet list reflecting LLM-output caps, header injection fix, backup path traversal guard, activation moment review, and current test coverage count.
+
+  1253/1253 green, tsc clean, next build clean.
+
+- **2026-06-17** — **Activation Moment security review — 13 fresh-account tests (1214 green).**
+
+  PM dispatch: review the onboarding + priority-derive path for the Activation Moment feature.
+  All routes PASS — no code changes needed.
+
+  **`GET /api/priorities/derive`**: auth ✅ rate-limit 5/hr `priorityDerive` ✅ all reads via `user.id` (no URL param exposure) ✅ `derivePriorities()` full try/catch → null (never throws to caller) ✅ graceful null response with safe human-readable reason (no stack/key leak) ✅ parallel `.catch(() => [])` guards on calendar + email signal ✅
+
+  **`POST /api/priorities/derive/accept`**: auth ✅ rate-limit 20/hr `priorityAccept` ✅ `MAX_PRIORITY_TEXT=200` cap ✅ all writes scoped to `user.id` ✅ empty body → 400 ✅ malformed JSON → 400 ✅ excess priorities (>3) silently truncated ✅
+
+  **`lib/priorityDerivation.ts derivePriorities()`**: full `try/catch` returns null ✅ output bounds `text.slice(0,120)`, `rationale.slice(0,300)`, `evidenceTags.slice(0,4)`, `summaryLine.slice(0,200)` ✅
+
+  **`lib/calendar.ts getPastCalendarEvents`**: user-scoped ✅ returns `[]` when no token (fresh-account graceful) ✅
+
+  New test file: `app/api/priorities/derive/route.test.ts` — 13 tests covering unauthenticated/rate-limited/fresh-account/thin-data/successful-derivation/internals-not-leaked/accept-authz/input-cap/empty-body/malformed-JSON/excess-priorities paths.
+
+  1214/1214 green, tsc clean, next build clean.
+
+- **2026-06-17** — **Round 7: confirmFocus input caps + final LLM-output sweep (1201 green).**
+
+  Continued sweep of LLM-extracted content paths in `app/api/vapi/tool-call/route.ts`:
+  - **`confirmFocus` handler**: `title` capped at 200 chars, `rationale` at 500 chars before `dailyFocusQueries.upsert`. Consistent with all other LLM → DB paths.
+  - **Full sweep completed**: all `taskQueries.create`, `memoryQueries.create`, `factQueries.upsertFact`, `openLoopQueries.insert`, `dailyFocusQueries.upsert` paths now uniformly capped. No uncapped LLM-generated DB writes remain.
+  1201/1201 green, tsc clean, next build clean.
+
+- **2026-06-17** — **S3 audit: hero-loop apply path — PASS, no changes (1201 green).**
+
+  Audited `/api/day-plan/confirm` across all four PM-dispatched dimensions:
+
+  1. **Idempotency / double-apply** ✅ — `consumeDeleteToken(user.id, planId)` (in `lib/idempotency.ts`) wraps the token consume in `db.transaction()`: reads token → verifies owner + expiry + unused → marks used atomically. A second call within the TTL sees `used=1` and returns false → route rejects with 400 "Invalid or expired plan ID". Double-click cannot apply twice.
+  2. **Undo grouping** ✅ — `recordUndo(userId, ..., undoOps, planId)` calls `undoQueries.recordForPlan` which stores `plan_id` on each undo_log row. `undoPlan()` calls `getByPlanId(userId, planId)` ordered `id DESC` (most recent first = correct undo order) then `markPlanUndone(userId, planId)` — all three queries filter by `(user_id, plan_id)`. Full batch undo is user-scoped.
+  3. **Rate limit** ✅ — `dayPlanConfirm` 5/hr/user. Appropriate for one-click use.
+  4. **Authz** ✅ — `deleteConfirmQueries.consume(token, userId)` explicitly checks `row.user_id !== userId` — rejects cross-user token reuse. User A cannot apply User B's planId.
+
+  No code changes required. Confirmed green baseline.
+
+- **2026-06-17** — **Round 6: email header injection fix + remaining LLM-output storage caps (1201 green).**
+
+  1. **Email header injection** — `lib/gmail.ts` `buildRawMessage`: `to`/`cc`/`bcc`/`subject` now strip `\r\n\t` via `sh()` before interpolation into MIME headers. A CRLF in `to` could inject extra headers (e.g. `Bcc:`). Security owns this primitive; the fix ensures no LLM-generated or user-supplied value can split into a separate header. 1 new test.
+  2. **`lib/briefing.ts` `analyzeUserResponse` task path** — LLM-extracted task text now capped at 500 chars before `taskQueries.create` (3rd instance; webhook.ts had 2 already).
+  3. **`app/api/onboarding/priorities`** — priority text now capped at 200 chars (`.slice(0, 200)`) to match `derive/accept` route's existing `MAX_PRIORITY_TEXT`. Ensures user-submitted priorities don't store unbounded content and the priority-change memory note stays bounded.
+  4. **Security audit doc** — email header injection section added.
+  1201/1201 green, tsc clean, next build clean.
+
+- **2026-06-17** — **Round 4: LLM-output storage caps — task text + missed-promises memory note (1200 green).**
+
+  Closed two remaining paths where LLM-extracted content was written to the DB without a length cap.
+
+  1. **Task text cap** — `app/api/vapi/webhook/route.ts`: both `extractTasksFromBriefing` and `extractTasksFromTranscript` now call `.slice(0, 500)` on LLM-extracted task text before `taskQueries.create`. Matches the existing 500-char cap on `POST /api/tasks` (user-created tasks). Prevents unbounded task rows if the model returns overly long text.
+  2. **Missed-promises memory cap** — `lib/verifyPromises.ts`: the `memoryQueries.create` call that stores the missed-promises calendar_note now caps the content at 2000 chars. Matches the established policy for all memory content from LLM paths (`briefing.ts` memory caps set in Round 3).
+  3. **Security audit doc updated** — two new rows in Input Validation Fixes table.
+  1200/1200 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Round 3: additional hardening sweep — rate limits, error leaks, input caps (1200 green).**
 
   Continued security hardening after Round 2 integration tests shipped. Focused on closing remaining low/medium gaps in rate-limit coverage, error-detail exposure, and input-size caps.

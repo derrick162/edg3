@@ -87,14 +87,16 @@ function gmailClientFor(userId: number): gmail_v1.Gmail {
 
 // RFC 2822 plain-text message → base64url, as Gmail's `raw` field expects.
 function buildRawMessage({ to, subject, body, cc, bcc }: DraftInput): string {
+  // Strip CRLF and other control chars that could enable email header injection.
+  const sh = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
   // RFC 2047 encode non-ASCII subjects so accents/emoji survive.
   const enc = (s: string) =>
     /^[\x20-\x7E]*$/.test(s) ? s : `=?UTF-8?B?${Buffer.from(s, 'utf8').toString('base64')}?=`;
   const headers = [
-    `To: ${to}`,
-    cc ? `Cc: ${cc}` : '',
-    bcc ? `Bcc: ${bcc}` : '',
-    `Subject: ${enc(subject)}`,
+    `To: ${sh(to)}`,
+    cc ? `Cc: ${sh(cc)}` : '',
+    bcc ? `Bcc: ${sh(bcc)}` : '',
+    `Subject: ${enc(sh(subject))}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',

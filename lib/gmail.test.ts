@@ -92,6 +92,23 @@ describe('createDraft guardrails', () => {
     expect(h.logDraft).toHaveBeenCalledWith(1, 'friend@example.com', 'Lunch', 'draft_123');
   });
 
+  it('strips CRLF from header fields (header injection prevention)', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    await createDraft(1, {
+      to: 'victim@example.com\r\nBcc: attacker@evil.com',
+      subject: 'Legit subject\r\nX-Injected: yes',
+      body: 'test',
+    });
+    const raw = (h.draftsCreate.mock.calls as any[])[0][0].requestBody.message.raw as string;
+    const mime = Buffer.from(raw, 'base64url').toString('utf8');
+    // CRLF stripped → no extra headers injected (attacker's Bcc/X-Injected are NOT on their own lines)
+    expect(mime).not.toMatch(/^\s*Bcc:\s*attacker@evil\.com/m);
+    expect(mime).not.toMatch(/^\s*X-Injected:/m);
+    // To/Subject headers are present and start on their own lines
+    expect(mime).toMatch(/^To:/m);
+    expect(mime).toMatch(/^Subject:/m);
+  });
+
   it('encodes the message as base64url that decodes to a valid MIME draft', async () => {
     h.calGet.mockReturnValue(WITH_GMAIL);
     await createDraft(1, validInput);

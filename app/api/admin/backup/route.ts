@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
     }
     // Reject filenames that don't match the backup naming pattern (defense-in-depth
     // alongside verifyBackup's path.basename guard).
-    if (!/^edg3-[\d-]+\.db$/.test(file)) {
+    // Format from ts(): edg3-YYYY-MM-DDTHH-MM-SS-mmmZ.db  (T and Z from ISO8601)
+    if (!/^edg3-[0-9TZ-]+\.db$/.test(file)) {
       return NextResponse.json({ error: 'Invalid backup filename' }, { status: 400 });
     }
     const result = verifyBackup(file);

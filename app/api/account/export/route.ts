@@ -94,6 +94,8 @@ export async function GET(_req: NextRequest) {
       callTime: profile.call_time ?? null,
       phoneNumber: profile.phone_number ?? null,
       profileSummary: profile.profile_summary ?? null,
+      // data_consent is set by the Core onboarding step. Exported so users can verify their setting.
+      dataConsent: profile.data_consent ?? null,
     },
     priorities: priorityQueries.getMostRecent(userId).map(p => ({
       text: p.text,
