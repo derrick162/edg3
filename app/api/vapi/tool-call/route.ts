@@ -1312,6 +1312,36 @@ Query: ${query}` }],
     return ok
       ? `Done — I reversed that: ${last.label}.`
       : `I tried to undo "${last.label}" but couldn't fully reverse it — please double-check your calendar.`;
+
+  } else if (fn === 'setPriorities') {
+    // Accept derived or user-stated priorities mid-call.
+    // priorities: array of 2–3 plain-text priority strings.
+    const { priorities: rawPriorities } = args as { priorities?: unknown };
+    if (!Array.isArray(rawPriorities) || rawPriorities.length === 0) {
+      return "What are the 2–3 priorities you want to set? Tell me in plain English.";
+    }
+    const { getWeekOf } = await import('@/lib/briefing');
+    const weekOf = getWeekOf();
+    const texts = (rawPriorities as unknown[])
+      .map(p => (typeof p === 'string' ? p : String(p ?? '')).trim().slice(0, 200))
+      .filter(Boolean)
+      .slice(0, 3);
+    if (!texts.length) return "I didn't catch those priorities — can you say them again?";
+
+    priorityQueries.deleteThisWeek(userId, weekOf);
+    texts.forEach((text, i) => priorityQueries.create(userId, text, weekOf, i + 1));
+    try { factQueries.syncPriorityFacts(userId, texts); } catch { /* non-fatal */ }
+
+    auditLogQueries.record({
+      userId,
+      action: 'setPriorities',
+      argsJson: JSON.stringify({ count: texts.length }),
+      resultText: `Set ${texts.length} priority(ies): ${texts.join('; ')}`,
+      ok: true,
+    });
+
+    const listed = texts.map((t, i) => `${i + 1}. ${t}`).join(' / ');
+    return `Done — I've set your priorities: ${listed}. They're live in the dashboard and I'll factor them into tomorrow's briefing.`;
   }
 
   return `Error: unknown tool "${fn}"`;

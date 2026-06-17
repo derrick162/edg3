@@ -20,6 +20,7 @@ import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusPro
 import { computeCalendarFit } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
+import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -446,6 +447,21 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const prioritiesStaleAge = prioritiesWeekOf
     ? Math.floor((Date.now() - new Date(prioritiesWeekOf + 'T00:00:00Z').getTime()) / 86400000)
     : 0;
+
+  // Derived priority proposal: run when priorities are absent or stale (>7d).
+  // Non-blocking: a null from derivePriorities just means the section is omitted.
+  const needsDerival = latestPriorities.length === 0 || prioritiesStaleAge > 7;
+  const derivedProposal: DerivedPriorityProposal | null = needsDerival
+    ? await derivePriorities({
+        pastEvents: pastCalendarHistory,
+        emailSignal,
+        facts: allRawFacts,
+        openLoops: urgentLoopsEarly,
+        memories: recentMemories,
+        currentPriorities: latestPriorities,
+      }).catch(() => null)
+    : null;
+
   // Only kudos for tasks completed since the last briefing
   const lastBriefing = recentBriefings[0];
   const lastBriefingTime = lastBriefing ? new Date(lastBriefing.created_at) : null;
@@ -647,7 +663,12 @@ ${calendarPatternsBlock}
 Use CALENDAR PATTERNS in section 5 (CALENDAR BLOCKS) — suggest time blocks that align with the inferred focus window and avoid the historically-packed meeting window. Reference patterns only when they strengthen a recommendation (e.g. "Tuesday mornings are usually light for you — good slot for deep work"). Do not read the whole block aloud.
 ` : ''}${callStreak >= 2 ? `
 CALL STREAK: ${callStreak} consecutive days of morning calls. Acknowledge this warmly in the GREETING — one specific, energizing line (e.g. "five mornings straight — you're building real momentum here").
-` : ''}${prioritiesStaleAge > 7 ? `
+` : ''}${(latestPriorities.length === 0 || prioritiesStaleAge > 7) && derivedProposal ? `
+DERIVED PRIORITY PROPOSAL (from ${derivedProposal.dataSnapshot.calendarEventCount} calendar events + ${derivedProposal.dataSnapshot.emailThreadCount} email threads):
+${derivedProposal.priorities.map((p, i) => `${i + 1}. "${p.text}" — ${p.rationale}${p.evidenceTags.length ? ` [${p.evidenceTags.join(', ')}]` : ''}`).join('\n')}
+${derivedProposal.summaryLine ? `Summary: ${derivedProposal.summaryLine}` : ''}
+Use DERIVED PRIORITY PROPOSAL when priorities are missing or stale: say "I looked at your calendar and inbox over the past few weeks and I think I can see what actually matters to you right now — want me to share?" If yes, share the 2–3 items above in plain language. Each item = one sentence (the text) + one supporting sentence (the rationale). Invite them to confirm or reject: "Does that feel right, or is something else pulling harder?" If confirmed, tell them their priorities are now set and they'll be posted in the dashboard.${prioritiesStaleAge > 7 ? ` PRIORITY DRIFT ALERT: priorities were last set ${prioritiesStaleAge} days ago.` : ''}
+` : prioritiesStaleAge > 7 ? `
 PRIORITY DRIFT ALERT: Priorities were last set ${prioritiesStaleAge} days ago. Add ONE gentle nudge at the END of the closing section: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"
 ` : ''}${linkedMemory.length > 0 ? `
 EVENT-LINKED MEMORY (real events from the calendar annotated with relevant structured facts — use to make ONE sharp dot-connecting moment; NEVER invent events; NEVER use this to claim an event is on the calendar unless it also appears in TODAY'S CALENDAR or UPCOMING THIS WEEK above):
