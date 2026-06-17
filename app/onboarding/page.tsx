@@ -337,17 +337,29 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
 
 // ── Step 3a: Activation — loading + reveal ────────────────────────────────────
 
+const ACTIVATION_MIN_MS = 5000; // spec: ≥5s visible so the reveal feels intentional
+const ACTIVATION_POST_MS = 300;  // spec: ≥300ms after derive returns (never snap)
+
 function ActivationStep({ onAccept, onTweak }: { onAccept: () => void; onTweak: () => void }) {
   const [proposal, setProposal] = useState<DerivedProposal | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
 
   useEffect(() => {
+    const startMs = Date.now();
+    let fetched: DerivedProposal | null = null;
     fetch('/api/priorities/derive')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.proposal) setProposal(d.proposal); })
+      .then(d => { if (d?.proposal) fetched = d.proposal; })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        const elapsed = Date.now() - startMs;
+        const delay = Math.max(ACTIVATION_MIN_MS - elapsed, ACTIVATION_POST_MS);
+        setTimeout(() => {
+          setProposal(fetched);
+          setLoading(false);
+        }, delay);
+      });
   }, []);
 
   async function handleAccept() {
