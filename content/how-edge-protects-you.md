@@ -1,136 +1,118 @@
-# How Edge Protects You
-_Page copy v1, June 2026. For Cam to render as a standalone trust page. Coordinate with Vijay (Security) to verify technical accuracy before publishing._
+# How Edge protects you
+
+_User-facing copy — web (Privacy page), Settings screen, and CASA/Google verification submission._
+_Technical accuracy reviewed against Vijay's security delivery (June 2026). Route back to Security for any implementation changes before re-publishing._
 
 ---
 
-## Page purpose
+## The short version
 
-This page is for users who want to go deeper than the FAQ. It's not a legal document — it's a plain-English commitment. It exists because trust isn't a checkbox; it's built over time through transparency.
-
-Audience: design partners and early users with higher-than-average privacy awareness — founders, execs, people who've been burned by data misuse before.
+Edge only stores what it needs to do its job. Everything sensitive is encrypted with bank-grade encryption. You can see everything Edge knows about you, correct anything that's wrong, and disconnect your accounts at any time. Your data is never sold. It's never used to train AI without your explicit permission.
 
 ---
 
-## Hero
+## You control how your data is used
 
-**Headline:**
-> Edge handles sensitive data. Here's exactly how we protect it.
+When you set up Edge, you choose one of two settings. You can change your choice at any time in Settings → Privacy.
 
-**Sub-headline:**
-> Your calendar, your inbox, your energy data. You're trusting Edge with the real stuff. We take that seriously — and we want to show you, not just tell you.
+### Privacy Mode _(default)_
 
----
+Your data is used **only to power your own experience**. Nothing you share — your goals, your calls, your calendar, your health data — is ever used to train or improve Edg3's AI. It is never shared with any third party beyond the services required to run Edge (Google APIs, Vapi for voice calls, Anthropic for AI processing). This is the default for every new account.
 
-## Section 1 — What Edge can see (and what it can't)
+### Help improve Edg3 _(opt-in)_
 
-### Your calendar
-Edge reads your events to understand your schedule and writes changes when you approve them. That's the foundation of everything.
+Your calls, transcripts, and edits may be used to evaluate and improve Edg3's features and AI. You can switch back to Privacy Mode at any time; after switching, your data is no longer used for improvement purposes going forward.
 
-What Edge sees: event titles, times, locations, attendees.
-What Edge doesn't do: store your calendar events in our database. They're fetched live from Google and processed in memory — nothing is retained after the call.
-
-### Your inbox (if you connect Gmail)
-Edge scans your inbox for signals: urgent threads, financial or legal notices, replies from people you've contacted. It doesn't read your emails — it reads about your emails.
-
-Technically: Edge uses Gmail's `format:metadata` API parameter, which returns only the From address, Subject line, and Gmail's own auto-generated snippet (~100 characters). Message bodies are never requested or transmitted to our servers.
-
-What gets stored: subject lines only, encrypted with AES-256-GCM, for 90 days. Visible only to you in your Activity tab — so you can always see which threads Edge reviewed. Senders, snippets, and bodies are never stored.
-
-What Edge never touches: newsletters, promotions, automated notifications, attachments, sent mail, drafts, spam.
-
-### Your energy data (if you connect Whoop)
-Edge reads your daily recovery score and sleep data. This is read-only — Edge never writes anything to Whoop.
-
-Whoop health data gets an extra layer of protection: stored with the same AES-256-GCM encryption as everything else, but treated with additional care given its sensitivity. You can disconnect Whoop at any time and your health data is removed from our systems.
-
-### Your call transcripts
-Every morning call is transcribed. Edge uses the transcript to remember what you said, learn your preferences, and follow up on commitments. Transcripts are encrypted at rest and accessible only to you — the Edge team cannot read them without your explicit permission.
+**The setting you choose is included in your data export** so you always have a record of what you agreed to.
 
 ---
 
-## Section 2 — How your data is protected
+## What Edge remembers — and why
 
-### Encryption at rest
-Everything sensitive is encrypted before it's written to our database using AES-256-GCM — a standard used by financial institutions and healthcare providers. Each value gets its own random initialization vector so even identical values encrypt differently.
+Edge is a Chief of Staff with memory. A simple chatbot forgets you the moment the conversation ends. Edge deliberately builds up a picture of your life so it can give you better advice over time, not just answer questions in the moment.
 
-What's encrypted: all OAuth tokens (Google + Whoop), call transcripts, Gmail draft metadata, Whoop health tokens, notification content, inbox thread subjects, stored facts containing personal information, daily focus plans, and open loop descriptions.
+What it stores:
 
-### Encryption in transit
-All data travels over HTTPS/TLS. There are no unencrypted routes.
+- **Goals and priorities** — what you're working toward this week, this year
+- **Facts about you** — your work style, key relationships, ongoing projects
+- **People** — important contacts, their context, what you've discussed
+- **Patterns** — what makes your weeks productive or draining
+- **Call notes** — a record of your daily briefings and what was decided
 
-### You're the only one who can see your data
-Your call transcripts, inbox subjects, and stored facts are user-scoped at the database level — a query for your data literally cannot return another user's data, not because we trust ourselves, but because the schema enforces it.
-
-The Edge team does not access individual user data except when diagnosing a technical issue — and only with your permission.
-
----
-
-## Section 3 — What Edge does with your data
-
-**Edge uses your data to make Edge work for you. Full stop.**
-
-- We do not sell your data.
-- We do not share your data with advertisers.
-- We do not use your data to train AI models for other users.
-- We do not share your Google data with any third parties beyond what's required to deliver the product (Google's own APIs, Vapi for calls, Anthropic for AI reasoning).
-
-This is not a "we won't do this unless legally compelled" carve-out. It's a product principle: the moment Edge's value depends on monetizing your data rather than serving you, the product has failed at its core purpose.
+You can see everything Edge knows about you in the "What Edge knows" tab, correct any fact, or delete anything at any time.
 
 ---
 
-## Section 4 — You're always in control
+## What's encrypted
 
-### Disconnect any source
-Go to Settings → Connections. Disconnect Google, Gmail, or Whoop at any time. Edge stops accessing that source immediately. Reconnecting is always an option.
+Every piece of sensitive data stored on Edge's servers is encrypted using **AES-256-GCM** — the same standard used by banks and healthcare systems. "Encrypted at rest" means that even if someone gained unauthorized access to our database, they would see random bytes — not your data.
 
-When you disconnect Google, we call Google's token revocation API — your authorization is removed at Google's end, not just in our database.
+What's encrypted:
 
-### See everything Edge knows
-Your dashboard has a "What Edge knows" tab showing every fact Edge has learned about you — your focus areas, preferences, people you've mentioned, and insights from your calls. Nothing is hidden. You can correct or delete any fact.
-
-### Delete your account
-Go to Settings → Account → Delete my account. Confirm with a phrase. Every record associated with your account — profile, call history, facts, tokens, email signals, health data — is permanently deleted. The deletion is immediate and irreversible.
-
-We retain nothing after deletion. There is no "we'll keep it for 30 days just in case" window.
+- Your Google Calendar and Gmail credentials
+- Your Whoop health tokens (recovery, sleep, and strain data)
+- Call transcripts and briefing notes
+- Everything Edge has learned about you — goals, preferences, facts, priorities
+- Email recipients and subjects logged in your activity history
+- Inbox subject lines reviewed during email scans
+- Dashboard notifications
+- Focus plans generated for you
 
 ---
 
-## Section 5 — Third-party services
+## What Edge can and can't do with your connected accounts
 
-Edge uses these services to function:
-
-| Service | What it does | Their privacy policy |
+| Source | What Edge can do | What Edge cannot do |
 |---|---|---|
-| **Google** | Calendar read/write, Gmail read, OAuth | [Google Privacy Policy](https://policies.google.com/privacy) |
-| **Vapi** | Powers the morning voice call | [Vapi Privacy Policy](https://vapi.ai/privacy) |
-| **Anthropic** | AI reasoning (Claude) | [Anthropic Privacy Policy](https://www.anthropic.com/privacy) |
-| **Whoop** | Recovery + sleep data | [Whoop Privacy Policy](https://www.whoop.com/privacy-policy/) |
-| **Railway** | Hosting infrastructure | [Railway Privacy Policy](https://railway.app/legal/privacy) |
-| **Twilio** | Outbound phone calls | [Twilio Privacy Policy](https://www.twilio.com/legal/privacy) |
+| **Google Calendar** | Read events; create, move, and delete events when you ask | Access other Google accounts; read anything outside your calendar |
+| **Gmail** | Read thread subject lines and auto-generated snippets; create email drafts for your review | Read message bodies; send email; access other accounts |
+| **Whoop** | Read recovery score, sleep duration, and strain data | Write anything back to Whoop |
 
-Your data passes through these services to deliver the product. We do not authorize them to use your data for any other purpose.
+Edge never reads the bodies of your emails. It never sends email — only creates drafts for you to review and send yourself. Calendar changes happen only when you explicitly say yes during a call.
 
 ---
 
-## Section 6 — Google OAuth verification
+## How long your data is kept
 
-Edge's use of Google Calendar and Gmail has been submitted for Google's OAuth verification review. Restricted scopes (calendar write, Gmail read) require Google's independent assessment before unrestricted use.
+| Data | How long |
+|---|---|
+| Call transcripts | Until you delete them or close your account |
+| Memory and facts Edge has learned | Until you delete them or close your account |
+| Inbox subject lines | 90 days, then automatically cleared |
+| Activity log | 90 days, then pruned |
+| OAuth tokens (Google, Whoop) | Until you disconnect the source |
 
-What this means for you: until verification is complete, Edge operates under Google's test-user policy. Design partners are added as test users manually. This is a bureaucratic process, not a product limitation — the security is the same either way.
-
-We'll update this page when verification is complete.
-
----
-
-## Section 7 — Questions
-
-If something here doesn't add up, or you want to understand a specific data practice in more detail:
-
-**Email:** hello@edg3.ai  
-**Response time:** within 24 hours for beta users
-
-We don't have a privacy team with a 30-day SLA. You'll hear from Derrick.
+Inbox subject lines have the shortest retention because they offer the most direct view into your correspondence. After 90 days, the record of how many threads were reviewed stays in your Activity feed for context, but the individual subject lines are cleared.
 
 ---
 
-_Technical accuracy: §1–4 verified by Vijay (Security), 2026-06-17. All technical claims confirmed accurate: Gmail format:metadata confirmed code-level; Whoop token revocation on disconnect confirmed; Google token revocation on disconnect confirmed; encryption list updated with daily focus plans + open loops. Cam to render as `/privacy-trust` or as a tab within the existing privacy page. Legal review recommended before public launch._
+## Your data is yours alone
+
+Every query Edge makes to its database filters by your account. There is no query that can return another user's data. This is enforced at the application layer on every endpoint — not just at the UI.
+
+---
+
+## What you can do right now
+
+- **See everything Edge knows** — "What Edge knows" tab in your dashboard
+- **Correct any fact** — click the edit icon next to any fact
+- **Delete any fact** — click the delete icon (priority-linked facts update via the Priorities tab)
+- **Change your privacy setting** — Settings → Privacy → switch between Privacy Mode and Help improve Edg3
+- **See which emails Edge reviewed** — expand any "Read N inbox threads" row in the Activity tab
+- **Disconnect any account** — Settings → Connections → disconnect Google or Whoop instantly
+- **Export your data** — Settings → Account → Export (includes your current privacy setting)
+- **Delete your account** — Settings → Account → Delete; this is immediate and permanent
+
+---
+
+## What we never do
+
+- We do not sell your data. Ever.
+- We do not use your data to train AI without your explicit opt-in (the "Help improve Edg3" setting).
+- We do not share your data with any third party beyond the services required to run Edge: Google (Calendar and Gmail APIs), Vapi (voice call infrastructure), and Anthropic (AI processing).
+- We do not access your data ourselves except to diagnose a technical issue you've asked us to investigate.
+
+---
+
+_Technical accuracy: Security (Vijay), June 2026. Copy: Esther (CoS), June 2026._
+_CASA note: this page accurately reflects the `data_consent` column (default `'privacy'`), `lib/consent.ts` `isImproveConsented()` behavior, AES-256-GCM encryption across all sensitive tables, and user-scoped query enforcement on all endpoints._

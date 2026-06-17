@@ -123,6 +123,9 @@ Full content library is committed to `content/`. This morning's additions:
 | `content/wave-2-readiness-checklist.md` | Product/ops/content gates before inviting users 6–15 |
 | `content/press-one-pager.md` | 2-page brief for journalists, podcast hosts, and advisors |
 | `content/pitch-deck-outline.md` | 12-slide structure for August angel conversations (build when you have 30-day retention data) |
+| `content/how-edge-protects-you.md` | User-facing "How Edge protects you" — plain English, CASA-ready, accurate to Vijay's delivery |
+| `content/memory-moat-one-pager.md` | Crisp 1-page memory moat for August angel conversations (5 streams, 7 layers, why it compounds) |
+| `content/activation-tracking-sheet.md` | Per-user status tracker: invited → onboarded → 3 calls → day-7/14 check-ins → testimonial |
 
 ---
 

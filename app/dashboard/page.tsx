@@ -508,6 +508,7 @@ interface ActivityItem {
 function ActivityTab() {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -516,10 +517,15 @@ function ActivityTab() {
 
   async function load() {
     setLoading(true);
-    const r = await fetch('/api/activity');
-    if (!r.ok) { setLoading(false); return; }
-    const d = await r.json();
-    setItems(d.items || []);
+    setFetchError(false);
+    try {
+      const r = await fetch('/api/activity');
+      if (!r.ok) { setFetchError(true); setLoading(false); return; }
+      const d = await r.json();
+      setItems(d.items || []);
+    } catch {
+      setFetchError(true);
+    }
     setLoading(false);
   }
 
@@ -583,6 +589,17 @@ function ActivityTab() {
           <div className="h-3 rounded w-1/2" style={{ background: 'var(--edg-fill-04)' }} />
         </div>
       ))}
+    </div>
+  );
+
+  if (fetchError) return (
+    <div className="glass-card p-8 text-center mt-2">
+      <p className="text-2xl mb-3" role="img" aria-label="warning">⚠</p>
+      <p className="font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Couldn&apos;t load your activity</p>
+      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+        This is usually a temporary blip.
+      </p>
+      <button onClick={load} className="btn-secondary text-sm py-2 px-5">Try again</button>
     </div>
   );
 
@@ -881,6 +898,24 @@ interface Fact {
   // Core populates these when available
   confidence?: 'low' | null;
   source_briefing_id?: number | null;
+  source?: string | null;
+}
+
+// ── Fact source label ─────────────────────────────────────────────────────────
+
+function factSourceLabel(f: Fact): { text: string; href: string | null } {
+  const date = format(new Date(f.learned_at), 'MMM d');
+  if (f.source === 'email') {
+    return { text: `learned ${date} · from your inbox`, href: null };
+  }
+  if (f.source === 'priority-sync') {
+    return { text: `learned ${date} · from your priorities`, href: null };
+  }
+  // briefing source (source_briefing_id set, or default for call-originated facts)
+  if (f.source_briefing_id) {
+    return { text: `learned ${date} · from your morning call`, href: `/dashboard?briefing=${f.source_briefing_id}` };
+  }
+  return { text: `learned ${date}`, href: null };
 }
 
 // ── Focus Scoreboard ──────────────────────────────────────────────────────────
@@ -1153,6 +1188,11 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
+  const [collapsedMemorySections, setCollapsedMemorySections] = useState<Set<string>>(
+    new Set(['call-notes', 'people-m2', 'patterns-m3', 'accountability', 'fact', 'preference'])
+  );
+  const toggleMemorySection = (key: string) =>
+    setCollapsedMemorySections(prev => { const next = new Set(prev); prev.has(key) ? next.delete(key) : next.add(key); return next; });
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
@@ -2386,9 +2426,16 @@ export default function Dashboard() {
                               )}
                               {correctName(f.statement, firstName)}
                             </p>
-                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                              learned {format(new Date(f.learned_at), 'MMM d')}
-                            </p>
+                            {(() => {
+                              const src = factSourceLabel(f);
+                              return src.href ? (
+                                <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>
+                                  {src.text} ↗
+                                </a>
+                              ) : (
+                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                              );
+                            })()}
                           </div>
                         </div>
                       ))}
@@ -2496,13 +2543,14 @@ export default function Dashboard() {
                                     </button>
                                   )}
                                 </p>
-                                {f.source_briefing_id ? (
-                                  <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>
-                                    learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
-                                  </a>
-                                ) : (
-                                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
-                                )}
+                                {(() => {
+                                  const src = factSourceLabel(f);
+                                  return src.href ? (
+                                    <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                  ) : (
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                  );
+                                })()}
                               </>
                             )}
                           </div>
@@ -2537,13 +2585,21 @@ export default function Dashboard() {
                       // ── Goals: elevated anchor cards with rank number ──
                       if (cat === 'goal') {
                         const firstName = (user?.name || '').split(' ')[0];
+                        const secCollapsed = collapsedMemorySections.has(cat);
                         return (
                           <div key={cat}>
-                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                            <button
+                              onClick={() => toggleMemorySection(cat)}
+                              aria-expanded={!secCollapsed}
+                              className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                              style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                            >
                               <span aria-hidden="true">{meta.icon}</span>
                               {meta.label}
-                            </h3>
-                            <div className="space-y-2">
+                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
+                              <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                            </button>
+                            {!secCollapsed && <div className="space-y-2">
                               {catItems.map((f, idx) => {
                                 const isEditing = editingFactId === f.id;
                                 const justSaved = savedFactId === f.id;
@@ -2600,11 +2656,14 @@ export default function Dashboard() {
                                               <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
                                                 {correctName(f.statement, firstName)}
                                               </p>
-                                              {f.source_briefing_id ? (
-                                                <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>learned from your {format(new Date(f.learned_at), 'MMM d')} call ↗</a>
-                                              ) : (
-                                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
-                                              )}
+                                              {(() => {
+                                                const src = factSourceLabel(f);
+                                                return src.href ? (
+                                                  <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                                ) : (
+                                                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                                );
+                                              })()}
                                             </>
                                           )}
                                         </div>
@@ -2617,7 +2676,7 @@ export default function Dashboard() {
                                   </div>
                                 );
                               })}
-                            </div>
+                            </div>}
                           </div>
                         );
                       }
@@ -2632,14 +2691,21 @@ export default function Dashboard() {
                         const entities = Object.keys(byEntity);
                         const PERSON_LIMIT = 8;
                         const visibleEntities = entities.length > PERSON_LIMIT && !isExpanded ? entities.slice(0, PERSON_LIMIT) : entities;
+                        const secCollapsed = collapsedMemorySections.has(cat);
                         return (
                           <div key={cat}>
-                            <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                            <button
+                              onClick={() => toggleMemorySection(cat)}
+                              aria-expanded={!secCollapsed}
+                              className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                              style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                            >
                               <span aria-hidden="true">{meta.icon}</span>
                               {meta.label}
-                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>{entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
-                            </h3>
-                            <div className="space-y-2">
+                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
+                              <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                            </button>
+                            {!secCollapsed && <div className="space-y-2">
                               {visibleEntities.map(entity => {
                                 const personFacts = byEntity[entity];
                                 const firstName = (user?.name || '').split(' ')[0];
@@ -2675,22 +2741,30 @@ export default function Dashboard() {
                               >
                                 {isExpanded ? 'Show less' : `Show all (${entities.length} people)`}
                               </button>
-                            )}
+                            )}</div>}
                           </div>
                         );
                       }
 
                       // ── All other categories: flat list ──
+                      const secCollapsed = collapsedMemorySections.has(cat);
                       const visible = catItems.length > FACTS_CAT_LIMIT && !isExpanded ? catItems.slice(0, FACTS_CAT_LIMIT) : catItems;
                       return (
                         <div key={cat}>
-                          <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                          <button
+                            onClick={() => toggleMemorySection(cat)}
+                            aria-expanded={!secCollapsed}
+                            className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                            style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                          >
                             <span aria-hidden="true">{meta.icon}</span>
                             {meta.label}
-                          </h3>
-                          <div className="space-y-1.5">
+                            <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
+                            <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
+                          </button>
+                          {!secCollapsed && <div className="space-y-1.5">
                             {visible.map(f => <FactRow key={f.id} f={f} />)}
-                          </div>
+                          </div>}
                           {catItems.length > FACTS_CAT_LIMIT && (
                             <button
                               onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
@@ -2759,44 +2833,67 @@ export default function Dashboard() {
               {/* Past commitments (M4 accountability) */}
               {accountability && (accountability.stillOpen.length > 0 || accountability.done.length > 0) && (
                 <div className="mb-8">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                  <button
+                    onClick={() => toggleMemorySection('accountability')}
+                    aria-expanded={!collapsedMemorySections.has('accountability')}
+                    className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
+                    style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
                     <span aria-hidden="true">✅</span>
                     Past commitments
-                  </h3>
-                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-                    Edge tracks what you commit to on calls and checks in when they&apos;re still open.
+                    <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {accountability.stillOpen.length + accountability.done.length}</span>
                     {accountability.completionRate !== null && (
-                      <> · <strong>{Math.round(accountability.completionRate * 100)}%</strong> completed in the last {accountability.lookbackDays} days</>
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          background: accountability.completionRate >= 0.7 ? 'rgba(34,197,94,0.1)' : 'var(--edg-fill-04)',
+                          color: accountability.completionRate >= 0.7 ? 'var(--edg-success)' : 'var(--text-faint)',
+                        }}>
+                        {Math.round(accountability.completionRate * 100)}% done
+                      </span>
                     )}
+                    <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('accountability') ? '▸' : '▾'}</span>
+                  </button>
+                  {!collapsedMemorySections.has('accountability') && <>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
+                    What you&apos;ve committed to on calls — Edge checks in when they stay open.
                   </p>
                   {accountability.stillOpen.length > 0 && (
                     <div className="space-y-2 mb-3">
-                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Still open</p>
-                      {accountability.stillOpen.slice(0, 5).map(c => (
-                        <div key={`ol-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3">
-                          <span className="mt-0.5 text-base" aria-hidden="true">⏳</span>
-                          <div className="min-w-0">
-                            <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
-                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                              Open {c.daysOpen === 1 ? '1 day' : `${c.daysOpen} days`}
-                              {c.dueDate ? ` · due ${c.dueDate}` : ''}
-                            </p>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Still open</p>
+                      {accountability.stillOpen.slice(0, 5).map(c => {
+                        const urgent = c.daysOpen >= 7;
+                        return (
+                          <div key={`ol-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3"
+                            style={urgent ? { borderColor: 'rgba(245,158,11,0.25)' } : undefined}>
+                            <span className="mt-0.5 flex-shrink-0 text-base" aria-hidden="true"
+                              style={{ color: urgent ? 'rgba(245,158,11,0.8)' : 'var(--text-faint)' }}>
+                              {urgent ? '⚠' : '⏳'}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
+                              <p className="text-xs mt-0.5" style={{ color: urgent ? 'rgba(245,158,11,0.7)' : 'var(--text-faint)' }}>
+                                Open {c.daysOpen === 1 ? '1 day' : `${c.daysOpen} days`}
+                                {c.dueDate ? ` · due ${c.dueDate}` : ''}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {accountability.done.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Completed</p>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Completed</p>
                       {accountability.done.slice(0, 3).map(c => (
-                        <div key={`done-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3">
-                          <span className="mt-0.5 text-base" aria-hidden="true">✓</span>
-                          <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
+                        <div key={`done-${c.id}-${c.source}`} className="flex items-start gap-3 px-4 py-2.5 rounded-xl"
+                          style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
+                          <span className="mt-0.5 flex-shrink-0 text-sm" aria-hidden="true" style={{ color: 'var(--edg-success)' }}>✓</span>
+                          <p className="text-sm leading-snug" style={{ color: 'var(--text-muted)' }}>{c.text}</p>
                         </div>
                       ))}
                     </div>
                   )}
+                  </>}
                 </div>
               )}
 
@@ -2833,64 +2930,120 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Behavioral patterns */}
+              {/* Behavioral patterns (M3) */}
               {patterns.length > 0 && (
                 <div className="mb-8">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
-                    <span aria-hidden="true">📊</span>
+                  <button
+                    onClick={() => toggleMemorySection('patterns-m3')}
+                    aria-expanded={!collapsedMemorySections.has('patterns-m3')}
+                    className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
+                    style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
+                    <span aria-hidden="true">📈</span>
                     Patterns Edge has noticed
-                  </h3>
-                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-                    Detected from your calendar and health data — Edge uses these to protect your best time.
+                    <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {patterns.length}</span>
+                    <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('patterns-m3') ? '▸' : '▾'}</span>
+                  </button>
+                  {!collapsedMemorySections.has('patterns-m3') && <>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
+                    Detected from your calendar and health data — used to protect your best time.
                   </p>
                   <div className="space-y-2">
-                    {patterns.map((p, i) => (
-                      <div key={i} className="glass-card px-4 py-3">
-                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{p.summary}</p>
-                        <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
-                          {p.confidence === 'high' ? 'High' : 'Medium'} confidence · {p.sampleDays} data points
-                        </p>
-                      </div>
-                    ))}
+                    {patterns.map((p, i) => {
+                      const isHigh = p.confidence === 'high';
+                      return (
+                        <div key={i} className="glass-card px-4 py-3 flex items-start gap-3">
+                          <span className="flex-shrink-0 mt-0.5 text-base" aria-hidden="true">
+                            {p.type === 'energy' ? '⚡' : p.type === 'meeting' ? '📅' : p.type === 'focus' ? '🎯' : '〰'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{p.summary}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                                style={{
+                                  background: isHigh ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                                  color: isHigh ? 'var(--edg-success)' : 'rgba(245,158,11,0.9)',
+                                }}>
+                                {isHigh ? 'High' : 'Medium'} confidence
+                              </span>
+                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                                {p.sampleDays} data point{p.sampleDays !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
+                  </>}
                 </div>
               )}
 
-              {/* People profiles */}
+              {/* People profiles (M2) */}
               {people.length > 0 && (() => {
                 const PEOPLE_LIMIT = 15;
                 const topPeople = people.slice(0, PEOPLE_LIMIT);
                 return (
                   <div className="mb-8">
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <button
+                      onClick={() => toggleMemorySection('people-m2')}
+                      aria-expanded={!collapsedMemorySections.has('people-m2')}
+                      className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
+                      style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
                       <span aria-hidden="true">🤝</span>
                       People you meet with
-                    </h3>
-                    <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-                      Built from your calendar — Edge tracks who you&apos;re meeting with so it can give you better context before calls.
+                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {people.length}</span>
+                      <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('people-m2') ? '▸' : '▾'}</span>
+                    </button>
+                    {!collapsedMemorySections.has('people-m2') && <>
+                    <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
+                      Built from your calendar — sorted by how often you meet.
                     </p>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {topPeople.map(p => {
+                        const initial = p.canonical_name.trim()[0]?.toUpperCase() ?? '?';
                         const lastDate = p.last_interaction
                           ? new Date(p.last_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
                           : null;
                         const nextDate = p.upcoming_interaction
                           ? new Date(p.upcoming_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
                           : null;
+                        const isFrequent = p.interaction_count >= 5;
                         return (
-                          <div key={p.canonical_name} className="glass-card px-4 py-3 flex items-center justify-between gap-3">
-                            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
-                              {p.canonical_name}
-                            </span>
-                            <div className="flex items-center gap-3 text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                              <span>{p.interaction_count}× met</span>
-                              {lastDate && <span>last {lastDate}</span>}
-                              {nextDate && <span className="font-medium" style={{ color: 'var(--edg-indigo-bright)' }}>next {nextDate}</span>}
+                          <div key={p.canonical_name} className="glass-card px-4 py-3 flex items-center gap-3">
+                            {/* Avatar */}
+                            <div className="flex-shrink-0 flex items-center justify-center rounded-full text-sm font-bold select-none"
+                              style={{
+                                width: 36, height: 36,
+                                background: isFrequent ? 'var(--edg-accent-15)' : 'var(--edg-fill-hover)',
+                                color: isFrequent ? 'var(--edg-indigo-bright)' : 'var(--text-muted)',
+                                border: isFrequent ? '1px solid var(--edg-accent-20)' : '1px solid transparent',
+                              }}>
+                              {initial}
                             </div>
+                            {/* Name + stats */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold leading-snug truncate" style={{ color: 'var(--text-strong)' }}>
+                                {p.canonical_name}
+                              </p>
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                                {p.interaction_count} meeting{p.interaction_count !== 1 ? 's' : ''}
+                                {lastDate && <> · last {lastDate}</>}
+                              </p>
+                            </div>
+                            {/* Next meeting pill */}
+                            {nextDate && (
+                              <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium"
+                                style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
+                                {nextDate}
+                              </span>
+                            )}
                           </div>
                         );
                       })}
                     </div>
+                    </>}
                   </div>
                 );
               })()}
@@ -2903,11 +3056,18 @@ export default function Dashboard() {
                 const pageItems = memories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
                 return (
                   <div>
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                    <button
+                      onClick={() => toggleMemorySection('call-notes')}
+                      aria-expanded={!collapsedMemorySections.has('call-notes')}
+                      className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
+                      style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
                       <span aria-hidden="true">📋</span>
                       Call notes
-                    </h3>
-                    <div className="space-y-3">
+                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {memories.length}</span>
+                      <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('call-notes') ? '▸' : '▾'}</span>
+                    </button>
+                    {!collapsedMemorySections.has('call-notes') && <div className="space-y-3">
                       {pageItems.map(m => (
                         <div key={m.id} className="glass-card p-4">
                           <div className="flex items-center gap-2 mb-2">
@@ -2948,7 +3108,7 @@ export default function Dashboard() {
                           Next
                         </button>
                       </div>
-                    )}
+                    )}</div>}
                   </div>
                 );
               })()}

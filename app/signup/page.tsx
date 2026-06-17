@@ -44,7 +44,7 @@ export default function SignupPage() {
           <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>Create your account</p>
         </div>
 
-        <div className="glass-card p-8">
+        <div className="glass-card p-5 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="signup-name" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Full name</label>
