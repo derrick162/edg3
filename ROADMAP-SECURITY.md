@@ -50,6 +50,17 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **S3 audit: hero-loop apply path — PASS, no changes (1201 green).**
+
+  Audited `/api/day-plan/confirm` across all four PM-dispatched dimensions:
+
+  1. **Idempotency / double-apply** ✅ — `consumeDeleteToken(user.id, planId)` (in `lib/idempotency.ts`) wraps the token consume in `db.transaction()`: reads token → verifies owner + expiry + unused → marks used atomically. A second call within the TTL sees `used=1` and returns false → route rejects with 400 "Invalid or expired plan ID". Double-click cannot apply twice.
+  2. **Undo grouping** ✅ — `recordUndo(userId, ..., undoOps, planId)` calls `undoQueries.recordForPlan` which stores `plan_id` on each undo_log row. `undoPlan()` calls `getByPlanId(userId, planId)` ordered `id DESC` (most recent first = correct undo order) then `markPlanUndone(userId, planId)` — all three queries filter by `(user_id, plan_id)`. Full batch undo is user-scoped.
+  3. **Rate limit** ✅ — `dayPlanConfirm` 5/hr/user. Appropriate for one-click use.
+  4. **Authz** ✅ — `deleteConfirmQueries.consume(token, userId)` explicitly checks `row.user_id !== userId` — rejects cross-user token reuse. User A cannot apply User B's planId.
+
+  No code changes required. Confirmed green baseline.
+
 - **2026-06-17** — **Round 6: email header injection fix + remaining LLM-output storage caps (1201 green).**
 
   1. **Email header injection** — `lib/gmail.ts` `buildRawMessage`: `to`/`cc`/`bcc`/`subject` now strip `\r\n\t` via `sh()` before interpolation into MIME headers. A CRLF in `to` could inject extra headers (e.g. `Bcc:`). Security owns this primitive; the fix ensures no LLM-generated or user-supplied value can split into a separate header. 1 new test.
