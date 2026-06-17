@@ -3,10 +3,14 @@ import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
 import { resyncBriefingReminder } from '@/lib/calendar';
 import { isValidTimeZone } from '@/lib/time';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('onboardingCallTime', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: { call_time?: string; timezone?: string; phone_number?: string };
   try {

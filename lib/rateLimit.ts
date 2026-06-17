@@ -58,6 +58,9 @@ export const LIMITS = {
   accountExport:        { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (full PII decrypt + download)
   onboardingPriorities: { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (writes priorities + memory + facts)
   prioritiesKeep:       { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (refresh priorities week_of)
+  onboardingProfile:    { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (profile write + LLM prompt input)
+  onboardingCallTime:   { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (triggers Google Calendar API)
+  profileUpdate:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (profile write + LLM prompt input)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
