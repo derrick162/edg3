@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter } from '@/components/ui';
-import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection } from '@/components/ui';
+import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
 
@@ -1211,6 +1211,7 @@ export default function Dashboard() {
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
+  const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
 
   const loadData = useCallback(async () => {
     // Gate the page on just "who am I" (a fast local lookup) so the dashboard renders
@@ -1256,6 +1257,7 @@ export default function Dashboard() {
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
+    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
     fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -2049,6 +2051,22 @@ export default function Dashboard() {
                   appliedScore={dayPlanAppliedScore}
                 />
               )}
+              {/* Open loops — commitments Edge is tracking */}
+              {openLoops.length > 0 && (
+                <OpenLoopsSection
+                  loops={openLoops}
+                  onResolve={async (id) => {
+                    await fetch(`/api/open-loops/${id}/resolve`, { method: 'POST' }).catch(() => {});
+                    setOpenLoops(prev => prev.map(l => l.id === id ? { ...l, status: 'done' as const } : l));
+                  }}
+                  onDismiss={async (id) => {
+                    await fetch(`/api/open-loops/${id}/dismiss`, { method: 'POST' }).catch(() => {});
+                    setOpenLoops(prev => prev.map(l => l.id === id ? { ...l, status: 'dismissed' as const } : l));
+                  }}
+                />
+              )}
+              {/* Content cards — education for the home tab */}
+              <ContentSection />
             </div>
           )}
 
