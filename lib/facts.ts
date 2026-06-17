@@ -153,7 +153,7 @@ export async function extractAndUpsertFacts(
     for (const f of facts) {
       // Never file a "person" fact about the user themselves.
       if (f.category === 'person' && isSelfEntity(f.entity, userName)) continue;
-      factQueries.upsertFact(userId, f.category, f.statement, f.entity, f.confidence ?? 'high', sourceBriefingId);
+      factQueries.upsertFact(userId, f.category, f.statement.slice(0, 500), f.entity, f.confidence ?? 'high', sourceBriefingId);
       stored++;
     }
     if (stored > 0) {
@@ -303,8 +303,8 @@ ${digest}`,
       factQueries.upsertFact(
         userId,
         fact.category,
-        fact.statement.trim(),
-        fact.entity?.trim() || null,
+        fact.statement.trim().slice(0, 500),
+        fact.entity?.trim().slice(0, 200) || null,
         fact.confidence === 'low' ? 'low' : 'high',
         null,
       );
