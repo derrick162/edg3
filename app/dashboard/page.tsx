@@ -1348,7 +1348,7 @@ export default function Dashboard() {
           }}
         />
         {notifOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto' }}>
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 'calc(100vw - 32px)', maxWidth: 340, maxHeight: 420, overflowY: 'auto' }}>
             <NotificationCenter
               notifications={notifs.map(n => ({
                 id: n.id,
@@ -1432,6 +1432,7 @@ export default function Dashboard() {
             ].map(tab => (
               <button
                 key={tab.id}
+                aria-label={tab.label}
                 onClick={() => setActiveTab(tab.id as any)}
                 className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
@@ -1445,6 +1446,30 @@ export default function Dashboard() {
               </button>
             ))}
           </nav>
+
+          {/* Mobile: compact Next Call strip */}
+          <div className="flex md:hidden items-center justify-between px-1 py-2 mt-1 border-t" style={{ borderColor: 'var(--edg-hairline)' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Next call</span>
+              <span className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>
+                {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
+              </span>
+              {callStreak >= 2 && (
+                <span className="text-xs" style={{ color: 'var(--edg-warning)' }}>🔥 {callStreak}d</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {calendarConnected && (
+                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>● Cal</span>
+              )}
+              {whoopConnected && (
+                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>● Whoop</span>
+              )}
+              {todayCallStatus?.status === 'completed' && (
+                <span className="text-xs" style={{ color: 'var(--edg-success)' }}>✓ Done</span>
+              )}
+            </div>
+          </div>
 
           <div className="hidden md:flex md:flex-col mt-6 space-y-3">
             <div
