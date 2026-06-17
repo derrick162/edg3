@@ -1010,6 +1010,7 @@ export default function Dashboard() {
   }
 
   async function handleConfirmDayPlan(planId: string) {
+    const oldScore = typeof calendarFit?.edgeScore === 'number' ? calendarFit.edgeScore : null;
     const res = await fetch('/api/day-plan/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1019,7 +1020,14 @@ export default function Dashboard() {
     setDayPlanApplied(true);
     if (d.newScore != null) {
       setDayPlanAppliedScore(d.newScore);
-      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+      fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
+        if (s) {
+          setCalendarFit(s);
+          if (oldScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > oldScore) {
+            setCelebrateFromScore(oldScore);
+          }
+        }
+      }).catch(() => {});
     }
   }
 
@@ -1655,6 +1663,18 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Hero loop — always-first greeting card: "Here's what's off" or "You're well-aligned" */}
+              <div ref={dayPlanRef} className="mb-6">
+                <DayPlanCard
+                  plan={dayPlan}
+                  loading={dayPlanLoading}
+                  onConfirm={handleConfirmDayPlan}
+                  onDismiss={dayPlan ? () => setDayPlan(null) : undefined}
+                  applied={dayPlanApplied}
+                  appliedScore={dayPlanAppliedScore}
+                />
+              </div>
+
               {/* Edge Score */}
               <div className="mb-6">
                 <EdgeScoreCard
@@ -1706,19 +1726,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Day plan — Fix It target */}
-              {calendarConnected !== false && (
-                <div ref={dayPlanRef} className="mb-6">
-                  <DayPlanCard
-                    plan={dayPlan}
-                    loading={dayPlanLoading}
-                    onConfirm={handleConfirmDayPlan}
-                    onDismiss={() => setDayPlan(null)}
-                    applied={dayPlanApplied}
-                    appliedScore={dayPlanAppliedScore}
-                  />
-                </div>
-              )}
 
               {/* Time allocation viz — where time actually went vs priorities */}
               {timeAllocation && (

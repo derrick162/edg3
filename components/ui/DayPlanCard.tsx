@@ -93,17 +93,35 @@ export function DayPlanCard({
     );
   }
 
-  // ── No plan
+  // ── No plan — well-aligned greeting
   if (!plan) {
     return (
-      <div className="glass-card p-5 text-center" style={{ borderColor: 'var(--plan-border)' }}>
-        <p className="text-xl mb-2">✦</p>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-          Your day looks good
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          No changes needed — Edge will keep watching.
-        </p>
+      <div
+        className="glass-card p-5"
+        style={{ borderColor: 'var(--plan-border)', animation: 'score-rise 0.4s ease both' }}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-base"
+            style={{
+              background: 'var(--edg-accent-08)',
+              border: '1.5px solid var(--edg-accent-20)',
+            }}
+          >
+            ✦
+          </span>
+          <div>
+            <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
+              EDGE ASSESSMENT
+            </p>
+            <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
+              Your day looks well-aligned.
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              No reshaping needed — Edge is watching.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -182,13 +200,13 @@ export function DayPlanCard({
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ EDGE SUGGESTION
+            ✦ HERE&apos;S WHAT&apos;S OFF TODAY
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {plan.summary}
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-            Nothing changes until you confirm below.
+            Nothing changes until you confirm.
           </p>
         </div>
         {onDismiss && (
