@@ -20,7 +20,6 @@ export async function POST(req: NextRequest) {
     if (err instanceof CallError) {
       return NextResponse.json({ error: err.userMessage, code: err.code }, { status: 503 });
     }
-    const message = err instanceof Error ? err.message : 'Failed to initiate call';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to initiate call — please try again shortly.' }, { status: 500 });
   }
 }
