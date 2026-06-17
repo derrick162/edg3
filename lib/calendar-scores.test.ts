@@ -138,3 +138,58 @@ describe('energyProfileQueries — get + upsert', () => {
     expect(db.energyProfileQueries.get(userId2)!.peak_start).toBe(7);
   });
 });
+
+// ── factQueries.upsertFact — user-corrected protection ───────────────────────
+
+describe('factQueries.upsertFact — user-corrected fact protection', () => {
+  let db: Awaited<ReturnType<typeof loadDb>>;
+
+  beforeEach(async () => { db = await loadDb(); });
+
+  it('inserts a new fact with low confidence from extraction', () => {
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim Smith is a trainer', 'Jim', 'low');
+    const facts = db.factQueries.getByCategory(db.userId, 'person');
+    expect(facts).toHaveLength(1);
+    expect(facts[0].confidence).toBe('low');
+    expect(facts[0].statement).toBe('Jim Smith is a trainer');
+  });
+
+  it('low-confidence fact can be overwritten by new extraction', () => {
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim is a trainer', 'Jim', 'low');
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim Smith is Derrick\'s personal trainer', 'Jim', 'low');
+    const facts = db.factQueries.getByCategory(db.userId, 'person');
+    expect(facts).toHaveLength(1);
+    expect(facts[0].statement).toBe('Jim Smith is Derrick\'s personal trainer');
+  });
+
+  it('high-confidence (user-corrected) fact is NOT overwritten by new extraction', () => {
+    // User corrects the fact via PATCH → confidence='high'
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim is a trainer', 'Jim', 'low');
+    db.factQueries.updateFact(db.userId, db.factQueries.getByCategory(db.userId, 'person')[0].id, 'Jim Smith is my personal trainer', 'Jim');
+    // Now a new extraction tries to overwrite with an inferior statement
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim is a trainer', 'Jim', 'low');
+    const facts = db.factQueries.getByCategory(db.userId, 'person');
+    expect(facts).toHaveLength(1);
+    expect(facts[0].statement).toBe('Jim Smith is my personal trainer'); // user's correction preserved
+    expect(facts[0].confidence).toBe('high');
+  });
+
+  it('high-confidence fact from a different category is not affected', () => {
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim is a trainer', 'Jim', 'low');
+    db.factQueries.updateFact(db.userId, db.factQueries.getByCategory(db.userId, 'person')[0].id, 'Jim Smith is my trainer', 'Jim');
+    // Upsert to a different category — should still work normally
+    db.factQueries.upsertFact(db.userId, 'goal', 'Close Series A', 'Series A', 'low');
+    expect(db.factQueries.getByCategory(db.userId, 'goal')).toHaveLength(1);
+    // Person fact still protected
+    expect(db.factQueries.getByCategory(db.userId, 'person')[0].statement).toBe('Jim Smith is my trainer');
+  });
+
+  it('entity matching is case-insensitive for protection check', () => {
+    db.factQueries.upsertFact(db.userId, 'person', 'jim smith is a trainer', 'jim', 'low');
+    db.factQueries.updateFact(db.userId, db.factQueries.getByCategory(db.userId, 'person')[0].id, 'Jim Smith is my trainer', 'jim');
+    // Try to overwrite with different casing in entity
+    db.factQueries.upsertFact(db.userId, 'person', 'Jim is just a gym trainer', 'JIM', 'low');
+    const facts = db.factQueries.getByCategory(db.userId, 'person');
+    expect(facts[0].statement).toBe('Jim Smith is my trainer'); // protected
+  });
+});
