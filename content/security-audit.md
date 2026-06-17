@@ -296,7 +296,10 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 - **Data export:** Full user export (`GET /api/account/export`) omits `password_hash` and OAuth tokens; decrypts PII fields
 - **Backup route:** filename regex `^edg3-[0-9TZ-]+\.db$` + `path.basename` guard prevent path traversal; admin-auth gated
 - **Activation Moment path:** `GET /api/priorities/derive` + `POST /api/priorities/derive/accept` — auth, rate-limit, user-scoping, graceful null, no error leak confirmed
-- **Test coverage:** 56 test files, 1253 tests. Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup. Lib-level: auth/JWT, crypto, idempotency, backup path traversal, vapi secret.
+- **`memories.content` encrypted at rest (FIXED 2026-06-18):** Previously stored as plaintext — now encrypted via `encryptField` in `memoryQueries.create`; all read paths decrypted. Legacy plaintext rows pass through transparently on read (no migration needed).
+- **Consent helper:** `lib/consent.ts` — `isImproveConsented(user)` / `isPrivacyMode(user)`. Safe default: null/undefined consent → Privacy Mode (opt-IN required for improvement use). Ready for wiring once Core adds `users.data_consent` column.
+- **Memory authz:** `GET /api/memory` user-scoped to `user.id`; cross-user leakage tests confirm one user cannot read another's memories or facts.
+- **Test coverage:** 61 test files, 1331 tests. Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout. Lib-level: auth/JWT, crypto, idempotency, backup path traversal, vapi secret, consent helper.
 
 ### ⚠️ Known Gaps (Accepted / Tracked)
 
@@ -322,6 +325,7 @@ All `encryptField`/`encryptNullable` call sites verified against `lib/db.ts` and
 | `calendar_tokens` | `access_token`, `refresh_token` | `encryptField`, `encryptNullable` |
 | `whoop_tokens` | `access_token`, `refresh_token` | `encryptField` × 2 |
 | `briefings` | `transcript`, `user_response` | `encryptField` (via `ENCRYPTED_BRIEFING_FIELDS` set) |
+| `memories` | `content` | **FIXED 2026-06-18**: `encryptField` in `memoryQueries.create`; `decryptMemoryRow` on all read paths; `getWeighted` now JS-filters after decryption (LIKE on encrypted content doesn't work) |
 | `facts` | `statement` | `encryptField` at create + both update paths |
 | `priorities` (goal-sync) | goal statement | `encryptField` in priority-sync path |
 | `gmail_drafts_log` | `recipient`, `subject` | `encryptNullable` × 2 |
