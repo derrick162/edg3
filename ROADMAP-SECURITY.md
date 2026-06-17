@@ -95,6 +95,32 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **Backup coverage fix + consent route + data_consent migration (1340 green).**
+
+  Three hardening tasks shipped in one session:
+
+  1. **`lib/backup.ts` — bug fix + expanded table coverage.**
+     - **Bug**: `verifyBackup` was checking `'milestones'` (always returned `-1`) but the
+       actual table is `'focus_milestones'`. Fixed.
+     - Added 5 missing user-data tables to the verification list: `energy_profile`,
+       `event_energy_tags`, `calendar_plan_executions`, `undo_log`, `gmail_drafts_log`.
+     - 2 new tests: asserts all 20 required tables appear in `rowCounts`; confirms
+       the stale `'milestones'` key is gone and `'focus_milestones'` is present.
+     - Fixed `better-sqlite3` mock to use `function` keyword (required for `new` constructor calls in vitest).
+
+  2. **`POST /api/auth/consent`** — new route for users to switch between Privacy Mode and Help-improve-Edg3.
+     - Auth-gated (`getSession()` → 401), rate-limited (`consentUpdate`: 10/hr per user).
+     - Validates input strictly: only `'improve'` | `'privacy'` accepted → 400 otherwise.
+     - Calls `userQueries.updateConsent(userId, consent)` + writes `consent_update` audit log entry with `prev` and `new` consent values.
+     - 7 tests: 401 unauthenticated, 400 invalid value, 400 missing field, 200 `privacy`, 200 `improve`, audit record shape, 429 rate limit.
+
+  3. **`data_consent` column migration** (`lib/db.ts`):
+     - Added `ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))` to the migrations array.
+     - Safe and idempotent (wrapped in try-catch per existing pattern).
+     - Unblocks CASA enforcement — column is now live on startup; the `/api/auth/consent` route can write to it immediately. No Core deploy required for the column to exist.
+
+  1340/1340 green, tsc clean, next build clean.
+
 - **2026-06-18** — **Memory encryption + consent helper + memory authz tests (1331 green).**
 
   PM dispatch: memory is the moat — every memory field encrypted, user-scoped, consent-gated.
