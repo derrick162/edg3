@@ -217,6 +217,42 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T4-4 — Write-idempotency sweep (1672 green).**
+  - **Audit findings:** `createEvent/copyDayEvents` already protected by `event_dedupe_keys` (5-min TTL). `deleteEvent/cleanupEvents/cleanupDuplicates/applyCalendarPlan` protected by `delete_confirm_tokens`. `moveEvent/colorEvent/colorEventsByEnergy/draftEmail` unguarded — can double-execute on Vapi retry. Webhook end-of-call-report had a TOCTOU race in the `status !== 'completed'` check.
+  - **`webhook_dedup_keys` table** added to `lib/db.ts`: `(event_key TEXT PRIMARY KEY, processed_at)`. `webhookDedupeQueries.claim(eventKey)` uses atomic `INSERT OR IGNORE` — eliminates the TOCTOU race. Pruned at 24h via 3am cron.
+  - **`tool_call_dedup_keys` table** added: `(toolcall_id TEXT PRIMARY KEY, result TEXT, processed_at)`. `toolCallDedupeQueries.claim/recordResult/getCached/prune` exported from `lib/db.ts`. 10-minute TTL matches Vapi retry window.
+  - **`lib/idempotency.ts`** extended: `claimWebhookEvent(callId, type)` + `claimToolCall(toolCallId)` + `recordToolCallResult(toolCallId, result)` + `getToolCallCached(toolCallId)`. All fail open (never block on DB fault).
+  - **`app/api/vapi/webhook/route.ts`**: atomic `claimWebhookEvent` gate added before the soft `status !== 'completed'` check — duplicate retries return immediately.
+  - **`app/api/vapi/tool-call/route.ts`**: `claimToolCall` gate wraps `executeTool` for all tool calls with a Vapi toolCallId. Duplicate returns cached result (or in-flight message). `recordToolCallResult` writes result back for concurrent retries to consume.
+  - **Tests:** 10 new tests in `lib/idempotency.test.ts` covering `claimWebhookEvent`, `claimToolCall`, `recordToolCallResult`, `getToolCallCached` (first call, duplicate, fail-open). 86 test files / 1672 total.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC1-3 — Scheduled call time accuracy audit (1662 green).**
+  - **Audit result:** calls fire within 0–60 seconds of scheduled time (cron granularity) + briefing generation overhead (typically 5–20s). The 120-minute grace window handles cold-starts correctly — if Railway restarts after call_time, the first cron tick fires the call within 1 minute of restart.
+  - **Timing delta log added** to `checkAndInitiateCalls`: `[scheduler] Calling user X — scheduled HH:MM TZ, Nmin late (cold-start/missed-tick catch-up)` or `(on time)`. Visible in Railway logs.
+  - **2 new DC1-3 tests:** cold-start at call_time+2min fires, missed-tick at call_time+1min fires. 1662 total.
+- **2026-06-18** — **PILLAR-TRUST T4-2 + DC1-2 — Vapi pre-call health check + retry at T+5min (1660 green).**
+  - **T4-2 — Vapi pre-call health check with dashboard notification:**
+    - `pingVapiHealth()` private fn in `lib/scheduler.ts`: lightweight GET to `https://api.vapi.ai/phone-number` (8s timeout, no-op when `VAPI_API_KEY` unset → returns true). Returns true on 2xx/404, false on error/timeout.
+    - Inserted before `initiateCall` in `scheduleBriefingCall`: if ping fails → marks briefing `failed` with `error_code='vapi_error'`, creates a `call_failed` notification ("Edge couldn't place your call this morning"), throws `CallError` to surface cleanly. Notification also written on `initiateCall` failure.
+    - Tests: global `fetch` stub (`vi.stubGlobal`) added to both scheduler test files — returns `{ ok: true }` by default, restored after each `vi.resetAllMocks()`.
+  - **DC1-2 — Retry at T+5min (was T+10min):**
+    - `app/api/vapi/webhook/route.ts` `scheduleRetry` path: changed `'+10 minutes'` → `'+5 minutes'` so DB-flagged retries fire sooner after call setup failures.
+  - 86 test files / 1660 tests total.
+- **2026-06-18** — **PILLAR-TRUST T0-2(partial) + T1-3(completion) + T4-1 + DC1-1 — Encryption key rotation doc + 6am health digest + Google token auth tracking + call attempt log (1660 green).**
+  - **T0-2 — Encryption key rotation protocol:** `content/encryption-key-rotation.md` written. Documents: the single rule (never rotate without a re-encryption migration), when rotation is necessary, step-by-step safe rotation process with template migration script, what `safeDecryptField` does vs. throwing variant, and the catastrophic recovery note. Accepted gaps and `DATA_ENCRYPTION_KEY` backup location placeholder included.
+  - **T1-3 completion — 6am health digest + health_log table:**
+    - `health_log` table added to `lib/db.ts` schema: `(id, status TEXT CHECK('ok'|'degraded'), summary TEXT, checked_at TEXT)`. Index on `checked_at DESC`. `healthLogQueries.write/getLatest/prune` exported.
+    - `runHealthDigest()` exported from `lib/scheduler.ts`: checks failed calls (last 24h), webhook DLQ, background job failures, and calendar auth issues. Writes `health_log` row (status=ok/degraded + combined summary). Logs `[health] HEALTH: OK` or `[health] HEALTH: DEGRADED — reason1; reason2`. New 6am UTC cron fires this before the 7am call window.
+  - **T4-1 — Google token refresh reliability:**
+    - `calendar_auth_failures INTEGER DEFAULT 0` and `calendar_reconnect_required INTEGER DEFAULT 0` columns added to `calendar_tokens` (via migration). `calendarQueries.recordAuthFailure(userId)` increments counter + sets `calendar_reconnect_required = 1` at ≥3 failures with ALERT log. `calendarQueries.clearAuthFailures(userId)` resets both on successful auth. `calendarQueries.needsReconnect(userId)` checks the flag.
+    - `checkCalendarTokenHealth(userId)` added to `lib/google-auth.ts` (Security-owned): makes a lightweight `calendarList.list` probe; on 401/invalid_grant → calls `recordAuthFailure`; on success → clears failures. Returns `{ ok, needsReconnect }`.
+    - 6am health digest proactively calls `checkCalendarTokenHealth` for all active users before the 7am call.
+  - **DC1-1 — Call attempt log:**
+    - `call_attempts` table added: `(id, user_id, scheduled_for, status CHECK('connected'|'failed'|'retrying'), fail_reason, attempted_at)`. Index on `(user_id, attempted_at DESC)`. `callAttemptQueries.record/getRecent/failedCount/prune` exported.
+    - `checkAndInitiateCalls` now records a `call_attempts` row on each attempt: `connected` on success, `failed` on exception.
+    - `callAttemptQueries.failedCount(24)` checked by 6am health digest — contributes to DEGRADED status.
+    - `call_attempts` added to account deletion (belt-and-suspenders; has CASCADE but listed for completeness).
+  - **Tests:** `lib/health-digest.test.ts` (NEW, 11 tests): `runHealthDigest` OK path (writes 'ok', prunes on every run), DEGRADED paths (failed calls, webhook DLQ, job failures, combined issues, calendar auth failures). Scheduler.test.ts + scheduler.hardening.test.ts mocks updated with `healthLogQueries`, `callAttemptQueries`, `calendarQueries` new methods.
+  - 86 test files / 1660 tests total.
 - **2026-06-18** — **PILLAR-TRUST T1-5 + T3-4 + T4-3 — Rate limit sweep clean + account deletion completeness + WAL (1596 green).**
   - **T1-5 — Rate limit sweep:** Full scan of all 37 user-facing POST/PATCH/DELETE routes in `app/api/`. All mutation routes are protected with `checkRateLimit()`. No gaps found. `vapi/webhook` and `vapi/verify-promises` use Vapi secret auth (correct — no user session on these paths). No code changes needed.
   - **T4-3 — WAL + busy_timeout:** Already confirmed in overnight hardening commit: `db.pragma('journal_mode = WAL')` was pre-existing; `db.pragma('busy_timeout = 5000')` added. ✅ Complete.

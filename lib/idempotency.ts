@@ -15,7 +15,7 @@
  *   - app/api/calendar/book/route.ts   ("Book it" quick-book button)
  */
 
-import { eventDedupeQueries, deleteConfirmQueries } from './db';
+import { eventDedupeQueries, deleteConfirmQueries, webhookDedupeQueries, toolCallDedupeQueries } from './db';
 
 /** 5 minutes — long enough to absorb Vapi retry storms and double-taps. */
 const TTL_MS = 5 * 60 * 1000;
@@ -83,4 +83,44 @@ export function claimEventCreate(userId: number, key: string): boolean {
     // Fail open — never let a dedupe fault block a legitimate calendar write.
     return true;
   }
+}
+
+// ── T4-4: Webhook + tool-call idempotency ────────────────────────────────────
+
+/**
+ * Claim a Vapi webhook event. Returns true on first delivery, false for duplicates.
+ * The event key is scoped to (callId, eventType) so different event types on the same
+ * call are processed independently. Fails open — never blocks a legitimate webhook.
+ */
+export function claimWebhookEvent(callId: string, type: string): boolean {
+  try {
+    return webhookDedupeQueries.claim(`${callId}:${type}`);
+  } catch { return true; } // fail open — never block a legitimate webhook
+}
+
+/**
+ * Claim a Vapi tool-call execution by toolCallId (Vapi's per-call unique identifier).
+ * Returns true on first invocation (proceed), false on duplicate (return cached result).
+ * Fails open — never blocks a legitimate tool call.
+ */
+export function claimToolCall(toolCallId: string): boolean {
+  try {
+    return toolCallDedupeQueries.claim(toolCallId);
+  } catch { return true; } // fail open — never block a legitimate tool call
+}
+
+/**
+ * Store the result of a tool call so retries can return the same response
+ * without re-executing the mutation.
+ */
+export function recordToolCallResult(toolCallId: string, result: string): void {
+  toolCallDedupeQueries.recordResult(toolCallId, result);
+}
+
+/**
+ * Get the cached result for a duplicate tool call. Returns null if the first
+ * call is still in progress (result not yet written).
+ */
+export function getToolCallCached(toolCallId: string): string | null {
+  return toolCallDedupeQueries.getCached(toolCallId);
 }
