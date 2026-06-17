@@ -417,7 +417,8 @@ function PrioritiesTab({
                               </span>
                               <button
                                 onClick={() => onMilestoneDelete?.(m.id)}
-                                className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
+                                aria-label="Remove milestone"
+                                className="opacity-30 group-hover:opacity-100 focus:opacity-100 text-xs transition-opacity p-1"
                                 style={{ color: 'var(--edg-danger)' }}
                               >
                                 ×
@@ -1453,7 +1454,7 @@ export default function Dashboard() {
                 key={tab.id}
                 aria-label={tab.label}
                 onClick={() => setActiveTab(tab.id as any)}
-                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
+                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
                   color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
@@ -1752,7 +1753,7 @@ export default function Dashboard() {
               <button
                 onClick={openCall}
                 disabled={openingCall}
-                className="btn-secondary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
+                className="btn-secondary text-sm py-2.5 sm:py-2 px-3 sm:px-4 flex-1 sm:flex-none"
                 title="An open conversation — no briefing"
               >
                 {openingCall ? 'Calling…' : '💬 Open call'}
@@ -1760,7 +1761,7 @@ export default function Dashboard() {
               <button
                 onClick={initiateCall}
                 disabled={initiatingCall}
-                className="btn-primary text-sm py-2 px-3 sm:px-4 flex-1 sm:flex-none"
+                className="btn-primary text-sm py-2.5 sm:py-2 px-3 sm:px-4 flex-1 sm:flex-none"
               >
                 {initiatingCall ? 'Calling…' : '📞 Call me now'}
               </button>
@@ -2294,7 +2295,7 @@ export default function Dashboard() {
                                               <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(parseUTC(f.learned_at), 'MMM d')}</span>
                                             )}
                                           </div>
-                                          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                          <div className="flex items-center gap-1 flex-shrink-0 opacity-30 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                             <button
                                               title="Edit"
                                               onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
