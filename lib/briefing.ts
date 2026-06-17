@@ -21,6 +21,8 @@ import { computeCalendarFit } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
+import { buildRelationshipContextBlock, syncPeopleProfiles } from './relationships';
+import { peopleProfileQueries } from './db';
 
 async function getWeatherSummary(timezone: string): Promise<string> {
   try {
@@ -298,6 +300,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     // Also extract open loops from the inbox (fire-and-forget).
     extractAndUpsertOpenLoops(userId, { emailSignal, today }).catch(() => {});
   }
+  // Refresh people profiles from calendar history (fire-and-forget — never blocks the briefing).
+  syncPeopleProfiles(userId, pastCalendarHistory, calendarEvents, user.email).catch(() => {});
 
   // Urgent open loops — pure DB read, fetch before focus rec so they can modulate recommendations.
   const urgentLoopsEarly = (() => { try { return getUrgentOpenLoops(userId, focusDate); } catch { return []; } })();
@@ -398,6 +402,13 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
         { lookAheadHours: 12, now: new Date().toISOString() },
       );
       return formatMeetingContextsForBriefing(contexts, userTimezone);
+    } catch { return ''; }
+  })();
+  // Relationship context: historical interaction data for today's meeting attendees.
+  const relationshipContextBlock = (() => {
+    try {
+      const profiles = peopleProfileQueries.listForUser(userId);
+      return buildRelationshipContextBlock(calendarEvents, profiles, user.email);
     } catch { return ''; }
   })();
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
@@ -664,6 +675,9 @@ Use RECURRING OPEN LOOPS only if one matches today's context — mention it brie
 ` : ''}${meetingContextBlock ? `
 ${meetingContextBlock}
 Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE specific observation for the most important upcoming meeting: relevant email thread, a fact you know about the person, or an open loop they should close before walking in. Keep it to one sentence per event — don't read every bullet. Only reference meetings that actually appear in the calendar data.
+` : ''}${relationshipContextBlock ? `
+${relationshipContextBlock}
+Use RELATIONSHIP CONTEXT to make ONE warm, specific observation about a person you're meeting today — "you've worked with Alice seven times" or "last time you connected with Bob was two months ago — might be worth an update." One line only; weave it into section 2 or 3 naturally. Never read the full list.
 ` : ''}${calendarPatternsBlock ? `
 ${calendarPatternsBlock}
 Use CALENDAR PATTERNS in section 5 (CALENDAR BLOCKS) — suggest time blocks that align with the inferred focus window and avoid the historically-packed meeting window. Reference patterns only when they strengthen a recommendation (e.g. "Tuesday mornings are usually light for you — good slot for deep work"). Do not read the whole block aloud.

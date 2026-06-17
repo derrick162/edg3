@@ -1058,6 +1058,7 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
+  const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
   const [briefingsLoaded, setBriefingsLoaded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -1163,6 +1164,7 @@ export default function Dashboard() {
     };
     retryFetch('/api/onboarding/priorities', d => setPriorities(d.priorities || []));
     retryFetch('/api/memory', d => { setMemories(d.memories || []); setFacts(d.facts || []); });
+    fetch('/api/relationships').then(r => r.ok ? r.json() : null).then(d => { if (d?.profiles) setPeople(d.profiles); }).catch(() => {});
     // The slow ones (live Google Calendar) — no longer block the dashboard from showing.
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
@@ -2397,6 +2399,45 @@ export default function Dashboard() {
               {facts.length > 0 && memories.length > 0 && (
                 <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
               )}
+
+              {/* People profiles */}
+              {people.length > 0 && (() => {
+                const PEOPLE_LIMIT = 15;
+                const topPeople = people.slice(0, PEOPLE_LIMIT);
+                return (
+                  <div className="mb-8">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: 'var(--text-body)' }}>
+                      <span aria-hidden="true">🤝</span>
+                      People you meet with
+                    </h3>
+                    <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                      Built from your calendar — Edge tracks who you&apos;re meeting with so it can give you better context before calls.
+                    </p>
+                    <div className="space-y-1.5">
+                      {topPeople.map(p => {
+                        const lastDate = p.last_interaction
+                          ? new Date(p.last_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                          : null;
+                        const nextDate = p.upcoming_interaction
+                          ? new Date(p.upcoming_interaction + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                          : null;
+                        return (
+                          <div key={p.canonical_name} className="glass-card px-4 py-3 flex items-center justify-between gap-3">
+                            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                              {p.canonical_name}
+                            </span>
+                            <div className="flex items-center gap-3 text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                              <span>{p.interaction_count}× met</span>
+                              {lastDate && <span>last {lastDate}</span>}
+                              {nextDate && <span className="font-medium" style={{ color: 'var(--edg-indigo-bright)' }}>next {nextDate}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Raw memories — paginated */}
               {memories.length > 0 && (() => {

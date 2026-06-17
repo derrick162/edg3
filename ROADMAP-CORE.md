@@ -304,6 +304,28 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **M2 Relationship Memory — people profiles from calendar attendees.**
+  - **`lib/relationships.ts`** (new, pure + sync layer): `extractAttendeesFromEvent` strips self/selfEmail;
+    `computePersonInteractions(pastEvents, upcomingEvents, selfEmail, nowIso)` — pure, no I/O — groups attendees
+    by display name, counts past interactions, finds `lastInteraction` (most recent past date) and
+    `upcomingInteraction` (earliest future date). `syncPeopleProfiles(userId, ...)` — I/O wrapper, upserts top 50
+    by interaction count, fire-and-forget safe. `buildRelationshipContextBlock(upcomingEvents, profiles, selfEmail)`
+    formats a briefing-ready block for attendees with ≥2 past interactions. `formatInteractionContext` — compact
+    "met 5× · last Jun 10" string.
+  - **`people_profiles` table** added to `lib/db.ts`: `canonical_name`, `email`, `interaction_count`,
+    `last_interaction`, `upcoming_interaction`, `updated_at`. Unique index on `(user_id, canonical_name)`.
+    `peopleProfileQueries`: `listForUser`, `getByName`, `upsert` (ON CONFLICT DO UPDATE). Migration for `email`
+    column (try/catch safe for fresh installs).
+  - **`GET /api/relationships`** — returns profiles sorted by interaction_count DESC; rate-limited via
+    `meetingContext` key (30/hr).
+  - **`POST /api/relationships/sync`** — triggers 30-day past + 14-day upcoming calendar fetch + upsert; rate-limited.
+  - **Briefing wiring** (`lib/briefing.ts`): fire-and-forget `syncPeopleProfiles` after each briefing's calendar
+    fetch (keeps profiles fresh at zero cost). `buildRelationshipContextBlock` injected after MEETING PREP — Edge
+    gets "met N× · last Jun 10" for each attendee with history. Degrades silently when no data.
+  - **Dashboard Memory tab**: "People you meet with" section shows canonical_name, met count, last date, next
+    date (indigo) — rendered before Call notes, sorted by interaction_count DESC.
+  - 17 new tests (extractAttendeesFromEvent, computePersonInteractions, formatInteractionContext).
+    1353/1353 green, tsc clean, next build clean.
 - **2026-06-18** — **Focus Scoreboard — outcome layer + 4-week trend (Ticket 2).**
   - **`computeWeeklyBreakdown(events, priorities, numWeeks)` pure helper** added to `lib/timeAllocation.ts`.
     Splits calendar events into weekly Sun–Sat buckets going back `numWeeks` weeks. For each bucket, applies the
