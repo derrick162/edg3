@@ -10,7 +10,7 @@ import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
 import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetingContext';
-import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
+import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, hasWhoopConnected, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
 import { topFacts } from './memorySalience';
@@ -32,7 +32,7 @@ import {
   pickBestPattern,
   formatPatternForBriefing,
 } from './patternMemory';
-import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction } from './accountabilityMemory';
+import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction, getReliabilitySignal } from './accountabilityMemory';
 import { buildEpisodeMemoryBlock } from './episodeStore';
 import { runHistoricalPatternDetection, getHistoricalPatterns } from './factPatterns';
 
@@ -260,6 +260,87 @@ export function buildEnergyMatchingBlock(
   return '\n' + lines.join('\n') + '\n';
 }
 
+/**
+ * Pre-compute stable personal context for tomorrow's briefing.
+ * Activated automatically by the 11pm scheduler once this export exists.
+ * Excludes calendar events — those are time-sensitive and must be fetched live at call time.
+ */
+export async function buildBriefingContextPack(userId: number): Promise<string> {
+  const user = userQueries.findById(userId);
+  if (!user) throw new Error(`buildBriefingContextPack: user ${userId} not found`);
+
+  const userTimezone = effectiveTimezone(user);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: userTimezone });
+  const weekOf = format(startOfWeek(new Date()), 'yyyy-MM-dd');
+
+  const priorities = priorityQueries.getThisWeek(userId, weekOf);
+  const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
+  const recentMemories = memoryQueries.getWeighted(userId, 20);
+  const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+  const salientFacts = topFacts(allRawFacts, latestPriorities, today, { max: 20, maxPerCategory: 6 });
+
+  const [whoopRecovery, whoopSleep, whoopStrain] = await Promise.all([
+    getLatestRecovery(userId).catch(() => null),
+    getLastSleep(userId).catch(() => null),
+    getRecentStrain(userId).catch(() => null),
+  ]);
+
+  const accountabilityBlock = (() => {
+    try {
+      const recentTasks = taskQueries.getRecent(userId, 7);
+      const loops = [
+        ...openLoopQueries.list(userId, 'open'),
+        ...openLoopQueries.list(userId, 'done'),
+      ];
+      const snapshot = buildAccountabilitySnapshot(recentTasks, loops, today, 7);
+      return snapshot ? formatAccountabilityForBriefing(snapshot) : '';
+    } catch { return ''; }
+  })();
+
+  const urgentLoops = (() => { try { return getUrgentOpenLoops(userId, today); } catch { return []; } })();
+  const loopsBlock = formatOpenLoopsForBriefing(urgentLoops);
+
+  const episodeBlock = (() => {
+    try { return buildEpisodeMemoryBlock(userId, latestPriorities.map(p => p.text), []); } catch { return ''; }
+  })();
+
+  const sections: string[] = [];
+
+  if (latestPriorities.length > 0) {
+    sections.push(`THIS WEEK'S PRIORITIES:\n${latestPriorities.map((p, i) => `${i + 1}. ${p.text}`).join('\n')}`);
+  }
+
+  if (salientFacts.length > 0) {
+    const byCategory = new Map<string, typeof salientFacts>();
+    for (const f of salientFacts) {
+      if (!byCategory.has(f.category)) byCategory.set(f.category, []);
+      byCategory.get(f.category)!.push(f);
+    }
+    const factsBlock = Array.from(byCategory.entries())
+      .map(([cat, facts]) => `${cat.toUpperCase()}:\n${facts.map(f => `- ${f.statement}`).join('\n')}`)
+      .join('\n');
+    sections.push(`STRUCTURED FACTS:\n${factsBlock}`);
+  }
+
+  const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
+  if (whoopSection) {
+    sections.push(`HEALTH DATA (WHOOP — packed ${new Date().toISOString()}):\n${whoopSection}`);
+  }
+
+  if (accountabilityBlock) sections.push(accountabilityBlock);
+  if (loopsBlock) sections.push(loopsBlock);
+  if (episodeBlock) sections.push(episodeBlock);
+
+  if (recentMemories.length > 0) {
+    const memoriesText = recentMemories
+      .map(m => `[${m.type} - ${format(new Date(m.created_at), 'MMM d')}]: ${m.content}`)
+      .join('\n');
+    sections.push(`MEMORY & PRIOR CONVERSATIONS:\n${memoriesText}`);
+  }
+
+  return sections.join('\n\n');
+}
+
 export async function generateDailyBriefing(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
@@ -285,6 +366,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
   const salientFactsEarly = topFacts(allRawFacts, priorities, today, { max: 20, maxPerCategory: 6 });
 
+  const _parallelStart = Date.now();
   const [calendarEvents, weekEvents, fullWeekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
@@ -299,6 +381,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getRecentEmailSignal(userId, { days: 14, max: 20 }).catch(() => null),
     getPastCalendarEvents(userId, 180).catch(() => []),
   ]);
+  // DC2-3b: timing log so we can audit why Whoop data is occasionally missing.
+  console.log(`[briefing] parallel-fetch ${Date.now() - _parallelStart}ms | whoop={whoopFetchMs:${Date.now() - _parallelStart},recoveryNull:${whoopRecovery === null},sleepNull:${whoopSleep === null},strainNull:${whoopStrain === null}}`);
+  const whoopIsConnected = hasWhoopConnected(userId);
   // Build energy signal from Whoop recovery for focus recommendation modulation.
   const focusEnergySignal = whoopRecovery
     ? {
@@ -394,6 +479,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     .filter(t => t.source === 'edg3' && t.date < today)
     .at(-1) ?? null;
   // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
+  // M4-2 Reliability Signal: 30-day window to derive per-horizon completion rates for calibrated language.
   const accountabilitySnapshot = (() => {
     try {
       const recentTasks = taskQueries.getRecent(userId, 7);
@@ -404,8 +490,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       return buildAccountabilitySnapshot(recentTasks, loops, today, 7);
     } catch { return null; }
   })();
+  const reliabilitySignal = (() => {
+    try {
+      const tasks30d = taskQueries.getRecent(userId, 30);
+      return getReliabilitySignal(tasks30d, today, 30);
+    } catch { return undefined; }
+  })();
   const accountabilityBlock = accountabilitySnapshot ? formatAccountabilityForBriefing(accountabilitySnapshot) : '';
-  const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot) : '';
+  const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot, reliabilitySignal) : '';
   // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
   // Degrades to [] if Gmail read access isn't granted yet or anything errors.
   const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
@@ -724,7 +816,9 @@ ${timeAllocationBlock}
 Use TIME ALLOCATION in section 3 (ALIGNMENT CHECK) only — surface the biggest misalignment concretely (e.g. "60% of your calendar time has been going to meetings, while fundraising — your top priority — has only gotten 8% in the last 8 weeks"). One observation max. Do not repeat it elsewhere.
 ` : ''}${focusScoreboardBlock ? `
 ${focusScoreboardBlock}
-` : ''}${whoopContextBlock}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `
+` : ''}${whoopContextBlock}${whoopIsConnected && !whoopSection ? `
+WHOOP STATUS: Connected but data unavailable for this call. In Part 1, after the Edge Score sentence, add ONE brief acknowledgment: "Your Whoop data didn't come through this morning — I'll keep trying." Never skip this silently when Whoop is connected.
+` : ''}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `
 ENERGY PROFILE: Not set yet. Since Whoop is connected, add ONE brief invite at the very end of the closing section (after any other nudges): "One more thing — if you tell me your high-energy windows, I can start matching your schedule to your energy. Morning peak? Afternoon dip?" Only add this if it feels natural; skip if there are already two or more other end-of-briefing nudges.
 ` : '')}${hygieneFlag ? `
 CALENDAR HYGIENE FLAG (one concrete overload pattern — surface this in section 4):
@@ -766,9 +860,14 @@ Use DERIVED PRIORITY PROPOSAL when priorities are missing or stale: say "I looke
 PRIORITY DRIFT ALERT: Priorities were last set ${prioritiesStaleAge} days ago. Add ONE gentle nudge at the END of the closing section: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"
 ` : ''}${linkedMemory.length > 0 ? `
 EVENT-LINKED MEMORY (real events from the calendar annotated with relevant structured facts — use to make ONE sharp dot-connecting moment; NEVER invent events; NEVER use this to claim an event is on the calendar unless it also appears in TODAY'S CALENDAR or UPCOMING THIS WEEK above):
+Facts marked [UNCONFIRMED >90d] should be prefaced with "last I heard…" when spoken — they may be outdated.
 ${linkedMemory.map(lm => {
-  const learnedDate = lm.fact.learned_at ? new Date(lm.fact.learned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-  return `- "${lm.eventTitle}" → ${lm.fact.statement} (${lm.fact.category}${learnedDate ? `, learned ${learnedDate}` : ''})`;
+  const learnedAt = lm.fact.learned_at ? new Date(lm.fact.learned_at) : null;
+  const daysOld = learnedAt ? Math.round((Date.now() - learnedAt.getTime()) / 86_400_000) : 0;
+  const stale = daysOld > 90;
+  const learnedDate = learnedAt ? learnedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const staleMark = stale ? ' [UNCONFIRMED >90d]' : '';
+  return `- "${lm.eventTitle}" → ${lm.fact.statement}${staleMark} (${lm.fact.category}${learnedDate ? `, learned ${learnedDate}` : ''})`;
 }).join('\n')}
 ` : ''}
 MEMORY & PRIOR CONVERSATIONS:
@@ -786,11 +885,13 @@ CRITICAL RULE — CALENDAR VERIFICATION: The ONLY source of truth for what is on
 
 BRIEFING STRUCTURE — 3 parts, in order:
 
+CRITICAL — NO PREAMBLE: The very first words are the greeting, then immediately the most important signal. Zero warm-up. Zero scene-setting. Zero "here's what we'll cover today." If there is a YESTERDAY'S COMMITMENT, it IS the most important signal — lead with that before anything else. Actionable information within the first 10 seconds is the standard.
+
 PART 1 — GREETING + HOOK (2–3 sentences MAX):
-Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}." Then ONE energy/sleep sentence using PROGRESS HOOK data — if recovery is GREEN (≥67%), tie the encouragement to a SPECIFIC real event on TODAY'S CALENDAR (e.g. "Recovery's solid — push hard on that investor prep this morning."), not a generic "solid day ahead." If recovery is RED (≤33%), name the heaviest deferrable block: "Recovery's low at X% — I'd protect your morning and defer [specific event] if possible." If no Whoop data, skip energy sentence entirely. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks). If TODAY'S CALENDAR shows a personal all-day event (birthday, anniversary, holiday — e.g. "Dad's Birthday"), acknowledge it warmly in one sentence with a small offer ("Today's [Name]'s birthday — want me to block time for a call or draft a quick note?"). If nothing meaningful: skip.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
+${edg3Commitment ? `FIRST — accountability (DC2-3): Before the Edge Score, open with: "${greeting}, ${firstName}. Yesterday you committed to '${edg3Commitment.text}' — did that happen?" This is the most time-sensitive signal. Then the Edge Score as sentence two.` : `Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}."`} Then ONE energy/sleep sentence using PROGRESS HOOK data — if recovery is GREEN (≥67%), tie the encouragement to a SPECIFIC real event on TODAY'S CALENDAR (e.g. "Recovery's solid — push hard on that investor prep this morning."), not a generic "solid day ahead." If recovery is RED (≤33%), name the heaviest deferrable block: "Recovery's low at X% — I'd protect your morning and defer [specific event] if possible." If no Whoop data, skip energy sentence entirely. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing). If TODAY'S CALENDAR shows a personal all-day event (birthday, anniversary, holiday — e.g. "Dad's Birthday"), acknowledge it warmly in one sentence with a small offer ("Today's [Name]'s birthday — want me to block time for a call or draft a quick note?"). If nothing meaningful: skip entirely.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
 
 PART 2 — FOCUS + ACTION (4–5 sentences MAX):
-${edg3Commitment ? `Open with ONE accountability line: "Yesterday you committed to '${edg3Commitment.text}' — did that happen?" ` : ''}${focusRec && focusRec.areas.length > 0 ? `Propose focus: "For today, I'd focus you on: [area 1], [area 2], [area 3]. Sound right?" Then name what to DO first this morning, anchored to their top focus area and a specific calendar event where one connects. If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?"). If FREE TIME SLOTS shows an open afternoon window (3pm+) and the user has multiple priorities, offer a choice: "You've got a free window this afternoon — would you rather push on [priority 1] or [priority 2]?" One choice, then let them respond.` : `Name the top 2 concrete things to DO today anchored to priorities. No listing events — name ACTIONS.`}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
+${edg3Commitment ? '' : ''}${focusRec && focusRec.areas.length > 0 ? `Propose focus: "For today, I'd focus you on: [area 1], [area 2], [area 3]. Sound right?" Then name what to DO first this morning, anchored to their top focus area and a specific calendar event where one connects. If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?"). If FREE TIME SLOTS shows an open afternoon window (3pm+) and the user has multiple priorities, offer a choice: "You've got a free window this afternoon — would you rather push on [priority 1] or [priority 2]?" One choice, then let them respond.` : `Name the top 2 concrete things to DO today anchored to priorities. No listing events — name ACTIONS.`}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
 
 PART 3 — CLOSING (2–3 sentences MAX):
 ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.${prioritiesStaleAge > 7 ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}

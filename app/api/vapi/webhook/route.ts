@@ -344,13 +344,21 @@ ${toolSummary}`,
 
 async function extractTasksFromTranscript(userId: number, transcript: string, timezone: string) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const targetDate = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-  targetDate.setDate(targetDate.getDate() + 1);
-  const today = targetDate.toLocaleDateString('en-CA');
+  const nowLocal = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const todayStr = nowLocal.toLocaleDateString('en-CA');
+  // Default due date: tomorrow (tasks committed to on the call are expected by next morning)
+  const tomorrowDate = new Date(nowLocal);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = tomorrowDate.toLocaleDateString('en-CA');
+  // Compute this week's dates for relative resolution ("by Friday" → actual date)
+  const dayMs = 86_400_000;
+  const dayOfWeek = nowLocal.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+  const fridayStr = new Date(nowLocal.getTime() + daysUntilFriday * dayMs).toLocaleDateString('en-CA');
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+    max_tokens: 400,
     messages: [{
       role: 'user',
       content: `Read this call transcript between a user and their AI Chief of Staff.
@@ -358,11 +366,19 @@ Extract NEW tasks or action items that the USER personally needs to do — thing
 
 IMPORTANT rules:
 - Only include tasks for the USER to complete themselves
-- Do NOT include instructions the user gave to the AI (e.g. "delete that event", "move my meeting", "add hot tub time") — those are requests to Edge, not user tasks
+- Do NOT include instructions the user gave to the AI (e.g. "delete that event", "move my meeting") — those are Edge requests, not user tasks
 - Do NOT include calendar management requests — Edge handles those separately
-- Only include real personal actions: calls to make, things to build, workouts, errands, decisions to make, people to contact
+- Only include real personal actions: calls to make, things to build, errands, decisions, people to contact
 
-Return ONLY a JSON array of short task strings (max 8 words each). If no user tasks were committed to, return [].
+Today is ${todayStr}. This Friday is ${fridayStr}.
+For each task, include the due date in YYYY-MM-DD format. Rules:
+- Explicit date ("by Friday", "this week", "tomorrow"): resolve to the actual date using today = ${todayStr}
+- No explicit date mentioned: use ${tomorrowStr} (default — next morning)
+- "This week" = ${fridayStr}; "next week" = 7 days from today
+
+Return ONLY a JSON array — no preamble, no markdown.
+Each item: {"text":"<short task, max 8 words>","dueDate":"YYYY-MM-DD"}
+If no user tasks were committed to, return [].
 
 Transcript:
 ${transcript}`,
@@ -375,9 +391,13 @@ ${transcript}`,
   try {
     const match = content.text.match(/\[[\s\S]*\]/);
     if (!match) return;
-    const tasks: string[] = JSON.parse(match[0]);
-    for (const text of tasks.slice(0, 5)) {
-      if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), today, 'edg3');
+    const tasks: Array<{ text?: string; dueDate?: string } | string> = JSON.parse(match[0]);
+    for (const item of tasks.slice(0, 5)) {
+      const text = typeof item === 'string' ? item : item?.text;
+      const rawDate = typeof item === 'object' && item?.dueDate ? item.dueDate : tomorrowStr;
+      // Validate date format; fall back to tomorrow if malformed
+      const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : tomorrowStr;
+      if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), dueDate, 'edg3');
     }
   } catch {
     // ignore parse errors
