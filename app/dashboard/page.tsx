@@ -898,6 +898,24 @@ interface Fact {
   // Core populates these when available
   confidence?: 'low' | null;
   source_briefing_id?: number | null;
+  source?: string | null;
+}
+
+// ── Fact source label ─────────────────────────────────────────────────────────
+
+function factSourceLabel(f: Fact): { text: string; href: string | null } {
+  const date = format(new Date(f.learned_at), 'MMM d');
+  if (f.source === 'email') {
+    return { text: `learned ${date} · from your inbox`, href: null };
+  }
+  if (f.source === 'priority-sync') {
+    return { text: `learned ${date} · from your priorities`, href: null };
+  }
+  // briefing source (source_briefing_id set, or default for call-originated facts)
+  if (f.source_briefing_id) {
+    return { text: `learned ${date} · from your morning call`, href: `/dashboard?briefing=${f.source_briefing_id}` };
+  }
+  return { text: `learned ${date}`, href: null };
 }
 
 // ── Focus Scoreboard ──────────────────────────────────────────────────────────
@@ -2401,9 +2419,16 @@ export default function Dashboard() {
                               )}
                               {correctName(f.statement, firstName)}
                             </p>
-                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                              learned {format(new Date(f.learned_at), 'MMM d')}
-                            </p>
+                            {(() => {
+                              const src = factSourceLabel(f);
+                              return src.href ? (
+                                <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>
+                                  {src.text} ↗
+                                </a>
+                              ) : (
+                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                              );
+                            })()}
                           </div>
                         </div>
                       ))}
@@ -2511,13 +2536,14 @@ export default function Dashboard() {
                                     </button>
                                   )}
                                 </p>
-                                {f.source_briefing_id ? (
-                                  <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>
-                                    learned from your {format(new Date(f.learned_at), 'MMM d')} call &#x2197;
-                                  </a>
-                                ) : (
-                                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
-                                )}
+                                {(() => {
+                                  const src = factSourceLabel(f);
+                                  return src.href ? (
+                                    <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                  ) : (
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                  );
+                                })()}
                               </>
                             )}
                           </div>
@@ -2615,11 +2641,14 @@ export default function Dashboard() {
                                               <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
                                                 {correctName(f.statement, firstName)}
                                               </p>
-                                              {f.source_briefing_id ? (
-                                                <a href={`/dashboard?briefing=${f.source_briefing_id}`} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>learned from your {format(new Date(f.learned_at), 'MMM d')} call ↗</a>
-                                              ) : (
-                                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>learned {format(new Date(f.learned_at), 'MMM d')}</p>
-                                              )}
+                                              {(() => {
+                                                const src = factSourceLabel(f);
+                                                return src.href ? (
+                                                  <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                                ) : (
+                                                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                                );
+                                              })()}
                                             </>
                                           )}
                                         </div>
