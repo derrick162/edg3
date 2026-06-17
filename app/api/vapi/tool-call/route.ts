@@ -1185,6 +1185,19 @@ Query: ${query}` }],
     const tz = profile?.timezone ?? 'UTC';
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
+    // Idempotency: if already confirmed today with same titles, skip the write.
+    const existingFocus = dailyFocusQueries.getToday(userId, date);
+    if (existingFocus?.confirmed) {
+      let existingAreas: { title: string }[] = [];
+      try { existingAreas = JSON.parse(existingFocus.focus_areas); } catch { /* ok */ }
+      const existingKey = existingAreas.map(a => a.title.trim().toLowerCase()).sort().join('|');
+      const newKey = cleaned.map(a => a.title.trim().toLowerCase()).sort().join('|');
+      if (existingKey === newKey) {
+        const listed = cleaned.map((a, i) => `${i + 1}. ${a.title}`).join(', ');
+        return `Already locked in for today: ${listed}. You're set.`;
+      }
+    }
+
     dailyFocusQueries.upsert(userId, date, JSON.stringify(cleaned), new Date().toISOString());
     dailyFocusQueries.confirm(userId, date);
 

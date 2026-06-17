@@ -1292,6 +1292,7 @@ export default function Dashboard() {
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
+  const [focusLockedAreas, setFocusLockedAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -1347,6 +1348,13 @@ export default function Dashboard() {
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
+    // Check if already confirmed today — show locked state, prevent re-confirm.
+    fetch('/api/focus/confirm').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.confirmed && Array.isArray(d.areas) && d.areas.length > 0) {
+        setFocusLockedAreas(d.areas);
+        setFocusRecDismissed(true);
+      }
+    }).catch(() => {});
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
     fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
@@ -1409,6 +1417,7 @@ export default function Dashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ areas }),
     });
+    setFocusLockedAreas(areas);
     setFocusRecDismissed(true);
     // Refetch Edge Score; if it rose, trigger the spark celebration
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
@@ -2140,7 +2149,21 @@ export default function Dashboard() {
                 onRequestFix={() => {/* DayPlanCard below handles fixes */}}
               />
               {/* Today's focus recommendations */}
-              {!focusRecDismissed && (
+              {focusLockedAreas ? (
+                <div className="glass-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span style={{ color: 'var(--edg-indigo)' }}>🎯</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s focus — set for today</span>
+                  </div>
+                  <ol className="list-none space-y-1">
+                    {focusLockedAreas.map((a, i) => (
+                      <li key={i} style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                        <span style={{ color: 'var(--edg-indigo)', fontWeight: 600, marginRight: '0.5rem' }}>{i + 1}.</span>{a.title}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : !focusRecDismissed && (
                 <FocusRecommendationCard
                   recommendation={focusRec}
                   loading={focusRecLoading}
