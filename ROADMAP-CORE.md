@@ -304,6 +304,101 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Trust Bug T2 — prefer event-title spelling in fact extraction.**
+  - `extractAndUpsertFacts` now auto-fetches today's calendar events when `calendarEventTitles`
+    is not supplied (call site in the webhook is unchanged). Event-title names are combined
+    with stored person facts and passed to BOTH the Tier-1 `groundProperNouns` pre-pass AND
+    the Haiku `knownNamesLine` hint, so the model uses the exact event spelling (e.g. "Jim" from
+    "1:1 Jim") rather than the STT re-transcription when they're a phonetic near-miss.
+  - 1246/1246 green, tsc clean.
+- **2026-06-18** — **Activation loading — 5 s minimum hold + 300 ms post-return buffer.**
+  - `ActivationStep` in `app/onboarding/page.tsx`: tracks derivation start time; delays the
+    transition to the reveal by `max(5000 − elapsed, 300)` ms so the loading orb is always
+    visible for at least 5 seconds and the reveal never snaps immediately even on a fast network.
+  - Prevents the jarring "blink" when `derivePriorities` returns in < 300 ms.
+  - Thin-data path (null proposal) advances immediately (no point holding for 5 s on nothing).
+  - 1240/1240 green, tsc clean.
+- **2026-06-18** — **T4 — STT transcript canonicalization (3 write paths).**
+  - **`canonicalNamesFromProfile(userName)`** pure helper added to `lib/grounding.ts`. Splits a
+    user's profile name ("Derrick Fung") into proper-noun tokens for use as canonical names in
+    the Tier-1 grounding pass. Tokens < 3 chars filtered; deduplicates automatically.
+  - **Full call transcript (stored in DB):** before `briefingQueries.update` in the webhook
+    `call-ended` block, applies `groundProperNouns` with user name + person facts. Corrects
+    1-edit near-misses (e.g. "Derick" → "Derrick") before the transcript is persisted — what
+    the user sees in the dashboard deep-link is already canonical.
+  - **Call-summary path (`saveCallSummaryToCalendar`):** extended existing T3 grounding to also
+    include user name tokens and today's calendar event titles (via `extractNamesFromEventTitles`
+    + `getCalendarEvents`). Event titles are the canonical source for event-specific names (e.g.
+    "1:1 Jim" → corrects STT "Gym" before the Haiku summarization pass).
+  - **Call notes / user-response memory (`analyzeUserResponse` in `lib/briefing.ts`):** applies
+    grounding with user name + person facts before `memoryQueries.create('transcript', ...)`.
+    What the user reads in the "What Edge knows" tab is canonical.
+  - Tier-1 threshold (edit-distance ≤ 1 post-phonetics) is intentionally conservative — "Derek"
+    (3 edits from "Derrick") is left for Tier-2 Haiku; "Derick" (1 edit) is corrected.
+  - 6 new tests. 1246/1246 green, tsc clean.
+- **2026-06-18** — **Activation Moment data-wiring: 4 bugs fixed, flow wired to real endpoints.**
+  - Resolved merge conflict with Cam's activation UI (Cam's visual components win: `ActivationReveal`, `ActivationHeroCard`, `ActivationHeroAligned`, `ActivationLoading`). Step flow: `profile → calendar → activation → hero → priorities → calltime`.
+  - **[Bug 1] `ActivationStep.handleAccept` sent no body** — `/api/priorities/derive/accept` requires `{ priorities: string[] }`; was posting empty. Fixed: passes `proposal.priorities.map(p => p.text)`.
+  - **[Bug 2] `HeroStep` fetched `/api/edge-score` (404)** — real endpoint is `/api/scores`; field is `edgeScore` (number), not `clarityScore` (object). Fixed.
+  - **[Bug 3] `HeroStep` expected `plan.suggestion` (never set)** — `/api/day-plan` returns `{ changes[], scoreBefore, scoreAfter, planId, wellAligned }`. Fixed: maps `changes[0]` to `HeroSuggestion { action, rationale, timeGained }`. `wellAligned===true` or empty changes → `ActivationHeroAligned` (positive state).
+  - **[Bug 4] `HeroStep.handleApply` posted to `/api/day-plan/apply` (doesn't exist)** — real endpoint is `POST /api/day-plan/confirm` with `{ planId }`. Fixed: stores `planId` from plan response, calls confirm, reads `newScore` to update Edge Score reveal.
+  - Restored `PrioritiesStep` as the manual-entry fallback (deleted in prior core-only commit; needed for Tweak path and thin-data skip).
+  - 1240/1240 green, tsc clean, next build clean.
+- **2026-06-18** — **FLAGSHIP — Activation Moment: derive-and-reveal after calendar connect (increment 1).**
+  - **Replaces the manual priorities step with `ActivationStep`** in `app/onboarding/page.tsx`. New step order: `profile → calendar → activation → calltime`.
+  - On mount, `ActivationStep` immediately fires `GET /api/priorities/derive` (no user action needed — auto-starts the moment the step renders, right after the 1.4s calendar-connect celebration).
+  - **5 internal states:**
+    1. `loading` — shows `PriorityDerivationLoadingCard` (animated skeleton) + "Edge is reading your last few months…"
+    2. `proposal` — shows `PriorityDerivationCard` with 2–3 derived anchors, one-line rationale per anchor, evidence tags, data provenance ("Based on N events · M emails · K facts from the last 90 days").
+    3. `accepting` — "Setting…" disabled state while POST `/api/priorities/derive/accept` runs, then advances to calltime.
+    4. `tweaking` — inline edit mode with pre-filled inputs (Edge's texts); "← Back" returns to proposal.
+    5. `fallback` — for sparse calendar / derive failure: loads `/api/onboarding/suggest-priorities` (profile-based suggestions) + shows manual 3-input form identical to the old priorities step. User's entries saved to `/api/onboarding/priorities`.
+  - **Graceful degradation:** users who skip calendar connect land in fallback automatically (no calendar events → derive returns null → fallback triggers). No fabricated priorities on thin data.
+  - Reuses `PriorityDerivationCard` + `PriorityDerivationLoadingCard` from `components/ui/PriorityDerivationCard.tsx` (Design-owned; no new visual components needed).
+  - 1240/1240 green (master-merged tests included), tsc clean, next build clean.
+- **2026-06-18** — **Night-queue continuation — priority derivation, T3 grounding complete, score truth, activity labels.**
+  - **33 tests for `lib/priorityDerivation.ts` pure helpers** (`normalizeThemeTitle`, `extractCalendarThemes`, `calendarSpanDays`, `buildDerivePrompt`). Fixed 3 test-authoring errors (stop-word set, word-length filter, newline-sanitize assertion). All 33 green.
+  - **T3 grounding complete — `createEvent` now grounds its title.** `createEvent` was the only of the 9 mutation tools that skipped `groundTitle`. Raw STT-transcribed meeting titles (e.g., "Meeting with Pfizer" for Faiza) now go through the phonetic correction pass before being written to Google Calendar. All 9 tools now consistently apply Tier-1 grounding.
+  - **Priority derivation voice integration.** When priorities are absent or stale (>7d), `derivePriorities()` is called during briefing generation and a `DERIVED PRIORITY PROPOSAL` block is injected into the system prompt with 2–3 data-backed candidates + rationale. New `setPriorities` Vapi tool lets Edge write priorities live mid-call when user confirms ("yes, go with those") — no dashboard trip required. Prompt updated accordingly. Activity label added for `setPriorities`.
+  - **`/api/day-plan/confirm` uses full 4-component score.** Both `scoreBefore` and `newScore` in the confirm response were computed with only focus+energy — inconsistent with the dashboard's 4-component Edge Score. Now passes the same `clarityInputs`+`momentumInputs` as `/api/day-plan` GET. Test mock updated.
+  - **Activity labels for `fact_update`, `fact_delete`, `setPriorities`.** All three were falling through to the default label. Now: "Updated {category} — {entity}", "Removed {category} — {entity}", "Set N priorities". Audit records for fact ops now include `entity` for concrete labels. Detail sections added.
+  - **16 tests for `/api/scores` route — score-stability fallback hardened.** No tests existed for this route. Covers: focusReliable=true (persists, fires notif), focusReliable=false/alignment-null (serves last stored score without persisting — avoids corrupting trend with transient 0s), no-history fallback (calibrating=true), confirmed daily focus drives priorities, auth gate, rate limit.
+  - **`applyCalendarPlan` voice tool now passes all plan inputs.** The Vapi `applyCalendarPlan` handler was only passing 5 of 9 args to `buildCalendarPlan` — `alignment`, `recoveryHistory`, `openLoopsDueToday`, and `nowIso` were all missing. Path B (recovery-driven rescheduling), Path C (open-loop block), and Path D (meeting-prep slot) could never fire from voice. Fixed: fetches `openLoopsDueToday` via `openLoopQueries`, computes `nowIso`, and passes all 9 args.
+  - 1218/1218 green, tsc clean, next build clean.
+- **2026-06-18** — **Trust polish — T3 grounding, scoring tests, fact correction, score changelog, hero-loop paths D + recurring.**
+  - **T3 — Grounding on live voice path (all `resolveEvent` call sites).**
+    `groundTitle(raw)` helper in `executeTool` (`app/api/vapi/tool-call/route.ts`) loads stored
+    person-entity facts once per call, applies `groundProperNouns` to raw event titles from the
+    model before passing them to `getEventDetails`, `editEvent`, `researchToEvent`, `deleteEvent`,
+    `moveEvent`, `colorEvent`, `draftEmail`. Gym→Jim, Onsi→Ansi, etc. are corrected before event
+    resolution; the model never gets the transcription error propagated into the calendar.
+  - **Scoring-engine test hardening.**
+    12 new `patchAlignmentForPlan` edge-case tests (empty actions clone, same-priority accumulation,
+    case-insensitive match, unrecognized title no-op, unmatched move no-op, two-priority independence).
+    5 new `computeFocusScore` edge cases (zero committed hours, perPriority summation, routine exclusion,
+    topFix null at 100, priority name in description). 4 new `computeMomentumScore` edge cases (cap at 14,
+    7d > 14d handled, all-zeros + confirmedToday, drivers always non-empty).
+  - **Fact-correction polish — two layers.**
+    - `upsertFact` (`lib/db.ts`): now reads `confidence` of the existing row; if `'high'` (user-corrected
+      via PATCH), the update is skipped — user's explicit edit wins over any subsequent STT/LLM extraction.
+    - `consolidateFacts` (`lib/facts.ts`): sort priority high > low confidence; `bestStatement` prefers
+      the high-confidence fact's text even when a longer low-confidence fact exists for the same entity.
+    - 5 integration tests (SQLite `:memory:`) + 2 unit tests in `lib/facts.test.ts`.
+  - **T3 score changelog — `scoreBefore` + `changeLines` in confirm response.**
+    `/api/day-plan/confirm/route.ts` now returns `scoreBefore` (captured before the plan executes) and
+    `changeLines: string[]` (up to 3 lines built from `action.reason` or truncated description) so
+    `DayPlanCard` can show "Day reshaped — Edge Score +7" toast. Design wires the visual.
+  - **Hero-loop: Path D (meeting prep) + recurring-pattern diagnosis.**
+    - `findNextMeetingNeedingPrep(events, date, tz, nowIso)` — new exported pure helper. Finds the
+      next timed meeting (not routine, not ⚡ Edge block) with a free 15-min window before it;
+      returns the prep slot or null. Only fires when `nowIso` is explicitly provided.
+    - Path D in `buildCalendarPlan`: when < 3 actions and `nowIso` is passed → propose "Meeting Prep"
+      create action before the next eligible meeting. Both route handlers (`/api/day-plan` GET +
+      `/api/day-plan/confirm` POST) now pass `new Date().toISOString()` to activate it.
+    - `buildDiagnoses` item 4: recurring-pattern — detects non-`recurringEventId` event titles that
+      appear ≥3 times in weekEvents after filtering routine entries; surfaces the most-repeated one.
+    - 11 new tests (`findNextMeetingNeedingPrep`: 7; Path D: 3; recurring pattern: 4).
+  - 1192/1192 green, tsc clean, next build clean.
 - **2026-06-17** — **Hero-loop H depth + Activity label audit (Items 4 & 5).**
   - **Item 4 — `buildCalendarPlan` deeper diagnosis (3 new action sources):**
     - **Path C:** if open loops are due today and no focus block was generated by Paths A/B →

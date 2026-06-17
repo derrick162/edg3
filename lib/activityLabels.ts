@@ -202,6 +202,23 @@ export function buildLabel(
     case 'undoLastAction':
       return 'Undid the last change';
 
+    case 'fact_update': {
+      const cat = str(args.category) || 'memory';
+      const entity = str(args.entity);
+      return entity ? `Updated ${cat} — ${trunc(entity, 40)}` : `Updated ${cat}`;
+    }
+
+    case 'fact_delete': {
+      const cat = str(args.category) || 'memory';
+      const entity = str(args.entity);
+      return entity ? `Removed ${cat} — ${trunc(entity, 40)}` : `Removed ${cat}`;
+    }
+
+    case 'setPriorities': {
+      const count = typeof args.count === 'number' ? args.count : null;
+      return count !== null ? `Set ${count} priorit${count !== 1 ? 'ies' : 'y'}` : 'Set priorities';
+    }
+
     default:
       if (resultText) return trunc(resultText, 80);
       return action.replace(/([A-Z])/g, ' $1').trim();
@@ -350,6 +367,30 @@ export function buildDetail(
       const count = typeof args.actionCount === 'number' ? args.actionCount : null;
       if (count !== null) sections.push({ label: 'Changes', value: `${count} calendar action${count !== 1 ? 's' : ''}` });
       if (resultText) sections.push({ label: 'Actions', value: trunc(resultText, 300) });
+      return sections.length ? { sections } : null;
+    }
+
+    case 'fact_update': {
+      const cat = str(args.category);
+      const entity = str(args.entity);
+      if (cat) sections.push({ label: 'Category', value: cat });
+      if (entity) sections.push({ label: 'About', value: entity });
+      if (resultText) sections.push({ label: 'Change', value: trunc(resultText, 200) });
+      return sections.length ? { sections } : null;
+    }
+
+    case 'fact_delete': {
+      const cat = str(args.category);
+      const entity = str(args.entity);
+      if (cat) sections.push({ label: 'Category', value: cat });
+      if (entity) sections.push({ label: 'About', value: entity });
+      return sections.length ? { sections } : null;
+    }
+
+    case 'setPriorities': {
+      const count = typeof args.count === 'number' ? args.count : null;
+      if (count !== null) sections.push({ label: 'Count', value: `${count} priorit${count !== 1 ? 'ies' : 'y'}` });
+      if (resultText) sections.push({ label: 'Priorities', value: trunc(resultText, 300) });
       return sections.length ? { sections } : null;
     }
 

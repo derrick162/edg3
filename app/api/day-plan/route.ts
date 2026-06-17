@@ -119,7 +119,7 @@ export async function GET() {
 
   // H1: pass alignment + recovery so buildCalendarPlan can draw on all diagnosis signals.
   const fit = computeCalendarFit(alignment, priorities, recoveryHistory, todaySleep, 45, clarityInputs, momentumInputs);
-  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday);
+  const plan = buildCalendarPlan(todayEvents, fit, priorities, today, userTz, alignment, recoveryHistory, openLoopsDueToday, new Date().toISOString());
   const diagnoses = buildDiagnoses(alignment, weekEvents, recoveryHistory, userTz);
 
   // Always issue a token (well-aligned state also renders the card).

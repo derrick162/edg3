@@ -167,6 +167,67 @@ export function findHeaviestDeferrableEvent(
   );
 }
 
+// ─── findNextMeetingNeedingPrep ───────────────────────────────────────────────
+
+const EDGE_BLOCK_RE = /^(⚡|Focus\s*[—\-–]|Buffer|Commitments\s*[—\-–]|Meeting Prep\s*[—\-–])/i;
+
+/**
+ * Find the next timed event that looks like an important meeting (not routine,
+ * not an Edge-created block) and has a free 15-min window immediately before it.
+ * Returns the prep slot datetimes, or null when nothing qualifies.
+ *
+ * @param nowIso — injectable ISO timestamp for "now" (for deterministic tests)
+ */
+export function findNextMeetingNeedingPrep(
+  events: calendar_v3.Schema$Event[],
+  date: string,
+  tz: string,
+  nowIso: string,
+): { meetingTitle: string; prepStartDateTime: string; prepEndDateTime: string } | null {
+  const PREP_H = 15 / 60;
+  const nowHM = localHourMinute(nowIso, tz);
+  if (!nowHM) return null;
+  const nowH = nowHM.hour + nowHM.minute / 60;
+
+  const timed = events
+    .filter(e => e.start?.dateTime && e.end?.dateTime)
+    .map(e => {
+      const s  = localHourMinute(e.start!.dateTime!, tz);
+      const en = localHourMinute(e.end!.dateTime!, tz);
+      if (!s || !en) return null;
+      return {
+        title:   (e.summary ?? '').trim(),
+        startH:  s.hour + s.minute / 60,
+        endH:    en.hour + en.minute / 60,
+        startMs: new Date(e.start!.dateTime!).getTime(),
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b !== null && b.title.length > 0)
+    .sort((a, b) => a.startMs - b.startMs);
+
+  for (const ev of timed) {
+    if (ev.startH <= nowH + PREP_H) continue;        // too soon for prep
+    if (isRoutinePlanTitle(ev.title)) continue;       // skip gym, lunch, etc.
+    if (EDGE_BLOCK_RE.test(ev.title)) continue;       // skip ⚡ blocks
+
+    const prepStart = ev.startH - PREP_H;
+    const prepEnd   = ev.startH;
+
+    const blocked = timed.some(
+      o => o !== ev && o.startH < prepEnd && o.endH > prepStart,
+    );
+    if (!blocked) {
+      const slot = makeSlot(date, prepStart, prepEnd);
+      return {
+        meetingTitle:      ev.title,
+        prepStartDateTime: slot.startDateTime,
+        prepEndDateTime:   slot.endDateTime,
+      };
+    }
+  }
+  return null;
+}
+
 // ─── findFirstTightGap ───────────────────────────────────────────────────────
 
 /**
@@ -269,9 +330,11 @@ export function patchAlignmentForPlan(
  *   1. Focus block — focusScore.topFix says create, OR hygiene flag, OR open loops due today
  *   2. Recovery move — latest recovery ≤33% → move heaviest deferrable event to tomorrow
  *   3. Alignment gap move — biggest unaligned sink today → move to tomorrow
- *   4. Buffer — first back-to-back pair with a tight gap → create a breathing-room event
+ *   4. Meeting prep — 15-min prep block before next important meeting with a free window
+ *   5. Buffer — first back-to-back pair with a tight gap → create a breathing-room event
  *
  * Pure — no I/O. Deterministic given the same inputs.
+ * @param nowIso — injectable ISO timestamp for "now" (for deterministic tests)
  */
 export function buildCalendarPlan(
   todayEvents: calendar_v3.Schema$Event[],
@@ -282,6 +345,7 @@ export function buildCalendarPlan(
   alignment?: AlignmentResult | null,
   recoveryHistory?: WhoopRecoveryDay[],
   openLoopsDueToday?: string[],
+  nowIso?: string,
 ): CalendarPlan {
   const actions: PlanAction[] = [];
 
@@ -395,7 +459,28 @@ export function buildCalendarPlan(
     }
   }
 
-  // ── 4. Buffer between back-to-back meetings ────────────────────────────────
+  // ── 4. Meeting prep ────────────────────────────────────────────────────────
+  // Only fires when nowIso is explicitly provided (so tests that don't want
+  // prep don't accidentally trigger it by defaulting to wall clock).
+  if (actions.length < 3 && nowIso) {
+    const prep = findNextMeetingNeedingPrep(todayEvents, date, tz, nowIso);
+    if (prep) {
+      const prepStartH =
+        parseInt(prep.prepStartDateTime.slice(11, 13), 10) +
+        parseInt(prep.prepStartDateTime.slice(14, 16), 10) / 60;
+      actions.push({
+        type: 'create',
+        description: `Add 15-min prep before "${prep.meetingTitle}" at ${formatWallHour(prepStartH)}`,
+        addresses: 'focus',
+        reason: `No prep time blocked before "${prep.meetingTitle}"`,
+        title: `Meeting Prep — ${prep.meetingTitle}`,
+        startDateTime: prep.prepStartDateTime,
+        endDateTime:   prep.prepEndDateTime,
+      });
+    }
+  }
+
+  // ── 5. Buffer between back-to-back meetings ────────────────────────────────
   // Only when there's room and a tight gap exists today.
   if (actions.length < 3) {
     const gap = findFirstTightGap(todayEvents, date, tz);
@@ -465,6 +550,23 @@ export function buildDiagnoses(
     const latest = [...recoveryHistory].sort((a, b) => b.date.localeCompare(a.date))[0];
     if (latest && latest.recoveryScore <= 33) {
       out.push(`Recovery is at ${latest.recoveryScore}% today — protect your energy`);
+    }
+  }
+
+  // 4. Recurring pattern — non-recurring event title appears ≥3 times this week
+  if (out.length < 3) {
+    const counts = new Map<string, number>();
+    for (const e of weekEvents) {
+      if (!e.start?.dateTime) continue;       // skip all-day
+      if (e.recurringEventId) continue;        // skip existing recurring instances
+      const t = (e.summary ?? '').toLowerCase().trim();
+      if (!t || isRoutinePlanTitle(t)) continue;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (top && top[1] >= 3) {
+      const display = top[0].replace(/^\w/, c => c.toUpperCase());
+      out.push(`"${display}" has come up ${top[1]} times this week — consider making it recurring`);
     }
   }
 

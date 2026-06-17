@@ -4,7 +4,7 @@ import type { Priority } from './db';
 import type { CalendarFit, ScoreResult } from './calendarScore';
 import type { AlignmentResult } from './alignment';
 import type { WhoopRecoveryDay } from './whoop';
-import { findFreeSlot, buildCalendarPlan, buildDiagnoses, findHeaviestDeferrableEvent, patchAlignmentForPlan, findFirstTightGap } from './calendarPlan';
+import { findFreeSlot, buildCalendarPlan, buildDiagnoses, findHeaviestDeferrableEvent, patchAlignmentForPlan, findFirstTightGap, findNextMeetingNeedingPrep } from './calendarPlan';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
@@ -688,5 +688,164 @@ describe('buildCalendarPlan — buffer action (Action 4)', () => {
     const recoveryHistory = [recovDay(DATE, 20)];
     const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, alignment, recoveryHistory);
     expect(plan.actions.length).toBeLessThanOrEqual(3);
+  });
+});
+
+// ─── findNextMeetingNeedingPrep ───────────────────────────────────────────────
+
+describe('findNextMeetingNeedingPrep', () => {
+  const DATE = '2026-06-15';
+  // "now" = 8:00 AM Toronto time — meetings at 8:15+ are candidates
+  const NOW = '2026-06-15T08:00:00-04:00';
+
+  it('returns null when no timed events', () => {
+    expect(findNextMeetingNeedingPrep([], DATE, TZ, NOW)).toBeNull();
+  });
+
+  it('returns null when all events are routine (gym, lunch, etc.)', () => {
+    const events = [timedEvent('Gym', 9, 10), timedEvent('Lunch', 12, 13)];
+    expect(findNextMeetingNeedingPrep(events, DATE, TZ, NOW)).toBeNull();
+  });
+
+  it('returns null when all events are Edge-created blocks (⚡ prefix)', () => {
+    const events = [
+      timedEvent('⚡ Focus — Fundraising', 9, 10.5),
+      timedEvent('⚡ Buffer', 11, 11.25),
+    ];
+    expect(findNextMeetingNeedingPrep(events, DATE, TZ, NOW)).toBeNull();
+  });
+
+  it('returns null when the 15-min prep window is occupied by another event', () => {
+    // ⚡ block is excluded as a prep candidate but still blocks the conflict check
+    const events = [
+      timedEvent('⚡ Meeting Prep', 9.75, 10), // occupies 9:45–10:00
+      timedEvent('Client call', 10, 11),
+    ];
+    expect(findNextMeetingNeedingPrep(events, DATE, TZ, NOW)).toBeNull();
+  });
+
+  it('returns a 15-min prep slot before the next meeting', () => {
+    const events = [timedEvent('Client call', 10, 11)];
+    const result = findNextMeetingNeedingPrep(events, DATE, TZ, NOW);
+    expect(result).not.toBeNull();
+    expect(result!.meetingTitle).toBe('Client call');
+    expect(result!.prepStartDateTime).toBe('2026-06-15T09:45:00');
+    expect(result!.prepEndDateTime).toBe('2026-06-15T10:00:00');
+  });
+
+  it('skips a meeting too soon (within 15 min of now) and preps the next one', () => {
+    // NOW = 8:00; meeting at 8:10 is within 15 min → skip; 10:00 meeting is the target
+    const events = [
+      timedEvent('Quick chat', 8 + 10 / 60, 9),
+      timedEvent('Important call', 10, 11),
+    ];
+    const result = findNextMeetingNeedingPrep(events, DATE, TZ, NOW);
+    expect(result!.meetingTitle).toBe('Important call');
+    expect(result!.prepStartDateTime).toBe('2026-06-15T09:45:00');
+  });
+
+  it('returns null when nowIso is invalid', () => {
+    expect(findNextMeetingNeedingPrep([timedEvent('Meeting', 10, 11)], DATE, TZ, 'not-a-date')).toBeNull();
+  });
+});
+
+// ─── buildCalendarPlan — meeting prep action (Path D) ────────────────────────
+
+describe('buildCalendarPlan — meeting prep action (Path D)', () => {
+  const DATE = '2026-06-15';
+  const PRIORITIES = [makeP('Fundraising')];
+  const NOW = '2026-06-15T08:00:00-04:00'; // 8 AM Toronto
+
+  it('adds a 15-min prep block when the next meeting window is free', () => {
+    const events = [timedEvent('Client call', 10, 11)];
+    const fit = makeFit({ edgeScore: 80 }); // no topFix, no hygiene flag
+    const plan = buildCalendarPlan(events, fit, [], DATE, TZ, null, undefined, undefined, NOW);
+    const prep = plan.actions.find(a => a.title?.startsWith('Meeting Prep'));
+    expect(prep).toBeDefined();
+    expect(prep!.description).toContain('Client call');
+    expect(prep!.addresses).toBe('focus');
+    expect(prep!.startDateTime).toBe('2026-06-15T09:45:00');
+    expect(prep!.endDateTime).toBe('2026-06-15T10:00:00');
+  });
+
+  it('skips meeting prep when the prep window is already occupied', () => {
+    // ⚡ block occupies 9:45–10:00; excluded as a candidate but blocks the conflict check
+    const events = [
+      timedEvent('⚡ Focus — Fundraising', 9.75, 10), // blocks 9:45–10:00
+      timedEvent('Client call', 10, 11),
+    ];
+    const fit = makeFit({ edgeScore: 80 });
+    const plan = buildCalendarPlan(events, fit, [], DATE, TZ, null, undefined, undefined, NOW);
+    expect(plan.actions.every(a => !a.title?.startsWith('Meeting Prep'))).toBe(true);
+  });
+
+  it('does not add meeting prep when 3 actions already exist', () => {
+    // Path A (topFix) + Path 2 (recovery: Client call, heaviest 2h) + Path 3 (alignment: Presentation)
+    // → 3 actions before Path D → prep skipped even though Board meeting has a free prep window
+    const events = [
+      timedEvent('Client call', 10, 12, 'evt-client'),     // recovery target (heaviest, 2h)
+      timedEvent('Presentation', 13, 14, 'evt-pres'),      // alignment target (1h)
+      timedEvent('Board meeting', 15, 16),                 // free prep window 14:45–15:00
+    ];
+    const alignment = makeAlignment([{ priority: 'Fundraising', hours: 0 }]);
+    alignment.topUnaligned = [{ title: 'Presentation', hours: 1 }];
+    alignment.unalignedHours = 1;
+    const fit = makeFit({
+      edgeScore: 40,
+      focusTopFix: { description: 'Block time for "Fundraising"', op: 'create' },
+    });
+    const recoveryHistory = [recovDay(DATE, 20)];
+    const plan = buildCalendarPlan(events, fit, PRIORITIES, DATE, TZ, alignment, recoveryHistory, undefined, NOW);
+    expect(plan.actions.length).toBeLessThanOrEqual(3);
+    expect(plan.actions.every(a => !a.title?.startsWith('Meeting Prep'))).toBe(true);
+  });
+});
+
+// ─── buildDiagnoses — recurring-pattern detection ────────────────────────────
+
+describe('buildDiagnoses — recurring-pattern detection', () => {
+  it('surfaces a diagnosis when a non-recurring title appears ≥3 times this week', () => {
+    const events = [
+      timedEvent('Team sync', 9, 10),
+      timedEvent('Team sync', 14, 15),
+      timedEvent('Team sync', 16, 17),
+    ];
+    const result = buildDiagnoses(null, events, [], TZ);
+    const diag = result.find(d => d.toLowerCase().includes('team sync'));
+    expect(diag).toBeDefined();
+    expect(diag).toMatch(/3 times this week/i);
+    expect(diag).toMatch(/recurring/i);
+  });
+
+  it('does not surface recurring pattern when events already have recurringEventId', () => {
+    const events = [
+      { ...timedEvent('Weekly sync', 9, 10), recurringEventId: 'master-1' },
+      { ...timedEvent('Weekly sync', 9, 10), recurringEventId: 'master-1' },
+      { ...timedEvent('Weekly sync', 9, 10), recurringEventId: 'master-1' },
+    ];
+    const result = buildDiagnoses(null, events, [], TZ);
+    expect(result.every(d => !d.toLowerCase().includes('weekly sync'))).toBe(true);
+  });
+
+  it('does not surface recurring pattern when count < 3', () => {
+    const events = [
+      timedEvent('Team sync', 9, 10),
+      timedEvent('Team sync', 14, 15),
+    ];
+    const result = buildDiagnoses(null, events, [], TZ);
+    expect(result.every(d => !d.toLowerCase().includes('team sync'))).toBe(true);
+  });
+
+  it('surfaces the most-repeated title when multiple candidates exist', () => {
+    const events = [
+      timedEvent('Team sync', 9, 10),
+      timedEvent('Team sync', 14, 15),
+      timedEvent('Team sync', 16, 17),
+      timedEvent('Standup', 8, 8.5),
+      timedEvent('Standup', 10, 10.5),
+    ];
+    const result = buildDiagnoses(null, events, [], TZ);
+    const diag = result.find(d => d.toLowerCase().includes('team sync'));
+    expect(diag).toBeDefined(); // Team sync (3) beats Standup (2)
   });
 });
