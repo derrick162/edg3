@@ -770,6 +770,7 @@ function OnboardingContent() {
       setStep(next);
     } else {
       sessionStorage.setItem('edg3_welcome', '1');
+      sessionStorage.setItem('edg3_activated', '1');
       router.push('/dashboard');
     }
   }
