@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { energyLogQueries, effectiveTimezone } from '@/lib/db';
 import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery } from '@/lib/whoop';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function GET() {
   const user = await getSession();
@@ -24,6 +25,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('energyToday', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: { level?: string; source?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
