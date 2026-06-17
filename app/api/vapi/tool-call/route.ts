@@ -1109,10 +1109,27 @@ Query: ${query}` }],
   } else if (fn === 'rememberPreference') {
     // Deterministic persistence: save a preference immediately during the call so it
     // survives even if post-call transcript extraction misses or mis-categorises it.
-    const { statement } = args as { statement: string };
+    // T3 (in-call memory trigger): accepts optional `topic` (entity) + `category`.
+    // When topic is provided and an existing fact matches, T1 retires+inserts immediately —
+    // the next briefing is already correct without waiting for sleep-time consolidation.
+    const { statement, topic, category } = args as { statement: string; topic?: string; category?: string };
     if (!statement?.trim()) return "What preference should I remember? Tell me in one sentence.";
-    factQueries.upsertFact(userId, 'preference', statement.trim().slice(0, 500), null);
-    return `Got it — I've saved that preference and will apply it going forward.`;
+    const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact']);
+    const cat = VALID_FACT_CATS.has(category ?? '') ? (category as string) : 'preference';
+    const ent = topic?.trim().slice(0, 200) || null;
+
+    // Check for an existing active fact on this topic before upserting so we can
+    // return a contextual "updated" vs "saved" confirmation.
+    const existing = ent
+      ? factQueries.getByCategory(userId, cat).find(f => f.entity?.toLowerCase() === ent.toLowerCase())
+      : null;
+    const isUpdate = !!(existing && existing.statement.toLowerCase() !== statement.trim().toLowerCase());
+
+    factQueries.upsertFact(userId, cat, statement.trim().slice(0, 500), ent);
+
+    return isUpdate
+      ? `Got it — I've updated that in your memory.`
+      : `Got it — I've saved that and will apply it going forward.`;
 
   } else if (fn === 'checkReplies') {
     const tokenRow = calendarQueries.get(userId);
