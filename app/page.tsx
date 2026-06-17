@@ -127,8 +127,8 @@ export default function LandingPage() {
         </section>
 
         {/* ── Problem ── */}
-        <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
-          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
+        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6 text-center" style={{ color: 'var(--text-strong)' }}>
             Your calendar is full.<br />The right things aren&apos;t getting done.
           </h2>
           <p className="text-lg leading-relaxed" style={{ color: 'var(--text-muted)' }}>
@@ -175,7 +175,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Edge Score ── */}
-        <section className="max-w-4xl mx-auto px-6 md:px-8 py-14">
+        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
           <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             One number. Your daily readout.
           </h2>
@@ -284,8 +284,8 @@ export default function LandingPage() {
         </section>
 
         {/* ── How it works ── */}
-        <section className="max-w-3xl mx-auto px-6 md:px-8 py-14 text-center">
-          <h2 className="text-3xl font-black tracking-tight mb-12" style={{ color: 'var(--text-strong)' }}>
+        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
+          <h2 className="text-3xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
             Three things. Every morning.
           </h2>
           <div className="flex flex-col gap-6 text-left">
@@ -310,26 +310,33 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── Burnout / ADHD section ── */}
-        <section className="max-w-4xl mx-auto px-6 md:px-8 py-14">
+        {/* ── Memory section ── */}
+        <section className="max-w-5xl mx-auto px-6 md:px-8 py-14">
           <div className="glass-card p-8 md:p-12">
             <h2 className="text-3xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
-              Built for the people most at risk of burning out.
+              Most AI forgets you. Edge remembers.
             </h2>
             <p className="text-base leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>
-              The ICP for most productivity tools is someone who has their life together and just wants it to be slightly more organized.
+              Every call, every confirmed plan, every priority you name — Edge is building a model of you. Not a profile you fill out once and forget. A living picture that updates every morning.
             </p>
             <p className="text-base leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>
-              Edge is built for the other kind: the person who&apos;s doing too much, carrying too much, and knows something needs to change before it does damage.
+              That&apos;s why the briefing feels different after two weeks than it did on day one. Edge knows your energy patterns, your recurring bottlenecks, the people who move things and the ones who don&apos;t. It stops asking what matters and starts just knowing.
             </p>
-            <p className="text-base leading-relaxed mb-8" style={{ color: 'var(--text-muted)' }}>
-              We believe sustainable performance is the only kind worth building. Edge protects your energy the same way it protects your focus — not by doing less, but by doing the right things at the right time.
+            <p className="text-base leading-relaxed mb-10" style={{ color: 'var(--text-muted)' }}>
+              You&apos;re not training a chatbot. You&apos;re building an operating partner that accumulates context the way a great chief of staff does — call by call, week by week.
             </p>
-            <div className="glass-card p-6" style={{ borderColor: 'var(--edg-accent-20)', background: 'var(--edg-accent-08)' }}>
-              <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-accent)' }}>Especially for people with ADHD.</p>
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                Edge acts as external executive function — prioritization, time-blindness, decision fatigue, energy regulation. The &ldquo;I&apos;ll handle the calendar, you just say yes&rdquo; design removes the friction that kills ADHD follow-through. If traditional productivity tools have never stuck, this is different.
-              </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Your goals, as they evolve', icon: '◎' },
+                { label: 'The people in your orbit', icon: '◉' },
+                { label: 'Your energy & patterns', icon: '⬡' },
+                { label: 'Commitments you\'ve made', icon: '◈' },
+              ].map(item => (
+                <div key={item.label} className="rounded-xl px-4 py-5 flex flex-col gap-2" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
+                  <span style={{ fontSize: 20, color: 'var(--text-accent)' }}>{item.icon}</span>
+                  <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-body)' }}>{item.label}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>

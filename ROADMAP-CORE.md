@@ -8,6 +8,101 @@
 > anything in the ⚠️ Shared list. The PM routes new product feedback into the
 > backlog below.
 
+## ⚡ Standing order — read this before every ticket
+
+**Do not stop between tickets.** Your job is not done when one ticket is done — it is done when the entire current dispatch is complete and preflight is green.
+
+After every ticket:
+1. Run `npm run preflight` from `C:\Users\Derrick\edg3-core`
+2. If green → commit with a clear message → immediately start the next ticket in this dispatch
+3. If preflight fails → fix it (up to 2 attempts) → if still failing, note the blocker in the Status Board and move to the next ticket if it's independent; only stop if you are fully blocked
+
+**Only stop if:**
+- All tickets in the current dispatch are complete and preflight is clean, OR
+- You hit a genuine blocker that requires PM input (note it clearly in the Status Board), OR
+- Preflight has failed 3+ times and you cannot identify the root cause
+
+**In all other cases: keep going.** You do not need PM approval between tickets. You do not need to wait for a response. Commit small, run preflight, move to the next ticket.
+
+## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay + outcome-weighted memory)
+
+> Master at `c7d2515`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`
+> (Theories 1, 2, 3 — confidence decay, outcome-weighted memory, predictive context loading).
+> **SEQUENCE:** finish People-extraction trust fix + voice switch FIRST, then Round 5 P1s, THEN this.
+> Nothing here starts until Round 5 bi-temporal (T1) lands — confidence decay and outcome-weighted
+> memory both depend on it. Exception: T1 below (context-pack builder fn) is independent — add it now.
+
+### Ticket 1 — Export `buildBriefingContextPack(userId)` from `lib/briefing.ts` (P1 — do now, independent)
+
+> **Coordinate with Vijay (Security).** He wires the 11pm cron in `lib/scheduler.ts`; you provide this fn.
+
+- Extract a `buildBriefingContextPack(userId: number): Promise<string>` function from the existing
+  briefing context assembler in `lib/briefing.ts`. It should return the same context string the briefing
+  prompt currently builds — active facts, recent episodes, current priorities, recovery snapshot, outstanding
+  commitments. **Do NOT fork or duplicate the assembly logic** — this must be the same path the live briefing uses.
+- Export it. Vijay calls it nightly. The morning call reads the cached result first and falls back to live
+  assembly if the cache is missing.
+- Test: calling it returns a non-empty string for a user with data; gracefully returns a minimal string for
+  a new user with no history.
+
+---
+
+### Ticket 2 — Mid-call reconfirmation trigger for low-confidence facts (P2 — after bi-temporal + confidence decay land)
+
+> Depends on: Round 5 T1 (bi-temporal) + Security Round 6 T2 (confidence decay schema + decay job).
+
+- In the briefing builder / vapi prompt: query for facts with `confidence < 0.3`. If any exist, inject ONE
+  reconfirmation question naturally into the call — not a list, not an interrogation. One question per call max.
+  Example: *"Last I heard you were targeting $500K for the raise — is that still the number?"*
+- On user confirmation (Derrick doesn't correct it): call `factQueries.confirmFact(userId, factId)` → resets
+  `confidence = 1.0`, `last_confirmed_at = now()`.
+- On correction: the `rememberPreference` / in-call memory trigger (Round 5 T3) retires + replaces the fact.
+- Prioritize: lowest confidence first; skip if the fact category is one where asking would feel intrusive
+  (e.g. deeply personal health/relationship facts — flag those for dashboard surfacing instead).
+
+---
+
+### Ticket 3 — Outcome-weighted memory: extend M4 Accountability Memory (P2 — after bi-temporal lands)
+
+> Extends `lib/accountabilityMemory.ts` (M4, already shipped). Do NOT build a new system.
+> Depends on: Round 5 T1 (bi-temporal), Round 5 T2 (sleep-time consolidation agent).
+
+**The gap:** M4 tracks whether commitments were kept. This ticket uses that signal to *weight* facts
+and recommendations — Edge learns that some of Derrick's commitments are reliable and some aren't,
+and adjusts its framing accordingly.
+
+**What to build:**
+- In `lib/accountabilityMemory.ts`: add a `getReliabilitySignal(userId, category?)` fn that returns a
+  reliability score (0.0–1.0) for a category of commitment (e.g. morning-routine commitments vs.
+  long-horizon goals vs. same-day tasks).
+- In the briefing builder: when recommending or surfacing a commitment, factor the reliability signal
+  into how Edge frames it. High-reliability category → confident nudge. Low-reliability category →
+  softer framing, offer concrete next step rather than a reminder.
+- In the sleep-time consolidation agent (Round 5 T2): after extracting commitments, update their
+  reliability signal based on follow-through observed in the new transcript.
+- No new table — extend the existing accountability snapshot structure with a `reliabilityScore` field.
+
+---
+
+### Ticket 4 — Social mental models: `people_models` table (WAVE 2 — blocked, do not start yet)
+
+> **BLOCKED** on People-extraction cleanup merging first. We have dirty people data (hallucinated contacts,
+> dup Pfizer entries, Edge showing up as a person). Building rich per-person models on dirty data compounds
+> the errors. This ticket unlocks the moment the People-extraction fix merges.
+
+**When unblocked, build:**
+- New `people_models` table: `(id, user_id, person_name, goals TEXT, communication_style TEXT, relationship_state TEXT, last_interaction TEXT, health_score REAL, updated_at TEXT)` — encrypted at rest.
+- Sleep-time consolidation agent: after each call, update the model for any person mentioned.
+- Briefing builder: when a person appears on the calendar, inject their model into context.
+- Research source: `content/memory-research-applied.md` Theory 5 — social mental models.
+
+---
+
+> Small commits. Preflight gate (`npm run preflight` from `C:\Users\Derrick\edg3`) before every merge.
+> Update this changelog + Status Board when done.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Memory self-learning / "win on context")
 
 > Master at `e7357cc` (episode store + CASA enforcement LIVE). `git merge master` first.
