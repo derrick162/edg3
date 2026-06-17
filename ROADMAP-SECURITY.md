@@ -50,6 +50,37 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-17** — **Flagship: full pre-beta security audit + hardening — all 78 routes reviewed (1133 green).**
+
+  Systematically audited every `app/api/**` route across 6 dimensions: authn/authz, rate-limit, input validation, SQL/prompt injection, idempotency, audit-log coverage. All HIGH and MEDIUM findings fixed. Readiness report in `content/security-audit.md`.
+
+  **Rate limit gaps closed (10 new types, 15 route files patched):**
+  - `briefingGenerate` 5/hr — `POST /api/briefing/generate` (LLM)
+  - `briefingIntro` 3/hr — `POST /api/briefing/intro` (live Vapi call)
+  - `calendarBook` 20/hr — `POST /api/calendar/book` (calendar mutation)
+  - `energyToday` 30/hr — `POST /api/energy/today`
+  - `meetingContext` 30/hr — `GET /api/meeting-context` (Google + email)
+  - `notifications` 30/hr — `POST /api/notifications` ("check" hits Gmail)
+  - `tasksWrite` 60/hr — `POST /api/tasks`, `PATCH/DELETE /api/tasks/[id]`, `POST /api/tasks/complete-all`
+  - `undoPost` 20/hr — `POST /api/undo` (calendar mutations)
+
+  **Input validation fixes (9 route files patched):**
+  - `POST /api/auth/signup`: max password 128 chars (bcrypt DoS); max name 100 chars; max email 254 chars
+  - `GET /api/briefing/[id]`: id < 1 now rejected (was only `isNaN`)
+  - `PATCH/DELETE /api/milestones/[id]`, `PATCH /api/priorities/[id]/energy`, `GET,POST /api/priorities/[id]/milestones`, `PATCH/DELETE /api/tasks/[id]`: id validation upgraded to `Number.isFinite(id) && id >= 1` (was `!id` or bare `isNaN`)
+  - `POST /api/onboarding/call-time`: `call_time` must match `HH:MM`, `timezone` validated via `isValidTimeZone()`, `phone_number` type + length check (≤20)
+  - `POST /api/profile/timezone`: upgraded from "must contain /" to `isValidTimeZone()`
+  - `POST /api/tasks`: text capped at 500 chars (was unbounded)
+
+  **Confirmed-clean (no changes needed):**
+  - All authn gates: 78/78 routes properly gated or exempt (waitlist = public, callbacks = CSRF state token)
+  - All DB queries: every `SELECT/UPDATE/DELETE` filtered by `user_id` — no cross-user leakage possible
+  - SQL injection: better-sqlite3 prepared statements everywhere, no string interpolation
+  - Error-leak: no stack traces in user-facing responses across all 78 routes
+  - OAuth CSRF: calendar + Whoop flows both use `oauthStateQueries` crypto state tokens
+  - Vapi integrity: `checkVapiSecret` + fail-closed enforce flag + admin mismatch monitor
+  - 1133/1133 green, tsc clean, next build clean.
+
 - **2026-06-17** — **Overnight queue: trust endpoint hardening + audit sweep + retention + prompt-injection defense + trust content (1090 green).**
 
   **1. Trust endpoint hardening:**

@@ -11,7 +11,7 @@ export async function GET(
 
   const { id: idParam } = await params;
   const id = parseInt(idParam, 10);
-  if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
   // getByIdForUser enforces owner-only access via AND user_id = ? — returns null for any
   // briefing that doesn't belong to the authenticated user, so 404 is the right response.

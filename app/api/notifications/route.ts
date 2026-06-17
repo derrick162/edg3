@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { notificationQueries } from '@/lib/db';
 import { checkOutreachReplies } from '@/lib/replies';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 // In-app notification center (Core). Notifications are created by reply-detection
 // (lib/replies.ts) at briefing time and on an explicit "check". This route reads the
@@ -19,6 +20,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('notifications', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let body: { action?: string; id?: number };
   try { body = await req.json(); } catch { body = {}; }

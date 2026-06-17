@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
 import { resyncBriefingReminder } from '@/lib/calendar';
+import { isValidTimeZone } from '@/lib/time';
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
@@ -17,6 +18,15 @@ export async function POST(req: NextRequest) {
 
   if (!call_time || !timezone) {
     return NextResponse.json({ error: 'Call time and timezone required' }, { status: 400 });
+  }
+  if (!/^\d{2}:\d{2}$/.test(call_time)) {
+    return NextResponse.json({ error: 'call_time must be HH:MM format' }, { status: 400 });
+  }
+  if (!isValidTimeZone(timezone)) {
+    return NextResponse.json({ error: 'Invalid timezone' }, { status: 400 });
+  }
+  if (phone_number && (typeof phone_number !== 'string' || phone_number.length > 20)) {
+    return NextResponse.json({ error: 'Invalid phone number' }, { status: 400 });
   }
 
   userQueries.updateCallTime(user.id, call_time, timezone);

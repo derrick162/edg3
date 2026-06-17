@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { calendarQueries, undoQueries } from '@/lib/db';
 import { getOAuthClient } from '@/lib/calendar';
 import { executeUndo, parseUndoOps } from '@/lib/undo';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { google, calendar_v3 } from 'googleapis';
 
 async function getCal(userId: number): Promise<calendar_v3.Calendar | null> {
@@ -37,6 +38,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('undoPost', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   let id: number | undefined;
   try {

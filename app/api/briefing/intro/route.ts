@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { userQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import Anthropic from '@anthropic-ai/sdk';
 
 async function fireIntroCall(firstName: string, profile: string, phoneNumber: string) {
@@ -82,6 +83,9 @@ ${profile || 'New user — give a warm generic intro about aligning priorities, 
 export async function POST() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit('briefingIntro', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   const fullUser = userQueries.findById(user.id);
   if (!fullUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
