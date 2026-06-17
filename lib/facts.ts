@@ -7,7 +7,7 @@
 // Design: always degrades safely — any failure is a no-op that never blocks post-call
 // processing. Extraction failure === no new facts stored, existing facts unchanged.
 
-import { factQueries, type Fact } from './db';
+import { factQueries, peopleProfileQueries, type Fact } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import type { calendar_v3 } from 'googleapis';
@@ -65,7 +65,7 @@ ${userLine}${knownNamesLine}${existingFactsLine}
 Each item: {"category":"<category>","statement":"<one clear sentence>","entity":"<name or null>","confidence":"high"|"low"}
 
 Categories:
-- "person"     — someone important to the user (investor, client, team member, family — NOT the user themselves)
+- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
 - "project"    — a project or initiative the user is building or running
 - "goal"       — a stated goal, aspiration, or deadline
 - "preference" — how the user likes to work, communicate, or make decisions
@@ -77,6 +77,7 @@ Rules:
 - "confidence": set to "low" if the entity is a name or address that speech-to-text may have garbled (unknown spelling, unusual name, street address). Set "high" for everything else.
 - Skip ephemeral items: task completions, calendar changes, weather, today's schedule.
 - Only facts that would still be true and useful in 2 weeks.
+- Prefer CONCRETE details: "Derrick's dad's birthday is June 15" NOT "Derrick's father has a birthday." Include dates, roles, companies, or amounts when they appear.
 - Return [] if nothing durable found.
 
 Transcript (first 2000 chars):
@@ -122,6 +123,20 @@ function isSelfEntity(entity: string | null | undefined, userName?: string): boo
   return e === u || e === firstName;
 }
 
+/** Returns true if entityName refers to the AI assistant — should never be stored as a person contact. */
+const ASSISTANT_ENTITY_NAMES = new Set(['edge', 'edg3', 'edge ai', 'edg3 ai', 'the assistant', 'ai']);
+function isAssistantEntity(entity: string | null | undefined): boolean {
+  if (!entity) return false;
+  return ASSISTANT_ENTITY_NAMES.has(entity.trim().toLowerCase());
+}
+
+/** Returns true if entityName refers to an activity or object rather than a real person. */
+const ACTIVITY_WORDS = new Set(['gym', 'workout', 'walk', 'run', 'jog', 'swim', 'yoga', 'pilates', 'cycling', 'lunch', 'dinner', 'breakfast', 'brunch', 'coffee', 'class', 'session']);
+function isActivityEntity(entity: string | null | undefined): boolean {
+  if (!entity) return false;
+  return ACTIVITY_WORDS.has(entity.trim().toLowerCase());
+}
+
 /**
  * Extract facts from transcript and upsert them for the given user.
  * Fire-and-forget safe: any error is logged but never propagated.
@@ -143,6 +158,25 @@ export async function extractAndUpsertFacts(
     const knownNames = storedFacts
       .filter(f => f.category === 'person' && typeof f.entity === 'string' && (f.entity as string).trim().length > 0)
       .map(f => f.entity as string);
+
+    // Fix 2: Load M2 relationship profiles to ground low-confidence person facts.
+    // Low-confidence people that have no match in real contacts (M2 or existing high-conf facts) are dropped.
+    let knownRealContactNames = new Set<string>();
+    try {
+      const { peopleProfileQueries: ppq } = await import('./db');
+      const profiles = ppq.listForUser(userId);
+      for (const p of profiles) {
+        knownRealContactNames.add(p.canonical_name.toLowerCase());
+        const fn = p.canonical_name.split(' ')[0].toLowerCase();
+        if (fn.length >= 3) knownRealContactNames.add(fn);
+      }
+    } catch { /* degrade — no filter applied */ }
+    // Also trust existing high-confidence person facts as known
+    for (const f of storedFacts) {
+      if (f.category === 'person' && f.confidence === 'high' && f.entity)
+        knownRealContactNames.add(f.entity.toLowerCase());
+    }
+    const hasM2Data = knownRealContactNames.size > 0;
 
     // Tier-1 grounding: deterministic pre-pass corrects 1-edit-distance STT garbling
     // (e.g. "Gym" → "Jim", "Onsi" → "Ansi") before the Haiku model sees the transcript.
@@ -166,8 +200,20 @@ export async function extractAndUpsertFacts(
     const facts = await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts);
     let stored = 0;
     for (const f of facts) {
-      // Never file a "person" fact about the user themselves.
-      if (f.category === 'person' && isSelfEntity(f.entity, userName)) continue;
+      if (f.category === 'person') {
+        // Never file a "person" fact about the user themselves.
+        if (isSelfEntity(f.entity, userName)) continue;
+        // Never file a "person" fact about the AI assistant.
+        if (isAssistantEntity(f.entity)) continue;
+        // Never file a "person" fact that is actually an activity or object.
+        if (isActivityEntity(f.entity)) continue;
+        // Fix 2: Low-confidence person with no real contact match → drop (when M2 data available).
+        if (f.confidence === 'low' && f.entity && hasM2Data) {
+          const eLower = f.entity.trim().toLowerCase();
+          const isKnown = [...knownRealContactNames].some(k => k.includes(eLower) || eLower.includes(k));
+          if (!isKnown) continue;
+        }
+      }
       factQueries.upsertFact(userId, f.category, f.statement.slice(0, 500), f.entity, f.confidence ?? 'high', sourceBriefingId);
       stored++;
     }
@@ -211,8 +257,10 @@ export function consolidateFacts(userId: number): number {
   }
 
   let removed = 0;
-  for (const group of groups.values()) {
-    if (group.length <= 1) continue;
+
+  // Helper: sort and reduce a group to its best fact, deleting the rest.
+  function reduceGroup(group: typeof allFacts): void {
+    if (group.length <= 1) return;
 
     // Sort priority: confidence high > low, then longest statement (>20 char diff), then recency.
     const sorted = [...group].sort((a, b) => {
@@ -238,6 +286,78 @@ export function consolidateFacts(userId: number): number {
     for (const dup of sorted.slice(1)) {
       factQueries.deleteFact(userId, dup.id);
       removed++;
+    }
+  }
+
+  // Pass 1: exact-match grouping (same category + same entity, case-insensitive).
+  for (const group of groups.values()) {
+    reduceGroup(group);
+  }
+
+  // Pass 2: fuzzy containment — merge groups where one entity is a substring of the other
+  // (same category). Catches "Pfizer" vs "Pfizer CIBC" → keep "Pfizer".
+  // Guard: both entities ≥3 chars, shared portion ≥4 chars.
+  // People-guard: shorter entity must be ≥6 chars OR one fully contains the other (prevents
+  // merging "Sam" with "Samsung").
+  const remainingFacts = factQueries.getAll(userId);
+  const entityGroups = new Map<string, typeof remainingFacts>();
+  for (const f of remainingFacts) {
+    if (!f.entity || !f.entity.trim()) continue;
+    const key = `${f.category}::${f.entity.trim().toLowerCase()}`;
+    if (!entityGroups.has(key)) entityGroups.set(key, []);
+    entityGroups.get(key)!.push(f);
+  }
+
+  const keys = [...entityGroups.keys()];
+  const merged = new Set<string>(); // keys already consumed by a merge
+
+  for (let i = 0; i < keys.length; i++) {
+    if (merged.has(keys[i])) continue;
+    const [catI, entI] = keys[i].split('::');
+
+    for (let j = i + 1; j < keys.length; j++) {
+      if (merged.has(keys[j])) continue;
+      const [catJ, entJ] = keys[j].split('::');
+
+      if (catI !== catJ) continue;
+      if (entI.length < 3 || entJ.length < 3) continue;
+
+      const shorter = entI.length <= entJ.length ? entI : entJ;
+      const longer  = entI.length <= entJ.length ? entJ : entI;
+
+      // Shared portion must be at least 4 chars.
+      if (shorter.length < 4) continue;
+
+      // One must contain the other (substring check).
+      if (!longer.includes(shorter)) continue;
+
+      // People guard: shorter string must be ≥6 chars OR the longer fully starts with shorter
+      // (prevents merging first names like "Sam" with "Samsung").
+      const isSameCategoryPeople = catI === 'person';
+      if (isSameCategoryPeople && shorter.length < 6 && !longer.startsWith(shorter + ' ') && longer !== shorter) {
+        continue;
+      }
+
+      // Merge: prefer shorter entity key as canonical. Combine both groups into one.
+      const canonicalKey = entI.length <= entJ.length ? keys[i] : keys[j];
+      const otherKey     = entI.length <= entJ.length ? keys[j] : keys[i];
+
+      const canonicalGroup = entityGroups.get(canonicalKey) ?? [];
+      const otherGroup     = entityGroups.get(otherKey) ?? [];
+
+      // Update the other group's facts entity to match the canonical entity.
+      const canonicalEntity = canonicalKey.split('::')[1];
+      for (const f of otherGroup) {
+        if (f.entity?.toLowerCase() !== canonicalEntity) {
+          factQueries.updateFact(userId, f.id, f.statement, canonicalEntity);
+        }
+      }
+
+      // Now reduce the combined group.
+      const combined = [...canonicalGroup, ...otherGroup];
+      reduceGroup(combined);
+
+      merged.add(otherKey);
     }
   }
 
@@ -322,6 +442,14 @@ ${digest}`,
       ) continue;
 
       const fact = f as ExtractedFact;
+
+      // Apply the same person-entity guards as the transcript path.
+      if (fact.category === 'person') {
+        if (isSelfEntity(fact.entity, userName)) continue;
+        if (isAssistantEntity(fact.entity)) continue;
+        if (isActivityEntity(fact.entity)) continue;
+      }
+
       factQueries.upsertFact(
         userId,
         fact.category,
@@ -338,6 +466,69 @@ ${digest}`,
   } catch (err) {
     console.error('[facts] extractAndUpsertFactsFromEmail failed:', err);
   }
+}
+
+/**
+ * Clean up bad people facts that have accumulated in existing data.
+ * Idempotent — safe to call multiple times. Removes:
+ *   - Self-entity facts (user filed as their own contact)
+ *   - Assistant-entity facts (Edge/Edg3 filed as a contact)
+ *   - Activity-entity facts (Gym, Lunch, etc. filed as a person)
+ *   - Low-confidence person facts with no matching M2 real contact (when M2 data is available)
+ * High-confidence facts are protected from the M2 cross-check (only low-conf unmatched are dropped).
+ * Calls consolidateFacts at the end to merge any remaining fuzzy duplicates.
+ * Returns { removed } count of deleted facts.
+ */
+export async function cleanupPeopleFacts(
+  userId: number,
+  userName?: string,
+): Promise<{ removed: number }> {
+  // Load M2 real contact names.
+  let knownRealContactNames = new Set<string>();
+  try {
+    const profiles = peopleProfileQueries.listForUser(userId);
+    for (const p of profiles) {
+      knownRealContactNames.add(p.canonical_name.toLowerCase());
+      const fn = p.canonical_name.split(' ')[0].toLowerCase();
+      if (fn.length >= 3) knownRealContactNames.add(fn);
+    }
+  } catch { /* degrade */ }
+
+  // Also trust existing high-confidence person facts as known real contacts.
+  const allFacts = factQueries.getAll(userId);
+  for (const f of allFacts) {
+    if (f.category === 'person' && f.confidence === 'high' && f.entity)
+      knownRealContactNames.add(f.entity.toLowerCase());
+  }
+  const hasM2Data = knownRealContactNames.size > 0;
+
+  const personFacts = allFacts.filter(f => f.category === 'person');
+  let removed = 0;
+
+  for (const f of personFacts) {
+    // Always drop: self, assistant, activity
+    if (isSelfEntity(f.entity, userName) || isAssistantEntity(f.entity) || isActivityEntity(f.entity)) {
+      factQueries.deleteFact(userId, f.id);
+      removed++;
+      continue;
+    }
+
+    // Drop low-confidence facts with no M2 match (only when M2 data is available).
+    // High-confidence facts are protected from the M2 cross-check.
+    if (f.confidence === 'low' && f.entity && hasM2Data) {
+      const eLower = f.entity.trim().toLowerCase();
+      const isKnown = [...knownRealContactNames].some(k => k.includes(eLower) || eLower.includes(k));
+      if (!isKnown) {
+        factQueries.deleteFact(userId, f.id);
+        removed++;
+      }
+    }
+  }
+
+  // Merge remaining fuzzy duplicates (e.g. "Pfizer" vs "Pfizer CIBC").
+  consolidateFacts(userId);
+
+  return { removed };
 }
 
 /**

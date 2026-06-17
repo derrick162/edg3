@@ -8,7 +8,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-// Stub factQueries so tests don't need a real DB
+// Stub factQueries and peopleProfileQueries so tests don't need a real DB
 vi.mock('./db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./db')>();
   const store: import('./db').Fact[] = [];
@@ -43,11 +43,15 @@ vi.mock('./db', async (importOriginal) => {
         if (idx !== -1) store.splice(idx, 1);
       }),
     },
+    peopleProfileQueries: {
+      // Default: returns empty array so existing tests are unaffected (no M2 filter applied).
+      listForUser: vi.fn(() => []),
+    },
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts } from './facts';
-import { factQueries, type Fact } from './db';
+import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts } from './facts';
+import { factQueries, peopleProfileQueries, type Fact } from './db';
 
 function textResponse(text: string) {
   return { content: [{ type: 'text', text }] };
@@ -442,5 +446,84 @@ describe('extractFactsFromTranscript — existingFacts injection', () => {
     const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
     expect(promptContent).toContain('Fact 29');
     expect(promptContent).not.toContain('Fact 30');
+  });
+});
+
+// ── people fact guards ────────────────────────────────────────────────────────
+
+describe('people fact guards', () => {
+  it('blocks assistant entity "Edge" even at high confidence', async () => {
+    // The model returned "Edge" as a person entity — should be silently dropped.
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Edge is the AI assistant', entity: 'Edge', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks activity entity "Gym" at low confidence', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Gym is where Derrick goes', entity: 'Gym', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks self-entity "Derrick" when userName is "Derrick Fung"', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick works with Derrick Fung', entity: 'Derrick', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('drops low-conf person with no M2 match when M2 data is available', async () => {
+    // M2 has Faiza — "Laura" is unknown and low-confidence → should be dropped.
+    vi.mocked(peopleProfileQueries.listForUser).mockReturnValueOnce([
+      { id: 1, user_id: 1, canonical_name: 'Faiza', email: null, interaction_count: 3,
+        last_interaction: '2026-06-01', upcoming_interaction: null, updated_at: '2026-06-01' },
+    ]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Laura seems to be an investor', entity: 'Laura', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('keeps low-conf person that matches a known M2 contact', async () => {
+    // M2 has Faiza — a low-confidence "Faiza" fact should be kept.
+    vi.mocked(peopleProfileQueries.listForUser).mockReturnValueOnce([
+      { id: 1, user_id: 1, canonical_name: 'Faiza', email: null, interaction_count: 3,
+        last_interaction: '2026-06-01', upcoming_interaction: null, updated_at: '2026-06-01' },
+    ]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Faiza is a key investor', entity: 'Faiza', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'person', 'Faiza is a key investor', 'Faiza', 'low', undefined);
+  });
+
+  it('merges "Pfizer CIBC" into "Pfizer" via fuzzy containment dedup', () => {
+    // Two person facts: shorter "Pfizer" and longer "Pfizer CIBC" — longer should be deleted.
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      makeFact(1, 'person', 'Pfizer', 'Pfizer is a company Derrick is tracking'),
+      makeFact(2, 'person', 'Pfizer CIBC', 'Pfizer CIBC seems to be a duplicate entry'),
+    ]);
+    consolidateFacts(1);
+    // The longer entity "Pfizer CIBC" (id=2) should be deleted (or at minimum deleteFact called once)
+    expect(factQueries.deleteFact).toHaveBeenCalledTimes(1);
+    expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 2);
+  });
+
+  it('keeps low-conf person when M2 returns no data (no filter applied)', async () => {
+    // M2 is empty → hasM2Data is false → low-conf person "Unknown Person" is kept.
+    vi.mocked(peopleProfileQueries.listForUser).mockReturnValueOnce([]);
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Unknown Person mentioned something', entity: 'Unknown Person', confidence: 'low' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(
+      1, 'person', 'Unknown Person mentioned something', 'Unknown Person', 'low', undefined,
+    );
   });
 });

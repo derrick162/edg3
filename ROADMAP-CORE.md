@@ -304,6 +304,16 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Memory trust fix — people/goals hallucination guards.**
+  - **`isAssistantEntity()`** — new guard blocks Edge/Edg3/AI as person contacts at upsert (and in email path).
+  - **`isActivityEntity()`** — blocks gym, workout, lunch, etc. from being filed as people (STT homophone fix).
+  - **M2 contact cross-check** — `extractAndUpsertFacts` loads `peopleProfileQueries.listForUser` and drops low-confidence person facts with no real contact match when M2 data is available. Degrades gracefully when M2 is empty (no filter applied).
+  - **Fuzzy entity dedup in `consolidateFacts`** — Pass 2 merges groups where one entity is a substring of the other (e.g. "Pfizer" + "Pfizer CIBC" → "Pfizer"). Guards against over-merging first names. Reuses the existing `reduceGroup` sort/bestStatement logic.
+  - **Tighter extraction prompt** — "person" category line explicitly excludes Edge/Edg3, activities, and companies. New CONCRETE DETAILS rule: prefer "Derrick's dad's birthday is June 15" over "Dad has a birthday."
+  - **`cleanupPeopleFacts(userId, userName?)`** — exported idempotent cleanup for existing bad data: removes self/assistant/activity entities and unmatched low-conf facts; calls `consolidateFacts` to merge fuzzy dups. Returns `{ removed }`.
+  - **Email path guards** — `extractAndUpsertFactsFromEmail` now applies all three person guards (self, assistant, activity).
+  - **Dashboard JSX fix** — two `{!secCollapsed && <div>...</div>}` blocks had a missing `}` causing malformed JSX tree; fixed by closing the conditional block before the show-more button expression.
+  - 7 new tests in `lib/facts.test.ts` (`people fact guards` describe block). 1425/1425 green, tsc clean, next build clean.
 - **2026-06-18** — **Briefing V2 + Episode dashboard surface.**
   - **Briefing V2 prompt improvements** (`lib/briefing.ts` + `lib/vapi.ts`):
     - **#1 — Recovery tied to specific events.** Green recovery now encourages pushing hard on a NAMED calendar event, not a generic "solid day ahead." Red recovery names the heaviest deferrable block and offers to move it.

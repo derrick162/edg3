@@ -2732,7 +2732,7 @@ export default function Dashboard() {
                                   </div>
                                 );
                               })}
-                            </div>
+                            </div>}
                             {entities.length > PERSON_LIMIT && (
                               <button
                                 onClick={() => setExpandedFactCats(prev => { const next = new Set(prev); isExpanded ? next.delete(cat) : next.add(cat); return next; })}
@@ -2741,7 +2741,7 @@ export default function Dashboard() {
                               >
                                 {isExpanded ? 'Show less' : `Show all (${entities.length} people)`}
                               </button>
-                            )}</div>}
+                            )}
                           </div>
                         );
                       }
@@ -3087,7 +3087,7 @@ export default function Dashboard() {
                           </p>
                         </div>
                       ))}
-                    </div>
+                    </div>}
                     {totalPages > 1 && (
                       <div className="flex items-center justify-between mt-4">
                         <button
@@ -3108,7 +3108,7 @@ export default function Dashboard() {
                           Next
                         </button>
                       </div>
-                    )}</div>}
+                    )}
                   </div>
                 );
               })()}
