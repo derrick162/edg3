@@ -567,7 +567,8 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
-    CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(user_id, category, valid_until);
+    -- NOTE: idx_facts_active references facts.valid_until, a migration-added column.
+    -- It is created AFTER applyMigrations() below (see DEFERRED_INDEXES). Prod incident 2026-06-18.
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
@@ -625,6 +626,15 @@ function initSchema(db: Database.Database) {
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
+  }
+
+  // Deferred indexes: reference migration-added columns, so they must run AFTER the migration
+  // loop. If created before migrations they throw "no such column" on old DBs and abort init.
+  const deferredIndexes = [
+    "CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(user_id, category, valid_until)",
+  ];
+  for (const idx of deferredIndexes) {
+    try { db.exec(idx); } catch (e) { console.error('[db] deferred index failed:', idx, e); }
   }
 }
 
