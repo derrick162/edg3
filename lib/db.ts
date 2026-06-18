@@ -1588,17 +1588,21 @@ export const factQueries = {
         snapshotFactToHistory(existingId, userId, 'extraction-update');
         db.prepare("UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?")
           .run(existingId, userId);
-        db.prepare(
+        const info = db.prepare(
           "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
         ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
+        // M4-3b: log the new fact creation to fact_history.
+        snapshotFactToHistory(Number((info as { lastInsertRowid: number | bigint }).lastInsertRowid), userId, 'created');
       } else {
         // Same statement, low confidence: just refresh freshness.
         db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
       }
     } else {
-      db.prepare(
+      const info = db.prepare(
         "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
       ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
+      // M4-3b: log the new fact creation to fact_history.
+      snapshotFactToHistory(Number((info as { lastInsertRowid: number | bigint }).lastInsertRowid), userId, 'created');
     }
   },
 
@@ -1681,6 +1685,32 @@ export const factHistoryQueries = {
     return (getDb().prepare(
       'SELECT * FROM fact_history WHERE user_id=? ORDER BY retired_at DESC LIMIT ?'
     ).all(userId, limit) as FactHistory[]).map(r => ({ ...r, statement: decryptField(r.statement) }));
+  },
+
+  // M4-3b: Restore a historical fact version. Retires the currently active fact with the same
+  // fact_id and re-inserts the historical statement as a new active fact (confidence='high').
+  rollbackFact: (userId: number, historyId: number): void => {
+    const db = getDb();
+    // Raw query — statement is still encrypted at rest (same format as facts.statement).
+    const hist = db.prepare(
+      'SELECT * FROM fact_history WHERE id=? AND user_id=?'
+    ).get(historyId, userId) as FactHistory | undefined;
+    if (!hist) return;
+
+    // Retire the currently active fact that shares this fact_id, if any.
+    const active = db.prepare(
+      'SELECT id FROM facts WHERE id=? AND user_id=? AND valid_until IS NULL'
+    ).get(hist.fact_id, userId) as { id: number } | undefined;
+    if (active) {
+      snapshotFactToHistory(active.id, userId, 'retired');
+      db.prepare("UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?").run(active.id, userId);
+    }
+
+    // Re-insert historical version (statement already encrypted — no re-encryption needed).
+    const info = db.prepare(
+      "INSERT INTO facts (user_id, category, statement, entity, confidence, valid_from) VALUES (?,?,?,?,?,datetime('now'))"
+    ).run(userId, hist.category, hist.statement, hist.entity ?? null, 'high');
+    snapshotFactToHistory(Number((info as { lastInsertRowid: number | bigint }).lastInsertRowid), userId, 'created');
   },
 };
 

@@ -449,6 +449,10 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-MEMORY M4-3b — memory block versioning + rollback.**
+  - `lib/db.ts` `upsertFact`: both INSERT paths (new fact + bi-temporal update) now capture `lastInsertRowid` and call `snapshotFactToHistory(newId, userId, 'created')` — every fact creation is logged to `fact_history` (extends M1-4 which only logged retire/edit/extraction-update).
+  - `factHistoryQueries.rollbackFact(userId, historyId)` added: reads history row, retires the currently active fact (if any) with a 'retired' snapshot, re-inserts the historical statement/entity/category as a new active fact with `confidence='high'`. Statement stays encrypted byte-for-byte (no re-encrypt needed — `fact_history` stores the raw ciphertext).
+  - 6 new tests in `lib/db-facts.test.ts` (M4-3b suite): created-logging after new INSERT, created-logging after bi-temporal UPDATE INSERT, rollback with active fact (retire + re-insert), rollback with no active fact (re-insert only), confidence='high' after restore. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-TRUST UX-2+UX-3 — duplicate entity guard verification + name spelling tests.**
   - **UX-2** (`lib/facts.test.ts`): 4 new tests — blocks "Edg3" and "Edg3 AI" as person entities, consolidates identical goal duplicates, full end-to-end scenario (user + Edge + Edg3 + repeated goal transcript → only goal upserted, 3 blocked). 1696/1696 green.
   - **UX-3** (`lib/facts.test.ts`): 3 new tests — first-name self-entity blocked, full-name self-entity blocked, Anthropic prompt includes userName hint (confirmed the "Derek = Derrick" model-level correction wiring is live). 1696/1696 green, tsc clean, next build clean.
