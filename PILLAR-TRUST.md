@@ -19,20 +19,18 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - ~~Landing page "Edge" → "Edg3"~~ — **FIXED Darren**
 - **Process:** when Derrick flags a copy bug, fix it same-session. No ticket needed. Copy bugs are trust destroyers.
 
-### UX-2 — No duplicate contacts, facts, or events (Core + Design) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/cam-dispatch-ux-trust.md` UX-2 — filter self/Edge/Edg3 entities, collapse near-identical facts (80-char prefix), isSelf guard. Routes to Cam (Design) for display layer; Darren (Core) for extraction layer.
+### UX-2 — No duplicate contacts, facts, or events (Core ✅ + Design 📥) — 📥 **DISPATCHED 2026-06-18**
+**Core side DONE:** `isSelfEntity()` + `isAssistantEntity()` guards in `lib/facts.ts` block user's own name + "edge"/"edg3"/etc. from person facts; 80-char prefix dedup in `factQueries.upsertFact`; 4 verification tests added to `lib/facts.test.ts` (2026-06-18 session).
+**Design side still dispatched:** `content/cam-dispatch-ux-trust.md` UX-2 — filter self/Edge/Edg3 entities in "What Edge knows" display, collapse near-identical facts, isSelf guard on People render. Routes to Cam.
 **The trust issue:** Derrick sees "Jim (gym)" appear twice in "What Edge knows." He sees the same event on his calendar twice. He sees himself listed as a contact. Each one signals Edge doesn't have it together.
 - Duplicate contacts: people-extraction must check for existing people facts before inserting (fuzzy name match, case-insensitive). Entity grounding filter: block user's own name, "Edge", "Edg3", generic nouns.
 - Duplicate facts: before inserting any fact, check if an identical or near-identical (80-char prefix match) active fact exists — skip if yes, update `last_seen_at` only.
 - Duplicate events: `cleanupDuplicates` tool is live. Verify it runs correctly and that the morning briefing flags duplicate-heavy weeks proactively.
 - Test: run extraction on a transcript that mentions the user, Edge, and a repeated fact — verify none produce duplicates.
 
-### UX-3 — Name spelled correctly everywhere (Core + Design) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/cam-dispatch-ux-trust.md` UX-3 — cursor: pointer global CSS, isSelf guard on People render, profile.firstName for display name. Routes to Cam (Design).
-**The trust issue:** STT mishears "Derrick" as "Derek." Edge calls him Derek all morning. He notices. He loses trust in every fact Edge extracted.
-- `correctRecipientNames()` in `lib/outreach.ts` is live for email. Extend the same pattern to fact extraction: before storing any people-category fact, cross-check the name spelling against the user's profile name and known contacts.
-- In `lib/vapi.ts`: Edge must address the user by their profile `firstName` only — never a STT-transcribed version.
-- Test: in a transcript where the user's name is misspelled, verify the stored fact uses the correct spelling.
+### UX-3 — Name spelled correctly everywhere (Core ✅ + Design 📥) — 📥 **DISPATCHED 2026-06-18**
+**Core side DONE:** `groundProperNouns` + STT correction wired in `lib/facts.ts`; `firstName` from profile drives all Edge addressing in `lib/vapi.ts`; 3 name-spelling tests added to `lib/facts.test.ts`. `correctRecipientNames()` in `lib/outreach.ts` handles email.
+**Design side still dispatched:** `content/cam-dispatch-ux-trust.md` UX-3 — cursor: pointer global CSS, isSelf guard on People render, profile.firstName for display name. Routes to Cam.
 
 ### UX-4 — No bugs that make users uncertain (Core + Design — ongoing) — 📥 **DISPATCHED 2026-06-18**
 **Dispatch:** `content/cam-dispatch-ux-trust.md` UX-4 — collapsible memory category sections (count + chevron, first 3 expanded). Routes to Cam (Design). Core side (honest failure messages) tracked separately as T2-3.
