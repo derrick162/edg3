@@ -175,6 +175,36 @@ export function DayPlanCard({
     );
   }
 
+  // ── Plan computed but nothing to change (ticket 3): show the aligned assessment, NOT a
+  // full proposal panel with a "Make it happen" CTA — a big button that does nothing is confusing.
+  if (plan.changes.length === 0) {
+    return (
+      <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
+        <div className="flex items-start gap-3.5">
+          <div
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
+          >
+            <span style={{ color: 'var(--text-accent)', fontSize: 14 }}>✦</span>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-accent)' }}>
+              EDGE ASSESSMENT
+            </p>
+            <p className="text-sm font-bold leading-snug mb-0.5" style={{ color: 'var(--text-strong)' }}>
+              Your day is already aligned.
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              {plan.summary?.trim()
+                ? plan.summary
+                : 'Nothing worth reshaping right now — your time already lines up with what matters.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Proposed plan
   return (
     <div
