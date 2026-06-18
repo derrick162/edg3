@@ -217,6 +217,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18 (overnight)** — **T3-3 follow-up — activity log added to data export (1708 green).**
+  - Esther's dispatch listed the activity log as required in the export; my earlier T3-3 review had marked it "intentionally omitted." On reflection she's right — users see it in the dashboard Activity tab, so it belongs in their data export (GDPR portability).
+  - **`app/api/account/export/route.ts`:** new `activityLog` section from `auditLogQueries.recent(userId, 10000)` — exports `action`, parsed `args`, `result`, `ok`, `briefingId`, `createdAt`. **Internal/encrypted state snapshots (`snapshot_before`/`snapshot_after`, which can hold encrypted email subjects) are deliberately excluded** — only the human-readable record is exported.
+  - **Tests:** +1 in `account.test.ts` (activity log present, args parsed, no encrypted snapshot leak) + `activityLog` added to the export-shape assertion; mock extended with `auditLogQueries.recent`. `content/security-audit.md` export description corrected. 90 files / 1708 total.
 - **2026-06-18 (overnight)** — **T0-1 §4 — Automated restore drill (1707 green).**
   - Every existing backup test **mocks** better-sqlite3, so the real create→snapshot→reopen→data-survives path was never exercised — "backups you've never restored are not backups."
   - **`lib/backup-restore-drill.test.ts` (NEW, real SQLite, no mocks):** builds a real DB (full schema) at a temp path, seeds known rows, calls the actual `createBackup()` (the same online-backup the 3am cron uses), then `verifyBackup()` (integrity_check ok + row counts), then **reopens the snapshot read-only and asserts the actual data survived** (emails + task text, not just counts). This is the closest a unit test gets to the manual Railway restore drill. The live volume-restore remains an external Kevin step.

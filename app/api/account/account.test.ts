@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   tasks: [] as unknown[],
   briefings: [] as unknown[],
   drafts: [] as unknown[],
+  activity: [] as unknown[],
   dbRun: vi.fn(),
   dbGet: vi.fn<() => unknown>(() => undefined),
   dbAll: vi.fn<() => unknown[]>(() => []),
@@ -60,6 +61,9 @@ vi.mock('@/lib/db', () => ({
   openLoopQueries: {
     list: (_id: number) => [],
   },
+  auditLogQueries: {
+    recent: (_id: number, _lim: number) => h.activity,
+  },
 }));
 
 vi.mock('@/lib/crypto', () => ({
@@ -103,6 +107,7 @@ beforeEach(() => {
   h.tasks = [];
   h.briefings = [];
   h.drafts = [];
+  h.activity = [];
   h.preparedSqls = [];
   h.deleteUserData.mockReset();
   h.dbAll.mockReturnValue([]);
@@ -163,6 +168,20 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('energyProfile');
     expect(data).toHaveProperty('eventEnergyTags');
     expect(data).toHaveProperty('openLoops');
+    expect(data).toHaveProperty('activityLog');
+  });
+
+  it('includes the activity log (parsed args, no internal snapshot blobs)', async () => {
+    h.activity = [
+      { action: 'createEvent', args_json: '{"title":"Investor sync"}', result_text: "Added 'Investor sync'", ok: 1, briefing_id: null, created_at: '2026-06-18T07:05:00Z', snapshot_after: 'enc:1:SHOULD_NOT_APPEAR' },
+    ];
+    const res = await exportGET(makeReq());
+    const { activityLog } = await res.json();
+    expect(activityLog).toHaveLength(1);
+    expect(activityLog[0]).toMatchObject({ action: 'createEvent', ok: true, result: "Added 'Investor sync'" });
+    expect(activityLog[0].args).toEqual({ title: 'Investor sync' });
+    // Internal/encrypted snapshot fields must not leak into the export.
+    expect(JSON.stringify(activityLog[0])).not.toContain('SHOULD_NOT_APPEAR');
   });
 
   it('omits password_hash from profile', async () => {

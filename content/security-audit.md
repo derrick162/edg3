@@ -299,7 +299,7 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 - **Admin auth:** Separate HMAC-derived cookie; shared brute-force rate limit; admin secret header for CoS-agent routes
 - **Session expiry:** 7-day JWT; logout bumps `session_version`
 - **Error responses:** No stack traces or internal error strings in user-facing responses
-- **Data export:** Full user export (`GET /api/account/export`) omits `password_hash` and OAuth tokens; decrypts PII fields
+- **Data export:** Full user export (`GET /api/account/export`) includes profile (+ `dataConsent`), priorities, memories (call notes), facts, tasks, briefings, email-draft history, energy log, daily focus, calendar scores, energy profile, event energy tags, open loops, and the **activity log** (audit history — human-readable fields only; internal/encrypted state snapshots excluded). Omits `password_hash` and OAuth tokens; decrypts PII fields.
 - **Backup route:** filename regex `^edg3-[0-9TZ-]+\.db$` + `path.basename` guard prevent path traversal; admin-auth gated
 - **Activation Moment path:** `GET /api/priorities/derive` + `POST /api/priorities/derive/accept` — auth, rate-limit, user-scoping, graceful null, no error leak confirmed
 - **`memories.content` encrypted at rest (FIXED 2026-06-18):** Previously stored as plaintext — now encrypted via `encryptField` in `memoryQueries.create`; all read paths decrypted. Legacy plaintext rows pass through transparently on read (no migration needed).

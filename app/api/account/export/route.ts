@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -72,6 +72,18 @@ export async function GET(_req: NextRequest) {
   ).all(userId) as Array<{ google_event_id: string; type: string; demand: string; tagged_at: string }>)
     .map(r => ({ eventId: r.google_event_id, type: r.type, demand: r.demand, taggedAt: r.tagged_at }));
 
+  // Activity log — the user-facing action history (same data as the dashboard Activity tab).
+  // Exports the human-readable fields only; internal/encrypted state snapshots (snapshot_before/
+  // snapshot_after, which can hold encrypted email subjects) are deliberately NOT included.
+  const activityLogRows = auditLogQueries.recent(userId, 10000).map(a => ({
+    action: a.action,
+    args: (() => { try { return JSON.parse(a.args_json); } catch { return a.args_json; } })(),
+    result: a.result_text ?? null,
+    ok: !!a.ok,
+    briefingId: a.briefing_id ?? null,
+    createdAt: a.created_at,
+  }));
+
   // Open loops — descriptions are decrypted by openLoopQueries.list()
   const openLoopRows = openLoopQueries.list(userId).map(l => ({
     id:          l.id,
@@ -136,6 +148,7 @@ export async function GET(_req: NextRequest) {
       : null,
     eventEnergyTags: eventEnergyTagRows,
     openLoops: openLoopRows,
+    activityLog: activityLogRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
