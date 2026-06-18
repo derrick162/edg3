@@ -217,6 +217,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T1-2 — End-to-end call health check (1674 green).**
+  - **Approach:** reused existing `background_job_failures` + `health_log` infrastructure rather than a new table.
+  - **`app/api/vapi/webhook/route.ts`:** added `backgroundJobFailureQueries.record()` to all 4 async post-call `.catch()` handlers — `fact_extraction`, `sleep_consolidation`, `episode_store`, `open_loops_extraction`. Failures now surface in the 6am health digest's existing "background job failures" check (already queries `backgroundJobFailureQueries.recentCount(24)`).
+  - **`lib/scheduler.ts` `runHealthDigest()`:** new transcript health check — SQL query counts completed briefings in the last 24h with empty/short transcripts (< 50 chars). Surfaces as `N completed call(s) have no transcript` in the degraded summary.
+  - **2 new tests** in `lib/health-digest.test.ts`: degraded on empty transcript; nominal when 0 empty. 86 test files / 1674 total.
 - **2026-06-18** — **PILLAR-TRUST T3-2 + T3-3 — Activity log completeness + data export accuracy (1672 green, no new tests).**
   - **T3-2 — Activity log completeness:** Audit found 6 gap routes. Added `auditLogQueries.record()` to: `POST /api/tasks` (createTask), `PATCH /api/tasks/[id]` (completeTask/uncompleteTask), `DELETE /api/tasks/[id]` (deleteTask), `POST /api/tasks/complete-all` (bulkCompleteTasks), `POST /api/profile` (updateProfile — logs length not content), `POST /api/focus/dismiss` (dismissFocus). Accepted gaps documented: account deletion (immediately erased by cascade), auth events (not Activity tab concern), voice_preference toggle (settings-only), priorities-keep (timestamp refresh only), energy log (informational), call triggers (briefings table is the record), support submissions (not user data).
   - **T3-3 — Data export accuracy:** `GET /api/account/export` reviewed. Confirmed: exports all 10 user-scoped tables (profile, priorities, tasks, calendar tokens, memory, facts, briefings, notifications, open-loops, focus). Correctly omits `password_hash` and OAuth tokens. Decrypts all PII fields. `dataConsent` field included. Activity log intentionally omitted (ephemeral audit trail, not primary data). Whoop tokens intentionally omitted (sensitive OAuth material). No code changes needed.
