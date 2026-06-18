@@ -3,7 +3,7 @@
  * The pure decision matrix is fully exercised here; the runner is best-effort I/O.
  */
 import { describe, it, expect } from 'vitest';
-import { assessDurability, DurabilityEnv } from './durability';
+import { assessDurability, assessEncryptionReadiness, DurabilityEnv } from './durability';
 
 // A healthy prod baseline: off-box replication on, DB present + populated, on /data.
 const healthyProd: DurabilityEnv = {
@@ -101,5 +101,32 @@ describe('assessDurability — null user count', () => {
     // null count + replication on + DB existed → ok (genuine cold start handled gracefully)
     const r = assessDurability({ ...healthyProd, dbUserCount: null });
     expect(r.level).toBe('ok');
+  });
+});
+
+describe('assessEncryptionReadiness — T0-2 step 3', () => {
+  it('skips the check in local/dev', () => {
+    const r = assessEncryptionReadiness({ nodeEnv: 'development', keyConfigured: false, strictMode: false });
+    expect(r.level).toBe('ok');
+    expect(r.summary).toContain('skipped');
+  });
+
+  it('is ok in prod when the key is configured', () => {
+    const r = assessEncryptionReadiness({ nodeEnv: 'production', keyConfigured: true, strictMode: false });
+    expect(r.level).toBe('ok');
+    expect(r.summary).toContain('present');
+  });
+
+  it('is critical in prod when key missing (no strict) — plaintext risk', () => {
+    const r = assessEncryptionReadiness({ nodeEnv: 'production', keyConfigured: false, strictMode: false });
+    expect(r.level).toBe('critical');
+    expect(r.summary).toContain('plaintext');
+    expect(r.issues.join(' ')).toContain('PLAINTEXT');
+  });
+
+  it('is critical in prod when key missing with strict mode — writes will fail', () => {
+    const r = assessEncryptionReadiness({ nodeEnv: 'production', keyConfigured: false, strictMode: true });
+    expect(r.level).toBe('critical');
+    expect(r.summary).toContain('writes will fail');
   });
 });

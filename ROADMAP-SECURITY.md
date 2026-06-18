@@ -217,6 +217,12 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18 (overnight)** — **PILLAR-TRUST T0-2 step 3 — Startup encryption-key presence check (1697 green). Tier 0 + Tier 1 (Security) now COMPLETE.**
+  - T0-2 steps 1/2/4 were already shipped (key-backup doc `content/encryption-key-rotation.md`, `safeDecryptField` graceful content-path degradation, `STRICT_ENCRYPTION=1` fail-closed writes). The remaining gap was step 3: nothing alarmed if `DATA_ENCRYPTION_KEY` was missing at boot — PII would silently write as plaintext.
+  - **`lib/durability.ts`:** `assessEncryptionReadiness(env)` pure helper — CRITICAL in prod when the key is unset (distinguishes plaintext-risk vs. strict-mode write-failure); ok in dev or when key present. Wired into `runStartupDurabilityCheck()` (loud boot log + `health_log` write).
+  - **`lib/scheduler.ts` `runHealthDigest`:** daily 6am check — DEGRADED if `DATA_ENCRYPTION_KEY` unset in prod.
+  - **Tests:** +4 in `lib/durability.test.ts` (dev skip, key present, missing-no-strict plaintext, missing-strict write-fail). 88 files / 1697 total.
+  - **Tier 0 status:** T0-1 ✅, T0-2 ✅, T0-4 ✅ (all Security). T0-3 e2e smoke test is Core-owned (Darren). **Tier 1 (Security): T1-1…T1-5 all ✅** from prior sessions.
 - **2026-06-18 (overnight)** — **PILLAR-TRUST T0-4 — Single-instance scheduler lock (1693 green).**
   - **Risk:** the per-minute call-dispatch cron has no cross-instance guard. With >1 Railway replica (or an overlapping slow tick), two instances can both pass the `alreadyCalled` check before either writes a briefing row → **double-dial** the 7am call. The existing `alreadyCalled` guard only protects within a single sequential instance.
   - **`scheduler_lock` table** (`lib/db.ts`): `(lock_name PK, holder, acquired_at, expires_at)`. `schedulerLockQueries.acquire(name, holder, ttlSeconds)` claims atomically via SQLite upsert — `ON CONFLICT DO UPDATE ... WHERE expires_at < now OR holder = excluded.holder`, returns `changes === 1`. A held lock blocks others until expiry; an expired lock (crashed holder) is reclaimable; an instance can refresh its own. `release()` deletes only if still held (no stomping). Fails **open** on DB fault (never blocks the morning call).

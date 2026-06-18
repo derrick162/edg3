@@ -121,6 +121,42 @@ export function assessDurability(env: DurabilityEnv): DurabilityAssessment {
   };
 }
 
+export interface EncryptionEnv {
+  /** process.env.NODE_ENV */
+  nodeEnv?: string;
+  /** encryptionEnabled() — true when DATA_ENCRYPTION_KEY resolves to a usable key */
+  keyConfigured: boolean;
+  /** STRICT_ENCRYPTION === '1' — makes encrypted-field writes fail-closed when the key is absent */
+  strictMode: boolean;
+}
+
+/**
+ * T0-2 step 3 — encryption-key presence check. In prod, a missing DATA_ENCRYPTION_KEY
+ * means PII (transcripts, OAuth tokens, facts) is either written as plaintext (no strict
+ * mode) or write operations fail (strict mode). Either way it must alarm, not start silently.
+ * Local/dev is always ok.
+ */
+export function assessEncryptionReadiness(env: EncryptionEnv): DurabilityAssessment {
+  if (env.nodeEnv !== 'production') {
+    return { level: 'ok', issues: [], summary: 'Local/dev environment — encryption check skipped' };
+  }
+  if (env.keyConfigured) {
+    return { level: 'ok', issues: [], summary: 'Encryption key present — PII encrypted at rest' };
+  }
+  if (env.strictMode) {
+    return {
+      level: 'critical',
+      issues: ['DATA_ENCRYPTION_KEY is unset in production with STRICT_ENCRYPTION=1 — encrypted-field writes will FAIL. Set the key immediately.'],
+      summary: 'ENCRYPTION KEY MISSING (strict) — writes will fail',
+    };
+  }
+  return {
+    level: 'critical',
+    issues: ['DATA_ENCRYPTION_KEY is unset in production — PII (transcripts, tokens, facts) is being written as PLAINTEXT. Set the key, or set STRICT_ENCRYPTION=1 to fail-closed.'],
+    summary: 'ENCRYPTION KEY MISSING — PII written as plaintext',
+  };
+}
+
 /**
  * Gather the real boot environment + DB stats, assess, and log loudly.
  * Best-effort: never throws — a durability check must never crash the app boot.
@@ -167,6 +203,23 @@ export async function runStartupDurabilityCheck(): Promise<DurabilityAssessment>
     } else {
       console.log(`[durability] ${assessment.summary}`);
     }
+
+    // T0-2 step 3 — encryption-key presence check (separate concern from storage durability).
+    try {
+      const { encryptionEnabled } = await import('./crypto');
+      const enc = assessEncryptionReadiness({
+        nodeEnv: process.env.NODE_ENV,
+        keyConfigured: encryptionEnabled(),
+        strictMode: process.env.STRICT_ENCRYPTION === '1',
+      });
+      if (enc.level === 'critical') {
+        console.error(`[durability] 🚨 ${enc.summary}`);
+        for (const issue of enc.issues) console.error(`[durability]   - ${issue}`);
+        try { healthLogQueries.write('degraded', `STARTUP: ${enc.summary}`); } catch { /* best-effort */ }
+      } else if (enc.level === 'ok' && enc.summary.includes('present')) {
+        console.log(`[durability] ${enc.summary}`);
+      }
+    } catch { /* encryption check is best-effort — never blocks boot */ }
 
     // Persist to health_log so the 6am digest and admin health endpoint surface it.
     try {

@@ -259,6 +259,15 @@ export async function runHealthDigest(): Promise<void> {
     }
   } catch (e) { issues.push(`durability check error: ${e}`); }
 
+  // T0-2 — encryption key presence: in prod, a missing DATA_ENCRYPTION_KEY means
+  // PII is written as plaintext (or writes fail in strict mode). Surface daily.
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const { encryptionEnabled } = await import('./crypto');
+      if (!encryptionEnabled()) issues.push('DATA_ENCRYPTION_KEY unset in prod (PII at-rest not encrypted)');
+    }
+  } catch (e) { issues.push(`encryption check error: ${e}`); }
+
   try {
     // Proactively validate calendar tokens for all active users before the 7am call.
     const { checkCalendarTokenHealth } = await import('./google-auth');
