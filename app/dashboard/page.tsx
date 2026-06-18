@@ -1360,6 +1360,10 @@ export default function Dashboard() {
   });
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
+  // Multi-account Google linking: a second, Gmail-only account (separate from the calendar account).
+  const [gmailAccount, setGmailAccount] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [calendarHasGmailScope, setCalendarHasGmailScope] = useState(false);
+  const [disconnectingGmail, setDisconnectingGmail] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
   const [whoopData, setWhoopData] = useState<{
@@ -1464,7 +1468,16 @@ export default function Dashboard() {
       }
     }).catch(() => {});
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
-    fetch('/api/calendar/status').then(r => r.ok ? r.json() : { connected: false }).then(d => setCalendarConnected(!!d.connected)).catch(() => {});
+    // Multi-account: one call returns both the calendar account and the optional Gmail account.
+    fetch('/api/auth/accounts')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) { setCalendarConnected(false); return; }
+        setCalendarConnected(!!d.calendar?.connected);
+        setCalendarHasGmailScope(!!d.calendar?.hasGmailScope);
+        setGmailAccount({ connected: !!d.gmail?.connected, email: d.gmail?.email ?? null });
+      })
+      .catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
     fetch('/api/whoop/status').then(r => r.ok ? r.json() : { connected: false }).then(d => {
       setWhoopConnected(!!d.connected);
@@ -1804,6 +1817,27 @@ export default function Dashboard() {
     }
   }
 
+  // Multi-account Google: connect/disconnect a dedicated Gmail account (separate from calendar).
+  async function connectGmail() {
+    const res = await fetch('/api/auth/google/gmail');
+    const data = await res.json().catch(() => ({}));
+    if (data.url) window.location.href = data.url;
+    else alert(data.error || 'Could not start Gmail connection — please try again.');
+  }
+
+  async function disconnectGmail() {
+    if (!confirm('Disconnect your Gmail account? Edg3 will no longer be able to draft emails on your behalf until you reconnect.')) return;
+    setDisconnectingGmail(true);
+    const res = await fetch('/api/auth/google/gmail/disconnect', { method: 'POST' });
+    setDisconnectingGmail(false);
+    if (res.ok) {
+      setGmailAccount({ connected: false, email: null });
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to disconnect Gmail');
+    }
+  }
+
   async function connectWhoop() {
     const res = await fetch('/api/whoop/connect');
     if (!res.ok) { alert('Whoop is not configured yet — contact support.'); return; }
@@ -2098,14 +2132,20 @@ export default function Dashboard() {
                 </p>
               )}
             </div>
+            {/* ── Calendar account slot ── */}
             {calendarConnected === false ? (
-              <button
-                onClick={connectCalendar}
-                className="w-full text-xs py-2 text-left px-2 rounded"
-                style={{ color: 'var(--text-faint)' }}
-              >
-                📅 Connect calendar
-              </button>
+              <div className="px-2 py-2">
+                <button
+                  onClick={connectCalendar}
+                  className="w-full text-xs py-1 text-left"
+                  style={{ color: 'var(--text-faint)' }}
+                >
+                  📅 Connect calendar account
+                </button>
+                <p className="pl-0 mt-0.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                  Reads your calendar and creates events during calls
+                </p>
+              </div>
             ) : (
               // Default for connected AND unknown/loading state — never leave the user with no
               // way to reconnect/disconnect (a null status used to render nothing here).
@@ -2114,7 +2154,7 @@ export default function Dashboard() {
                   <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{calendarConnected ? 'Calendar connected' : 'Google connection'}</p>
                 </div>
-                <div className="flex items-center gap-3 pl-3.5">
+                <div className="flex items-center gap-3 pl-3.5 mb-1">
                   <button
                     onClick={connectCalendar}
                     className="text-xs"
@@ -2131,6 +2171,49 @@ export default function Dashboard() {
                     {disconnectingCalendar ? 'Disconnecting…' : 'Disconnect'}
                   </button>
                 </div>
+                <p className="pl-3.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                  Reads your calendar and creates events during calls
+                </p>
+              </div>
+            )}
+
+            {/* ── Gmail account slot (multi-account: a separate account dedicated to drafting) ── */}
+            {gmailAccount?.connected ? (
+              <div className="px-2 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                    {gmailAccount.email ? `Gmail · ${gmailAccount.email}` : 'Gmail connected'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 pl-3.5 mb-1">
+                  <button
+                    onClick={disconnectGmail}
+                    disabled={disconnectingGmail}
+                    className="text-xs"
+                    style={{ color: 'var(--edg-danger)' }}
+                  >
+                    {disconnectingGmail ? 'Disconnecting…' : 'Disconnect'}
+                  </button>
+                </div>
+                <p className="pl-3.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                  Drafts emails on your behalf — reads nothing, send-only
+                </p>
+              </div>
+            ) : (
+              <div className="px-2 py-2">
+                <button
+                  onClick={connectGmail}
+                  className="w-full text-xs py-1 text-left"
+                  style={{ color: 'var(--text-faint)' }}
+                >
+                  ✉️ Connect Gmail account
+                </button>
+                <p className="pl-0 mt-0.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                  {calendarHasGmailScope
+                    ? 'Drafts emails on your behalf — reads nothing, send-only. (Currently drafting via your calendar account.)'
+                    : 'Connect to unlock email drafting — reads nothing, send-only.'}
+                </p>
               </div>
             )}
             {whoopConnected === false ? (

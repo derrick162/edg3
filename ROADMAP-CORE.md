@@ -449,6 +449,10 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **Multi-account Google linking UI (P1) — shipped.**
+  - Consumes Vijay's backend (merged to master): `GET /api/auth/accounts` (`{calendar:{connected,email,hasGmailScope}, gmail:{connected,email}}`), `GET /api/auth/google/gmail` (→ `{url}`), `POST /api/auth/google/gmail/disconnect`, separate `gmail_tokens` table.
+  - `app/dashboard/page.tsx`: replaced the single Google-connect block with TWO sidebar slots. **Calendar account** — existing connect/reconnect/disconnect, subcopy "Reads your calendar and creates events during calls". **Gmail account** (new) — `connectGmail()` (GET → redirect to `url`), `disconnectGmail()` (POST), shows the linked Gmail address when connected, subcopy "Drafts emails on your behalf — reads nothing, send-only", soft nudge "Connect to unlock email drafting" when not. When the calendar account already carries Gmail scope (`hasGmailScope`), the nudge notes drafting currently runs via that account. Dashboard load now hits `/api/auth/accounts` once (replaces the separate calendar-status + gmail-scope checks) → sets `calendarConnected` + `gmailAccount` + `calendarHasGmailScope`.
+  - Lets Derrick link his personal Gmail (derrickfung87@gmail.com) separately from his deltaedge calendar account. 1857/1857 green, tsc clean, next build clean.
 - **2026-06-18** — **Derrick dashboard-review batch — tickets 4, 5, 6, 7, 10 (+ 8 deferred). 9/10 shipped.**
   - **Ticket 7 — browsable priority history** (`app/api/priorities/history/route.ts` + dashboard `PriorityHistory`): replaced the fixed 4-week heatmap (which projected onto the *current* priority set, so it couldn't show priorities that had changed) with a 1M/3M/6M/1Y range toggle + scannable week-by-week list reading the actual per-week priority rows. Reuses `priorityQueries.getRecentWeeks`. Ages gracefully; gets more useful over time.
   - **Ticket 4 — focus lock-in feels like a moment** (dashboard): the locked daily-focus list now shows a green-check "Today's Focus · Locked in" header + per-item green checks. The proposal card already unmounts on confirm; this gives the clear "locked in" state it was missing.
@@ -457,6 +461,10 @@ Ship small / green / full preflight (real exit code) per item; log each below.
   - **Ticket 5 — naming consistency** (dashboard): audited focus labels — daily consistently "today", weekly "this week"; no mixing found. Canonicalized the locked daily header to keep "Today's Focus" distinct from the weekly "Focus this week" screen.
   - **Ticket 8 — DEFERRED (LOW).** Consolidating the duplicate priority sections (FocusScoreboardPanel analytics cards vs PrioritiesTab editor — both inherently list priorities) is a structural/layout decision in Design's lane; rushing it solo risks the milestone editor. **Recommend:** Core + Design jointly fold milestone editing into the scoreboard cards (or strip the editor's duplicate list), so priorities render once with inline milestone editing.
   - 1818/1818 green, tsc clean, next build clean. ⚠️ Manual: priority-history view needs 2+ weeks of priority rows to show much.
+- **2026-06-18** — **PILLAR-TRUST T2-4 — buildBriefingContext extraction + 10 spec-driven regression tests.**
+  - `buildBriefingContext(user, data, today?)` pure function extracted from `lib/briefing.ts` and exported. Implements all assembly rules: commitment ordering (past-due source=edg3 tasks first), non-routine calendar before routine (gym/breakfast/etc.), priorities, Whoop, structured facts, calendar-scoped relationship context, personalization floor (≥3 signals → fill-the-gap when not met), confidence hedging ("last I heard — " for conf < 0.5), 16k char cap.
+  - 10 spec-driven regression assertions in `lib/briefing.test.ts` covering every rule (sourced from `content/briefing-regression-spec.md`). Any briefing change that breaks these assertions fails preflight.
+  - 1828/1828 green, tsc clean, next build clean.
 - **2026-06-18** — **Derrick dashboard-review batch — tickets 1, 2, 3, 9 (the HIGH-priority four).**
   - **Ticket 9 — spam filter in email activity** (`lib/emailActivityFilter.ts` + dashboard): the "Threads Edg3 reviewed" panel was showing Instacart receipts, Walmart order confirmations, CNBC newsletters, market blasts. New pure helper (10 tests) classifies noise by subject (promo/receipt/automated/market-news) and the dashboard hides it — always keeping real correspondence + flagged-keyword threads. Shows an honest "just automated mail this scan" line when a scan is all noise.
   - **Ticket 1 — Edge Score "why" reads as a reason** (`lib/scoreChange.ts` + `EdgeScoreCard.tsx`): `buildReason` is now direction-aware — an upward move is never explained by a problem driver ("Up 16 because focus not confirmed yet"). Picks a positive driver for rises, topFix/negative for drops, strips trailing punctuation. Card shows "Up N since X — because <reason>" above the breakdown link. 5 new/updated tests.
@@ -1624,89 +1632,17 @@ priority from user feedback.
 
 ---
 
-## 📥 PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests)
+## ✅ PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests) — **DONE 0975089**
 
-> Master at `87af54d`. `git merge master` first. Spec: `content/briefing-regression-spec.md` — read it; the assertions are already written.
-
-### Ticket 1 — Write `lib/briefing.test.ts` with 8 regression assertions (T2-4)
-
-The spec provides exact test code. The main work is:
-1. Extract `buildBriefingContext(user, data)` from `lib/briefing.ts` — this should be the existing assembly logic promoted to an exported function. Do NOT fork or duplicate; the export IS the live path.
-2. Write the 8 tests in `lib/briefing.test.ts` (spec has the full implementation).
-3. Run `npm run preflight` — all 8 must be green.
-
-**Assertions to implement** (full code in spec):
-1. Outstanding commitments appear before calendar in context
-2. Priority text is present in context (by name)
-3. Stale facts (>90 days, unconfirmed, confidence < 0.7) are excluded
-4. Relationship context injected for people on today's calendar
-5. Relationship context NOT injected for people not on today's calendar
-6. Fill-the-gap question injected when fewer than 3 user-specific signals
-7. No fill-the-gap question when floor is met
-8. Low-confidence (< 0.5) facts get hedged with "last I heard"
-
-**Coordinate with M3-1/DC2-2/DC2-4 dispatch:** The M3-1 ticket (signal priority reorder + stale filter + personalization floor) and these tests are coupled — if you do T2-4 first, some assertions will fail until M3-1 lands. Recommended order: do M3-1+DC2-2+DC2-4 first, then T2-4 (tests validate the new behavior).
-
-- **Files:** `lib/briefing.ts` (extract `buildBriefingContext`), `lib/briefing.test.ts` (new test file)
-- **Preflight:** must be green before commit
+`buildBriefingContext(user, data, today?)` extracted from `lib/briefing.ts`. 10 spec-driven regression assertions in `lib/briefing.test.ts`. 1828/1828 green.
 
 ---
 
-## 📥 PM DISPATCH — 2026-06-18 (M3-1 + DC2-2 + DC2-4 — Briefing context quality, 3 tickets)
+## ✅ PM DISPATCH — 2026-06-18 (M3-1 + DC2-2 + DC2-4 — Briefing context quality) — **DONE**
 
-> Master at `076ce93`. `git merge master` first. Spec: `content/briefing-context-spec.md` — read it before starting.
-
-### Ticket 1 — Signal priority reorder in `lib/briefing.ts` (M3-1)
-
-Audit the context assembly in `lib/briefing.ts` against this priority order (highest → lowest):
-1. Outstanding commitments (tasks table, source='edg3', incomplete)
-2. Today's calendar (key/time-sensitive events only — omit routine gym/meals/habits)
-3. Active goals / priorities (priorities table + goal-category facts)
-4. Whoop recovery (if connected — one compact block; if null, don't reference it)
-5. Pattern memory (only when non-null and changes the recommendation — one sentence)
-6. Recent facts (active, learned_at >= 30 days ago)
-7. Relationship context (people-category facts — only for people on today's calendar)
-8. Episode memory
-9. Briefing context pack (pre-warmed 11pm; fall back to live assembly on miss)
-
-If total context exceeds 4,000 tokens: truncate from the bottom (lowest priority) first, never from the top.
-
-Also add the **90-day stale fact filter**: when assembling context, exclude any fact where `learned_at < (now - 90 days) AND last_confirmed_at IS NULL AND confidence_score < 0.7`. Keeps recently-confirmed old facts; removes truly stale ones. No schema changes needed — this is a WHERE clause addition.
-
-- **Files:** `lib/briefing.ts` only
-- **Test:** write a test with a user that has facts of different ages — verify stale facts are excluded from the context string; verify the priority order matches
-
----
-
-### Ticket 2 — Personalization floor check (DC2-2)
-
-A briefing that doesn't reference ≥3 user-specific signals is a generic briefing. Add a floor check in the context assembler:
-
-**Minimum 3 user-specific signals required:**
-1. At least one active goal or priority (by name)
-2. At least one recent fact (preference, pattern, or relationship note, ≤30 days old)
-3. Any one of: Whoop recovery note, outstanding commitment, or a person from today's calendar with associated context
-
-**If the floor can't be met** (new user, thin data): inject a fill-the-gap question into the briefing prompt: `PERSONALIZATION FLOOR NOT MET — ask ONE fill-the-gap question at the start of the call: "I don't have much context on your priorities yet — what's the most important thing you're working on this week?" Do not proceed generically.`
-
-- **Files:** `lib/briefing.ts` only
-- **Test:** user with empty facts table → verify fill-the-gap question injected; user with 3 facts → verify normal briefing
-
----
-
-### Ticket 3 — Section length guards (DC2-4)
-
-Target: briefing core content (commitments + priorities + calendar + closing question) ≤ 400 words, total call under 5 minutes.
-
-Add explicit length guards to three briefing sections in the prompt instructions in `lib/briefing.ts`:
-- **Section 3 (alignment check):** `[MAX 2 sentences: one observation + one offer. Example: "Your top priority has zero calendar blocks this week — want me to fix that?"]`
-- **Pattern memory injection:** `[ONE sentence only. The single most relevant pattern. Omit if it doesn't change the recommendation.]`
-- **Calendar narration:** `[Lead with the most time-sensitive event. Narrate the top 2–3 events that need attention — not every item on the calendar.]`
-
-Also add a dev-mode log at the end of the context assembly (log level `debug`): `console.debug('[briefing] context sections', {commitments: X, calendar: X, goals: X, whoop: X, patterns: X, facts: X, relationships: X, episodes: X})` where each X is the char count of that section. This lets us identify bloat from Railway logs without listening to every call.
-
-- **Files:** `lib/briefing.ts` only (prompt instruction strings + one console.debug)
-- **No new tests needed** — prompt instruction changes are validated by existing briefing tests
+- **T1 (M3-1):** 90-day stale filter via `isStaleForBriefing` + `filterStale: true` in all `topFacts` calls. Signal priority order matches spec. `buildBriefingContext` tests verify order + exclusion.
+- **T2 (DC2-2):** `buildPersonalizationPromptBlock(salientFacts.length)` in PART 3; `buildBriefingContext` 3-signal floor + fill-the-gap tests added.
+- **T3 (DC2-4):** `[DC2-4]` section-size log at line 1093; MAX 220 words guard; alignment check "one sentence" + pattern memory "ONE sentence only, omit if doesn't change recommendation" guards. 1828/1828 green.
 
 ---
 

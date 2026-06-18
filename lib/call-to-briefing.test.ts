@@ -332,6 +332,27 @@ describe('7am path smoke test', () => {
     expect(commitments).toEqual(taskTexts);
   });
 
+  // ★ QA checklist (PILLAR-MEMORY): correction path. This locks the EXTRACTION→PERSISTENCE
+  // wiring — a corrected statement from the call reaches upsertFact, which then performs the
+  // bi-temporal retire-old + insert-new (that retire+insert step is unit-covered in
+  // db-facts.test.ts). Together they cover "say 'actually X is Y now' → next briefing is correct".
+  it('correction path: a corrected fact from the transcript is forwarded to upsertFact', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'preference', statement: 'Gym is now at 7am, moved from 6am', entity: 'gym schedule' },
+    ])));
+
+    await extractAndUpsertFacts(USER_ID, 'Actually my gym is now at 7am, not 6am anymore.', USER_NAME, undefined, []);
+
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(
+      USER_ID,
+      'preference',
+      'Gym is now at 7am, moved from 6am',
+      'gym schedule',
+      expect.any(String),
+      undefined,
+    );
+  });
+
   it('episode memory block reflects stored episode on next briefing', () => {
     // Simulate webhook storing episode
     persistCallEpisode(
