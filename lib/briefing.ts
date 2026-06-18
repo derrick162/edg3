@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, briefingContextPackQueries, User, type Fact } from './db';
 import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
@@ -30,8 +30,10 @@ import {
   detectLightDayPattern,
   detectMeetingLoadRecoveryPattern,
   detectFocusWindowPattern,
+  detectPriorityDriftPattern,
   pickBestPattern,
   formatPatternForBriefing,
+  type PriorityWeek,
 } from './patternMemory';
 import { buildAccountabilitySnapshot, formatAccountabilityForBriefing, accountabilityBriefingInstruction, getReliabilitySignal } from './accountabilityMemory';
 import { buildEpisodeMemoryBlock } from './episodeStore';
@@ -356,6 +358,13 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Compute "today" in the USER's timezone, not the server's (Railway runs UTC). Otherwise a
   // late-evening call rolls the date forward and tomorrow's events get briefed as today's.
   const today = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
+  // M2-4: Read pre-warmed context pack (compiled at 11pm UTC for stable context + Whoop snapshot).
+  // Used as Whoop fallback if the morning live-fetch fails (token expired between 11pm and 7am).
+  // Degrades gracefully — pack is absent on day 1 or if the nightly job failed.
+  const contextPack = (() => {
+    try { return briefingContextPackQueries.get(userId, today) ?? null; } catch { return null; }
+  })();
+  console.log(`[M2-4] context pack ${contextPack ? `HIT (${contextPack.length} chars)` : 'MISS (live assembly)'} for user ${userId} on ${today}`);
   const todayLabel = now.toLocaleDateString('en-US', { timeZone: userTimezone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   const localTime = now.toLocaleTimeString('en-US', { timeZone: userTimezone, hour: 'numeric', minute: '2-digit', hour12: true });
   const localHour = parseInt(now.toLocaleString('en-US', { timeZone: userTimezone, hour: 'numeric', hour12: false }));
@@ -409,6 +418,18 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   }
   // Refresh people profiles from calendar history (fire-and-forget — never blocks the briefing).
   syncPeopleProfiles(userId, pastCalendarHistory, calendarEvents, user.email).catch(() => {});
+  // Priority history grouped into weeks (newest first) for priority-drift detection (M2-3 #5).
+  const priorityWeeks: PriorityWeek[] = (() => {
+    try {
+      const rows = priorityQueries.getRecentWeeks(userId, 8);
+      const byWeek = new Map<string, string[]>();
+      for (const r of rows) {
+        if (!byWeek.has(r.week_of)) byWeek.set(r.week_of, []);
+        byWeek.get(r.week_of)!.push(r.text);
+      }
+      return [...byWeek.entries()].map(([weekOf, priorities]) => ({ weekOf, priorities }));
+    } catch { return []; }
+  })();
   // Compute and cache behavioral patterns (fire-and-forget).
   try {
     const recoveryHistoryPoints = recoveryHistory.map(r => ({ date: r.date, recoveryScore: r.recoveryScore }));
@@ -417,6 +438,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       detectLightDayPattern(pastCalendarHistory, userTimezone),
       detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryHistoryPoints, userTimezone),
       detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+      detectPriorityDriftPattern(priorityWeeks),
     ]);
     patternCacheQueries.upsert(userId, JSON.stringify(bestPattern ? [bestPattern] : []));
   } catch { /* never block briefing */ }
@@ -563,6 +585,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
         detectLightDayPattern(pastCalendarHistory, userTimezone),
         detectMeetingLoadRecoveryPattern(pastCalendarHistory, recoveryForPatterns, userTimezone),
         detectFocusWindowPattern(pastCalendarHistory, userTimezone),
+        detectPriorityDriftPattern(priorityWeeks),
         ...historicalPatterns,
       ]);
       return formatPatternForBriefing(best);
@@ -570,6 +593,16 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   })();
   // Whoop: format and build pacing context block — degrades to empty string if not connected.
   const whoopSection = buildWhoopSection(whoopRecovery, whoopSleep, whoopStrain);
+  // M2-4 Whoop fallback: if live fetch returned nothing, extract last night's packed Whoop data.
+  const packedWhoopSection = (() => {
+    if (whoopSection) return null;  // live data is available
+    if (!contextPack) return null;  // no pack to fall back to
+    const marker = 'HEALTH DATA (WHOOP';
+    const si = contextPack.indexOf(marker);
+    if (si === -1) return null;
+    const ei = contextPack.indexOf('\n\n', si);
+    return ei === -1 ? contextPack.slice(si).trim() : contextPack.slice(si, ei).trim();
+  })();
   const baselineContext = buildBaselineContext(
     whoopRecovery,
     recoveryHistoryPoints,
@@ -837,7 +870,10 @@ ${timeAllocationBlock}
 Use TIME ALLOCATION in section 3 (ALIGNMENT CHECK) only — surface the biggest misalignment concretely (e.g. "60% of your calendar time has been going to meetings, while fundraising — your top priority — has only gotten 8% in the last 8 weeks"). One observation max. Do not repeat it elsewhere.
 ` : ''}${focusScoreboardBlock ? `
 ${focusScoreboardBlock}
-` : ''}${whoopContextBlock}${whoopIsConnected && !whoopSection ? `
+` : ''}${whoopContextBlock}${packedWhoopSection ? `
+${packedWhoopSection}
+(Whoop live-fetch unavailable — using last night's context pack data. Present it normally; if directly asked about freshness, say the data is from last night.)
+` : whoopIsConnected && !whoopSection ? `
 WHOOP STATUS: Connected but data unavailable for this call. In Part 1, after the Edge Score sentence, add ONE brief acknowledgment: "Your Whoop data didn't come through this morning — I'll keep trying." Never skip this silently when Whoop is connected.
 ` : ''}${energyMatchingBlock ? energyMatchingBlock : (whoopConnected ? `
 ENERGY PROFILE: Not set yet. Since Whoop is connected, add ONE brief invite at the very end of the closing section (after any other nudges): "One more thing — if you tell me your high-energy windows, I can start matching your schedule to your energy. Morning peak? Afternoon dip?" Only add this if it feels natural; skip if there are already two or more other end-of-briefing nudges.

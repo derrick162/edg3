@@ -4,9 +4,11 @@ import {
   detectLightDayPattern,
   detectMeetingLoadRecoveryPattern,
   detectFocusWindowPattern,
+  detectPriorityDriftPattern,
   pickBestPattern,
   formatPatternForBriefing,
   type PatternInsight,
+  type PriorityWeek,
 } from './patternMemory';
 import type { calendar_v3 } from 'googleapis';
 
@@ -256,5 +258,89 @@ describe('formatPatternForBriefing', () => {
     expect(result).toContain('Tuesdays are clearest');
     expect(result).toContain('high confidence');
     expect(result).toContain('12 data points');
+  });
+});
+
+
+// ── detectPriorityDriftPattern (M2-3 #5) ─────────────────────────────────────
+
+describe('detectPriorityDriftPattern', () => {
+  function wk(weekOf: string, ...priorities: string[]): PriorityWeek {
+    return { weekOf, priorities };
+  }
+
+  it('returns null with fewer than 3 weeks of data', () => {
+    expect(detectPriorityDriftPattern([
+      wk('2026-06-01', 'Fundraising'),
+      wk('2026-06-08', 'Fundraising'),
+    ])).toBeNull();
+  });
+
+  it('returns null when weeks have no priorities', () => {
+    expect(detectPriorityDriftPattern([
+      wk('2026-06-01'),
+      wk('2026-06-08'),
+      wk('2026-06-15'),
+    ])).toBeNull();
+  });
+
+  it('reinforces a stable top priority held across most weeks', () => {
+    const r = detectPriorityDriftPattern([
+      wk('2026-06-01', 'Fundraising', 'Hiring'),
+      wk('2026-06-08', 'Fundraising', 'Product'),
+      wk('2026-06-15', 'Fundraising', 'Hiring'),
+      wk('2026-06-22', 'Fundraising', 'Hiring'),
+    ]);
+    expect(r).not.toBeNull();
+    expect(r?.type).toBe('priority_drift');
+    expect(r?.summary).toContain('Fundraising');
+    expect(r?.summary.toLowerCase()).toContain('consistency');
+  });
+
+  it('surfaces churn as an opportunity (never critical) when priorities shift every week', () => {
+    const r = detectPriorityDriftPattern([
+      wk('2026-06-01', 'Fundraising'),
+      wk('2026-06-08', 'Hiring'),
+      wk('2026-06-15', 'Marketing'),
+      wk('2026-06-22', 'Product'),
+    ]);
+    expect(r).not.toBeNull();
+    expect(r?.type).toBe('priority_drift');
+    expect(r?.summary.toLowerCase()).toContain('anchor');
+    // TONE: never blame the user
+    expect(r?.summary.toLowerCase()).not.toContain('you keep');
+    expect(r?.summary.toLowerCase()).not.toContain('failing');
+  });
+
+  it('returns null on moderate stability (no strong signal)', () => {
+    // Half overlap each week — neither stable nor churning
+    const r = detectPriorityDriftPattern([
+      wk('2026-06-01', 'Fundraising', 'Hiring'),
+      wk('2026-06-08', 'Fundraising', 'Marketing'),
+      wk('2026-06-15', 'Product', 'Marketing'),
+    ]);
+    expect(r).toBeNull();
+  });
+
+  it('confidence is high with 5+ weeks of data', () => {
+    const r = detectPriorityDriftPattern([
+      wk('2026-05-25', 'Fundraising'),
+      wk('2026-06-01', 'Fundraising'),
+      wk('2026-06-08', 'Fundraising'),
+      wk('2026-06-15', 'Fundraising'),
+      wk('2026-06-22', 'Fundraising'),
+    ]);
+    expect(r?.confidence).toBe('high');
+    expect(r?.sampleDays).toBe(5);
+  });
+
+  it('is order-independent (sorts by weekOf)', () => {
+    const r = detectPriorityDriftPattern([
+      wk('2026-06-22', 'Fundraising', 'Hiring'),
+      wk('2026-06-01', 'Fundraising', 'Hiring'),
+      wk('2026-06-15', 'Fundraising', 'Hiring'),
+    ]);
+    expect(r).not.toBeNull();
+    expect(r?.summary).toContain('Fundraising');
   });
 });

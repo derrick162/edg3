@@ -157,7 +157,7 @@ function resolveEvent(matches: { event: calendar_v3.Schema$Event; calId: string 
 function friendlyError(err: unknown): string {
   const msg = String(err);
   if (msg.includes('No calendar connected')) return "I can't access your calendar right now — it may need to be reconnected in the dashboard.";
-  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — you may need to reconnect your calendar.";
+  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — it may be on a calendar that needs reconnecting, or the event was organized by someone else (only the organizer can change it in Google Calendar).";
   if (msg.includes('notFound') || msg.includes('404')) return "I couldn't find that event to modify it.";
   return "Something went wrong on my end — want me to try again or take a different approach?";
 }

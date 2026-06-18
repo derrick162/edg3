@@ -636,6 +636,15 @@ export const priorityQueries = {
   deleteThisWeek: (userId: number, weekOf: string) => {
     return getDb().prepare('DELETE FROM priorities WHERE user_id = ? AND week_of = ?').run(userId, weekOf);
   },
+  // Read-only history: priorities across the most recent N distinct weeks (newest first),
+  // for priority-drift pattern detection (M2-3). text is plaintext (not encrypted at rest).
+  getRecentWeeks: (userId: number, weeks = 8): Priority[] => {
+    return getDb().prepare(
+      `SELECT * FROM priorities WHERE user_id = ? AND week_of IN (
+         SELECT DISTINCT week_of FROM priorities WHERE user_id = ? ORDER BY week_of DESC LIMIT ?
+       ) ORDER BY week_of DESC, rank`
+    ).all(userId, userId, weeks) as Priority[];
+  },
   setEnergyCost: (userId: number, id: number, energyCost: 'high' | 'medium' | 'low' | null) => {
     return getDb().prepare('UPDATE priorities SET energy_cost = ? WHERE id = ? AND user_id = ?').run(energyCost, id, userId);
   },
