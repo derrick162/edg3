@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { userQueries, memoryQueries } from '@/lib/db';
+import { userQueries, memoryQueries, auditLogQueries } from '@/lib/db';
 import { isValidTimeZone } from '@/lib/time';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
 
   userQueries.updateProfile(user.id, summary);
   memoryQueries.create(user.id, 'profile', `Profile updated: ${summary}`);
+  try { auditLogQueries.record({ userId: user.id, action: 'updateProfile', argsJson: JSON.stringify({ summary: summary.slice(0, 100) }), ok: true }); } catch { /* non-critical */ }
 
   return NextResponse.json({ success: true });
 }
