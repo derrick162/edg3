@@ -60,7 +60,7 @@ be done from code; all the supporting code is shipped and waiting.
 | Cross-user data access returns 404 | ✅ | `app/api/memory/facts/[id]/route.test.ts` (fact owned by user 2 → user 1 gets 404); `app/api/account/account.test.ts`. |
 | Calendar mutation logged with correct userId | ✅ | `lib/auditLog.test.ts`; T3-2 route audit adds (tasks/profile/focus). |
 | OAuth tokens removed on disconnect | 🔁 | Logic in `app/api/calendar/disconnect` + `whoop/disconnect` (audited). Live-grant verification = ⚠️. |
-| Account deletion removes all user rows | ✅ | `app/api/account/account.test.ts` — ≥30 table deletes incl. `briefing_context_packs`, `episodes`. |
+| Account deletion removes all user rows | ✅ | `lib/db-account-deletion.test.ts` — real-DB cascade + **drift guard** (every `user_id` table must be in `USER_SCOPED_DELETE_ORDER`). Caught + fixed 2 gaps (`support_messages`, `fact_history`) that would have 500'd deletion under `foreign_keys=ON`. |
 | Data export completeness + omits secrets | ✅ | T3-3 review; `GET /api/account/export` omits `password_hash`/OAuth tokens, includes `dataConsent`. |
 
 ## Reliability QA
@@ -90,3 +90,9 @@ the Railway shell. Logged so they are not mistaken for "covered":
 - **2026-06-18 (overnight, Vijay):** Trust Tier 0 (Security) closed in code — T0-1 durability
   self-check, T0-4 scheduler lock, T0-2 startup key check. Tier 1 (Security) verified complete.
   QA coverage mapped above. 5 external items handed to Derrick/Kevin (top of file). 1697 green.
+- **2026-06-18 (overnight, Vijay — cont'd):** Esther dispatch items #4/#5. **Found + fixed a real
+  account-deletion bug:** `support_messages` + `fact_history` were missing from the deletion route
+  (FK constraint under `foreign_keys=ON` → deletion 500 for affected users). Added a real-DB
+  cascade + drift-guard test (`lib/db-account-deletion.test.ts`) so this class of gap can't recur.
+  Scheduler dispatch lock now logs a warning naming the holder on a refused acquire. M2-4 context
+  packs skip caching empty results. 1705 green.
