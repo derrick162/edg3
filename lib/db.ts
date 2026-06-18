@@ -567,7 +567,11 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category);
-    CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(user_id, category, valid_until);
+    -- NOTE: idx_facts_active references facts.valid_until, a MIGRATION-added column. It must
+    -- NOT live in this pre-migration block — on an existing DB whose facts table predates
+    -- valid_until, creating it here throws "no such column" and aborts the whole schema exec
+    -- BEFORE migrations run (leaving valid_until/retry_after/etc. unapplied). It's created in
+    -- applyMigrations() AFTER the column is added. (Prod incident 2026-06-18.)
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
@@ -585,46 +589,68 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_call_attempts_user ON call_attempts(user_id, attempted_at DESC);
   `);
 
-  // Migrations for existing databases
-  const migrations = [
-    "ALTER TABLE briefings ADD COLUMN retry_attempted INTEGER DEFAULT 0",
-    "ALTER TABLE briefings ADD COLUMN calendar_actions TEXT",
-    "ALTER TABLE briefings ADD COLUMN edge_promises TEXT",
-    "ALTER TABLE briefings ADD COLUMN tool_actions TEXT",
-    "ALTER TABLE briefings ADD COLUMN error_code TEXT",
-    "ALTER TABLE users ADD COLUMN phone_number TEXT",
-    "ALTER TABLE users ADD COLUMN current_timezone TEXT",
-    "ALTER TABLE calendar_tokens ADD COLUMN scope TEXT",
-    "ALTER TABLE facts ADD COLUMN confidence TEXT NOT NULL DEFAULT 'high'",
-    "ALTER TABLE facts ADD COLUMN source_briefing_id INTEGER REFERENCES briefings(id)",
-    "ALTER TABLE priorities ADD COLUMN energy_cost TEXT CHECK(energy_cost IN ('high', 'medium', 'low'))",
-    "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
-    "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
-    "ALTER TABLE facts ADD COLUMN source TEXT",
-    "ALTER TABLE facts ADD COLUMN valid_from TEXT",
-    "ALTER TABLE facts ADD COLUMN valid_until TEXT",
-    "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
-    "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
-    "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
-    "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
-    "ALTER TABLE users ADD COLUMN voice_preference TEXT NOT NULL DEFAULT 'daniel'",
-    "ALTER TABLE people_profiles ADD COLUMN email TEXT",
-    // Round 5 — bi-temporal facts (Graphiti model)
-    "ALTER TABLE facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT (datetime('now'))",
-    "ALTER TABLE facts ADD COLUMN valid_until TEXT",
-    // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
-    "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
-    "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
-    // Retry durability: DB-flagged retry time survives server restarts (replaces in-memory setTimeout)
-    "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
-    // Learning pipeline reliability: per-call extraction status (success/partial/failed)
-    "ALTER TABLE briefings ADD COLUMN learning_status TEXT",
-    // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
-    "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
-    "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
-  ];
-  for (const migration of migrations) {
-    try { db.exec(migration); } catch { /* column already exists */ }
+  applyMigrations(db);
+}
+
+// Additive ALTER-TABLE migrations for databases that predate a column. Each is wrapped in
+// try/catch so an "already exists" (or non-constant-default) error on one NEVER aborts the
+// rest — that independence is the whole point. Exported for regression testing.
+//
+// ORDERING RULE (prod incident 2026-06-18): any index that references a migration-added
+// column MUST be created AFTER this loop (see DEFERRED_INDEXES below), never in the
+// pre-migration CREATE block — otherwise it throws on existing DBs and blocks all migrations.
+export const SCHEMA_MIGRATIONS: readonly string[] = [
+  "ALTER TABLE briefings ADD COLUMN retry_attempted INTEGER DEFAULT 0",
+  "ALTER TABLE briefings ADD COLUMN calendar_actions TEXT",
+  "ALTER TABLE briefings ADD COLUMN edge_promises TEXT",
+  "ALTER TABLE briefings ADD COLUMN tool_actions TEXT",
+  "ALTER TABLE briefings ADD COLUMN error_code TEXT",
+  "ALTER TABLE users ADD COLUMN phone_number TEXT",
+  "ALTER TABLE users ADD COLUMN current_timezone TEXT",
+  "ALTER TABLE calendar_tokens ADD COLUMN scope TEXT",
+  "ALTER TABLE facts ADD COLUMN confidence TEXT NOT NULL DEFAULT 'high'",
+  "ALTER TABLE facts ADD COLUMN source_briefing_id INTEGER REFERENCES briefings(id)",
+  "ALTER TABLE priorities ADD COLUMN energy_cost TEXT CHECK(energy_cost IN ('high', 'medium', 'low'))",
+  "ALTER TABLE calendar_scores ADD COLUMN edge_score INTEGER",
+  "ALTER TABLE undo_log ADD COLUMN plan_id TEXT",
+  "ALTER TABLE facts ADD COLUMN source TEXT",
+  // Round 5 — bi-temporal facts (Graphiti model). valid_from is added nullable here; a fresh
+  // DB gets it NOT NULL DEFAULT via CREATE TABLE. (SQLite can't ALTER-ADD a NOT NULL column
+  // with a non-constant default like datetime('now'), so the migrated form stays nullable —
+  // harmless: read paths treat valid_until IS NULL as "active" and don't require valid_from.)
+  "ALTER TABLE facts ADD COLUMN valid_from TEXT",
+  "ALTER TABLE facts ADD COLUMN valid_until TEXT",
+  "ALTER TABLE open_loops ADD COLUMN snooze_until TEXT",
+  "ALTER TABLE daily_focus ADD COLUMN dismissed_titles TEXT NOT NULL DEFAULT '[]'",
+  "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
+  "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
+  "ALTER TABLE users ADD COLUMN voice_preference TEXT NOT NULL DEFAULT 'daniel'",
+  "ALTER TABLE people_profiles ADD COLUMN email TEXT",
+  // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
+  "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
+  "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
+  // Retry durability: DB-flagged retry time survives server restarts (replaces in-memory setTimeout)
+  "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
+  // Learning pipeline reliability: per-call extraction status (success/partial/failed)
+  "ALTER TABLE briefings ADD COLUMN learning_status TEXT",
+  // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
+  "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
+];
+
+// Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
+// column is guaranteed to exist. Each is try/caught for the same independence guarantee.
+export const DEFERRED_INDEXES: readonly string[] = [
+  "CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(user_id, category, valid_until)",
+];
+
+export function applyMigrations(db: Database.Database): void {
+  for (const migration of SCHEMA_MIGRATIONS) {
+    try { db.exec(migration); } catch { /* column already exists / non-constant default — skip */ }
+  }
+  // Column-dependent indexes run only after the columns above are guaranteed present.
+  for (const idx of DEFERRED_INDEXES) {
+    try { db.exec(idx); } catch (e) { console.error('[db] deferred index failed:', idx, e); }
   }
 }
 
