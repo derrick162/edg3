@@ -449,6 +449,11 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST T4-5 — undo coverage sweep: planWeek + rememberPreference + fact undo ops.**
+  - **`planWeek`** (`app/api/vapi/tool-call/route.ts`): was creating calendar events without any undo record. Fixed by capturing `res.data.id` per insert and calling `recordUndo` with a `deleteMany` op once all events are created.
+  - **`lib/undo.ts`**: two new `UndoOp` types — `retireFact { userId, factId }` (undoes a new fact insert by retiring it) and `rollbackFact { userId, historyId }` (undoes a fact update by restoring the prior version via `factHistoryQueries.rollbackFact`). Both handled in `executeUndo`.
+  - **`rememberPreference`**: now calls `recordUndo` after every write. For new facts (upsert path): queries the newly created fact by category+entity and records `retireFact`. For updates (updateFact path): reads the `fact_history` row just written and records `rollbackFact`. Both wrapped in try/catch — non-critical, never blocks the main response.
+  - `factHistoryQueries` added to `tool-call/route.ts` import. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-MEMORY M4-3b — memory block versioning + rollback.**
   - `lib/db.ts` `upsertFact`: both INSERT paths (new fact + bi-temporal update) now capture `lastInsertRowid` and call `snapshotFactToHistory(newId, userId, 'created')` — every fact creation is logged to `fact_history` (extends M1-4 which only logged retire/edit/extraction-update).
   - `factHistoryQueries.rollbackFact(userId, historyId)` added: reads history row, retires the currently active fact (if any) with a 'retired' snapshot, re-inserts the historical statement/entity/category as a new active fact with `confidence='high'`. Statement stays encrypted byte-for-byte (no re-encrypt needed — `fact_history` stores the raw ciphertext).

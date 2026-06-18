@@ -11,7 +11,7 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -774,12 +774,17 @@ Query: ${query}` }],
     const planMatch = planText.match(/\[[\s\S]*\]/);
     const planEvents: Array<{ title: string; startDateTime: string; endDateTime: string }> = planMatch ? JSON.parse(planMatch[0]) : [];
     const created: string[] = [];
+    const planCreatedIds: string[] = [];
     for (const ev of planEvents) {
       try {
-        await cal.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${ev.title}`, start: { dateTime: ev.startDateTime, timeZone: user.timezone }, end: { dateTime: ev.endDateTime, timeZone: user.timezone }, colorId: '9' } });
-        created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
+        const planRes = await cal.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${ev.title}`, start: { dateTime: ev.startDateTime, timeZone: user.timezone }, end: { dateTime: ev.endDateTime, timeZone: user.timezone }, colorId: '9' } });
+        if (planRes.data.id) {
+          created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
+          planCreatedIds.push(planRes.data.id);
+        }
       } catch (_e) { /* skip conflicts */ }
     }
+    if (planCreatedIds.length) recordUndo(userId, `week plan — ${planCreatedIds.length} focus block(s)`, [{ type: 'deleteMany', calId: 'primary', eventIds: planCreatedIds }]);
     return created.length ? `Planned your week! Added: ${created.join(', ')}. Priorities: ${priorityText}.` : 'Week fully packed — no free slots.';
 
   } else if (fn === 'copyDayEvents') {
@@ -1129,8 +1134,20 @@ Query: ${query}` }],
       // User explicitly said to update — always write even if the old fact was high-confidence.
       // updateFact snapshots to fact_history (reason='user-edit') before overwriting.
       factQueries.updateFact(userId, existing.id, statement.trim().slice(0, 500), ent);
+      // Undo = rollback to the history entry just created (most recent for this fact).
+      try {
+        const hist = factHistoryQueries.getForFact(existing.id, userId);
+        if (hist.length) recordUndo(userId, `updated fact${ent ? ` "${ent}"` : ''}`, [{ type: 'rollbackFact', userId, historyId: hist[0].id }]);
+      } catch { /* non-critical */ }
     } else {
       factQueries.upsertFact(userId, cat, statement.trim().slice(0, 500), ent);
+      // Undo = retire the newly inserted active fact (query by entity/category to find its id).
+      try {
+        const newFact = ent
+          ? factQueries.getByCategory(userId, cat).find(f => f.entity?.toLowerCase() === ent.toLowerCase())
+          : factQueries.getByCategory(userId, cat).find(f => !f.entity && f.statement.slice(0, 80).toLowerCase() === statement.slice(0, 80).toLowerCase());
+        if (newFact) recordUndo(userId, `saved fact${ent ? ` "${ent}"` : ''}`, [{ type: 'retireFact', userId, factId: newFact.id }]);
+      } catch { /* non-critical */ }
     }
 
     const topicLabel = ent ? ` "${ent}"` : '';
