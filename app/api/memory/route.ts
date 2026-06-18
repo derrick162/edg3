@@ -10,7 +10,8 @@ export async function GET() {
   // Memory tab floor out after a couple of days (reported: "only goes back to June 8").
   const memories = memoryQueries.getRecent(user.id, 200);
   const facts = factQueries.getAll(user.id);
-  const latestTs = factHistoryQueries.getLatestTimestamps(user.id);
+  let latestTs: Record<number, string> = {};
+  try { latestTs = factHistoryQueries.getLatestTimestamps(user.id); } catch { /* non-fatal */ }
   const factsWithHistory = facts.map(f => ({ ...f, last_updated_at: latestTs[f.id] ?? null }));
   return NextResponse.json({ memories, facts: factsWithHistory });
 }
