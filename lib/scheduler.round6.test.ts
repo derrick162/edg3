@@ -26,10 +26,12 @@ const h = vi.hoisted(() => ({
 // ── mocks ──────────────────────────────────────────────────────────────────────
 
 vi.mock('./crypto', () => ({
-  encryptField:    (s: string) => { h.encryptCalls.push(s); return `enc:${s}`; },
-  decryptField:    (s: string) => { h.decryptCalls.push(s); return s.replace('enc:', ''); },
-  encryptNullable: (s: string | null) => s ? `enc:${s}` : null,
-  decryptNullable: (s: string | null) => s ? s.replace('enc:', '') : null,
+  encryptField:        (s: string) => { h.encryptCalls.push(s); return `enc:${s}`; },
+  decryptField:        (s: string) => { h.decryptCalls.push(s); return s.replace('enc:', ''); },
+  encryptNullable:     (s: string | null) => s ? `enc:${s}` : null,
+  decryptNullable:     (s: string | null) => s ? s.replace('enc:', '') : null,
+  safeDecryptField:    (s: string) => { h.decryptCalls.push(s); return s.replace('enc:', ''); },
+  safeDecryptNullable: (s: string | null) => s ? s.replace('enc:', '') : null,
 }));
 
 vi.mock('better-sqlite3', () => {

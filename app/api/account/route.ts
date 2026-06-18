@@ -30,6 +30,9 @@ export async function DELETE(req: NextRequest) {
     const userId = user.id;
 
     // Delete leaf tables first (no outbound FK dependencies to users), users row last.
+    // Explicit deletes are belt-and-suspenders: CASCADE handles most tables, but
+    // briefing_context_packs has no ON DELETE CASCADE so it MUST be deleted explicitly
+    // or the users DELETE will fail (foreign_keys = ON is active).
     db.prepare('DELETE FROM open_loops WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM calendar_plan_executions WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM daily_focus WHERE user_id = ?').run(userId);
@@ -54,6 +57,15 @@ export async function DELETE(req: NextRequest) {
     db.prepare('DELETE FROM event_dedupe_keys WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM delete_confirm_tokens WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM oauth_state WHERE user_id = ?').run(userId);
+    // Tables added after initial deletion route — must be explicit (briefing_context_packs
+    // has no ON DELETE CASCADE; others cascade but are listed for completeness).
+    db.prepare('DELETE FROM briefing_context_packs WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM episodes WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM people_profiles WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM pattern_cache WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM failed_webhooks WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM background_job_failures WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM call_attempts WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
 
     // Clear the session cookie — the user no longer exists.

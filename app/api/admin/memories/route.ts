@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getDb, userQueries } from '@/lib/db';
 import { checkAdminAuth } from '@/lib/adminAuth';
+import { cleanupGoalFacts, cleanupPeopleFacts } from '@/lib/facts';
 
 export async function DELETE(req: NextRequest) {
   if (!checkAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -30,6 +31,21 @@ export async function POST(req: NextRequest) {
   ).run(userId, type || 'calendar_note', content);
 
   return NextResponse.json({ id: result.lastInsertRowid });
+}
+
+// PATCH — run fact dedup cleanup for a user (goals + people consolidation).
+// Called once to fix existing duplicate goal facts (e.g. "30-60-90 plan" × N).
+export async function PATCH(req: NextRequest) {
+  if (!checkAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { userId, userName } = await req.json();
+  if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+  const user = userQueries.findById(userId);
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+  const goalResult = cleanupGoalFacts(userId);
+  const peopleResult = await cleanupPeopleFacts(userId, userName ?? user.name);
+  return NextResponse.json({ goalsRemoved: goalResult.removed, peopleRemoved: peopleResult.removed });
 }
 
 export async function GET(req: NextRequest) {

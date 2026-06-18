@@ -111,3 +111,56 @@ Specifically for inbox receipts: even if you somehow obtained another user's aud
 ---
 
 _Reviewed by Security (Vijay), June 2026. Route to Esther for final copy before launch._
+
+---
+
+## Encryption coverage map (internal — Security reference, not for publishing)
+
+_Last audited: 2026-06-18 by Security (Vijay). Audit method: read every CREATE TABLE DDL and
+every query function in `lib/db.ts` to verify encryptField/decryptField call sites._
+
+Cipher: **AES-256-GCM**, per-value random 12-byte IV, 16-byte auth tag. Format: `enc:1:<base64(iv||tag||ct)>`.
+Key: `DATA_ENCRYPTION_KEY` env var (Railway). Key rotation requires a re-encryption migration.
+
+Legacy plaintext rows are handled transparently on read (no forced re-encryption migration needed).
+`safeDecryptField()` / `safeDecryptNullable()` are used on content-path reads (briefing, facts, memories)
+so a missing/rotated key produces empty content rather than crashing the 7am call.
+OAuth token reads use the throwing variant (`decryptField`) so misconfiguration surfaces clearly.
+
+| Table | PII Level | Encrypt-write | Decrypt-read | Notes |
+|---|---|---|---|---|
+| `briefings` | HIGH | ✅ | ✅ | transcript + user_response via `encryptField`/`decryptBriefingRow` |
+| `calendar_tokens` | HIGH | ✅ | ✅ | access_token + refresh_token; throwing decrypt (auth path) |
+| `whoop_tokens` | HIGH | ✅ | ✅ | access_token + refresh_token; throwing decrypt (auth path) |
+| `episodes` | HIGH | ✅ | ✅ | content_raw via `encryptField`/`safeDecryptField` |
+| `briefing_context_packs` | HIGH | ✅ | ✅ | context_pack via `encryptField`/`safeDecryptField` |
+| `memories` | MEDIUM | ✅ | ✅ | content via `encryptField`/`safeDecryptField` |
+| `facts` | MEDIUM | ✅ | ✅ | statement via `encryptField`/`safeDecryptField` |
+| `pattern_cache` | MEDIUM | ✅ | ✅ | patterns JSON via `encryptField`/`safeDecryptField` |
+| `focus_milestones` | MEDIUM | ✅ | ✅ | title via `encryptField`/`decryptField` |
+| `open_loops` | MEDIUM | ✅ | ✅ | description via `encryptField`/`decryptField` |
+| `notifications` | MEDIUM | ✅ | ✅ | title + body via `encryptNullable`/`decryptNullable` |
+| `daily_focus` | MEDIUM | ✅ | ✅ | focus_areas JSON via `encryptField`/`decryptField` |
+| `gmail_drafts_log` | HIGH | ✅ | ✅ | recipient + subject via `encryptNullable`/`decryptNullable` |
+| `watched_threads` | MEDIUM | ✅ | ✅ | recipient + context via `encryptNullable`/`decryptNullable` |
+| `people_profiles` | MEDIUM | ❌ | ❌ | canonical_name + email plaintext. Needed for `LOWER()` lookup; same tier as `users.name/email`. Accepted gap — document here. |
+| `priorities` | MEDIUM | ❌ | ❌ | text plaintext. Goals/priorities are behavioral PII. Accepted gap for now — needed for full-text search in alignment queries. Flag for future encryption pass when search moves to a separate index. |
+| `undo_log` | MEDIUM | ❌ | ❌ | payload JSON plaintext (contains calendar event details). Low read frequency; no current decrypt path. Flag for future pass. |
+| `tasks` | LOW | ❌ | ❌ | text plaintext. Short task strings, low sensitivity. |
+| `users` | LOW | ❌ | ❌ | email/name/password_hash. password_hash is bcrypt (one-way). email + name accepted plaintext (needed for lookups). |
+| `audit_log` | LOW | ❌ | ❌ | args_json + snapshots intentionally plaintext for debugging. Email subjects pruned after 90 days. |
+| `calendar_scores` | LOW | N/A | N/A | Numeric/metadata only |
+| `energy_profile` | LOW | N/A | N/A | Hour integers (0–23) |
+| `event_energy_tags` | LOW | N/A | N/A | Category enums, hashes |
+| `calendar_plan_executions` | LOW | N/A | N/A | Execution status/counts |
+| `oauth_state` | LOW | N/A | N/A | CSRF tokens, short-lived (10 min TTL) |
+| `waitlist` | LOW | N/A | N/A | Pre-account signups |
+| `failed_webhooks` | LOW | N/A | N/A | Error messages only; no user content |
+| `background_job_failures` | LOW | N/A | N/A | Job error strings; no user content |
+
+**Accepted gaps (tracked):**
+1. `people_profiles.canonical_name` + `.email` — plaintext by design for `LOWER()` SQL lookup. Same tier as `users.name`/`users.email`. Track for future if we add a separate search index.
+2. `priorities.text` — plaintext by design for full-text alignment queries. Track for future.
+3. `undo_log.payload` — calendar event JSON plaintext. Low-risk currently (no external exposure). Track for future encryption pass.
+
+**Encryption is confirmed active when:** `DATA_ENCRYPTION_KEY` env var is set on Railway. All writes after that date are encrypted; prior rows are legacy plaintext but read transparently.

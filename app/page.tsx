@@ -275,7 +275,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: 'var(--text-muted)' }}>
-            Edg3 learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 3–5 minutes.
+            Edg3 learns how you work, organizes your calendar around what matters most, and reshapes your day — every morning, in 3 minutes.
           </p>
 
           {/* Waitlist form */}
@@ -367,9 +367,9 @@ export default function LandingPage() {
           <CalendarVisual />
         </section>
 
-        {/* ── Solution ── */}
-        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
-          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
+        {/* ── Solution: 3-column explainer ── */}
+        <section className="max-w-5xl mx-auto px-6 md:px-8 py-24">
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
             Edg3 fixes your week in 3 minutes every morning.
           </h2>
           <p className="text-base mb-12 text-center" style={{ color: 'var(--text-muted)' }}>
@@ -381,7 +381,7 @@ export default function LandingPage() {
                 icon: <IconTarget />,
                 num: '01',
                 title: 'He already knows your priorities.',
-                desc: 'Edg3 analyzes your calendar history, call memory, and inbox to surface what matters most today. You confirm or adjust — Edg3 executes.',
+                desc: 'Edg3 analyzes your calendar history, call memory, and inbox to tell you what matters most today — you don\'t have to figure it out. Just confirm or tweak.',
               },
               {
                 icon: <IconCalendar />,
@@ -393,7 +393,7 @@ export default function LandingPage() {
                 icon: <IconBrain />,
                 num: '03',
                 title: 'He gets smarter every day.',
-                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edg3 how you work. No manual input — it learns from what you do. The longer you use it, the sharper it gets.',
+                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edg3 how you work. The longer you use it, the better it gets at running the day you need.',
               },
             ].map(item => (
               <div key={item.num} className="glass-card glass-card-hover p-7">
@@ -480,7 +480,11 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="rounded-xl px-3 py-2.5 text-xs leading-snug" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
+            {/* Diagnosis chip */}
+            <div
+              className="rounded-xl px-3 py-2.5 text-xs leading-snug"
+              style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
+            >
               <span style={{ color: 'var(--text-accent)', fontWeight: 600 }}>Edg3: </span>
               <span style={{ color: 'var(--text-muted)' }}>
                 Focus is solid — but your 9 AM deep-work block is sandwiched between two meetings. Want me to move them?
@@ -555,11 +559,11 @@ export default function LandingPage() {
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
               Most AI forgets you.<br />Edg3 remembers.
             </h2>
-            <p className="text-base leading-relaxed mb-3 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
-              Every call, every confirmed plan, every priority you name — Edg3 builds a model of you that updates every morning.
+            <p className="text-base leading-relaxed mb-4 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
+              Every call, every confirmed plan, every priority you name — Edg3 is building a model of you. Not a profile you fill out once and forget. A living picture that updates every morning.
             </p>
-            <p className="text-base leading-relaxed mb-3 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
-              It stops asking what matters. It starts just knowing.
+            <p className="text-base leading-relaxed mb-4 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
+              That&apos;s why the briefing feels different after two weeks than it did on day one. Edg3 knows your energy patterns, your recurring bottlenecks, the people who move things and the ones who don&apos;t. It stops asking what matters and starts just knowing.
             </p>
             <p className="text-base font-semibold mb-10 max-w-2xl" style={{ color: 'var(--text-body)' }}>
               You&apos;re not training a chatbot. You&apos;re building an operating partner.

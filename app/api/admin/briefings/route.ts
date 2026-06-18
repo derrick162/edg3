@@ -7,15 +7,29 @@ export async function GET(req: NextRequest) {
 
   const userId = req.nextUrl.searchParams.get('userId');
   const limit = parseInt(req.nextUrl.searchParams.get('limit') || '10');
+  const failedOnly = req.nextUrl.searchParams.get('failed') === '1';
 
   const db = getDb();
-  const query = userId
-    ? 'SELECT id, user_id, status, scheduled_for, edge_promises, tool_actions, calendar_actions, user_response, created_at FROM briefings WHERE user_id = ? ORDER BY id DESC LIMIT ?'
-    : 'SELECT id, user_id, status, scheduled_for, edge_promises, tool_actions, calendar_actions, user_response, created_at FROM briefings ORDER BY id DESC LIMIT ?';
+  const SELECT = 'SELECT id, user_id, status, scheduled_for, edge_promises, tool_actions, calendar_actions, user_response, learning_status, created_at FROM briefings';
+  const FAIL_CLAUSE = `(learning_status LIKE '%_ok":false%')`;
 
-  const briefings = (userId
-    ? db.prepare(query).all(userId, limit)
-    : db.prepare(query).all(limit)) as Array<{ user_response?: string | null }>;
+  let query: string;
+  let params: unknown[];
+  if (userId && failedOnly) {
+    query = `${SELECT} WHERE user_id = ? AND ${FAIL_CLAUSE} ORDER BY id DESC LIMIT ?`;
+    params = [userId, limit];
+  } else if (userId) {
+    query = `${SELECT} WHERE user_id = ? ORDER BY id DESC LIMIT ?`;
+    params = [userId, limit];
+  } else if (failedOnly) {
+    query = `${SELECT} WHERE ${FAIL_CLAUSE} ORDER BY id DESC LIMIT ?`;
+    params = [limit];
+  } else {
+    query = `${SELECT} ORDER BY id DESC LIMIT ?`;
+    params = [limit];
+  }
+
+  const briefings = db.prepare(query).all(...params) as Array<{ user_response?: string | null }>;
 
   // Decrypt the encrypted PII column (user_response) at rest before returning.
   return NextResponse.json({ briefings: briefings.map(decryptBriefingRow) });

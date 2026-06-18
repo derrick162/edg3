@@ -36,7 +36,8 @@ interface TaskLike {
   completed: number | boolean;
   completed_at: string | null;
   source: string;
-  date: string; // YYYY-MM-DD when the task was logged
+  date: string;         // YYYY-MM-DD due date (also creation date for pre-DC0-1b tasks)
+  created_at?: string;  // ISO timestamp when the task was captured (present for DC0-1b+ tasks)
 }
 
 // ── Core function ─────────────────────────────────────────────────────────────
@@ -168,15 +169,143 @@ export function formatAccountabilityForBriefing(snapshot: AccountabilitySnapshot
 
 /**
  * Generate the briefing instruction for how to use the accountability block.
+ * When a reliability signal is available, the language for the top outstanding
+ * commitment is calibrated to the user's actual follow-through rate for that
+ * time horizon (sameDay / thisWeek / longHorizon).
  */
-export function accountabilityBriefingInstruction(snapshot: AccountabilitySnapshot): string {
+export function accountabilityBriefingInstruction(
+  snapshot: AccountabilitySnapshot,
+  signal?: ReliabilitySignal,
+): string {
   if (!snapshot.stillOpen.length && !snapshot.done.length) return '';
 
   if (snapshot.stillOpen.length > 0) {
-    return `Use ACCOUNTABILITY in section 4 (ACTION ITEMS): name the most overdue outstanding commitment and ask directly — "Last time you said you'd [text] — did that happen?" One commitment only. If done, celebrate briefly and move on. If still open, offer to reschedule or drop it ("want to push it to Thursday, or let it go?"). Never shame — curious, not judgmental.`;
+    const top = snapshot.stillOpen[0];
+    const question = signal
+      ? calibrateCommitmentLanguage(top.text, top.dueDate, top.madeAt, signal)
+      : `Last time you said you'd "${top.text}" — did that happen?`;
+    return `Use ACCOUNTABILITY in section 4 (ACTION ITEMS): ask — "${question}" One commitment only. If done, celebrate briefly and move on. If still open, offer to reschedule or drop it ("want to push it to Thursday, or let it go?"). Never shame — curious, not judgmental.`;
   }
 
   return `Use ACCOUNTABILITY to briefly acknowledge the strong completion rate — one encouraging sentence in the GREETING or closing section. Don't overdo it.`;
+}
+
+// ── Reliability signal (M4-2) ────────────────────────────────────────────────
+
+/**
+ * Completion rate broken down by the time-horizon of each commitment:
+ *   sameDay    — committed and due on the same day (DC0-1b "do it today" extractions)
+ *   thisWeek   — committed with a 1–6 day horizon
+ *   longHorizon — 7+ day horizon or no date context (older tasks where date = creation)
+ *
+ * null means insufficient data (<2 commitments in that bucket to be meaningful).
+ */
+export interface ReliabilitySignal {
+  sameDay: number | null;
+  thisWeek: number | null;
+  longHorizon: number | null;
+}
+
+/**
+ * Derive commitment-reliability rates from task history.
+ * Pure — takes already-fetched tasks; caller provides today for relative bucketing.
+ *
+ * Only source='edg3' tasks are considered (Edge-captured commitments).
+ * Uses created_at when present to compute the horizon (DC0-1b+); falls back to
+ * treating date ≈ created_at (pre-DC0-1b tasks → classified as sameDay by default).
+ */
+export function getReliabilitySignal(
+  tasks: TaskLike[],
+  today: string,
+  lookbackDays = 30,
+): ReliabilitySignal {
+  const cutoff = offsetDate(today, -lookbackDays);
+
+  const buckets = {
+    sameDay:     { done: 0, total: 0 },
+    thisWeek:    { done: 0, total: 0 },
+    longHorizon: { done: 0, total: 0 },
+  };
+
+  for (const t of tasks) {
+    if (t.source !== 'edg3') continue;
+    // Use the creation date to determine the horizon; fall back to due date
+    const createdOn = t.created_at ? t.created_at.slice(0, 10) : t.date;
+    if (createdOn < cutoff) continue; // outside lookback window
+
+    const isDone = t.completed === 1 || t.completed === true;
+
+    // Horizon = days from creation to due date
+    const createdMs = new Date(createdOn + 'T12:00:00Z').getTime();
+    const dueMs = new Date(t.date + 'T12:00:00Z').getTime();
+    const horizonDays = Math.max(0, Math.round((dueMs - createdMs) / 86400000));
+
+    let bucket: keyof typeof buckets;
+    if (horizonDays === 0) {
+      bucket = 'sameDay';
+    } else if (horizonDays < 7) {
+      bucket = 'thisWeek';
+    } else {
+      bucket = 'longHorizon';
+    }
+
+    buckets[bucket].total++;
+    if (isDone) buckets[bucket].done++;
+  }
+
+  const rate = (b: { done: number; total: number }) =>
+    b.total >= 2 ? b.done / b.total : null;
+
+  return {
+    sameDay:     rate(buckets.sameDay),
+    thisWeek:    rate(buckets.thisWeek),
+    longHorizon: rate(buckets.longHorizon),
+  };
+}
+
+/**
+ * Pick the reliability tier relevant to a commitment's time horizon.
+ * horizon = days between commitment capture and its due date.
+ */
+function pickRate(signal: ReliabilitySignal, horizonDays: number): number | null {
+  if (horizonDays === 0) return signal.sameDay;
+  if (horizonDays < 7)   return signal.thisWeek;
+  return signal.longHorizon;
+}
+
+/**
+ * Calibrate the language the briefing uses for a specific outstanding commitment.
+ * Returns one of three instruction strings based on the user's reliability rate
+ * for this commitment's time-horizon. Falls back to neutral language when the
+ * signal is null (insufficient history).
+ *
+ * commitmentText — the commitment string to embed in the language
+ * dueDate        — YYYY-MM-DD due date (null = no explicit due date → long horizon)
+ * madeAt         — YYYY-MM-DD when Edge captured the commitment
+ * signal         — reliability rates from getReliabilitySignal
+ */
+export function calibrateCommitmentLanguage(
+  commitmentText: string,
+  dueDate: string | null,
+  madeAt: string,
+  signal: ReliabilitySignal,
+): string {
+  const dueDateStr = dueDate ?? offsetDate(madeAt, 30); // treat no-date as long horizon
+  const madeMs = new Date(madeAt + 'T12:00:00Z').getTime();
+  const dueMs  = new Date(dueDateStr + 'T12:00:00Z').getTime();
+  const horizonDays = Math.max(0, Math.round((dueMs - madeMs) / 86400000));
+  const rate = pickRate(signal, horizonDays);
+
+  if (rate === null || rate >= 0.7) {
+    // High reliability or unknown — positive framing
+    return `You said you'd "${commitmentText}" — did that happen?`;
+  }
+  if (rate >= 0.4) {
+    // Medium reliability — pragmatic, offer a block
+    return `You mentioned "${commitmentText}" — still on the list? Want me to block time for it?`;
+  }
+  // Low reliability — gentle reality check
+  return `"${commitmentText}" has been on the list a while. Is it still the right priority, or should we let it go?`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

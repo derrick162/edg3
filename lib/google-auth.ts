@@ -62,3 +62,48 @@ export function missingRequiredScopes(scope?: string | null): string[] {
   const granted = new Set(parseScopes(scope));
   return GOOGLE_SCOPES.filter((s) => !granted.has(s));
 }
+
+// T4-1 — proactive token health check. Called from the 6am health digest before the
+// 7am call. Makes a lightweight calendarList request; if it throws a 401 or invalid_grant,
+// increments the auth-failure counter in calendar_tokens (sets reconnect_required after 3+).
+// On success: clears the failure counter (token refresh worked). Returns { ok, needsReconnect }.
+export async function checkCalendarTokenHealth(userId: number): Promise<{ ok: boolean; needsReconnect: boolean }> {
+  // Avoid importing calendar.ts (circular) — dynamically require only what we need.
+  // If google-auth-ts can't reach the OAuth client, degrade gracefully.
+  try {
+    const { calendarQueries } = await import('./db');
+    const tokenRow = calendarQueries.get(userId);
+    if (!tokenRow) return { ok: false, needsReconnect: false };
+
+    const { google } = await import('googleapis');
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI,
+    );
+    oauth2Client.setCredentials({
+      access_token: tokenRow.access_token,
+      refresh_token: tokenRow.refresh_token ?? undefined,
+      expiry_date: tokenRow.expiry ? parseInt(tokenRow.expiry) : undefined,
+    });
+
+    // Lightweight probe: list one calendar to verify auth works.
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    await calendar.calendarList.list({ maxResults: 1 });
+
+    // Success — clear any prior auth failures.
+    calendarQueries.clearAuthFailures(userId);
+    return { ok: true, needsReconnect: false };
+  } catch (err) {
+    const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+    const isAuthError = msg.includes('invalid_grant') || msg.includes('401') || msg.includes('unauthorized') || msg.includes('token has been expired');
+    if (isAuthError) {
+      const { calendarQueries } = await import('./db');
+      calendarQueries.recordAuthFailure(userId);
+      const needsReconnect = calendarQueries.needsReconnect(userId);
+      return { ok: false, needsReconnect };
+    }
+    // Non-auth error (network, quota): don't blame the token.
+    return { ok: false, needsReconnect: false };
+  }
+}

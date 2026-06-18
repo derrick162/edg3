@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { isValidTimeZone } from './time';
-import { encryptField, encryptNullable, decryptField, decryptNullable } from './crypto';
+import { encryptField, encryptNullable, decryptField, decryptNullable, safeDecryptField, safeDecryptNullable } from './crypto';
 
 // On Railway, use the mounted volume at /data. Locally, use ./data
 export const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'edg3.db');
@@ -19,6 +19,7 @@ export function getDb(): Database.Database {
   if (!db) {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000'); // wait up to 5s on write contention before throwing
     db.pragma('foreign_keys = ON');
     initSchema(db);
   }
@@ -196,6 +197,23 @@ function initSchema(db: Database.Database) {
       used INTEGER NOT NULL DEFAULT 0
     );
 
+    -- T4-4 — Webhook-level idempotency gate. Prevents double-processing when Vapi retries
+    -- the same end-of-call-report. event_key = "<callId>:<type>". INSERT OR IGNORE is atomic
+    -- in SQLite — eliminates the TOCTOU race in the status-flag check. Pruned at 24h via 3am cron.
+    CREATE TABLE IF NOT EXISTS webhook_dedup_keys (
+      event_key    TEXT PRIMARY KEY,
+      processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- T4-4 — Tool-call idempotency gate. Prevents double-execution of mutations when Vapi
+    -- retries a tool call after a transient timeout. toolcall_id comes from Vapi's toolCallList[i].id.
+    -- result is stored so concurrent retries can return the same response. Pruned at 10min via 3am cron.
+    CREATE TABLE IF NOT EXISTS tool_call_dedup_keys (
+      toolcall_id  TEXT PRIMARY KEY,
+      result       TEXT NOT NULL DEFAULT '',
+      processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Day-1 preview briefing — generated once on first dashboard load after onboarding.
     -- UNIQUE on user_id ensures a single preview per user; INSERT OR IGNORE handles races.
     CREATE TABLE IF NOT EXISTS preview_briefings (
@@ -241,6 +259,21 @@ function initSchema(db: Database.Database) {
       confidence_score   REAL NOT NULL DEFAULT 1.0,
       last_confirmed_at  TEXT DEFAULT (datetime('now'))
     );
+
+    -- Immutable audit trail: snapshot of a fact's value before it was retired or updated.
+    -- Written before every retire/update — never modified after insert.
+    CREATE TABLE IF NOT EXISTS fact_history (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      fact_id     INTEGER NOT NULL,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      statement   TEXT NOT NULL,
+      entity      TEXT,
+      category    TEXT NOT NULL,
+      retired_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      reason      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_fact_history_fact ON fact_history(fact_id);
+    CREATE INDEX IF NOT EXISTS idx_fact_history_user ON fact_history(user_id, retired_at DESC);
 
     -- Whoop OAuth tokens (health data PII — encrypted at rest).
     -- expires_at is epoch ms for easy Date.now() comparison.
@@ -444,6 +477,53 @@ function initSchema(db: Database.Database) {
       generated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, pack_date)
     );
+
+    -- Dead-letter queue for webhook calls that failed even after retry.
+    -- Populated by lib/scheduler.ts when the DB-flagged retry also fails.
+    -- Daily check logs a warning to Railway if any rows exist in the last 24h.
+    CREATE TABLE IF NOT EXISTS failed_webhooks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      vapi_call_id TEXT,
+      briefing_id INTEGER REFERENCES briefings(id) ON DELETE SET NULL,
+      failed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      error       TEXT NOT NULL
+    );
+
+    -- Structured failure log for background cron jobs (sleep-time consolidation,
+    -- pattern detection, predictive context loading, etc.). Populated by the cron
+    -- runners in lib/scheduler.ts. Retained for 30 days; pruned on each daily run.
+    CREATE TABLE IF NOT EXISTS background_job_failures (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job         TEXT NOT NULL,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      failed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      error       TEXT NOT NULL,
+      consecutive INTEGER NOT NULL DEFAULT 1
+    );
+
+    -- System-level health log written by the 6am health digest cron (runs before the
+    -- 7am call). One row per check; no user_id — this is infrastructure-level state.
+    -- Status 'ok' = all systems nominal; 'degraded' = at least one failure category.
+    -- Core / Design can surface this in an admin panel. Retained for 30 days.
+    CREATE TABLE IF NOT EXISTS health_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      status     TEXT NOT NULL CHECK(status IN ('ok', 'degraded')),
+      summary    TEXT NOT NULL,
+      checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Per-attempt log for every scheduled morning call (DC1-1). Written before Vapi
+    -- is contacted so even early failures are captured. status = connected on success,
+    -- failed on all-retries-exhausted, retrying on the first failure (retry pending).
+    CREATE TABLE IF NOT EXISTS call_attempts (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      scheduled_for TEXT NOT NULL,
+      status        TEXT NOT NULL CHECK(status IN ('connected', 'failed', 'retrying')),
+      fail_reason   TEXT,
+      attempted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -470,6 +550,10 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_people_profiles_user ON people_profiles(user_id, interaction_count DESC);
     CREATE INDEX IF NOT EXISTS idx_episodes_user_occurred ON episodes(user_id, occurred_at DESC);
     CREATE INDEX IF NOT EXISTS idx_context_packs_user_date ON briefing_context_packs(user_id, pack_date);
+    CREATE INDEX IF NOT EXISTS idx_failed_webhooks_failed_at ON failed_webhooks(failed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_bg_job_failures_job_user ON background_job_failures(job, user_id, failed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_health_log_checked_at ON health_log(checked_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_call_attempts_user ON call_attempts(user_id, attempted_at DESC);
   `);
 
   // Migrations for existing databases
@@ -502,6 +586,13 @@ function initSchema(db: Database.Database) {
     // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
     "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
     "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
+    // Retry durability: DB-flagged retry time survives server restarts (replaces in-memory setTimeout)
+    "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
+    // Learning pipeline reliability: per-call extraction status (success/partial/failed)
+    "ALTER TABLE briefings ADD COLUMN learning_status TEXT",
+    // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
+    "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
@@ -616,7 +707,7 @@ export const energyLogQueries = {
 // Memory content is PII (transcripts, insights, personal context) — encrypted at rest.
 // Legacy plaintext rows transparently pass through decryptField (see lib/crypto.ts design).
 function decryptMemoryRow(r: Memory): Memory {
-  return { ...r, content: decryptField(r.content) };
+  return { ...r, content: safeDecryptField(r.content, 'memory.content') };
 }
 
 // Special content tags that determine priority in getWeighted().
@@ -716,6 +807,16 @@ export const briefingQueries = {
     const values = entries.map(([k, v]) => (ENCRYPTED_BRIEFING_FIELDS.has(k) && typeof v === 'string') ? encryptField(v) : v);
     return getDb().prepare(`UPDATE briefings SET ${fields} WHERE id = ?`).run(...values, id);
   },
+  updateLearningStatus: (briefingId: number, update: Record<string, unknown>): void => {
+    try {
+      const row = getDb().prepare('SELECT learning_status FROM briefings WHERE id = ?').get(briefingId) as { learning_status: string | null } | undefined;
+      let current: Record<string, unknown> = {};
+      try { if (row?.learning_status) current = JSON.parse(row.learning_status); } catch { /* ok */ }
+      getDb().prepare('UPDATE briefings SET learning_status = ? WHERE id = ?')
+        .run(JSON.stringify({ ...current, ...update }), briefingId);
+    } catch { /* non-fatal — learning status is observability only */ }
+  },
+
   getRecent: (userId: number, limit = 10) => {
     return (getDb().prepare(
       'SELECT * FROM briefings WHERE user_id = ? ORDER BY scheduled_for DESC LIMIT ?'
@@ -780,6 +881,32 @@ export const calendarQueries = {
   },
   delete: (userId: number) => {
     return getDb().prepare('DELETE FROM calendar_tokens WHERE user_id = ?').run(userId);
+  },
+  // T4-1 — auth failure tracking. Increments failure counter; sets reconnect_required after 3+ failures.
+  recordAuthFailure: (userId: number): void => {
+    try {
+      const db = getDb();
+      const failures = db.prepare(
+        'UPDATE calendar_tokens SET calendar_auth_failures = calendar_auth_failures + 1 WHERE user_id = ?'
+      ).run(userId);
+      if (failures.changes === 0) return;
+      const row = db.prepare('SELECT calendar_auth_failures FROM calendar_tokens WHERE user_id = ?').get(userId) as { calendar_auth_failures: number } | undefined;
+      if (row && row.calendar_auth_failures >= 3) {
+        db.prepare('UPDATE calendar_tokens SET calendar_reconnect_required = 1 WHERE user_id = ?').run(userId);
+        console.error(`[calendar-auth] ALERT: userId=${userId} has had ${row.calendar_auth_failures} consecutive auth failures — flagged for reconnect`);
+      }
+    } catch { /* best effort */ }
+  },
+  clearAuthFailures: (userId: number): void => {
+    try {
+      getDb().prepare(
+        'UPDATE calendar_tokens SET calendar_auth_failures = 0, calendar_reconnect_required = 0 WHERE user_id = ?'
+      ).run(userId);
+    } catch { /* best effort */ }
+  },
+  needsReconnect: (userId: number): boolean => {
+    const row = getDb().prepare('SELECT calendar_reconnect_required FROM calendar_tokens WHERE user_id = ?').get(userId) as { calendar_reconnect_required: number } | undefined;
+    return (row?.calendar_reconnect_required ?? 0) === 1;
   },
 };
 
@@ -999,6 +1126,43 @@ export const deleteConfirmQueries = {
   },
 };
 
+// T4-4 — Webhook-level idempotency (prevents double-processing on Vapi webhook retries).
+export const webhookDedupeQueries = {
+  claim: (eventKey: string): boolean => {
+    try {
+      const r = getDb().prepare('INSERT OR IGNORE INTO webhook_dedup_keys (event_key) VALUES (?)').run(eventKey);
+      return r.changes === 1; // true = first occurrence, false = duplicate
+    } catch { return true; } // fail open — never block webhook processing on a DB fault
+  },
+  prune: (): void => {
+    getDb().prepare("DELETE FROM webhook_dedup_keys WHERE processed_at < datetime('now', '-24 hours')").run();
+  },
+};
+
+// T4-4 — Tool-call idempotency (prevents double-execution on Vapi retry storms).
+export const toolCallDedupeQueries = {
+  claim: (toolCallId: string): boolean => {
+    try {
+      const r = getDb().prepare('INSERT OR IGNORE INTO tool_call_dedup_keys (toolcall_id) VALUES (?)').run(toolCallId);
+      return r.changes === 1; // true = new, false = duplicate
+    } catch { return true; } // fail open
+  },
+  recordResult: (toolCallId: string, result: string): void => {
+    try {
+      getDb().prepare('UPDATE tool_call_dedup_keys SET result = ? WHERE toolcall_id = ?').run(result.slice(0, 2000), toolCallId);
+    } catch { /* non-critical */ }
+  },
+  getCached: (toolCallId: string): string | null => {
+    try {
+      const row = getDb().prepare('SELECT result FROM tool_call_dedup_keys WHERE toolcall_id = ?').get(toolCallId) as { result: string } | undefined;
+      return row && row.result ? row.result : null;
+    } catch { return null; }
+  },
+  prune: (): void => {
+    getDb().prepare("DELETE FROM tool_call_dedup_keys WHERE processed_at < datetime('now', '-10 minutes')").run();
+  },
+};
+
 // Append-only action audit log (#7).
 // record() is fire-and-forget — never throws so a DB fault never disrupts a tool call.
 // recent() is for Core's "Recent Activity" dashboard; recentAll() is for the admin panel.
@@ -1094,6 +1258,125 @@ export const auditLogQueries = {
          AND snapshot_after IS NOT NULL
          AND created_at < datetime('now', ?)`
     ).run(`-${days} days`);
+  },
+};
+
+// Failed webhook dead-letter queue
+export const failedWebhookQueries = {
+  record: (userId: number | null, vapiCallId: string | null, briefingId: number | null, error: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO failed_webhooks (user_id, vapi_call_id, briefing_id, error) VALUES (?, ?, ?, ?)'
+      ).run(userId, vapiCallId, briefingId, error.slice(0, 2000));
+    } catch { /* best effort — never block the caller */ }
+  },
+
+  recentCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM failed_webhooks WHERE failed_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM failed_webhooks WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// Background job failure log — structured error records for cron jobs
+export const backgroundJobFailureQueries = {
+  record: (job: string, userId: number | null, error: string): void => {
+    try {
+      // Count consecutive failures for this job+user pair to surface persistent problems.
+      const prev = getDb().prepare(
+        `SELECT consecutive FROM background_job_failures WHERE job = ? AND (user_id = ? OR (user_id IS NULL AND ? IS NULL)) ORDER BY failed_at DESC LIMIT 1`
+      ).get(job, userId, userId) as { consecutive: number } | undefined;
+      const consecutive = (prev?.consecutive ?? 0) + 1;
+      getDb().prepare(
+        'INSERT INTO background_job_failures (job, user_id, error, consecutive) VALUES (?, ?, ?, ?)'
+      ).run(job, userId, error.slice(0, 2000), consecutive);
+      if (consecutive >= 3) {
+        console.error(`[job-failures] ALERT: job="${job}" userId=${userId} has failed ${consecutive} consecutive times`);
+      }
+    } catch { /* best effort */ }
+  },
+
+  recentCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM background_job_failures WHERE failed_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+
+  maxConsecutive: (job: string, sinceHours = 168): number => {
+    const row = getDb().prepare(
+      `SELECT MAX(consecutive) AS m FROM background_job_failures WHERE job = ? AND failed_at >= datetime('now', ?)`
+    ).get(job, `-${sinceHours} hours`) as { m: number | null };
+    return row.m ?? 0;
+  },
+
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM background_job_failures WHERE failed_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// System health log — written by the 6am health digest cron (T1-3)
+export const healthLogQueries = {
+  write: (status: 'ok' | 'degraded', summary: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO health_log (status, summary) VALUES (?, ?)'
+      ).run(status, summary.slice(0, 2000));
+    } catch { /* best effort */ }
+  },
+  getLatest: (): { status: string; summary: string; checked_at: string } | undefined => {
+    return getDb().prepare(
+      'SELECT status, summary, checked_at FROM health_log ORDER BY checked_at DESC LIMIT 1'
+    ).get() as { status: string; summary: string; checked_at: string } | undefined;
+  },
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM health_log WHERE checked_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// Call attempt log — one row per scheduled call attempt (DC1-1)
+export const callAttemptQueries = {
+  record: (userId: number, scheduledFor: string, status: 'connected' | 'failed' | 'retrying', failReason?: string): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO call_attempts (user_id, scheduled_for, status, fail_reason) VALUES (?, ?, ?, ?)'
+      ).run(userId, scheduledFor, status, failReason ?? null);
+    } catch { /* best effort */ }
+  },
+  getRecent: (userId: number, sinceHours = 24): Array<{ status: string; fail_reason: string | null; attempted_at: string }> => {
+    return getDb().prepare(
+      `SELECT status, fail_reason, attempted_at FROM call_attempts WHERE user_id = ? AND attempted_at >= datetime('now', ?) ORDER BY attempted_at DESC`
+    ).all(userId, `-${sinceHours} hours`) as Array<{ status: string; fail_reason: string | null; attempted_at: string }>;
+  },
+  failedCount: (sinceHours = 24): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) AS n FROM call_attempts WHERE status = 'failed' AND attempted_at >= datetime('now', ?)`
+    ).get(`-${sinceHours} hours`) as { n: number };
+    return row.n;
+  },
+  prune: (keepDays = 30): void => {
+    try {
+      getDb().prepare(
+        `DELETE FROM call_attempts WHERE attempted_at < datetime('now', ?)`
+      ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
   },
 };
 
@@ -1375,7 +1658,22 @@ export const whoopQueries = {
 
 // Decrypt a raw DB row so statement is plaintext. Non-encrypted (legacy) values pass through.
 function decryptFactRow(r: Fact): Fact {
-  return { ...r, statement: decryptField(r.statement) };
+  return { ...r, statement: safeDecryptField(r.statement, 'fact.statement') };
+}
+
+// Snapshot a fact's current value to fact_history before retirement or user edit.
+// Copies the raw (encrypted) statement byte-for-byte — no re-encryption.
+function snapshotFactToHistory(factId: number, userId: number, reason: string): void {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      'SELECT statement, entity, category FROM facts WHERE id=? AND user_id=?'
+    ).get(factId, userId) as { statement: string; entity: string | null; category: string } | undefined;
+    if (!row) return;
+    db.prepare(
+      'INSERT INTO fact_history (fact_id, user_id, statement, entity, category, reason) VALUES (?,?,?,?,?,?)'
+    ).run(factId, userId, row.statement, row.entity ?? null, row.category, reason);
+  } catch { /* non-fatal — fact_history is audit-only */ }
 }
 
 export const factQueries = {
@@ -1397,6 +1695,7 @@ export const factQueries = {
   // Retire a fact bi-temporally (sets valid_until = now). Preserves history — never hard-deletes.
   // Guarded with `AND valid_until IS NULL` so a second call never overwrites the original retire timestamp.
   retire: (userId: number, id: number): void => {
+    snapshotFactToHistory(id, userId, 'retired');
     getDb().prepare(
       "UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=? AND valid_until IS NULL"
     ).run(id, userId);
@@ -1425,29 +1724,36 @@ export const factQueries = {
       const row = db.prepare(
         'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND LOWER(entity)=LOWER(?) AND valid_until IS NULL'
       ).get(userId, category, entity) as { id: number; statement: string; confidence: 'high' | 'low' } | undefined;
-      if (row) { existingId = row.id; existingStatement = decryptField(row.statement); existingConfidence = row.confidence; }
+      if (row) { existingId = row.id; existingStatement = safeDecryptField(row.statement, 'fact.statement'); existingConfidence = row.confidence; }
     } else {
       const cands = db.prepare(
         'SELECT id, statement, confidence FROM facts WHERE user_id=? AND category=? AND entity IS NULL AND valid_until IS NULL'
       ).all(userId, category) as Array<{ id: number; statement: string; confidence: 'high' | 'low' }>;
       const match = cands.find(
-        r => decryptField(r.statement).toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
+        r => safeDecryptField(r.statement, 'fact.statement').toLowerCase().slice(0, 80) === statement.toLowerCase().slice(0, 80)
       );
-      if (match) { existingId = match.id; existingStatement = decryptField(match.statement); existingConfidence = match.confidence; }
+      if (match) { existingId = match.id; existingStatement = safeDecryptField(match.statement, 'fact.statement'); existingConfidence = match.confidence; }
     }
 
     if (existingId !== undefined) {
+      const sameStatement = existingStatement!.toLowerCase() === statement.toLowerCase();
       // User-corrected facts (confidence='high') are not overwritten by new extractions.
       if (existingConfidence === 'high') {
+        // Refresh learned_at so facts seen again don't drift toward "stale".
+        if (sameStatement) db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
         return;
       }
-      if (existingStatement!.toLowerCase() !== statement.toLowerCase()) {
-        // Bi-temporal: retire the old fact and insert the updated one (history preserved).
+      if (!sameStatement) {
+        // Bi-temporal: snapshot then retire the old fact and insert the updated one.
+        snapshotFactToHistory(existingId, userId, 'extraction-update');
         db.prepare("UPDATE facts SET valid_until=datetime('now') WHERE id=? AND user_id=?")
           .run(existingId, userId);
         db.prepare(
           "INSERT INTO facts (user_id, category, statement, entity, confidence, source_briefing_id, valid_from) VALUES (?,?,?,?,?,?,datetime('now'))"
         ).run(userId, category, encryptField(statement), entity ?? null, confidence, sourceBriefingId ?? null);
+      } else {
+        // Same statement, low confidence: just refresh freshness.
+        db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
       }
     } else {
       db.prepare(
@@ -1465,6 +1771,7 @@ export const factQueries = {
   },
 
   updateFact: (userId: number, id: number, statement: string, entity: string | null): void => {
+    snapshotFactToHistory(id, userId, 'user-edit');
     // User-initiated edits always clear the ⚠ verify flag (confidence → 'high').
     getDb().prepare(
       "UPDATE facts SET statement=?, entity=?, confidence='high', learned_at=datetime('now') WHERE id=? AND user_id=?"
@@ -1509,6 +1816,31 @@ export const factQueries = {
     getDb().prepare(
       `UPDATE facts SET confidence_score = MAX(0.0, confidence_score - ?) WHERE valid_until IS NULL AND category IN (${placeholders})`
     ).run(amount, ...categories);
+  },
+};
+
+export interface FactHistory {
+  id: number;
+  fact_id: number;
+  user_id: number;
+  statement: string;
+  entity: string | null;
+  category: string;
+  retired_at: string;
+  reason: string | null;
+}
+
+export const factHistoryQueries = {
+  getForFact: (factId: number, userId: number): FactHistory[] => {
+    return (getDb().prepare(
+      'SELECT * FROM fact_history WHERE fact_id=? AND user_id=? ORDER BY retired_at DESC'
+    ).all(factId, userId) as FactHistory[]).map(r => ({ ...r, statement: decryptField(r.statement) }));
+  },
+
+  getRecentForUser: (userId: number, limit = 20): FactHistory[] => {
+    return (getDb().prepare(
+      'SELECT * FROM fact_history WHERE user_id=? ORDER BY retired_at DESC LIMIT ?'
+    ).all(userId, limit) as FactHistory[]).map(r => ({ ...r, statement: decryptField(r.statement) }));
   },
 };
 
@@ -1580,7 +1912,7 @@ export const briefingContextPackQueries = {
       'SELECT context_pack FROM briefing_context_packs WHERE user_id = ? AND pack_date = ?'
     ).get(userId, packDate) as { context_pack: string } | undefined;
     if (!row) return null;
-    return decryptField(row.context_pack);
+    return safeDecryptField(row.context_pack, 'briefing_context_packs.context_pack');
   },
 
   prune: (): void => {
@@ -1638,7 +1970,7 @@ export const peopleProfileQueries = {
 export const patternCacheQueries = {
   get: (userId: number): string | null => {
     const row = getDb().prepare('SELECT patterns FROM pattern_cache WHERE user_id = ?').get(userId) as { patterns: string } | undefined;
-    return row ? decryptField(row.patterns) : null;
+    return row ? safeDecryptField(row.patterns, 'pattern_cache.patterns') : null;
   },
   upsert: (userId: number, patternsJson: string) => {
     getDb().prepare(`
@@ -1695,6 +2027,12 @@ export const calendarScoreQueries = {
     return getDb().prepare(
       'SELECT * FROM calendar_scores WHERE user_id = ? ORDER BY date DESC LIMIT 1'
     ).get(userId) as CalendarScore | undefined;
+  },
+
+  getPrior: (userId: number, beforeDate: string): CalendarScore | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM calendar_scores WHERE user_id = ? AND date < ? ORDER BY date DESC LIMIT 1'
+    ).get(userId, beforeDate) as CalendarScore | undefined;
   },
 };
 
@@ -2062,7 +2400,7 @@ function decryptEpisodeRow(r: EpisodeRow): Episode {
     userId:      r.user_id,
     source:      r.source as EpisodeSource,
     occurredAt:  r.occurred_at,
-    contentRaw:  decryptField(r.content_raw),
+    contentRaw:  safeDecryptField(r.content_raw, 'episode.content_raw'),
     topics:      safeJsonArray(r.topics),
     commitments: safeJsonArray(r.commitments),
     createdAt:   r.created_at,

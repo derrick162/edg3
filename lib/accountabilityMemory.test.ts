@@ -3,8 +3,11 @@ import {
   buildAccountabilitySnapshot,
   formatAccountabilityForBriefing,
   accountabilityBriefingInstruction,
+  getReliabilitySignal,
+  calibrateCommitmentLanguage,
   type CommitmentOutcome,
   type AccountabilitySnapshot,
+  type ReliabilitySignal,
 } from './accountabilityMemory';
 import type { OpenLoop, OpenLoopType, OpenLoopStatus, OpenLoopSource } from './db';
 
@@ -212,5 +215,139 @@ describe('accountabilityBriefingInstruction', () => {
     const snap: AccountabilitySnapshot = { done: [done], stillOpen: [], completionRate: 1, lookbackDays: 7 };
     const result = accountabilityBriefingInstruction(snap);
     expect(result).toContain('completion rate');
+  });
+});
+
+// ── getReliabilitySignal ───────────────────────────────────────────────────────
+
+describe('getReliabilitySignal', () => {
+  const TODAY_RS = '2026-06-17';
+
+  function task(
+    id: number,
+    completed: 0 | 1,
+    date: string,
+    created_at?: string,
+  ) {
+    return { id, text: `Task ${id}`, completed, completed_at: null, source: 'edg3', date, created_at };
+  }
+
+  it('returns null for all buckets when fewer than 2 tasks per bucket', () => {
+    const tasks = [task(1, 1, TODAY_RS, TODAY_RS + 'T07:00:00Z')]; // 1 same-day task
+    const signal = getReliabilitySignal(tasks, TODAY_RS, 30);
+    expect(signal.sameDay).toBeNull();    // only 1 — not enough
+    expect(signal.thisWeek).toBeNull();
+    expect(signal.longHorizon).toBeNull();
+  });
+
+  it('computes same-day rate from tasks due same day as created', () => {
+    const tasks = [
+      task(1, 1, TODAY_RS, TODAY_RS + 'T07:00:00Z'), // done, same-day
+      task(2, 1, TODAY_RS, TODAY_RS + 'T07:00:00Z'), // done, same-day
+      task(3, 0, TODAY_RS, TODAY_RS + 'T07:00:00Z'), // open, same-day
+      task(4, 0, TODAY_RS, TODAY_RS + 'T07:00:00Z'), // open, same-day
+    ];
+    const signal = getReliabilitySignal(tasks, TODAY_RS, 30);
+    expect(signal.sameDay).toBeCloseTo(0.5, 5); // 2/4
+    expect(signal.thisWeek).toBeNull();
+  });
+
+  it('computes thisWeek rate from tasks due 1-6 days after creation', () => {
+    const created = '2026-06-12T07:00:00Z'; // 5 days before TODAY_RS
+    const due = '2026-06-17'; // TODAY_RS — 5 day horizon
+    const tasks = [
+      task(1, 1, due, created),
+      task(2, 1, due, created),
+      task(3, 0, due, created),
+    ];
+    const signal = getReliabilitySignal(tasks, TODAY_RS, 30);
+    expect(signal.thisWeek).toBeCloseTo(2 / 3, 5);
+    expect(signal.sameDay).toBeNull();
+    expect(signal.longHorizon).toBeNull();
+  });
+
+  it('computes longHorizon rate from tasks due 7+ days after creation', () => {
+    const created = '2026-06-01T07:00:00Z'; // 16 days before TODAY_RS
+    const due = '2026-06-17';
+    const tasks = [
+      task(1, 1, due, created),
+      task(2, 0, due, created),
+    ];
+    const signal = getReliabilitySignal(tasks, TODAY_RS, 30);
+    expect(signal.longHorizon).toBeCloseTo(0.5, 5);
+    expect(signal.sameDay).toBeNull();
+  });
+
+  it('falls back to same-day bucket when created_at is absent (pre-DC0-1b tasks)', () => {
+    // Without created_at, date ≈ created_at → horizon 0 → sameDay bucket
+    const tasks = [
+      task(1, 1, TODAY_RS),
+      task(2, 0, TODAY_RS),
+    ];
+    const signal = getReliabilitySignal(tasks, TODAY_RS, 30);
+    expect(signal.sameDay).toBeCloseTo(0.5, 5);
+  });
+
+  it('ignores tasks outside the lookback window', () => {
+    const tasks = [
+      task(1, 1, '2026-05-01', '2026-05-01T07:00:00Z'), // 47 days ago — outside 30d window
+      task(2, 0, '2026-05-01', '2026-05-01T07:00:00Z'),
+    ];
+    const signal = getReliabilitySignal(tasks, TODAY_RS, 30);
+    expect(signal.sameDay).toBeNull();
+    expect(signal.thisWeek).toBeNull();
+    expect(signal.longHorizon).toBeNull();
+  });
+
+  it('ignores non-edg3 source tasks', () => {
+    const manual = { id: 1, text: 'Manual task', completed: 1 as const, completed_at: null, source: 'manual', date: TODAY_RS, created_at: TODAY_RS + 'T07:00:00Z' };
+    const signal = getReliabilitySignal([manual, manual], TODAY_RS, 30);
+    expect(signal.sameDay).toBeNull();
+  });
+});
+
+// ── calibrateCommitmentLanguage ───────────────────────────────────────────────
+
+describe('calibrateCommitmentLanguage', () => {
+  const MADE_AT = '2026-06-10';
+  const DUE_DATE_SAME = '2026-06-10';     // same-day horizon
+  const DUE_DATE_WEEK = '2026-06-14';     // 4-day horizon (thisWeek)
+  const DUE_DATE_LONG = '2026-06-24';     // 14-day horizon (longHorizon)
+
+  it('uses encouraging "you\'re good at these" language for high same-day rate', () => {
+    const signal: ReliabilitySignal = { sameDay: 0.85, thisWeek: null, longHorizon: null };
+    const lang = calibrateCommitmentLanguage('Call Sarah', DUE_DATE_SAME, MADE_AT, signal);
+    expect(lang).toContain('did that happen');
+  });
+
+  it('uses "block time" framing for medium this-week rate', () => {
+    const signal: ReliabilitySignal = { sameDay: null, thisWeek: 0.55, longHorizon: null };
+    const lang = calibrateCommitmentLanguage('Review the pitch deck', DUE_DATE_WEEK, MADE_AT, signal);
+    expect(lang).toContain('block time');
+  });
+
+  it('uses "let it go" framing for low long-horizon rate', () => {
+    const signal: ReliabilitySignal = { sameDay: null, thisWeek: null, longHorizon: 0.25 };
+    const lang = calibrateCommitmentLanguage('Rewrite the sales playbook', DUE_DATE_LONG, MADE_AT, signal);
+    expect(lang).toContain('let it go');
+  });
+
+  it('falls back to neutral "did that happen" when signal rate is null', () => {
+    const signal: ReliabilitySignal = { sameDay: null, thisWeek: null, longHorizon: null };
+    const lang = calibrateCommitmentLanguage('Follow up with investor', null, MADE_AT, signal);
+    expect(lang).toContain('did that happen');
+  });
+
+  it('uses longHorizon bucket when no due date is provided', () => {
+    // null dueDate → treated as 30-day horizon → longHorizon bucket
+    const signal: ReliabilitySignal = { sameDay: 0.9, thisWeek: 0.9, longHorizon: 0.2 };
+    const lang = calibrateCommitmentLanguage('Build the investor deck', null, MADE_AT, signal);
+    expect(lang).toContain('let it go');
+  });
+
+  it('embeds the commitment text in the output', () => {
+    const signal: ReliabilitySignal = { sameDay: 0.8, thisWeek: null, longHorizon: null };
+    const lang = calibrateCommitmentLanguage('Send the NDA', DUE_DATE_SAME, MADE_AT, signal);
+    expect(lang).toContain('Send the NDA');
   });
 });

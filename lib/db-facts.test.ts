@@ -31,6 +31,7 @@ vi.mock('better-sqlite3', () => {
 vi.mock('./crypto', () => ({
   encryptField: (v: string) => v,
   decryptField: (v: string) => v,
+  safeDecryptField: (v: string) => v,
   encryptNullable: (v: string | null) => v,
   decryptNullable: (v: string | null) => v,
 }));

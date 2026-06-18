@@ -4,7 +4,7 @@ import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -191,6 +191,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
       }
     } catch (err) {
       console.error(`[scheduler] Context pack failed for user ${user.id}:`, err);
+      backgroundJobFailureQueries.record('nightly_context_packs', user.id, String(err));
     }
   }
 
@@ -214,6 +215,60 @@ export function decayFactConfidenceScores(): void {
     console.log('[scheduler] Weekly confidence decay applied');
   } catch (e) {
     console.error('[scheduler] Confidence decay failed:', e);
+    backgroundJobFailureQueries.record('decay_fact_confidence', null, String(e));
+  }
+}
+
+// ── 6am health digest (T1-3 / PILLAR-TRUST) ─────────────────────────────────
+// Runs before the 7am call. Checks for: failed calls (last 24h), webhook DLQ,
+// background job failures, and calendar auth issues. Writes to health_log and emits
+// a single summary line — "HEALTH: OK" or "HEALTH: DEGRADED (reason1; reason2)".
+export async function runHealthDigest(): Promise<void> {
+  const issues: string[] = [];
+
+  try {
+    const failedCalls = callAttemptQueries.failedCount(24);
+    if (failedCalls > 0) issues.push(`${failedCalls} call(s) failed in last 24h`);
+  } catch (e) { issues.push(`call-attempts check error: ${e}`); }
+
+  try {
+    const webhookFails = failedWebhookQueries.recentCount(24);
+    if (webhookFails > 0) issues.push(`${webhookFails} webhook(s) in DLQ`);
+  } catch (e) { issues.push(`webhook-dlq check error: ${e}`); }
+
+  try {
+    const jobFails = backgroundJobFailureQueries.recentCount(24);
+    if (jobFails > 0) issues.push(`${jobFails} background job failure(s)`);
+  } catch (e) { issues.push(`job-failures check error: ${e}`); }
+
+  try {
+    // Proactively validate calendar tokens for all active users before the 7am call.
+    const { checkCalendarTokenHealth } = await import('./google-auth');
+    const db = getDb();
+    const activeUsers = db.prepare(
+      `SELECT u.id FROM users u INNER JOIN calendar_tokens ct ON ct.user_id = u.id WHERE u.onboarding_complete = 1`
+    ).all() as Array<{ id: number }>;
+    let tokenFails = 0;
+    for (const u of activeUsers) {
+      const result = await checkCalendarTokenHealth(u.id).catch(() => ({ ok: false, needsReconnect: false }));
+      if (!result.ok) tokenFails++;
+    }
+    if (tokenFails > 0) issues.push(`${tokenFails} user(s) have calendar auth issues`);
+  } catch (e) { issues.push(`calendar-auth check error: ${e}`); }
+
+  const status = issues.length === 0 ? 'ok' : 'degraded';
+  const summary = issues.length === 0
+    ? 'All systems nominal'
+    : issues.join('; ');
+
+  healthLogQueries.write(status, summary);
+  healthLogQueries.prune();
+  callAttemptQueries.prune();
+
+  if (status === 'ok') {
+    console.log('[health] HEALTH: OK — All systems nominal');
+  } else {
+    console.error(`[health] HEALTH: DEGRADED — ${summary}`);
   }
 }
 
@@ -235,7 +290,27 @@ export function startScheduler() {
     try { oauthStateQueries.prune(); } catch (e) { console.error('[scheduler] oauthStateQueries.prune failed:', e); }
     try { auditLogQueries.pruneEmailSubjects(); } catch (e) { console.error('[scheduler] pruneEmailSubjects failed:', e); }
     try { episodeQueries.pruneAll(); } catch (e) { console.error('[scheduler] episodeQueries.pruneAll failed:', e); }
+    try { failedWebhookQueries.prune(); } catch (e) { console.error('[scheduler] failedWebhookQueries.prune failed:', e); }
+    try { backgroundJobFailureQueries.prune(); } catch (e) { console.error('[scheduler] backgroundJobFailureQueries.prune failed:', e); }
+    try { webhookDedupeQueries.prune(); } catch (e) { console.error('[scheduler] webhookDedupeQueries.prune failed:', e); }
+    try { toolCallDedupeQueries.prune(); } catch (e) { console.error('[scheduler] toolCallDedupeQueries.prune failed:', e); }
     maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
+    // Health check: log warnings if any failures accumulated in the last 24h.
+    try {
+      const webhookFails = failedWebhookQueries.recentCount(24);
+      const jobFails = backgroundJobFailureQueries.recentCount(24);
+      if (webhookFails > 0) console.error(`[health] WARN: ${webhookFails} webhook(s) in dead-letter queue in last 24h — check Railway logs`);
+      if (jobFails > 0) console.error(`[health] WARN: ${jobFails} background job failure(s) in last 24h — check Railway logs`);
+    } catch (e) { console.error('[scheduler] daily health check failed:', e); }
+  });
+
+  // Daily at 6am UTC: health digest — runs before the 7am call so failures surface first.
+  // Writes one row to health_log (status OK vs DEGRADED) + emits a single summary log line
+  // that Railway can alert on. Check: failed calls, job failures, webhook DLQ, calendar auth.
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      await runHealthDigest();
+    } catch (e) { console.error('[scheduler] health digest cron failed:', e); }
   });
 
   // Nightly at 11pm UTC: pre-warm tomorrow's briefing context for all active users.
@@ -303,11 +378,60 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
 
       if (alreadyCalled) continue;
 
-      console.log(`[scheduler] Calling user ${user.id} (${user.name}) at ${userCurrentTime} ${timezone}`);
+      const deltaMins = userMinutes - callMinutes;
+      console.log(
+        `[scheduler] Calling user ${user.id} (${user.name}) — scheduled ${user.call_time} ${timezone}` +
+        (deltaMins > 0 ? `, ${deltaMins}min late (cold-start/missed-tick catch-up)` : ' (on time)'),
+      );
+      const scheduledFor = `${userToday}T${user.call_time}:00`;
       await scheduleBriefingCall(user.id);
+      callAttemptQueries.record(user.id, scheduledFor, 'connected');
     } catch (err) {
       console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
+      const userToday2 = new Date(now.toLocaleString('en-US', { timeZone: user.timezone || 'America/Vancouver' })).toLocaleDateString('en-CA');
+      callAttemptQueries.record(user.id, `${userToday2}T${user.call_time}:00`, 'failed', String(err).slice(0, 500));
     }
+  }
+
+  // DB-flagged retries: missed calls whose retry_after timestamp has now passed.
+  // This is the durable retry path — survives server restarts unlike the old in-memory setTimeout.
+  const pendingRetries = db.prepare(`
+    SELECT id, user_id FROM briefings
+    WHERE status = 'missed'
+    AND retry_attempted = 1
+    AND retry_after IS NOT NULL
+    AND retry_after <= datetime('now')
+  `).all() as Array<{ id: number; user_id: number }>;
+
+  for (const row of pendingRetries) {
+    try {
+      // Clear retry_after first so we don't double-fire on the next tick.
+      db.prepare('UPDATE briefings SET retry_after = NULL WHERE id = ?').run(row.id);
+      console.log(`[scheduler] Firing DB-flagged retry for briefing ${row.id} (user ${row.user_id})`);
+      await scheduleBriefingCall(row.user_id, { force: true });
+    } catch (err) {
+      console.error(`[scheduler] DB-flagged retry failed for briefing ${row.id} (user ${row.user_id}):`, err);
+      // Write to dead-letter queue — all retries exhausted for this briefing.
+      failedWebhookQueries.record(row.user_id, null, row.id, String(err));
+    }
+  }
+}
+
+// T4-2 — Lightweight Vapi API health probe. Makes a GET to the phone-number list endpoint
+// (cheapest authenticated call). Returns true if reachable (2xx), false otherwise.
+// Used before initiating calls so a service outage fails fast with a user notification.
+async function pingVapiHealth(): Promise<boolean> {
+  const apiKey = process.env.VAPI_API_KEY;
+  if (!apiKey) return true; // no key = dev/test mode, skip check
+  try {
+    const res = await fetch('https://api.vapi.ai/phone-number', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000), // 8-second timeout
+    });
+    return res.ok || res.status === 404; // 404 = no numbers, but API is reachable
+  } catch {
+    return false;
   }
 }
 
@@ -393,6 +517,23 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     const recentMemories = memoryQueries.getRecent(userId, 1);
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
+    // T4-2 — Pre-call Vapi health check: ping Vapi API before generating the briefing
+    // call so a service outage fails fast with a user notification instead of wasting
+    // a full LLM gen call that can never be delivered.
+    const vapiHealthy = await pingVapiHealth();
+    if (!vapiHealthy) {
+      briefingQueries.update(briefingId, { status: 'failed', error_code: 'vapi_error' });
+      try {
+        notificationQueries.create(
+          userId,
+          'call_failed',
+          "Edge couldn't place your call this morning",
+          "We couldn't reach the call service — your briefing will resume tomorrow. Check your connection settings in the dashboard if this keeps happening.",
+        );
+      } catch { /* best effort */ }
+      throw new CallError("Edge couldn't reach Vapi this morning — your briefing will resume tomorrow.", 'vapi_error');
+    }
+
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
@@ -403,6 +544,15 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
       console.error(`[scheduler] Vapi call failed for user ${userId}:`, err);
       const callErr = classifyVapiError(err);
       briefingQueries.update(briefingId, { status: 'failed', error_code: callErr.code });
+      // Write a notification so the user sees the failure in the dashboard.
+      try {
+        notificationQueries.create(
+          userId,
+          'call_failed',
+          "Edge couldn't place your call this morning",
+          callErr.userMessage,
+        );
+      } catch { /* best effort */ }
       throw callErr;
     }
   } else {
