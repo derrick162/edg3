@@ -1076,7 +1076,6 @@ function FocusScoreboardPanel() {
       <div className="space-y-3 mb-5">
         {data.perPriority.map(p => {
           const barPct    = maxHours > 0 ? Math.round((p.hoursThisWeek  / maxHours) * 100) : 0;
-          const avgBarPct = maxHours > 0 ? Math.round((p.weeklyAvgHours / maxHours) * 100) : 0;
           const delta     = trendDelta(p.text);
           const energy    = p.energyCost ? ENERGY_COLOR[p.energyCost] : null;
           const allDone   = p.milestoneTotal > 0 && p.milestoneDone === p.milestoneTotal;
@@ -1118,7 +1117,8 @@ function FocusScoreboardPanel() {
                 </div>
               </div>
 
-              {/* Hours bar with avg tick */}
+              {/* Hours bar (ticket 6: removed the running weekly-average tick — meaningless when
+                  priorities change week to week; hours-this-week is the honest metric) */}
               <div className="relative mb-1">
                 <div className="rounded-full overflow-hidden" style={{ height: 8, background: 'var(--edg-accent-08)' }}>
                   <div className="h-full rounded-full transition-all duration-500"
@@ -1131,12 +1131,6 @@ function FocusScoreboardPanel() {
                         : 'rgba(99,102,241,0.5)',
                     }} />
                 </div>
-                {/* Avg marker tick */}
-                {avgBarPct > 0 && Math.abs(avgBarPct - barPct) > 3 && (
-                  <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${avgBarPct}%` }}>
-                    <div style={{ width: 2, height: 12, marginTop: -2, background: 'var(--text-faint)', borderRadius: 1, opacity: 0.5 }} />
-                  </div>
-                )}
               </div>
 
               {/* Hours label */}
@@ -1144,9 +1138,6 @@ function FocusScoreboardPanel() {
                 <span style={{ color: p.hoursThisWeek > 0 ? 'var(--text-muted)' : 'var(--text-faint)' }}>
                   {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h this week` : 'No time logged yet'}
                 </span>
-                {p.weeklyAvgHours > 0 && (
-                  <span>avg {p.weeklyAvgHours}h/wk</span>
-                )}
               </div>
 
               {/* Milestone dots */}
@@ -2173,16 +2164,18 @@ export default function Dashboard() {
               {/* Today's focus recommendations */}
               {focusLockedAreas ? (
                 <div className="glass-card p-4">
+                  {/* Ticket 4: locked-in state — green check header + per-item checks so confirming
+                      feels like a moment (the proposal card unmounts; this replaces it). */}
                   <div className="flex items-center gap-2 mb-2">
-                    <span style={{ color: 'var(--edg-indigo)' }}>🎯</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s focus — set for today</span>
+                    <span style={{ color: 'var(--edg-success)', fontWeight: 700 }}>✓</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Locked in for today</span>
                   </div>
                   <ol className="list-none space-y-2">
                     {focusLockedAreas.map((a, i) => (
                       <li key={i} className="flex gap-2" style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                        <span style={{ color: 'var(--edg-indigo)', fontWeight: 600 }}>{i + 1}.</span>
+                        <span style={{ color: 'var(--edg-success)', fontWeight: 700, flexShrink: 0 }}>✓</span>
                         <div className="flex-1 min-w-0">
-                          <span>{a.title}</span>
+                          <span style={{ fontWeight: 500 }}>{a.title}</span>
                           {/* Ticket 2: one-line context so the focus list isn't a bare to-do list */}
                           {a.rationale?.trim() && (
                             <p style={{ color: 'var(--text-faint)', fontSize: '0.75rem', marginTop: '0.125rem', lineHeight: 1.4 }}>
