@@ -233,17 +233,33 @@ describe('runNightlyContextPacks', () => {
     await expect(runNightlyContextPacks()).resolves.not.toThrow();
   });
 
+  // 2026-06-18T06:00:00Z = 23:00 in America/Vancouver (PDT, UTC-7) — i.e. the user's local
+  // 11pm, which is when runNightlyContextPacks now builds (hourly cron, local-hour filter).
   it('calls upsert for each active user with tomorrows local date', async () => {
     h.users.push(makeUser(1, 'Derrick', 'America/Vancouver'));
-    const fixedNow = new Date('2026-06-17T23:00:00Z');
+    const fixedNow = new Date('2026-06-18T06:00:00Z');
     await runNightlyContextPacks(fixedNow);
     // Should have encrypted something (upsert was called)
     expect(h.encryptCalls.length).toBeGreaterThan(0);
   });
 
+  it('local-tz: SKIPS a user whose local time is not 11pm (no build)', async () => {
+    h.users.push(makeUser(1, 'Derrick', 'America/Vancouver'));
+    // 23:00 UTC = 16:00 PDT for this user → not their 11pm → skip.
+    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    expect(h.encryptCalls.length).toBe(0);
+  });
+
+  it('idempotency: SKIPS the LLM build when tomorrows pack already exists', async () => {
+    h.users.push(makeUser(1, 'Derrick', 'America/Vancouver'));
+    h.getResult = 'enc:already-built'; // briefingContextPackQueries.get returns a pack
+    await runNightlyContextPacks(new Date('2026-06-18T06:00:00Z'));
+    expect(h.encryptCalls.length).toBe(0); // no re-build
+  });
+
   it('includes the user id in the built context pack', async () => {
     h.users.push(makeUser(5, 'Alice'));
-    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    await runNightlyContextPacks(new Date('2026-06-18T06:00:00Z'));
     // buildBriefingContextPack mock returns `packed-context:${userId}`
     expect(h.encryptCalls.some(s => s.includes('5'))).toBe(true);
   });
@@ -252,7 +268,7 @@ describe('runNightlyContextPacks', () => {
     h.users.push(makeUser(1, 'Derrick'), makeUser(2, 'Bob'));
     // Make first user fail, second succeed — mock build fn already succeeds for all
     // Here we verify both are attempted (both ids appear in encrypt calls)
-    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    await runNightlyContextPacks(new Date('2026-06-18T06:00:00Z'));
     // Both users processed: enc calls for both ids
     const combined = h.encryptCalls.join(',');
     expect(combined).toContain('1');
@@ -260,7 +276,7 @@ describe('runNightlyContextPacks', () => {
 
   it('calls prune after building packs', async () => {
     h.users.push(makeUser(1, 'Derrick'));
-    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    await runNightlyContextPacks(new Date('2026-06-18T06:00:00Z'));
     // prune SQL should have been issued
     const pruned = h.runArgs.some((_, i) => h.lastRunSql.includes('-7 days'));
     // At minimum, lastRunSql should end with the prune query (order may vary)
@@ -271,7 +287,7 @@ describe('runNightlyContextPacks', () => {
   it('M2-4: does NOT cache an empty pack (no upsert/encrypt for empty result)', async () => {
     h.users.push(makeUser(1, 'Derrick'));
     h.buildContextPackEmpty = true;
-    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    await runNightlyContextPacks(new Date('2026-06-18T06:00:00Z'));
     // An empty pack must not be encrypted/upserted — only the prune query runs after.
     expect(h.encryptCalls.length).toBe(0);
   });
@@ -279,7 +295,7 @@ describe('runNightlyContextPacks', () => {
   it('M2-4: still prunes even when all packs are empty', async () => {
     h.users.push(makeUser(1, 'Derrick'));
     h.buildContextPackEmpty = true;
-    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    await runNightlyContextPacks(new Date('2026-06-18T06:00:00Z'));
     // prune is the last DB statement issued regardless of empties
     expect(h.lastRunSql).toContain('-7 days');
   });

@@ -152,10 +152,14 @@ async function currentEnergyText(userId: number): Promise<string> {
   } catch { return ''; }
 }
 
-// ── Nightly context-pack pre-warmer (11pm UTC daily) ─────────────────────────
-// Assembles tomorrow's briefing context for each active user so morning calls
-// read a pre-warmed pack rather than running live queries. Activates automatically
-// once Core exports buildBriefingContextPack from lib/briefing.ts.
+// ── Nightly context-pack pre-warmer (11pm in each user's LOCAL timezone) ─────
+// Assembles tomorrow's briefing context for each active user so morning calls read a
+// pre-warmed pack rather than running live queries. Runs HOURLY; each user is built once,
+// when their local clock reads 23:xx — so the pack is freshest (~8h before the 7am call)
+// and "tomorrow" is computed correctly across timezones (vs a single fixed UTC hour, which
+// skews freshness from ~3pm to ~10am-next-day depending on the user's offset).
+// Idempotent: if tomorrow's pack already exists it's skipped, so re-runs cost nothing.
+// Activates automatically once Core exports buildBriefingContextPack from lib/briefing.ts.
 export async function runNightlyContextPacks(now: Date = new Date()): Promise<void> {
   const BriefingLib = await import('./briefing');
   const buildContextPack = (BriefingLib as Record<string, unknown>)['buildBriefingContextPack'] as
@@ -179,9 +183,18 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
   for (const user of users) {
     try {
       const tz = effectiveTimezone(user);
+      // Only build at ~11pm in the USER'S local timezone (same local-time pattern as the
+      // call scheduler). The hourly cron catches each user once, during their 23:00 hour.
+      const localHour = new Date(now.toLocaleString('en-US', { timeZone: tz })).getHours();
+      if (localHour !== 23) continue;
+
       // "Tomorrow" in the user's local timezone — the date the pack will prime.
       const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000)
         .toLocaleDateString('en-CA', { timeZone: tz });
+
+      // Idempotency + cost guard: tomorrow's pack already built (e.g. an earlier tick or a
+      // restart) → skip the LLM call entirely.
+      if (briefingContextPackQueries.get(user.id, tomorrowLocal)) continue;
 
       const startedAt = Date.now();
       const contextPack = await buildContextPack(user.id);
@@ -381,9 +394,10 @@ export function startScheduler() {
     } catch (e) { console.error('[scheduler] health digest cron failed:', e); }
   });
 
-  // Nightly at 11pm UTC: pre-warm tomorrow's briefing context for all active users.
-  // Activates once Core exports buildBriefingContextPack from lib/briefing.ts.
-  cron.schedule('0 23 * * *', () => {
+  // Hourly: pre-warm tomorrow's briefing context for users whose LOCAL time is 11pm.
+  // runNightlyContextPacks filters by local hour + skips already-built packs, so this is
+  // cheap on the 23 non-matching hours. Activates once Core exports buildBriefingContextPack.
+  cron.schedule('0 * * * *', () => {
     runNightlyContextPacks().catch(e => console.error('[scheduler] runNightlyContextPacks failed:', e));
   });
 
