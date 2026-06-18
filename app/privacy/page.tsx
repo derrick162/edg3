@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         <div className="space-y-10">
           <div>
             <h1 className="text-4xl font-black mb-3">Privacy Policy</h1>
-            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Last updated: June 14, 2026</p>
+            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Last updated: June 18, 2026</p>
             <p className="text-sm mt-4 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               Edg3 (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) operates the Edg3 AI Chief of Staff service accessible at edg3.ai.
               This Privacy Policy explains how we collect, use, and protect your information.
@@ -153,10 +153,12 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-sm" style={{ color: 'var(--text-body)' }}>
               {[
                 'Access — request a copy of the data we hold about you',
+                'Export — download a copy of all your data at any time from Settings → Account → Export (includes your privacy setting)',
                 'Correction — update or correct your personal information at any time from your dashboard',
                 'Deletion — request permanent deletion of your account and all associated data',
                 'Opt-out — stop receiving calls or texts at any time via your dashboard or by saying "stop" during a call',
-                'Disconnect — remove Google Calendar access at any time from your dashboard',
+                'Disconnect Google — remove Google Calendar and Gmail access at any time from your dashboard',
+                'Disconnect Whoop — remove Whoop access at any time from your dashboard',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>
@@ -171,7 +173,7 @@ export default function PrivacyPage() {
             <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
               We use industry-standard security practices including encrypted connections (HTTPS), hashed passwords,
               encryption of sensitive data at rest (such as your connected-account access tokens and call transcripts,
-              using AES-256), and access controls to protect your data. No method of transmission over the internet is
+              using AES-256-GCM), and access controls to protect your data. No method of transmission over the internet is
               100% secure, and we cannot guarantee absolute security.
             </p>
           </section>

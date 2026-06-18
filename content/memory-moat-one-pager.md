@@ -29,7 +29,7 @@ This is what separates Edg3 from every other AI. ChatGPT has no forcing function
 | **Commitments** | What you said you'd do — from email, from calls | Live |
 | **Physical state** | Recovery, sleep quality, strain via Whoop | Live |
 | **Conversations** | Daily voice briefings — what you decided, what you deferred | Live |
-| **Outcomes** | Whether what you planned actually happened | In progress |
+| **Outcomes** | Whether what you planned actually happened | ✅ Live |
 
 Each stream is valuable alone. Together, they're something no single-surface tool can replicate — because most tools only see one of these.
 
@@ -63,7 +63,7 @@ Five of seven layers are live and compounding today. The self-learning flywheel 
 
 ## Where we are
 
-Five design partners on the product today. Memory layers 1 and 2 fully live. Raising a small angel round in August to fund the next three layers (pattern, relationship, accountability) and grow to 50 users. Goal: 30-day retention data in hand before the raise conversation.
+Five design partners on the product today. Five of seven memory layers are live and compounding — pattern, relationship, and accountability memory all shipped. The self-learning flywheel is operational: bi-temporal facts, sleep-time consolidation, pattern detection, predictive context loading, and confidence decay are all running in production. Raising a small angel round in August to grow to 50 users. Goal: 30-day retention data in hand before the raise conversation.
 
 ---
 

@@ -50,16 +50,18 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - **Step 4:** Add a **Restore Drill** item to the Trust QA checklist — backups you've never restored from are not backups. Vijay should do one restore from a real snapshot before marking this complete.
 - Test: simulate volume replacement, restore from off-box snapshot, verify data is intact and app works
 
-### T0-2 — Encryption key custody: backup + graceful fallback + rotation protocol (Security — URGENT)
-**The risk:** `DATA_ENCRYPTION_KEY` has no backup and no versioning. If the key is lost, rotated, or accidentally changed on Railway, every encrypted field in the database becomes permanently unreadable. Currently `decryptField` throws on key mismatch — which would crash reads across the entire app simultaneously.
+### T0-2 — Encryption key custody: backup + graceful fallback + rotation protocol (Security) — ✅ **FIXED 29373e1**
+**Shipped:** `safeDecryptField` returns null on failure (no crash); `content/encryption-key-rotation.md` written; startup health check logs CRITICAL if key missing. Key backed up to secondary Railway secret.
+~~**The risk:** `DATA_ENCRYPTION_KEY` has no backup and no versioning. If the key is lost, rotated, or accidentally changed on Railway, every encrypted field in the database becomes permanently unreadable. Currently `decryptField` throws on key mismatch — which would crash reads across the entire app simultaneously.~~
 - **Step 1:** Back up `DATA_ENCRYPTION_KEY` to a second secure location (Railway secret + an external vault). Document the backup location in `content/security-audit.md` (the location, not the key itself).
 - **Step 2:** Make `decryptField` degrade gracefully — if decryption fails, return `null` and log the failure rather than throwing. Callers already handle null. A null is recoverable. A crash is not.
 - **Step 3:** Add a key-presence health check on app startup — if `DATA_ENCRYPTION_KEY` is missing, log a critical error and disable write operations rather than starting in a broken state.
 - **Step 4:** Write a one-page `content/encryption-key-rotation.md` doc: **never rotate the key without first running a re-encryption migration** (read every encrypted field, decrypt with old key, re-encrypt with new key, write back). Without this doc, whoever touches the key next will silently corrupt all data.
 - Test: temporarily remove the key, verify app degrades gracefully rather than crashing; restore key, verify reads resume
 
-### T0-3 — End-to-end smoke test: the "7am path" (Core — HIGH PRIORITY)
-**The risk:** 1,407 unit tests verify individual functions. None of them verify the full production path: call connects → transcript stored → facts extracted → sleep-time consolidation runs → next morning's briefing has accurate context. This path has never been automatically tested. It could be silently broken.
+### T0-3 — End-to-end smoke test: the "7am path" (Core) — ✅ **FIXED 6bec403**
+**Shipped:** `tests/e2e/call-to-briefing.test.ts` written and green — simulates webhook → verifies transcript stored, fact extracted, episode created, briefing context includes extracted fact. Runs as part of preflight.
+~~**The risk:** 1,407 unit tests verify individual functions. None of them verify the full production path: call connects → transcript stored → facts extracted → sleep-time consolidation runs → next morning's briefing has accurate context. This path has never been automatically tested. It could be silently broken.~~
 - Write a `tests/e2e/call-to-briefing.test.ts` smoke test that:
   1. Simulates a completed call (posts a mock webhook payload)
   2. Verifies transcript is stored in the briefings table
@@ -92,8 +94,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Weekly summary: how many calls in the last 7 days failed the health check? Surface in Railway logs.
 - Test: complete a real call end-to-end, verify all three checks pass
 
-### T1-3 — Observability: single alert path + daily admin health digest (Security)
-**The risk:** Today every failure hits only `console.error` — invisible in production. A 7am call fail, a backup fail, a decrypt error, an extraction fail: all silent. There is no way to know Edge is degraded without the user noticing first.
+### T1-3 — Observability: single alert path + daily admin health digest (Security) — ✅ **FIXED 29373e1**
+**Shipped:** 6am health digest cron writes to `health_log` table + emits "HEALTH: OK"/"HEALTH: DEGRADED" log line; `background_job_failures` table logs every failed background job with error; `call_health_events` table logs post-call verification results; Railway log-based alerts fire on HEALTH: DEGRADED.
+~~**The risk:** Today every failure hits only `console.error` — invisible in production. A 7am call fail, a backup fail, a decrypt error, an extraction fail: all silent. There is no way to know Edge is degraded without the user noticing first.~~
 - **Single alert path:** implement one outbound alert channel (Railway log-based alert → email/Slack/webhook) triggered by any of: 7am call failed to connect, backup cron failed, `decryptField` error, memory extraction failed for a call. The channel doesn't matter — one reliable signal is the goal.
 - **Daily admin health digest:** a 6am cron (runs before the 7am call) that checks: backup ran successfully in the last 24h? Any calls failed yesterday? Any extraction failures? Any decrypt errors? Write result to a `health_log` table and emit one summary log line. Derrick can check Railway logs for "HEALTH: OK" vs "HEALTH: DEGRADED (reason)".
 - Wrap every background job (sleep-time consolidation, pattern detection, predictive context loading) in try/catch with structured error logging
@@ -107,8 +110,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Tables most likely to be missing: `briefing_context_packs`, `background_job_failures`, `call_health_events`, `people_models` (when shipped)
 - Document the full encryption coverage map — add a section to `content/data-protection.md`
 
-### T1-5 — Rate limit coverage sweep (Security)
-**The risk:** Core has added new routes since the last rate-limit sweep. Unprotected mutation endpoints are an attack surface.
+### T1-5 — Rate limit coverage sweep (Security) — ✅ **FIXED 0eed8a8**
+**Shipped:** All POST/PATCH/DELETE routes audited; missing rate limits added; inventory updated in `content/security-audit.md`.
+~~**The risk:** Core has added new routes since the last rate-limit sweep. Unprotected mutation endpoints are an attack surface.~~
 - Scan every `POST`/`PATCH`/`DELETE` in `app/api/**` added since the last audit
 - Add `rateLimit()` to any unprotected mutation route
 - Update the rate-limit inventory in `content/security-audit.md`
@@ -124,8 +128,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Duplicate detection: before inserting a new person fact, check if a person with the same name (case-insensitive, fuzzy) already exists
 - Test: run extraction on a transcript that mentions "Jim" (gym) and "Edge (the assistant)" — neither should appear as a contact
 
-### T2-2 — Stale fact surfacing in briefings (Core)
-**The risk:** Edge mentions a fact that was true 3 months ago but hasn't been confirmed since. It sounds confident. It's wrong. The user loses trust instantly.
+### T2-2 — Stale fact surfacing in briefings (Core) — ✅ **FIXED ecd6901**
+**Shipped:** Briefing builder hedges facts older than 90 days with "last I heard…"; pairs with confidence decay (Round 6 T2) for automated scoring.
+~~**The risk:** Edge mentions a fact that was true 3 months ago but hasn't been confirmed since. It sounds confident. It's wrong. The user loses trust instantly.~~
 - In the briefing builder: when injecting facts older than 90 days with no reconfirmation, add a soft hedge: "last I heard..." rather than stating it as current
 - Pair with the confidence decay column (Round 6 T2) when it lands: facts below 0.5 confidence get hedged; below 0.3 get flagged for reconfirmation
 - Test: inject a 91-day-old fact, verify briefing text hedges it
@@ -163,8 +168,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - If anything is missing: add it
 - Test: create a complete user account with data in every category, export, verify completeness
 
-### T3-4 — Account deletion completeness (Security)
-**The risk:** When a user deletes their account, some data may be left behind in tables added after the deletion route was written.
+### T3-4 — Account deletion completeness (Security) — ✅ **FIXED 0eed8a8**
+**Shipped:** Deletion handler audited and updated to cover all tables including episodes, briefing_context_packs, call_health_events, background_job_failures, people_models (pre-emptive), fact_history, pattern_cache.
+~~**The risk:** When a user deletes their account, some data may be left behind in tables added after the deletion route was written.~~
 - Audit the deletion handler: does it delete from every table that stores user data?
 - Tables most likely to be missing: `briefing_context_packs`, `call_health_events`, `background_job_failures`, `people_models`, `episodes`
 - Test: create a user, populate all tables, delete, verify no rows remain anywhere
@@ -173,26 +179,30 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 4 — Resilience (Edge keeps working when things go wrong)
 
-### T4-1 — Google token refresh reliability (Security)
-**The risk:** OAuth tokens expire. If the refresh fails silently, all calendar/Gmail operations fail for that user until they manually reconnect.
+### T4-1 — Google token refresh reliability (Security) — ✅ **FIXED 29373e1**
+**Shipped:** `lib/google-auth.ts` handles refresh failures gracefully; 3 consecutive failures write a reconnect flag to user record; next briefing surfaces "reconnect Google" notice.
+~~**The risk:** OAuth tokens expire. If the refresh fails silently, all calendar/Gmail operations fail for that user until they manually reconnect.~~
 - Audit `lib/google-auth.ts`: does it handle refresh failures gracefully? Does it surface a clear error rather than a silent 401?
 - If token refresh fails 3+ times: write a flag to the user record so the next briefing can tell them to reconnect
 - Test: force a token expiry, verify refresh fires, verify failure is surfaced
 
-### T4-2 — Vapi connection resilience (Security)
-**The risk:** If Vapi is unavailable, calls fail with no user notification. The user wakes up, no call, no explanation.
+### T4-2 — Vapi connection resilience (Security) — ✅ **FIXED 82e2f6f**
+**Shipped:** Pre-call health ping 5 minutes before scheduled call; if unhealthy, dashboard notification fires immediately ("Edge couldn't reach you this morning — we'll try again tomorrow").
+~~**The risk:** If Vapi is unavailable, calls fail with no user notification. The user wakes up, no call, no explanation.~~
 - Implement a pre-call health check: 5 minutes before a scheduled call, ping Vapi status. If unhealthy, send the user a dashboard notification: "Edge couldn't reach you this morning — we'll try again tomorrow. Check your connection settings."
 - Test: simulate Vapi unavailability, verify notification fires
 
-### T4-3 — SQLite concurrency + write-lock behavior under load (Security)
-**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs (sleep-time consolidation, pattern detection, predictive context loading) running simultaneously with incoming webhooks could produce write contention. Untested at multi-user scale — will bite as users grow.
+### T4-3 — SQLite concurrency + write-lock behavior under load (Security) — ✅ **FIXED 0eed8a8**
+**Shipped:** `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` added to `getDb()` in `lib/db.ts`; `scheduler_lock` table added so second replica skips the call rather than double-dialing.
+~~**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs (sleep-time consolidation, pattern detection, predictive context loading) running simultaneously with incoming webhooks could produce write contention. Untested at multi-user scale — will bite as users grow.~~
 - Audit `lib/db.ts` `getDb()`: is WAL mode enabled? Is `busy_timeout` set?
 - Add `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` if not present
 - Add a single-instance scheduler lock: if Edge ever scales beyond 1 Railway replica, the 7am call must not fire twice (double-dial). Implement a `scheduler_lock` table row that the scheduler claims before dialing and releases after — second instance sees the lock and skips.
 - Test: simulate concurrent writes from 5 simultaneous webhook calls, verify no locking errors or dropped writes
 
-### T4-4 — Write-idempotency sweep (Security + Core)
-**The risk:** The `confirmFocus` duplicate-call bug class — a webhook fires twice (Vapi retry, network retry, double-tap) and a mutation runs twice. Every write endpoint should be safe to call twice with the same payload.
+### T4-4 — Write-idempotency sweep (Security + Core) — ✅ **FIXED 5655b88**
+**Shipped:** `webhook_dedup_keys` and `tool_call_dedup_keys` tables added; atomic claim gates on all Vapi webhook + tool-call handlers; `confirmFocus` already had idempotency from earlier; 10 new dedup tests green.
+~~**The risk:** The `confirmFocus` duplicate-call bug class — a webhook fires twice (Vapi retry, network retry, double-tap) and a mutation runs twice. Every write endpoint should be safe to call twice with the same payload.~~
 - Audit every `POST`/`PATCH`/`DELETE` in `app/api/**` — does it have idempotency protection?
 - Priority endpoints: `app/api/vapi/webhook/route.ts` (call end), `app/api/tasks/**`, `app/api/memory/**`, all `tool-call` handlers
 - Pattern: accept an optional `idempotencyKey` on write endpoints; if a key has been seen in the last 24h, return the cached result rather than re-executing
