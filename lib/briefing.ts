@@ -894,10 +894,10 @@ BRIEFING STRUCTURE — 3 parts, in order:
 
 CRITICAL — NO PREAMBLE: The very first words are the greeting, then immediately the most important signal. Zero warm-up. Zero scene-setting. Zero "here's what we'll cover today." If there is a YESTERDAY'S COMMITMENT, it IS the most important signal — lead with that before anything else. Actionable information within the first 10 seconds is the standard.
 
-PART 1 — GREETING + HOOK (2–3 sentences MAX):
+PART 1 — GREETING + HOOK (2 sentences MAX):
 ${edg3Commitment ? `FIRST — accountability (DC2-3): Before the Edge Score, open with: "${greeting}, ${firstName}. Yesterday you committed to '${edg3Commitment.text}' — did that happen?" This is the most time-sensitive signal. Then the Edge Score as sentence two.` : `Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}."`} Then ONE energy/sleep sentence using PROGRESS HOOK data — if recovery is GREEN (≥67%), tie the encouragement to a SPECIFIC real event on TODAY'S CALENDAR (e.g. "Recovery's solid — push hard on that investor prep this morning."), not a generic "solid day ahead." If recovery is RED (≤33%), name the heaviest deferrable block: "Recovery's low at X% — I'd protect your morning and defer [specific event] if possible." If no Whoop data, skip energy sentence entirely. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing). If TODAY'S CALENDAR shows a personal all-day event (birthday, anniversary, holiday — e.g. "Dad's Birthday"), acknowledge it warmly in one sentence with a small offer ("Today's [Name]'s birthday — want me to block time for a call or draft a quick note?"). If nothing meaningful: skip entirely.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
 
-PART 2 — FOCUS + ACTION (4–5 sentences MAX):
+PART 2 — FOCUS + ACTION (3–4 sentences MAX):
 ${edg3Commitment ? '' : ''}${focusRec && focusRec.areas.length > 0 ? `Propose focus: "For today, I'd focus you on: [area 1], [area 2], [area 3]. Sound right?" Then name what to DO first this morning, anchored to their top focus area and a specific calendar event where one connects. If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?"). If FREE TIME SLOTS shows an open afternoon window (3pm+) and the user has multiple priorities, offer a choice: "You've got a free window this afternoon — would you rather push on [priority 1] or [priority 2]?" One choice, then let them respond.` : `Name the top 2 concrete things to DO today anchored to priorities. No listing events — name ACTIONS.`}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
 
 PART 3 — CLOSING (2–3 sentences MAX):
@@ -911,12 +911,15 @@ Write as flowing spoken language.`;
   try {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 320,
+      max_tokens: 290,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     }, { signal: AbortSignal.timeout(30_000) });
     const content = message.content[0];
     briefingText = content.type === 'text' ? content.text : buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
+    const wordCount = briefingText.split(/\s+/).length;
+    if (wordCount > 250) console.warn(`[DC2-4] briefing ${userId}: ${wordCount} words (target ≤220)`);
+    else console.log(`[DC2-4] briefing ${userId}: ${wordCount} words`);
   } catch (err) {
     console.error('[briefing] generateDailyBriefing main call failed — falling back to basics:', err);
     briefingText = buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
