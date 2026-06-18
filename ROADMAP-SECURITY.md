@@ -105,6 +105,31 @@ Update changelog + Status Board when done.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (T3-3 — Data export completeness)
+
+> Master at `dc7653d`. `git merge master` first. Spec: `content/export-audit.md` — read it before starting.
+
+### Ticket 1 — Add missing tables to `app/api/account/export/route.ts` (T3-3)
+
+The current export (v1) is missing 4 data sources. Add them:
+
+1. **`episodes`** (HIGH) — call ground-truth records from `lib/episodeStore.ts`. Fields: `occurred_at`, `source`, topics (decrypt + JSON parse), commitments (decrypt + JSON parse). Transcripts optional but preferred.
+2. **`audit_log`** (HIGH) — every action Edge took on the user's behalf. Fields: `action`, `description`, `ok`, `created_at`. Omit `session_id`.
+3. **`fact_history`** (MEDIUM) — versioned memory audit trail. Join `fact_history` to `facts` on `fact_id` to get `user_id` scoping. Fields: `fact_id`, `statement`, `retired_at`, `retired_reason`, `source`.
+4. **`undo_history`** (LOW) — undo records. Fields: `action_type`, `created_at`, `used_at`.
+
+Also:
+- **Include retired facts** in the `facts` export: change `factQueries.getAll` to return both active and retired facts; add `status: 'active' | 'retired'` and `retiredAt: string | null` fields.
+- **Add `confidenceScore` and `lastConfirmedAt`** to each fact (both columns added in Round 6 — verify they're on the `factQueries.getAll` result).
+- **Bump version** from `'1'` to `'2'` in the payload.
+
+Full code snippets in `content/export-audit.md`. This is additive — no schema changes, no auth changes, just additional SELECT queries and payload fields.
+
+- **Files:** `app/api/account/export/route.ts` only (Security owns this route)
+- **Test:** verify all 4 new sections appear in a fresh export; verify retired facts appear with `status: 'retired'`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Bi-temporal fact schema)
 
 > Master at `e7357cc`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`

@@ -163,7 +163,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Add logging to any missing route
 - Document full coverage in `content/security-audit.md`
 
-### T3-3 — Data export accuracy (Security)
+### T3-3 — Data export accuracy (Security) — 📥 **DISPATCHED 2026-06-18**
+**Audit written:** `content/export-audit.md` — full gap analysis of `app/api/account/export/route.ts`. Route to Vijay (Security).
+**Missing from current export (v1):** `episodes` (call ground-truth records — HIGH), `audit_log` (every action Edge took — HIGH), `fact_history` (versioned memory audit trail — MEDIUM), `undo_history` (LOW). Also: facts export should include retired facts with status + retiredAt; confidence_score + last_confirmed_at should be included per fact; version bump to '2'.
 **The risk:** The data export (Settings → Account → Export) may not include everything Edge stores, or may include it in an unreadable format.
 - Audit the export endpoint: does it include facts, memories, episodes, call transcripts, priorities, tasks, activity log, and the user's current privacy setting?
 - If anything is missing: add it
