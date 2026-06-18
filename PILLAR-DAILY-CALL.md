@@ -83,7 +83,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - The opener must land on something time-sensitive, surprising, or decision-relevant — not something the user already has on their radar
 - Test: review the last 5 real briefings — did each one open with something that required Edge to know the user?
 
-### DC2-2 — Personalization signal: does the briefing reflect who this person is? (Core)
+### DC2-2 — Personalization signal: does the briefing reflect who this person is? (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/briefing-context-spec.md` §Personalization floor — minimum 3 user-specific signals (goal, recent fact, + one of Whoop/commitment/calendar person); fill-the-gap question if floor not met. Routed to Darren via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch.
 **The risk:** Two different users with identical calendars get identical briefings. The memory moat isn't being used.
 - Audit `lib/briefing.ts` context assembly: how many user-specific facts are injected per briefing? Is there a minimum floor?
 - If fewer than 3 user-specific facts are available: Edge should surface a reconfirmation question rather than briefing generically
@@ -105,7 +106,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - If Whoop token is expired: trigger a refresh before the briefing, not during it. The predictive context pack (11pm job) should pre-validate the Whoop token.
 - Test: with Whoop connected, run a briefing — verify recovery score appears. Disconnect Whoop briefly, run again — verify Edge mentions it's unavailable rather than skipping silently.
 
-### DC2-4 — Briefing length calibration: 3 minutes, not 8 (Core)
+### DC2-4 — Briefing length calibration: 3 minutes, not 8 (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/briefing-context-spec.md` §Target length — section 3 max 2 sentences, pattern memory max 1 sentence, calendar top 2–3 events only; dev debug log of section char counts added. Routed to Darren via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch.
 **The risk:** The briefing runs long because Edge tries to cover everything. The user stops picking up.
 - Target: core briefing content (opening + priorities + calendar + closing question) should fit in 3 minutes at normal speech pace (~400 words)
 - Audit the briefing prompt for length — is it producing 400-word briefings or 800-word briefings?
