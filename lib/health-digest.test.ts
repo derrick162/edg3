@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   failedCalls: 0,
   webhookFails: 0,
   jobFails: 0,
+  emptyTranscripts: 0,
   calendarRows: [] as Array<{ id: number }>,
   tokenHealthResult: { ok: true, needsReconnect: false },
   healthWritten: null as { status: string; summary: string } | null,
@@ -22,7 +23,11 @@ vi.mock('./db', () => ({
         if (sql.includes('calendar_tokens')) return h.calendarRows;
         return [];
       }),
-      get: vi.fn(() => ({ n: 0 })),
+      get: vi.fn(() => {
+        if (sql.includes('briefings') && sql.includes('transcript')) return { count: h.emptyTranscripts };
+        return { count: 0, n: 0 };
+      }),
+      run: vi.fn(),
     }),
   }),
   failedWebhookQueries: {
@@ -91,6 +96,7 @@ beforeEach(() => {
   h.failedCalls = 0;
   h.webhookFails = 0;
   h.jobFails = 0;
+  h.emptyTranscripts = 0;
   h.calendarRows = [];
   h.tokenHealthResult = { ok: true, needsReconnect: false };
   h.healthWritten = null;
@@ -156,6 +162,20 @@ describe('runHealthDigest — DEGRADED path', () => {
     await runHealthDigest();
     expect(h.healthWritten?.status).toBe('degraded');
     expect(h.healthWritten?.summary).toContain('calendar auth');
+  });
+
+  it('T1-2: reports degraded when completed calls have no transcript', async () => {
+    h.emptyTranscripts = 1;
+    await runHealthDigest();
+    expect(h.healthWritten?.status).toBe('degraded');
+    expect(h.healthWritten?.summary).toContain('no transcript');
+  });
+
+  it('T1-2: all checks nominal when transcript check finds no empty transcripts', async () => {
+    h.emptyTranscripts = 0;
+    await runHealthDigest();
+    expect(h.healthWritten?.status).toBe('ok');
+    expect(h.healthWritten?.summary).toContain('nominal');
   });
 });
 

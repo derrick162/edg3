@@ -242,6 +242,14 @@ export async function runHealthDigest(): Promise<void> {
   } catch (e) { issues.push(`job-failures check error: ${e}`); }
 
   try {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT COUNT(*) as count FROM briefings WHERE status = 'completed' AND created_at > datetime('now', '-24 hours') AND (transcript IS NULL OR length(transcript) < 50)`
+    ).get() as { count: number };
+    if (row.count > 0) issues.push(`${row.count} completed call(s) have no transcript`);
+  } catch (e) { issues.push(`transcript-health check error: ${e}`); }
+
+  try {
     // Proactively validate calendar tokens for all active users before the 7am call.
     const { checkCalendarTokenHealth } = await import('./google-auth');
     const db = getDb();
