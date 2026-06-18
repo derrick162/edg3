@@ -14,6 +14,7 @@ import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, g
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
 import { topFacts } from './memorySalience';
+import { selectReconfirmationFact, buildReconfirmationPromptBlock } from './factConfidence';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries, dailyFocusQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
@@ -52,6 +53,11 @@ async function getWeatherSummary(timezone: string): Promise<string> {
   } catch {
     return '';
   }
+}
+
+export function buildPersonalizationPromptBlock(factCount: number): string | null {
+  if (factCount >= 3) return null;
+  return `PERSONALIZATION SIGNAL: Only ${factCount} stored fact${factCount !== 1 ? 's' : ''} about this user — the briefing is running on minimal personal context. Instead of a standard focus question, close with ONE personal-context question to start building the moat: "Before I let you go — I'd love to understand you better. What's the challenge you feel most stuck on right now that we haven't tackled yet?" or "What's one thing happening in your life or work this week that I should know about?" Skip the forward-looking sentence. This replaces the standard closing question.`;
 }
 
 function extractCommitments(briefings: { user_response: string | null; scheduled_for: string }[]): string {
@@ -277,7 +283,7 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
   const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
-  const salientFacts = topFacts(allRawFacts, latestPriorities, today, { max: 20, maxPerCategory: 6 });
+  const salientFacts = topFacts(allRawFacts, latestPriorities, today, { max: 20, maxPerCategory: 6, filterStale: true });
 
   const [whoopRecovery, whoopSleep, whoopStrain] = await Promise.all([
     getLatestRecovery(userId).catch(() => null),
@@ -475,9 +481,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
   // source='edg3' tasks come from extractTasksFromTranscript at call end.
+  // M3-3: oldest (most overdue) edg3 commitment surfaces first — .at(0) on ASC-sorted array.
   const edg3Commitment = incompleteTasks
     .filter(t => t.source === 'edg3' && t.date < today)
-    .at(-1) ?? null;
+    .at(0) ?? null;
   // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
   // M4-2 Reliability Signal: 30-day window to derive per-horizon completion rates for calibrated language.
   const accountabilitySnapshot = (() => {
@@ -572,6 +579,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     whoopStrain?.strain ?? null,
   );
   const whoopContextBlock = (() => {
+    // DC2-3b honest "data unavailable" acknowledgment is handled by the inline WHOOP STATUS
+    // block in the prompt template below (whoopIsConnected && !whoopSection) — not duplicated here.
     if (!whoopSection) return '';
     const lines = [`HEALTH DATA (WHOOP):\n${whoopSection}`];
     const freshness = whoopFreshnessNote(whoopRecovery?.date, whoopSleep?.date, today);
@@ -608,6 +617,15 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     return '\n' + lines.join('\n') + '\n';
   })();
   const whoopConnected = whoopSection !== null;
+
+  // M4-1 / Round 6 Ticket 2: pick ONE low-confidence / long-unconfirmed fact to reconfirm
+  // naturally on the call. Edge hedges it ("last I heard…") and asks if it's still right,
+  // rather than stating a possibly-stale fact as current truth. Skips sensitive topics.
+  const reconfirmationFact = (() => {
+    try { return selectReconfirmationFact(allRawFacts, today); } catch { return null; }
+  })();
+  const reconfirmationBlock = buildReconfirmationPromptBlock(reconfirmationFact);
+
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
   const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
   const prioritiesWeekOf = latestPriorities[0]?.week_of ?? null;
@@ -701,6 +719,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   // Reuse the already-ranked salient facts (loaded early for meeting context).
   const salientFacts = salientFactsEarly;
+  // DC2-2: personalization signal — fewer than 3 stored facts means the briefing is generic.
+  const personalizationSignal = salientFacts.length < 3 ? salientFacts.length : null;
   // Event-linked memory — degrade to [] if thrown on malformed input.
   const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], salientFacts); } catch { return []; } })();
   // Energy matching (V2): energy-profile preferences + recovery modulator.
@@ -831,6 +851,8 @@ YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said 
 - ${edg3Commitment.text}
 ` : ''}${episodeMemoryBlock ? `
 ${episodeMemoryBlock}
+` : ''}${reconfirmationBlock ? `
+${reconfirmationBlock}
 ` : ''}${openLoopsBlock ? `
 ${openLoopsBlock}
 When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.
@@ -887,14 +909,14 @@ BRIEFING STRUCTURE — 3 parts, in order:
 
 CRITICAL — NO PREAMBLE: The very first words are the greeting, then immediately the most important signal. Zero warm-up. Zero scene-setting. Zero "here's what we'll cover today." If there is a YESTERDAY'S COMMITMENT, it IS the most important signal — lead with that before anything else. Actionable information within the first 10 seconds is the standard.
 
-PART 1 — GREETING + HOOK (2–3 sentences MAX):
+PART 1 — GREETING + HOOK (2 sentences MAX):
 ${edg3Commitment ? `FIRST — accountability (DC2-3): Before the Edge Score, open with: "${greeting}, ${firstName}. Yesterday you committed to '${edg3Commitment.text}' — did that happen?" This is the most time-sensitive signal. Then the Edge Score as sentence two.` : `Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}."`} Then ONE energy/sleep sentence using PROGRESS HOOK data — if recovery is GREEN (≥67%), tie the encouragement to a SPECIFIC real event on TODAY'S CALENDAR (e.g. "Recovery's solid — push hard on that investor prep this morning."), not a generic "solid day ahead." If recovery is RED (≤33%), name the heaviest deferrable block: "Recovery's low at X% — I'd protect your morning and defer [specific event] if possible." If no Whoop data, skip energy sentence entirely. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing). If TODAY'S CALENDAR shows a personal all-day event (birthday, anniversary, holiday — e.g. "Dad's Birthday"), acknowledge it warmly in one sentence with a small offer ("Today's [Name]'s birthday — want me to block time for a call or draft a quick note?"). If nothing meaningful: skip entirely.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
 
-PART 2 — FOCUS + ACTION (4–5 sentences MAX):
+PART 2 — FOCUS + ACTION (3–4 sentences MAX):
 ${edg3Commitment ? '' : ''}${focusRec && focusRec.areas.length > 0 ? `Propose focus: "For today, I'd focus you on: [area 1], [area 2], [area 3]. Sound right?" Then name what to DO first this morning, anchored to their top focus area and a specific calendar event where one connects. If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?"). If FREE TIME SLOTS shows an open afternoon window (3pm+) and the user has multiple priorities, offer a choice: "You've got a free window this afternoon — would you rather push on [priority 1] or [priority 2]?" One choice, then let them respond.` : `Name the top 2 concrete things to DO today anchored to priorities. No listing events — name ACTIONS.`}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
 
 PART 3 — CLOSING (2–3 sentences MAX):
-ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.${prioritiesStaleAge > 7 ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
+${buildPersonalizationPromptBlock(salientFacts.length) ?? `ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.`}${prioritiesStaleAge > 7 && personalizationSignal === null ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
 
 Write as flowing spoken language.`;
 
@@ -904,12 +926,15 @@ Write as flowing spoken language.`;
   try {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 320,
+      max_tokens: 290,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     }, { signal: AbortSignal.timeout(30_000) });
     const content = message.content[0];
     briefingText = content.type === 'text' ? content.text : buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
+    const wordCount = briefingText.split(/\s+/).length;
+    if (wordCount > 250) console.warn(`[DC2-4] briefing ${userId}: ${wordCount} words (target ≤220)`);
+    else console.log(`[DC2-4] briefing ${userId}: ${wordCount} words`);
   } catch (err) {
     console.error('[briefing] generateDailyBriefing main call failed — falling back to basics:', err);
     briefingText = buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);

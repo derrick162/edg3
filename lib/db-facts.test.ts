@@ -36,13 +36,15 @@ vi.mock('./crypto', () => ({
   decryptNullable: (v: string | null) => v,
 }));
 
-import { factQueries } from './db';
+import { factQueries, factHistoryQueries } from './db';
 
 beforeEach(() => {
   vi.resetAllMocks();
   m.prepare.mockReturnValue({ run: m.run, get: m.get, all: m.all });
   m.all.mockReturnValue([]);
   m.get.mockReturnValue(undefined);
+  // M4-3b: upsertFact now captures lastInsertRowid after INSERT for snapshotFactToHistory.
+  m.run.mockReturnValue({ lastInsertRowid: 1 });
 });
 
 describe('factQueries — bi-temporal (T1)', () => {
@@ -151,5 +153,108 @@ describe('factQueries — bi-temporal (T1)', () => {
       const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
       expect(prepareCalls.some(s => s.includes('LOWER(entity)') && s.includes('valid_until IS NULL'))).toBe(true);
     });
+
+    it('M4-3b: logs created reason to fact_history after new-fact INSERT (no-entity path)', () => {
+      // entity=null → uses .all() for dedup (no .get() call for lookup).
+      // First .get() call is snapshotFactToHistory's inner SELECT after the INSERT.
+      m.all.mockReturnValue([]); // no existing facts
+      m.run.mockReturnValue({ lastInsertRowid: 77 });
+      m.get.mockReturnValueOnce({ statement: 'Ship Series A deck', entity: null, category: 'goal' }); // snapshotFactToHistory SELECT
+
+      factQueries.upsertFact(1, 'goal', 'Ship Series A deck', null, 'high');
+
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+      expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(true);
+      expect(prepareCalls.some(s => s.includes('INSERT INTO fact_history'))).toBe(true);
+      const runCalls = (m.run.mock.calls as unknown as Array<unknown[]>);
+      const historyRun = runCalls.find(args => Array.isArray(args) && args.includes('created'));
+      expect(historyRun).toBeTruthy();
+    });
+
+    it('M4-3b: logs created reason to fact_history after bi-temporal update INSERT', () => {
+      // entity='gym' → uses .get() for entity lookup.
+      // get call order: (1) entity lookup → existing low-conf, (2+3) snapshotFactToHistory SELECTs.
+      const factDataRow = { id: 10, statement: 'gym is at 6am', entity: 'gym', category: 'preference' };
+      m.get
+        .mockReturnValueOnce({ id: 10, statement: 'gym is at 6am', confidence: 'low' }) // entity lookup
+        .mockReturnValue(factDataRow); // snapshotFactToHistory SELECTs (retire + created)
+      m.run.mockReturnValue({ lastInsertRowid: 88 });
+
+      factQueries.upsertFact(1, 'preference', 'gym is at 7am', 'gym', 'low');
+
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+      expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(true);
+      expect(prepareCalls.some(s => s.includes('INSERT INTO fact_history'))).toBe(true);
+      const runCalls = (m.run.mock.calls as unknown as Array<unknown[]>);
+      const historyCreated = runCalls.find(args => Array.isArray(args) && args.includes('created'));
+      expect(historyCreated).toBeTruthy();
+    });
+  });
+});
+
+describe('factHistoryQueries — M4-3b rollbackFact', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    m.prepare.mockReturnValue({ run: m.run, get: m.get, all: m.all });
+    m.run.mockReturnValue({ lastInsertRowid: 99 });
+    m.get.mockReturnValue(undefined);
+  });
+
+  it('does nothing when history row not found', () => {
+    m.get.mockReturnValue(undefined);
+    factHistoryQueries.rollbackFact(1, 999);
+    const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+    expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(false);
+  });
+
+  it('retires the current active fact and re-inserts historical statement', () => {
+    const histRow = { id: 7, fact_id: 5, user_id: 1, category: 'goal', statement: 'historical statement', entity: null, reason: 'created', retired_at: '2026-06-01T00:00:00Z' };
+    const activeRow = { id: 5, user_id: 1 };
+    const factDataRow = { statement: 'current statement', entity: null, category: 'goal' };
+
+    m.get
+      .mockReturnValueOnce(histRow)     // fact_history SELECT
+      .mockReturnValueOnce(activeRow)   // facts SELECT (active fact)
+      .mockReturnValue(factDataRow);    // snapshotFactToHistory SELECTs
+
+    factHistoryQueries.rollbackFact(1, 7);
+
+    const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+    // Should have retired the active fact
+    expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(true);
+    // Should have re-inserted historical version
+    expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(true);
+    // Should have written at least one fact_history row (the 'created' for the restored fact)
+    expect(prepareCalls.some(s => s.includes('INSERT INTO fact_history'))).toBe(true);
+  });
+
+  it('skips retiring when no active fact exists (already retired)', () => {
+    const histRow = { id: 7, fact_id: 5, user_id: 1, category: 'goal', statement: 'historical', entity: null, reason: 'created', retired_at: '2026-06-01T00:00:00Z' };
+    m.get
+      .mockReturnValueOnce(histRow)   // fact_history SELECT
+      .mockReturnValueOnce(undefined) // no active fact
+      .mockReturnValue({ statement: 'historical', entity: null, category: 'goal' }); // snapshotFactToHistory
+
+    factHistoryQueries.rollbackFact(1, 7);
+
+    const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+    // Should NOT retire (no active fact to retire)
+    expect(prepareCalls.some(s => s.includes('UPDATE') && s.includes('valid_until'))).toBe(false);
+    // But should still re-insert historical version
+    expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(true);
+  });
+
+  it('restores with confidence=high regardless of original confidence', () => {
+    const histRow = { id: 8, fact_id: 6, user_id: 1, category: 'preference', statement: 'enc-statement', entity: 'gym', reason: 'extraction-update', retired_at: '2026-06-10T00:00:00Z' };
+    m.get
+      .mockReturnValueOnce(histRow)
+      .mockReturnValueOnce(undefined) // no active fact
+      .mockReturnValue({ statement: 'enc-statement', entity: 'gym', category: 'preference' });
+
+    factHistoryQueries.rollbackFact(1, 8);
+
+    const runCalls = (m.run.mock.calls as unknown as Array<unknown[]>);
+    const insertRun = runCalls.find(args => Array.isArray(args) && args.includes('high'));
+    expect(insertRun).toBeTruthy();
   });
 });

@@ -140,15 +140,20 @@ export function topFacts(
   facts: Fact[],
   anchors: { text: string }[],
   today: string,
-  opts: { max?: number; maxPerCategory?: number } = {},
+  opts: { max?: number; maxPerCategory?: number; filterStale?: boolean } = {},
 ): ScoredFact[] {
-  const { max = 20, maxPerCategory = 6 } = opts;
-  const ranked = rankFacts(facts, anchors, today);
+  const { max = 20, maxPerCategory = 6, filterStale = false } = opts;
+  // M3-1: hard-cutoff for stale facts in default briefing context.
+  // Facts >90 days old auto-inject as stale statements; exclude them here.
+  // They remain in the DB and can be retrieved on-demand via searchMemory (M3-2).
+  const scored = filterStale
+    ? rankFacts(facts, anchors, today).filter(f => recencyScore(f.learned_at, today) > 0)
+    : rankFacts(facts, anchors, today);
 
   const catCount: Record<string, number> = {};
   const result: ScoredFact[] = [];
 
-  for (const f of ranked) {
+  for (const f of scored) {
     if (result.length >= max) break;
     const cat = f.category;
     catCount[cat] = (catCount[cat] ?? 0);

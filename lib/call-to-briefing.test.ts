@@ -247,7 +247,7 @@ describe('extractAndUpsertFacts', () => {
   it('degrades gracefully when Anthropic returns malformed JSON', async () => {
     h.create.mockResolvedValue(textResponse('not valid json at all'));
     // Should not throw — errors are caught internally
-    await expect(extractAndUpsertFacts(USER_ID, SAMPLE_TRANSCRIPT, USER_NAME)).resolves.toBeUndefined();
+    await expect(extractAndUpsertFacts(USER_ID, SAMPLE_TRANSCRIPT, USER_NAME)).resolves.toBe(0);
   });
 });
 
