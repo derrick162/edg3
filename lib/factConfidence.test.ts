@@ -131,6 +131,23 @@ describe('selectReconfirmationFact', () => {
     ];
     expect(selectReconfirmationFact(facts, TODAY)?.id).toBe(2);
   });
+
+  it('prioritizes a stale goal over a lower-confidence trivia fact', () => {
+    const facts = [
+      fact({ id: 1, category: 'fact', confidence_score: 0.05, last_confirmed_at: TODAY, statement: 'Drinks oat milk' }),
+      fact({ id: 2, category: 'goal', confidence_score: 0.25, last_confirmed_at: TODAY, statement: 'Targeting 500K seed' }),
+    ];
+    // The goal wins despite higher confidence — it's the question worth asking.
+    expect(selectReconfirmationFact(facts, TODAY)?.id).toBe(2);
+  });
+
+  it('prefers project over preference when both are stale', () => {
+    const facts = [
+      fact({ id: 1, category: 'preference', confidence_score: 0.2, last_confirmed_at: TODAY, statement: 'Likes morning email' }),
+      fact({ id: 2, category: 'project', confidence_score: 0.2, last_confirmed_at: TODAY, statement: 'Building the V2 launch' }),
+    ];
+    expect(selectReconfirmationFact(facts, TODAY)?.id).toBe(2);
+  });
 });
 
 describe('buildReconfirmationPromptBlock', () => {

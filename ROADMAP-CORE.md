@@ -449,6 +449,10 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **M4-1 reconfirmation polish + flaky-suite fix.**
+  - **Category weighting** (`lib/factConfidence.ts`): `selectReconfirmationFact` now ranks candidates by category importance (goal > project > preference > person > fact) before confidence/staleness, so the one reconfirmation question lands on what matters (a stale goal — "still targeting 500K?") rather than trivia. 2 new tests (25 total).
+  - **vapi wording fix**: reconfirmation guidance now keys off the spoken "last I heard…" line the assistant actually delivered, not an internal briefing block it never sees.
+  - **Flaky preflight FIXED**: `facts.test.ts` + `call-to-briefing.test.ts` didn't mock `./calendar`, so `extractAndUpsertFacts`' auto-fetch of today's events (`getCalendarEvents`, used for name grounding when `calendarEventTitles` is omitted) hit real code that was nondeterministic under parallel load — caused 2–3 intermittent failures per full run. Added `vi.mock('./calendar', { getCalendarEvents: async () => [] })` to both. Three consecutive clean full runs at 1737/1737.
 - **2026-06-18** — **PILLAR-TRUST UX-4 — no false hedging on known facts.**
   - `lib/vapi.ts` (live call) + `lib/briefing.ts` (spoken opener): added a NO FALSE HEDGING rule to the GROUNDED & DECISIVE anchor / briefing IMPORTANT rules. Edge states facts confirmed by calendar/priorities/memory plainly — never "I think", "I believe", "maybe", "probably" about something it's certain of. Explicitly carves out the ONE exception: facts under a RECONFIRM instruction (long-unconfirmed) are hedged with "last I heard…" on purpose. This complements M4-1: hedge stale facts deliberately, state confident facts directly. Prompt-only; 1735/1735 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC0-2 — call-to-briefing latency measurement.**

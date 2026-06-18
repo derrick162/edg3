@@ -69,9 +69,20 @@ export function shouldHedge(
   return factConfidence(fact) < HEDGE_SCORE || daysSinceConfirmed(fact, today) >= STALE_DAYS;
 }
 
+// How much each category is worth reconfirming aloud. A stale GOAL ("still targeting 500K?")
+// makes the call far sharper than a stale trivia fact, so weight the question toward facts
+// that actually change and matter day-to-day. Lower number = higher priority.
+const CATEGORY_PRIORITY: Record<Fact['category'], number> = {
+  goal: 0,
+  project: 1,
+  preference: 2,
+  person: 3,
+  fact: 4,
+};
+
 /**
  * Pick the single best fact to reconfirm on the call, or null if none qualifies.
- * Prefers the lowest-confidence non-sensitive fact; ties broken by longest-since-confirmed.
+ * Ranks by category importance (goals first), then lowest confidence, then most stale.
  * Never returns a sensitive fact (those route to dashboard surfacing instead).
  */
 export function selectReconfirmationFact(facts: Fact[], today: string): Fact | null {
@@ -84,8 +95,10 @@ export function selectReconfirmationFact(facts: Fact[], today: string): Fact | n
   if (candidates.length === 0) return null;
 
   candidates.sort((a, b) => {
+    const pa = CATEGORY_PRIORITY[a.category] ?? 9, pb = CATEGORY_PRIORITY[b.category] ?? 9;
+    if (pa !== pb) return pa - pb;                 // most-important category first
     const ca = factConfidence(a), cb = factConfidence(b);
-    if (ca !== cb) return ca - cb;                 // lowest confidence first
+    if (ca !== cb) return ca - cb;                 // then lowest confidence
     return daysSinceConfirmed(b, today) - daysSinceConfirmed(a, today); // then most stale
   });
   return candidates[0];
