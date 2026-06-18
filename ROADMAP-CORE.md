@@ -449,6 +449,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST UX-4 — no false hedging on known facts.**
+  - `lib/vapi.ts` (live call) + `lib/briefing.ts` (spoken opener): added a NO FALSE HEDGING rule to the GROUNDED & DECISIVE anchor / briefing IMPORTANT rules. Edge states facts confirmed by calendar/priorities/memory plainly — never "I think", "I believe", "maybe", "probably" about something it's certain of. Explicitly carves out the ONE exception: facts under a RECONFIRM instruction (long-unconfirmed) are hedged with "last I heard…" on purpose. This complements M4-1: hedge stale facts deliberately, state confident facts directly. Prompt-only; 1735/1735 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC0-2 — call-to-briefing latency measurement.**
   - `app/api/vapi/webhook/route.ts`: the five post-call memory jobs (tasks, facts, consolidation, open loops, episode) are now captured as promises and wrapped in `Promise.allSettled` to measure end-to-end post-call processing latency. Records `post_call_ms` on the briefing's `learning_status` (no schema change — flexible JSON column). Logs `[DC0-2] post-call memory pipeline Xms`; emits a `[DC0-2] HEALTH:` warn line (scrapeable by Security's T1-3 digest) when latency exceeds the 2-minute target. Gives visibility into whether facts land well within the 30-min window before the next morning's briefing. 1735/1735 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-MEMORY M4-1 + Round 6 Ticket 2 — mid-call fact reconfirmation (confidence decay now consumed).**
