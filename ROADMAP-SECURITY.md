@@ -217,6 +217,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18 (overnight)** — **PILLAR-MEMORY M2-4 — Context-pack non-empty verification + metrics (1699 green).**
+  - The 11pm pre-warm job (`runNightlyContextPacks`) logged `built/total` but would silently cache an **empty** pack — which poisons the morning call's live-assembly fallback (an empty cached pack is worse than no pack). It also lacked the M2-4-requested per-pack metrics.
+  - **`lib/scheduler.ts`:** now measures `durationMs`, computes `packSize` (trimmed length), and **skips caching empty packs** — counts them, logs `Context pack EMPTY user=…`, and records a `nightly_context_packs` background-job failure so the 6am digest flags it. Per-pack metrics logged (`size=`, `durationMs=`) for non-privacy users; userId-only + suppressed metrics under Privacy Mode (respects `data_consent`). Summary line now reports `N empty (skipped)`.
+  - **Tests:** +2 in `lib/scheduler.round6.test.ts` (empty pack not encrypted/upserted; prune still runs when all empty). 88 files / 1699 total.
 - **2026-06-18 (overnight)** — **PILLAR-TRUST T0-2 step 3 — Startup encryption-key presence check (1697 green). Tier 0 + Tier 1 (Security) now COMPLETE.**
   - T0-2 steps 1/2/4 were already shipped (key-backup doc `content/encryption-key-rotation.md`, `safeDecryptField` graceful content-path degradation, `STRICT_ENCRYPTION=1` fail-closed writes). The remaining gap was step 3: nothing alarmed if `DATA_ENCRYPTION_KEY` was missing at boot — PII would silently write as plaintext.
   - **`lib/durability.ts`:** `assessEncryptionReadiness(env)` pure helper — CRITICAL in prod when the key is unset (distinguishes plaintext-risk vs. strict-mode write-failure); ok in dev or when key present. Wired into `runStartupDurabilityCheck()` (loud boot log + `health_log` write).

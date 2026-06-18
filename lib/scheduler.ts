@@ -175,6 +175,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
   `).all() as User[];
 
   let built = 0;
+  let empty = 0;
   for (const user of users) {
     try {
       const tz = effectiveTimezone(user);
@@ -182,13 +183,30 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
       const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000)
         .toLocaleDateString('en-CA', { timeZone: tz });
 
+      const startedAt = Date.now();
       const contextPack = await buildContextPack(user.id);
+      const durationMs = Date.now() - startedAt;
+      const packSize = typeof contextPack === 'string' ? contextPack.trim().length : 0;
+
+      // M2-4 — verify the pack is non-empty. An empty pack must NOT be cached: the
+      // morning call falls back to live assembly, which is correct, so caching '' would
+      // poison that fallback. Surface it as a job failure so the 6am digest flags it.
+      if (packSize === 0) {
+        empty++;
+        console.warn(`[scheduler] Context pack EMPTY user=${user.id} date=${tomorrowLocal} — not caching; morning call will assemble live`);
+        backgroundJobFailureQueries.record('nightly_context_packs', user.id, 'empty pack (not cached)');
+        continue;
+      }
+
       briefingContextPackQueries.upsert(user.id, tomorrowLocal, contextPack);
       built++;
 
-      // Only log pack details for users who've consented to improvement data.
+      // M2-4 observability: size + duration are operational metrics (not pack content).
+      // Respect Privacy Mode — userId only, never the name, and suppress metrics.
       if (!isPrivacyMode(user)) {
-        console.log(`[scheduler] Context pack ready for ${user.name} (${tomorrowLocal})`);
+        console.log(`[scheduler] Context pack ready user=${user.id} date=${tomorrowLocal} size=${packSize} durationMs=${durationMs}`);
+      } else {
+        console.log(`[scheduler] Context pack ready user=${user.id} date=${tomorrowLocal} (privacy mode — metrics suppressed)`);
       }
     } catch (err) {
       console.error(`[scheduler] Context pack failed for user ${user.id}:`, err);
@@ -198,7 +216,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
 
   // Prune packs older than 7 days (runs alongside the pack build to stay clean).
   try { briefingContextPackQueries.prune(); } catch (e) { console.error('[scheduler] context pack prune failed:', e); }
-  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built`);
+  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built${empty ? `, ${empty} empty (skipped)` : ''}`);
 }
 
 // ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────

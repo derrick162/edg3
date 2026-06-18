@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   privacyMode: false,
   buildContextPackResult: 'packed-context',
   buildContextPackMissing: false,
+  buildContextPackEmpty: false,
 }));
 
 // ── mocks ──────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ vi.mock('./briefing', () => ({
   getWeekOf: vi.fn(() => '2026-06-16'),
   buildBriefingContextPack: async (userId: number) => {
     if (h.buildContextPackMissing) throw new Error('not available');
+    if (h.buildContextPackEmpty) return '';
     return `${h.buildContextPackResult}:${userId}`;
   },
 }));
@@ -108,6 +110,7 @@ function clearAll() {
   h.privacyMode = false;
   h.buildContextPackResult = 'packed-context';
   h.buildContextPackMissing = false;
+  h.buildContextPackEmpty = false;
 }
 
 // ── briefingContextPackQueries ─────────────────────────────────────────────────
@@ -263,6 +266,22 @@ describe('runNightlyContextPacks', () => {
     // At minimum, lastRunSql should end with the prune query (order may vary)
     // Just verify no throws and prune key ran
     expect(h.encryptCalls.length).toBeGreaterThan(0); // side-effect of upsert
+  });
+
+  it('M2-4: does NOT cache an empty pack (no upsert/encrypt for empty result)', async () => {
+    h.users.push(makeUser(1, 'Derrick'));
+    h.buildContextPackEmpty = true;
+    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    // An empty pack must not be encrypted/upserted — only the prune query runs after.
+    expect(h.encryptCalls.length).toBe(0);
+  });
+
+  it('M2-4: still prunes even when all packs are empty', async () => {
+    h.users.push(makeUser(1, 'Derrick'));
+    h.buildContextPackEmpty = true;
+    await runNightlyContextPacks(new Date('2026-06-17T23:00:00Z'));
+    // prune is the last DB statement issued regardless of empties
+    expect(h.lastRunSql).toContain('-7 days');
   });
 });
 
