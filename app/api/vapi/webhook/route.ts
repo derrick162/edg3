@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, Briefing, getDb } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
 import { claimWebhookEvent } from '@/lib/idempotency';
+import { withRetry } from '@/lib/retry';
 import Anthropic from '@anthropic-ai/sdk';
 
 // Reasons that indicate the user didn't answer — worth retrying
@@ -22,6 +23,10 @@ function scheduleRetry(db: ReturnType<typeof getDb>, briefingId: number, userId:
 
 // Vapi webhook handler for call status updates
 export async function POST(req: NextRequest) {
+  // T1-1: set once we enter the critical call-ended processing path. If anything in that
+  // path throws (after the inline retries below), the outer catch dead-letters it so a
+  // silent "call happened but nothing was learned" failure becomes visible in the 6am digest.
+  let dlq: { userId: number; callId: string; briefingId: number } | null = null;
   try {
     const sec = checkVapiSecret(req.headers.get('x-vapi-secret'));
     if (sec.status !== 'accepted') {
@@ -54,22 +59,28 @@ export async function POST(req: NextRequest) {
     }
 
     if ((type === 'call-ended' || type === 'end-of-call-report') && briefing.status !== 'completed') {
-      // Fetch full transcript from Vapi API — webhook payload often only has partial transcript
+      // Entering critical processing — arm the dead-letter context (see outer catch).
+      dlq = { userId: briefing.user_id, callId: call.id, briefingId: briefing.id };
+
+      // Fetch full transcript from Vapi API — webhook payload often only has partial transcript.
+      // T1-1: retry the fetch (3 attempts, exponential backoff) so a transient Vapi 5xx /
+      // network blip doesn't drop us to the partial transcript. Non-fatal on final failure.
       let transcript = call.transcript || payload.transcript || '';
       try {
-        const vapiRes = await fetch(`https://api.vapi.ai/call/${call.id}`, {
-          headers: { 'Authorization': `Bearer ${process.env.VAPI_API_KEY}` },
-        });
-        if (vapiRes.ok) {
+        const fullTranscript = await withRetry(async () => {
+          const vapiRes = await fetch(`https://api.vapi.ai/call/${call.id}`, {
+            headers: { 'Authorization': `Bearer ${process.env.VAPI_API_KEY}` },
+          });
+          if (!vapiRes.ok) throw new Error(`Vapi call fetch HTTP ${vapiRes.status}`);
           const vapiCall = await vapiRes.json();
-          const fullTranscript = vapiCall.transcript || vapiCall.artifact?.transcript || '';
-          if (fullTranscript.length > transcript.length) {
-            transcript = fullTranscript;
-            console.log(`[webhook] Fetched full transcript from Vapi API (${transcript.length} chars)`);
-          }
+          return (vapiCall.transcript || vapiCall.artifact?.transcript || '') as string;
+        }, { attempts: 3, label: 'transcript fetch' });
+        if (fullTranscript.length > transcript.length) {
+          transcript = fullTranscript;
+          console.log(`[webhook] Fetched full transcript from Vapi API (${transcript.length} chars)`);
         }
       } catch (err) {
-        console.error('[webhook] Failed to fetch full transcript from Vapi:', err);
+        console.error('[webhook] Failed to fetch full transcript after retries:', err);
       }
 
       const endedReason = payload.endedReason || call.endedReason || '';
@@ -240,6 +251,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error('Vapi webhook error:', err);
+    // T1-1: if we failed while processing a completed call, dead-letter it so the lost
+    // learning is visible (failedWebhookQueries.recentCount feeds the 6am health digest +
+    // 3am warning) rather than vanishing silently. Best-effort — never mask the original error.
+    if (dlq) {
+      try {
+        failedWebhookQueries.record(dlq.userId, dlq.callId, dlq.briefingId, String(err).slice(0, 2000));
+        console.error(`[webhook] T1-1: dead-lettered call ${dlq.callId} (user ${dlq.userId}) after processing failure`);
+      } catch (dlqErr) {
+        console.error('[webhook] T1-1: failed to write dead-letter record:', dlqErr);
+      }
+    }
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }
 }

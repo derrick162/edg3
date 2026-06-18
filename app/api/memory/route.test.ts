@@ -27,6 +27,9 @@ vi.mock('@/lib/db', () => ({
   factQueries: {
     getAll: (userId: number) => h.factsByUser[userId] ?? [],
   },
+  factHistoryQueries: {
+    getLatestTimestamps: (_userId: number) => ({}),
+  },
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────

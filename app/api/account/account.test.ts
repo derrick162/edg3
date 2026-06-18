@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   briefings: [] as unknown[],
   drafts: [] as unknown[],
   activity: [] as unknown[],
+  people: [] as unknown[],
   dbRun: vi.fn(),
   dbGet: vi.fn<() => unknown>(() => undefined),
   dbAll: vi.fn<() => unknown[]>(() => []),
@@ -64,6 +65,9 @@ vi.mock('@/lib/db', () => ({
   auditLogQueries: {
     recent: (_id: number, _lim: number) => h.activity,
   },
+  peopleProfileQueries: {
+    listForUser: (_id: number) => h.people,
+  },
 }));
 
 vi.mock('@/lib/crypto', () => ({
@@ -108,6 +112,7 @@ beforeEach(() => {
   h.briefings = [];
   h.drafts = [];
   h.activity = [];
+  h.people = [];
   h.preparedSqls = [];
   h.deleteUserData.mockReset();
   h.dbAll.mockReturnValue([]);
@@ -169,6 +174,7 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('eventEnergyTags');
     expect(data).toHaveProperty('openLoops');
     expect(data).toHaveProperty('activityLog');
+    expect(data).toHaveProperty('people');
   });
 
   it('includes the activity log (parsed args, no internal snapshot blobs)', async () => {

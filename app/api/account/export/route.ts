@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -84,6 +84,18 @@ export async function GET(_req: NextRequest) {
     createdAt: a.created_at,
   }));
 
+  // Relationship memory — the people Edge has learned about from the user's calendar/calls
+  // ("what Edge knows about people in your life"). canonical_name + email are stored plaintext
+  // (accepted gap, same tier as users.name) so no decryption is needed.
+  const peopleRows = peopleProfileQueries.listForUser(userId).map(p => ({
+    name: p.canonical_name,
+    email: p.email ?? null,
+    interactionCount: p.interaction_count,
+    lastInteraction: p.last_interaction ?? null,
+    upcomingInteraction: p.upcoming_interaction ?? null,
+    updatedAt: p.updated_at,
+  }));
+
   // Open loops — descriptions are decrypted by openLoopQueries.list()
   const openLoopRows = openLoopQueries.list(userId).map(l => ({
     id:          l.id,
@@ -149,6 +161,7 @@ export async function GET(_req: NextRequest) {
     eventEnergyTags: eventEnergyTagRows,
     openLoops: openLoopRows,
     activityLog: activityLogRows,
+    people: peopleRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

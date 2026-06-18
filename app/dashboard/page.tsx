@@ -353,7 +353,7 @@ interface Milestone {
 }
 
 function PrioritiesTab({
-  priorities, milestones, onSave, onMilestoneAdd, onMilestoneToggle, onMilestoneDelete,
+  priorities, milestones, onSave, onMilestoneAdd, onMilestoneToggle, onMilestoneDelete, onMilestoneEdit,
 }: {
   priorities: Priority[];
   milestones: Milestone[];
@@ -361,12 +361,15 @@ function PrioritiesTab({
   onMilestoneAdd?: (priorityId: number, text: string) => Promise<void>;
   onMilestoneToggle?: (id: number, done: boolean) => Promise<void>;
   onMilestoneDelete?: (id: number) => Promise<void>;
+  onMilestoneEdit?: (id: number, title: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(['', '', '']);
   const [loading, setLoading] = useState(false);
   const [newMilestoneText, setNewMilestoneText] = useState<{ [priorityId: number]: string }>({});
   const [addingMilestone, setAddingMilestone] = useState<number | null>(null);
+  const [editingMilestoneId, setEditingMilestoneId] = useState<number | null>(null);
+  const [editMilestoneText, setEditMilestoneText] = useState('');
 
   function startEdit() {
     setValues([
@@ -455,29 +458,56 @@ function PrioritiesTab({
                           )}
                           {pMilestones.map(m => (
                             <div key={m.id} className="flex items-center gap-2 group">
-                              <button
-                                onClick={() => onMilestoneToggle?.(m.id, m.done === 0)}
-                                className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all"
-                                style={{
-                                  background: m.done === 1 ? 'var(--edg-success)' : 'transparent',
-                                  borderColor: m.done === 1 ? 'var(--edg-success)' : 'var(--edg-hairline)',
-                                }}
-                              >
-                                {m.done === 1 && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
-                              </button>
-                              <span className="text-xs flex-1" style={{
-                                color: m.done === 1 ? 'var(--text-faint)' : 'var(--text-muted)',
-                                textDecoration: m.done === 1 ? 'line-through' : 'none',
-                              }}>
-                                {m.title}
-                              </span>
-                              <button
-                                onClick={() => onMilestoneDelete?.(m.id)}
-                                className="opacity-30 group-hover:opacity-100 text-xs transition-opacity"
-                                style={{ color: 'var(--edg-danger)' }}
-                              >
-                                ×
-                              </button>
+                              {editingMilestoneId === m.id ? (
+                                <>
+                                  <input
+                                    autoFocus
+                                    className="input text-xs py-0.5 flex-1"
+                                    value={editMilestoneText}
+                                    onChange={e => setEditMilestoneText(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') { e.preventDefault(); if (editMilestoneText.trim()) { onMilestoneEdit?.(m.id, editMilestoneText.trim()); setEditingMilestoneId(null); } }
+                                      if (e.key === 'Escape') setEditingMilestoneId(null);
+                                    }}
+                                  />
+                                  <button onClick={() => { if (editMilestoneText.trim()) { onMilestoneEdit?.(m.id, editMilestoneText.trim()); setEditingMilestoneId(null); } }} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--edg-accent-15)', color: 'var(--text-accent)' }}>Save</button>
+                                  <button onClick={() => setEditingMilestoneId(null)} className="text-xs" style={{ color: 'var(--text-faint)' }}>Cancel</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => onMilestoneToggle?.(m.id, m.done === 0)}
+                                    className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all"
+                                    style={{
+                                      background: m.done === 1 ? 'var(--edg-success)' : 'transparent',
+                                      borderColor: m.done === 1 ? 'var(--edg-success)' : 'var(--edg-hairline)',
+                                    }}
+                                  >
+                                    {m.done === 1 && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                                  </button>
+                                  <span className="text-xs flex-1" style={{
+                                    color: m.done === 1 ? 'var(--text-faint)' : 'var(--text-muted)',
+                                    textDecoration: m.done === 1 ? 'line-through' : 'none',
+                                  }}>
+                                    {m.title}
+                                  </span>
+                                  <button
+                                    title="Edit milestone"
+                                    onClick={() => { setEditingMilestoneId(m.id); setEditMilestoneText(m.title); }}
+                                    className="opacity-30 group-hover:opacity-100 text-xs transition-opacity"
+                                    style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                                    aria-label="Edit milestone"
+                                  >✎</button>
+                                  <button
+                                    onClick={() => onMilestoneDelete?.(m.id)}
+                                    className="opacity-30 group-hover:opacity-100 text-xs transition-opacity"
+                                    style={{ color: 'var(--edg-danger)' }}
+                                    aria-label="Delete milestone"
+                                  >
+                                    ×
+                                  </button>
+                                </>
+                              )}
                             </div>
                           ))}
                           {addingMilestone === p.id ? (
@@ -864,9 +894,6 @@ function ActivityTab() {
                                           Show less
                                         </button>
                                       )}
-                                      <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                                        Edg3 reads subject lines only — never message content.
-                                      </p>
                                     </div>
                                   );
                                 })() : null}
@@ -973,6 +1000,7 @@ interface Fact {
   confidence?: 'low' | null;
   source_briefing_id?: number | null;
   source?: string | null;
+  last_updated_at?: string | null;
 }
 
 // ── Fact source label ─────────────────────────────────────────────────────────
@@ -1129,8 +1157,11 @@ function FocusScoreboardPanel() {
                     </span>
                   )}
                   {delta.arrow && (
-                    <span className="text-xs font-bold"
-                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'rgba(239,68,68,0.8)' }}>
+                    <span
+                      className="text-xs font-bold"
+                      title={delta.up ? 'Trending up vs last week' : delta.flat ? 'Flat vs last week' : 'Trending down vs last week'}
+                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'rgba(239,68,68,0.8)' }}
+                    >
                       {delta.arrow}
                     </span>
                   )}
@@ -1304,6 +1335,10 @@ export default function Dashboard() {
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
   const [savedFactId, setSavedFactId] = useState<number | null>(null);
+  const [expandedHistoryFactId, setExpandedHistoryFactId] = useState<number | null>(null);
+  const [factHistory, setFactHistory] = useState<Record<number, { id: number; statement: string; retired_at: string; reason: string | null }[]>>({});
+  const [historyLoadingId, setHistoryLoadingId] = useState<number | null>(null);
+  const [rollingBackId, setRollingBackId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -1473,6 +1508,45 @@ export default function Dashboard() {
     setFacts(prev => prev.filter(f => f.id !== id));
     setDeletingFactId(null);
     await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
+  async function loadFactHistory(id: number) {
+    if (factHistory[id]) {
+      setExpandedHistoryFactId(prev => prev === id ? null : id);
+      return;
+    }
+    setHistoryLoadingId(id);
+    try {
+      const res = await fetch(`/api/memory/facts/${id}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setFactHistory(prev => ({ ...prev, [id]: data.history ?? [] }));
+      }
+    } finally {
+      setHistoryLoadingId(null);
+      setExpandedHistoryFactId(id);
+    }
+  }
+
+  async function rollbackToVersion(factId: number, historyId: number) {
+    setRollingBackId(historyId);
+    try {
+      const res = await fetch(`/api/memory/facts/${factId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historyId }),
+      });
+      if (res.ok) {
+        setExpandedHistoryFactId(null);
+        setFactHistory(prev => { const n = { ...prev }; delete n[factId]; return n; });
+        // Refresh facts from server
+        fetch('/api/memory').then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.facts) setFacts(d.facts);
+        });
+      }
+    } finally {
+      setRollingBackId(null);
+    }
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
@@ -2514,6 +2588,14 @@ export default function Dashboard() {
                 setMilestones(prev => prev.filter(m => m.id !== id));
                 await fetch(`/api/milestones/${id}`, { method: 'DELETE' });
               }}
+              onMilestoneEdit={async (id, title) => {
+                setMilestones(prev => prev.map(m => m.id === id ? { ...m, title } : m));
+                await fetch(`/api/milestones/${id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ title }),
+                });
+              }}
             />
             </div>
           )}
@@ -2753,10 +2835,48 @@ export default function Dashboard() {
                                 </p>
                                 {(() => {
                                   const src = factSourceLabel(f);
-                                  return src.href ? (
-                                    <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
-                                  ) : (
-                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                  const updatedAt = f.last_updated_at;
+                                  const showUpdated = updatedAt && updatedAt.slice(0, 10) !== f.learned_at.slice(0, 10);
+                                  return (
+                                    <>
+                                      {src.href ? (
+                                        <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                      ) : (
+                                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                      )}
+                                      {showUpdated && (
+                                        <button
+                                          onClick={() => loadFactHistory(f.id)}
+                                          className="text-xs mt-0.5 block text-left"
+                                          style={{ color: 'var(--text-faint)', background: 'none', border: 'none', padding: 0 }}
+                                        >
+                                          {historyLoadingId === f.id ? 'loading…' : `updated ${format(new Date(updatedAt!), 'MMM d')} ${expandedHistoryFactId === f.id ? '▴' : '▸'}`}
+                                        </button>
+                                      )}
+                                      {showUpdated && expandedHistoryFactId === f.id && factHistory[f.id] && (
+                                        <div className="mt-2 pl-2 space-y-1.5" style={{ borderLeft: '2px solid var(--edg-hairline)' }}>
+                                          {factHistory[f.id].filter(h => h.reason !== 'created').slice(0, 5).map(h => (
+                                            <div key={h.id} className="flex items-start justify-between gap-2">
+                                              <div className="min-w-0">
+                                                <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{h.statement}</p>
+                                                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(new Date(h.retired_at), 'MMM d')}</p>
+                                              </div>
+                                              <button
+                                                onClick={() => rollbackToVersion(f.id, h.id)}
+                                                disabled={rollingBackId === h.id}
+                                                className="text-xs flex-shrink-0 px-2 py-0.5 rounded"
+                                                style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}
+                                              >
+                                                {rollingBackId === h.id ? '…' : 'Restore'}
+                                              </button>
+                                            </div>
+                                          ))}
+                                          {factHistory[f.id].filter(h => h.reason !== 'created').length === 0 && (
+                                            <p className="text-xs" style={{ color: 'var(--text-faint)' }}>No previous versions</p>
+                                          )}
+                                        </div>
+                                      )}
+                                    </>
                                   );
                                 })()}
                               </>
@@ -2948,7 +3068,7 @@ export default function Dashboard() {
                                         {correctName(entity, firstName)}
                                       </p>
                                       <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
-                                        last updated {format(new Date(mostRecent.learned_at), 'MMM d')}
+                                        last updated {format(new Date(mostRecent.last_updated_at ?? mostRecent.learned_at), 'MMM d')}
                                       </p>
                                     </div>
                                     <div className="space-y-0">

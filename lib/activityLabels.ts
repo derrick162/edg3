@@ -358,8 +358,6 @@ export function buildDetail(
       const days = typeof args.days === 'number' ? args.days : null;
       if (count !== null) sections.push({ label: 'Threads reviewed', value: String(count) });
       if (days !== null) sections.push({ label: 'Window', value: `Last ${days} days` });
-      // Note: subjects are loaded separately via GET /api/activity/email-receipt/[id].
-      sections.push({ label: 'Detail', value: 'Expand to see which emails Edge reviewed.' });
       return sections.length ? { sections } : null;
     }
 

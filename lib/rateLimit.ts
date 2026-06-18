@@ -64,6 +64,8 @@ export const LIMITS = {
   consentUpdate:        { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (privacy setting change)
   calendarDisconnect:   { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (OAuth revocation)
   whoopDisconnect:      { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (OAuth revocation)
+  gmailDisconnect:      { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user (Gmail account OAuth revocation)
+  gmailConnect:         { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (Gmail account OAuth initiate)
   calendarReminder:     { limit: 10, windowMs: 60 * 60 * 1000 },  // 10 / hour per user (recurring calendar event set/remove)
   profileTimezone:      { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (travel timezone override)
   priorityEnergy:       { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (priority energy-cost tag)
