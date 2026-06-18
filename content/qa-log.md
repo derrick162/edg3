@@ -11,6 +11,27 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
+## 2026-06-18 — Design session QA (Cam)
+
+**Status: PARTIAL** — automated suite 1703 green; manual items below are UI-observable only.
+
+### UX-2/3/4 post-ship verification (code review)
+- ✅ People section: `isSelf` filter applied (entity lower-cased vs firstName + fullName + AI_ENTITY_NAMES set)
+- ✅ People section: dedup logic collapses facts with identical first-80-char key; "N duplicate entries merged" affordance shown when dupes exist
+- ✅ `cursor: pointer` rule added to `app/globals.css` covering `button:not(:disabled)`, `[role="button"]`, `a[href]`, `label[for]`, `summary`, `select`
+- ✅ `collapsedMemorySections` init: `useEffect` fires on first `facts` load — collapses all but first 3 populated categories; "all expanded" path fires when <4 categories have data
+- ⬜ **Live check needed:** open "What Edge knows" with real data — verify no self-references, no "Edge"/"Edg3" entities, no obvious duplicate facts in People section
+- ⬜ **Live check needed:** click every header row in Memory tab — verify collapse/expand fires correctly
+
+### Design-observable PILLAR-TRUST items
+- ✅ UX-1 copy: all "Edge" → "Edg3" on public surfaces (privacy, onboarding, components sweep — 2026-06-18)
+- ✅ UX-2 display layer: shipped edc52d7
+- ✅ UX-3 cursor + isSelf: shipped edc52d7
+- ✅ UX-4 collapsible sections: shipped edc52d7; dynamic init added
+- ⬜ M4-3b "updated [date]" per-fact expand: BLOCKED on Core `fact_history` table
+
+---
+
 ## 2026-06-18 — Pre-launch baseline (PM/Kevin)
 
 **Status: PARTIAL** — automated test suite green (1703 tests); manual end-to-end QA not yet run. Items marked ✅ were verified via code review or automated tests; items marked ⬜ are pending live-call verification.

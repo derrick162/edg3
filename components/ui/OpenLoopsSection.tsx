@@ -200,7 +200,7 @@ function AllClear() {
         style={{
           background: 'var(--edg-success-tint)',
           border: '1.5px solid var(--edg-success-border)',
-          boxShadow: '0 0 20px rgba(16,185,129,0.12)',
+          boxShadow: 'var(--edg-success-glow)',
           animation: 'pop-in 0.4s ease both',
         }}
       >

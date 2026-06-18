@@ -21,9 +21,9 @@ export interface TimeAllocationVizProps {
 const BUCKET_COLORS = [
   'var(--edg-indigo)',
   'var(--edg-accent)',
-  '#10b981',
-  '#f59e0b',
-  '#8b5cf6',
+  'var(--edg-success)',
+  'var(--edg-warning)',
+  'var(--edg-violet)',
   '#ec4899',
 ];
 
