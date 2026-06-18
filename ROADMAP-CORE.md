@@ -1535,6 +1535,27 @@ priority from user feedback.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (DC3-1 — Voice anchor phrases, 1 ticket)
+
+> Master at `3e2d129`. `git merge master` first. Short ticket — 30 min. Spec: `content/edge-voice-anchor-phrases.md`.
+
+### Ticket 1 — Add 5 voice anchor phrases to `lib/vapi.ts` (PILLAR-DAILY-CALL DC3-1)
+
+The spec is written. Add a `VOICE CONSISTENCY / ANCHOR PHRASES` block to `lib/vapi.ts` (in the PART 1 section, after GROUNDED & DECISIVE):
+
+```
+ANCHOR PHRASES — use these forms consistently every call. Content varies; structure stays fixed:
+- GREETING: "Morning [firstName] — [single most important thing]." Under 15 words after the dash. No pleasantries. No warm-up.
+- CALENDAR TRANSITION: "On the calendar today: [top 2–3 events]." One sentence. No narrating every item.
+- WHOOP NOTE (when data present): "[Recovery level] today — [one plain-English implication]." Never "your Whoop says." Just "Recovery's high today — good day to go after the hard stuff."
+- CLOSING QUESTION: One concrete action Edge can do RIGHT NOW. Never "is there anything else?" or "how does that sound?"
+- END OF CALL: "Got it. [Optional one-line action note.] Talk tomorrow." Three sentences max. No "have a great day."
+```
+
+This is content-only — no logic changes. One commit. Preflight must be green. Update Status Board.
+
+---
+
 ### Later / candidates (not yet committed)
 - [ ] **🤝 Chief-of-Staff ↔ Edg3 bridge (founder tooling / intensive dogfooding)** — _user idea 2026-06-10. Build RIGHT AFTER the core loop is verified (the end-to-end test)._ Expose Edg3's capabilities (start with `draft_email` w/ availability, then `find_free_time` / `read_calendar` / `research`) to the **Chief of Staff agent** so it can *act through* Edg3 to help Derrick day-to-day. **Form:** a small **MCP server** (preferred) or CLI the CoS calls. **Value:** (a) makes Derrick effective now; (b) the CoS using Edg3 daily is the best bug-finder we have → de-risks launch. **Tradeoff:** internal tooling, not the product (scope vs the Sept freeze) — justified by the dogfooding payoff. **⚠️ Auth (🔒 Security):** needs a token that acts as the user against Edg3's API (account-level access) — coordinate with Security; for a single-user pre-launch tool a static `AGENT_TOKEN`-gated endpoint acting as user 1 is acceptable but must be deliberate. **Sequencing:** gated on (1) the core verified working, (2) Security building the token endpoint. Start with ONE capability (email drafting), prove the loop, expand.
 - [ ] **🔮 V2 / POST-LAUNCH — Google Drive / Sheets awareness** (PM-deferred 2026-06-10, user idea). Edge pulls the doc/spreadsheet tied to a calendar event (e.g. the weekly P&L sheet for the "P&L review" block) and works it into the briefing. **Deferred because:** it's another *restricted* Google scope (compounds the verification we haven't started), it's new scope against the September freeze, and summarizing financial spreadsheets accurately is high-trust/high-risk. Lighter near-term paths if ever needed: (a) surface the doc *link* in the briefing (no new scope); (b) `drive.file` + file-picker so the user designates only specific docs (non-restricted scope).

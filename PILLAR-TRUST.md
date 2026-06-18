@@ -103,8 +103,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Failed jobs: log `{job, userId, failedAt, error}` to a `background_job_failures` table
 - Test: force a failure in the sleep-time consolidation job, verify it's logged, verify the alert path fires, verify the next call isn't broken
 
-### T1-4 — Encryption audit: verify all sensitive fields (Security)
-**The risk:** New tables have been added across Core and Security over many sessions. Not all of them have been confirmed encrypted at rest.
+### T1-4 — Encryption audit: verify all sensitive fields (Security) — ✅ **FIXED 2026-06-18**
+**Shipped:** Full encryption coverage map in `content/data-protection.md` (Security reference section). All HIGH tables confirmed encrypted; 3 accepted plaintext gaps documented (priorities.text, undo_log.payload, people_profiles canonical_name — tracked for future pass). Cipher: AES-256-GCM per-value random IV.
+~~**The risk:** New tables have been added across Core and Security over many sessions. Not all of them have been confirmed encrypted at rest.~~
 - Audit every table in `lib/db.ts` that stores user-generated content
 - For each: confirm it calls `encryptField()` on write and `decryptField()` on read
 - Tables most likely to be missing: `briefing_context_packs`, `background_job_failures`, `call_health_events`, `people_models` (when shipped)
