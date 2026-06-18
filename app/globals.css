@@ -519,6 +519,8 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   /* Notification center */
   --notif-celebrate-bg:      rgba(99, 102, 241, 0.08);
   --notif-celebrate-border:  rgba(99, 102, 241, 0.25);
+  --notif-celebrate-glow:    0 0 20px rgba(99, 102, 241, 0.12);
+  --notif-celebrate-dot-glow: 0 0 12px rgba(99, 102, 241, 0.30);
   --notif-energy-bg:         rgba(245, 158, 11, 0.07);
   --notif-energy-border:     rgba(245, 158, 11, 0.25);
   --notif-nudge-bg:          rgba(239, 68, 68, 0.06);
