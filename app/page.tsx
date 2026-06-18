@@ -357,7 +357,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Problem ── */}
-        <section className="max-w-5xl mx-auto px-4 md:px-8 pt-24 pb-12">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             Your calendar is full.<br />The right things aren&apos;t getting done.
           </h2>
@@ -410,7 +410,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Edg3 Score ── */}
-        <section className="max-w-5xl mx-auto px-4 md:px-8 pt-16 pb-20">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             One number. Your daily readout.
           </h2>
@@ -556,16 +556,12 @@ export default function LandingPage() {
         {/* ── Memory section ── */}
         <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
           <div className="glass-card p-8 md:p-14" style={{ borderColor: 'var(--edg-accent-20)' }}>
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-6" style={{ color: 'var(--text-strong)' }}>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6 leading-tight" style={{ color: 'var(--text-strong)' }}>
               Most AI forgets you.<br />Edg3 remembers.
             </h2>
-            <p className="text-base leading-relaxed mb-4 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
-              Every call, every confirmed plan, every priority you name — Edg3 is building a model of you. Not a profile you fill out once and forget. A living picture that updates every morning.
-            </p>
-            <p className="text-base leading-relaxed mb-4 max-w-2xl" style={{ color: 'var(--text-muted)' }}>
-              That&apos;s why the briefing feels different after two weeks than it did on day one. Edg3 knows your energy patterns, your recurring bottlenecks, the people who move things and the ones who don&apos;t. It stops asking what matters and starts just knowing.
-            </p>
-            <p className="text-base font-semibold mb-10 max-w-2xl" style={{ color: 'var(--text-body)' }}>
+            <p className="text-base mb-2" style={{ color: 'var(--text-muted)' }}>Every call adds to your picture.</p>
+            <p className="text-base mb-2" style={{ color: 'var(--text-muted)' }}>Day 14 feels nothing like day one.</p>
+            <p className="text-base font-semibold mb-10" style={{ color: 'var(--text-body)' }}>
               You&apos;re not training a chatbot. You&apos;re building an operating partner.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
