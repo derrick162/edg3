@@ -91,13 +91,15 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
   const db = getDb();
-  const cutoff = `datetime('now', '-${Math.max(1, Math.min(720, windowHours))} hours')`;
+  // Clamp to [1, 720] and coerce to a number, then BIND it as a parameter rather than
+  // interpolating into SQL — defensive even though the clamp already prevents injection.
+  const wh = Math.max(1, Math.min(720, Number(windowHours) || 48));
 
   const candidates = db.prepare(
     `SELECT id, category, entity, valid_until FROM facts
-     WHERE user_id=? AND valid_until IS NOT NULL AND valid_until >= ${cutoff}
+     WHERE user_id=? AND valid_until IS NOT NULL AND valid_until >= datetime('now', ?)
      ORDER BY valid_until DESC`
-  ).all(userId) as Array<{ id: number; category: string; entity: string | null; valid_until: string }>;
+  ).all(userId, `-${wh} hours`) as Array<{ id: number; category: string; entity: string | null; valid_until: string }>;
 
   if (dryRun) {
     return NextResponse.json({ dryRun: true, wouldRestore: candidates.length, candidates });
