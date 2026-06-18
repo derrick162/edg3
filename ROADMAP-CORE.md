@@ -457,6 +457,10 @@ Ship small / green / full preflight (real exit code) per item; log each below.
   - **Ticket 5 — naming consistency** (dashboard): audited focus labels — daily consistently "today", weekly "this week"; no mixing found. Canonicalized the locked daily header to keep "Today's Focus" distinct from the weekly "Focus this week" screen.
   - **Ticket 8 — DEFERRED (LOW).** Consolidating the duplicate priority sections (FocusScoreboardPanel analytics cards vs PrioritiesTab editor — both inherently list priorities) is a structural/layout decision in Design's lane; rushing it solo risks the milestone editor. **Recommend:** Core + Design jointly fold milestone editing into the scoreboard cards (or strip the editor's duplicate list), so priorities render once with inline milestone editing.
   - 1818/1818 green, tsc clean, next build clean. ⚠️ Manual: priority-history view needs 2+ weeks of priority rows to show much.
+- **2026-06-18** — **PILLAR-TRUST T2-4 — buildBriefingContext extraction + 10 spec-driven regression tests.**
+  - `buildBriefingContext(user, data, today?)` pure function extracted from `lib/briefing.ts` and exported. Implements all assembly rules: commitment ordering (past-due source=edg3 tasks first), non-routine calendar before routine (gym/breakfast/etc.), priorities, Whoop, structured facts, calendar-scoped relationship context, personalization floor (≥3 signals → fill-the-gap when not met), confidence hedging ("last I heard — " for conf < 0.5), 16k char cap.
+  - 10 spec-driven regression assertions in `lib/briefing.test.ts` covering every rule (sourced from `content/briefing-regression-spec.md`). Any briefing change that breaks these assertions fails preflight.
+  - 1828/1828 green, tsc clean, next build clean.
 - **2026-06-18** — **Derrick dashboard-review batch — tickets 1, 2, 3, 9 (the HIGH-priority four).**
   - **Ticket 9 — spam filter in email activity** (`lib/emailActivityFilter.ts` + dashboard): the "Threads Edg3 reviewed" panel was showing Instacart receipts, Walmart order confirmations, CNBC newsletters, market blasts. New pure helper (10 tests) classifies noise by subject (promo/receipt/automated/market-news) and the dashboard hides it — always keeping real correspondence + flagged-keyword threads. Shows an honest "just automated mail this scan" line when a scan is all noise.
   - **Ticket 1 — Edge Score "why" reads as a reason** (`lib/scoreChange.ts` + `EdgeScoreCard.tsx`): `buildReason` is now direction-aware — an upward move is never explained by a problem driver ("Up 16 because focus not confirmed yet"). Picks a positive driver for rises, topFix/negative for drops, strips trailing punctuation. Card shows "Up N since X — because <reason>" above the breakdown link. 5 new/updated tests.
@@ -1624,31 +1628,9 @@ priority from user feedback.
 
 ---
 
-## 📥 PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests)
+## ✅ PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests) — **DONE 0975089**
 
-> Master at `87af54d`. `git merge master` first. Spec: `content/briefing-regression-spec.md` — read it; the assertions are already written.
-
-### Ticket 1 — Write `lib/briefing.test.ts` with 8 regression assertions (T2-4)
-
-The spec provides exact test code. The main work is:
-1. Extract `buildBriefingContext(user, data)` from `lib/briefing.ts` — this should be the existing assembly logic promoted to an exported function. Do NOT fork or duplicate; the export IS the live path.
-2. Write the 8 tests in `lib/briefing.test.ts` (spec has the full implementation).
-3. Run `npm run preflight` — all 8 must be green.
-
-**Assertions to implement** (full code in spec):
-1. Outstanding commitments appear before calendar in context
-2. Priority text is present in context (by name)
-3. Stale facts (>90 days, unconfirmed, confidence < 0.7) are excluded
-4. Relationship context injected for people on today's calendar
-5. Relationship context NOT injected for people not on today's calendar
-6. Fill-the-gap question injected when fewer than 3 user-specific signals
-7. No fill-the-gap question when floor is met
-8. Low-confidence (< 0.5) facts get hedged with "last I heard"
-
-**Coordinate with M3-1/DC2-2/DC2-4 dispatch:** The M3-1 ticket (signal priority reorder + stale filter + personalization floor) and these tests are coupled — if you do T2-4 first, some assertions will fail until M3-1 lands. Recommended order: do M3-1+DC2-2+DC2-4 first, then T2-4 (tests validate the new behavior).
-
-- **Files:** `lib/briefing.ts` (extract `buildBriefingContext`), `lib/briefing.test.ts` (new test file)
-- **Preflight:** must be green before commit
+`buildBriefingContext(user, data, today?)` extracted from `lib/briefing.ts`. 10 spec-driven regression assertions in `lib/briefing.test.ts`. 1828/1828 green.
 
 ---
 

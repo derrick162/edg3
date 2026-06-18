@@ -138,8 +138,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 **Shipped (Loop 7):** `friendlyError` updated — 403 now offers "Want me to draft a message to the organizer instead?" (draftEmail path); added rate-limit (429 → "Google Calendar is temporarily rate-limiting") + timeout (ETIMEDOUT/ECONNRESET → "The request timed out") cases. `FAILURE_RE` updated to match new messages. 1816/1816 green.
 ~~**Partial progress:** 2026-06-13 NEVER PUNT changes removed "do it yourself" language. Two remaining rough edges (2026-06-18): generic catch-all + 403 message for non-moveEvent organizer restrictions.~~
 
-### T2-4 — Briefing accuracy regression test (Core) — ✅ **LIVE (Darren)**
-**Shipped:** T2-4 briefing accuracy regression suite added to `lib/briefing.test.ts` (6+ tests): sleep-debt + high-strain composite signal, fallback briefing regression guards (no async-note-box references, brand-name stability), Whoop section format regressions, `buildBaselineContext` daily delta line. Runs as part of preflight. 1816/1816 green.
+### T2-4 — Briefing accuracy regression test (Core) — ✅ **LIVE (Darren + Kevin)**
+**Shipped:** `buildBriefingContext(user, data, today?)` pure function extracted from `lib/briefing.ts` — all assembly rules in one testable export (commitment ordering, stale filter, calendar deprioritization, relationship scoping, personalization floor, confidence hedging, 16k cap). 10 spec-driven regression assertions added to `lib/briefing.test.ts` covering every rule. Prior regression guards (composite signal, fallback brand, Whoop format) still green. 1828/1828 green.
 ~~**The risk:** Changes to the briefing builder silently degrade briefing quality — missing facts, wrong priorities, stale context.~~
 
 ---
