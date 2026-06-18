@@ -70,7 +70,8 @@ be done from code; all the supporting code is shipped and waiting.
 | `failed_webhooks` / `background_job_failures` surfaced | ✅ | 3am cron + 6am digest log counts; `lib/failure-logging.test.ts`. |
 | `health_log` written daily (OK vs DEGRADED) | ✅ | `runHealthDigest`; `lib/health-digest.test.ts`. |
 | Scheduled call fires within ~60s of call_time | 🔁 | Logic + timing-delta log tested (`lib/scheduler.test.ts` DC1-3). Live wall-clock = ⚠️. |
-| `npm run preflight` green | ✅ | 88 files / 1697 tests green as of this entry. |
+| `npm run preflight` green | ✅ | 90 files / 1707 tests green as of this entry. |
+| Backup is genuinely restorable (data survives) | ✅ | `lib/backup-restore-drill.test.ts` — real SQLite create→snapshot→reopen→data-matches round-trip (the live Railway-volume drill is still ⚠️ external, but the mechanism is now proven automatically). |
 
 ## Items that require a live call / live infra (cannot be automated here)
 

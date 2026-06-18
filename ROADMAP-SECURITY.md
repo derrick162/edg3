@@ -217,6 +217,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18 (overnight)** — **T0-1 §4 — Automated restore drill (1707 green).**
+  - Every existing backup test **mocks** better-sqlite3, so the real create→snapshot→reopen→data-survives path was never exercised — "backups you've never restored are not backups."
+  - **`lib/backup-restore-drill.test.ts` (NEW, real SQLite, no mocks):** builds a real DB (full schema) at a temp path, seeds known rows, calls the actual `createBackup()` (the same online-backup the 3am cron uses), then `verifyBackup()` (integrity_check ok + row counts), then **reopens the snapshot read-only and asserts the actual data survived** (emails + task text, not just counts). This is the closest a unit test gets to the manual Railway restore drill. The live volume-restore remains an external Kevin step.
+  - 90 test files / 1707 total.
 - **2026-06-18 (overnight)** — **T3-4 cascade test + 2 account-deletion BUG FIXES + T4-3 lock-held warning (1705 green).**
   - **🐞 BUG FOUND + FIXED (account deletion would 500):** `support_messages` and `fact_history` both have `user_id NOT NULL REFERENCES users(id)` with **no ON DELETE CASCADE**, and **neither was in the account-deletion route**. With `foreign_keys = ON`, deleting any user who had filed support feedback or had a retired fact would throw an FK constraint error → account deletion 500s, leaving the user undeletable. Both added to the deletion set. Surfaced by the new drift-guard test (below) — exactly its purpose.
   - **T3-4 — `deleteUserData(userId)` extracted to `lib/db.ts`** from the inline route logic, driven by an exported `USER_SCOPED_DELETE_ORDER` (single source of truth, leaf-first, FK-safe) and **wrapped in a transaction** — a missing-table FK error now rolls back instead of half-deleting an account. `app/api/account/route.ts` calls it.
