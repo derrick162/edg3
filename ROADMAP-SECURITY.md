@@ -217,6 +217,13 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18 (overnight)** — **PILLAR-TRUST T0-1 — Boot-time data-durability self-check (1686 green).**
+  - **Audit:** DB lives at `/data/edg3.db` (`lib/db.ts:8`). Off-box replication is already coded — Litestream (`scripts/start.sh` + `litestream.yml`, ~1s RPO, restores on fresh volume) + daily snapshot push (`lib/backup.ts`). Both activate only when their S3 env vars are set. The real risk is **silent**: ephemeral volume + unset replication env = invisible data loss. Cannot check the Railway dashboard from code (no CLI/token) — so the fix is to make the risk LOUD.
+  - **`lib/durability.ts` (NEW):** `assessDurability(env)` pure decision matrix — classifies prod boot state as ok/warn/critical. CRITICAL on: no off-box replication, DB absent at boot w/o replication, or zero users in prod DB. WARN on: DB absent-but-replication-configured (restore should've run), or DB not under `/data`. `runStartupDurabilityCheck()` gathers real env + DB stats, logs loudly (`[durability] 🚨 ...`), writes to `health_log`. Best-effort — never throws, never blocks boot.
+  - **`instrumentation.ts`:** runs the durability check FIRST on boot, before anything opens the DB (so `dbExistedAtBoot` is accurate).
+  - **`lib/scheduler.ts` `runHealthDigest`:** added a daily off-box-replication check — 6am digest goes DEGRADED if `LITESTREAM_S3_BUCKET`/`BACKUP_S3_BUCKET` unset in prod. So the risk surfaces every morning, not just at boot.
+  - **`content/durability-runbook.md` (NEW):** documents what's coded vs. the external steps a human must do — confirm `/data` is a persistent Railway volume, set `LITESTREAM_S3_*`, run the restore drill. ⚠️ **Kevin action items flagged.**
+  - **Tests:** `lib/durability.test.ts` (NEW, 12 tests) — full decision matrix (dev skip, healthy prod, 4 critical paths, 3 warn paths, null-user-count cold start). 87 test files / 1686 total.
 - **2026-06-18** — **PILLAR-TRUST T1-2 — End-to-end call health check (1674 green).**
   - **Approach:** reused existing `background_job_failures` + `health_log` infrastructure rather than a new table.
   - **`app/api/vapi/webhook/route.ts`:** added `backgroundJobFailureQueries.record()` to all 4 async post-call `.catch()` handlers — `fact_extraction`, `sleep_consolidation`, `episode_store`, `open_loops_extraction`. Failures now surface in the 6am health digest's existing "background job failures" check (already queries `backgroundJobFailureQueries.recentCount(24)`).

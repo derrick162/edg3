@@ -249,6 +249,15 @@ export async function runHealthDigest(): Promise<void> {
     if (row.count > 0) issues.push(`${row.count} completed call(s) have no transcript`);
   } catch (e) { issues.push(`transcript-health check error: ${e}`); }
 
+  // T0-1 — durability: in prod, off-box replication must be active or a volume
+  // loss is unrecoverable. Surface daily (not just at boot) so it can't be missed.
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const hasOffBox = Boolean(process.env.LITESTREAM_S3_BUCKET) || Boolean(process.env.BACKUP_S3_BUCKET);
+      if (!hasOffBox) issues.push('NO off-box DB replication configured (data-loss risk)');
+    }
+  } catch (e) { issues.push(`durability check error: ${e}`); }
+
   try {
     // Proactively validate calendar tokens for all active users before the 7am call.
     const { checkCalendarTokenHealth } = await import('./google-auth');
