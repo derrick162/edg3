@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
+import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
@@ -808,10 +809,20 @@ function ActivityTab() {
                                     {state === 'error' ? "Couldn't load subjects for this scan." : 'No subject lines recorded — newer scans will show them here.'}
                                   </p>
                                 ) : Array.isArray(state) ? (() => {
-                                  const flagged = state.filter(isFlagged);
-                                  const rest = state.filter(s => !isFlagged(s));
+                                  // Ticket 9: hide automated noise (receipts, promos, newsletters,
+                                  // system mail) — keep real correspondence + flagged-keyword threads.
+                                  const visible = filterReviewedSubjects(state, isFlagged);
+                                  if (visible.length === 0) {
+                                    return (
+                                      <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)' }}>
+                                        Just automated mail this scan — receipts and newsletters, nothing that needed you.
+                                      </p>
+                                    );
+                                  }
+                                  const flagged = visible.filter(isFlagged);
+                                  const rest = visible.filter(s => !isFlagged(s));
                                   const SHOW = 10;
-                                  const overflow = state.length - SHOW;
+                                  const overflow = visible.length - SHOW;
                                   return (
                                     <div className="space-y-1">
                                       {flagged.slice(0, SHOW).map((s, i) => (
