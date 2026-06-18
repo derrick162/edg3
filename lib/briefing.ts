@@ -1037,7 +1037,7 @@ ${relationshipContextBlock}
 Use RELATIONSHIP CONTEXT to make ONE warm, specific observation about a person you're meeting today — "you've worked with Alice seven times" or "last time you connected with Bob was two months ago — might be worth an update." One line only; weave it into section 2 or 3 naturally. Never read the full list.
 ` : ''}${patternMemoryBlock ? `
 ${patternMemoryBlock}
-Use PATTERN INSIGHT in section 5 (CALENDAR BLOCKS) — reference the pattern naturally when it strengthens a scheduling suggestion (e.g. "Tuesdays tend to be your clearest — want to protect this Tuesday morning for deep work?"). One mention only; never read the stats aloud.
+Use PATTERN INSIGHT in section 5 (CALENDAR BLOCKS) — ONE sentence only. The single most relevant pattern, stated naturally when it strengthens a recommendation (e.g. "Tuesdays tend to be your clearest — want to protect this Tuesday morning for deep work?"). Omit if it doesn't change the recommendation. Never read the stats aloud.
 ` : ''}${calendarPatternsBlock ? `
 ${calendarPatternsBlock}
 Use CALENDAR PATTERNS in section 5 (CALENDAR BLOCKS) — suggest time blocks that align with the inferred focus window and avoid the historically-packed meeting window. Reference patterns only when they strengthen a recommendation (e.g. "Tuesday mornings are usually light for you — good slot for deep work"). Do not read the whole block aloud.
