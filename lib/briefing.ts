@@ -578,7 +578,13 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     whoopStrain?.strain ?? null,
   );
   const whoopContextBlock = (() => {
-    if (!whoopSection) return '';
+    if (!whoopSection) {
+      // DC2-3b: Whoop is connected but data unavailable — acknowledge honestly, don't silently skip.
+      if (whoopIsConnected) {
+        return '\nWHOOP CONNECTED BUT DATA UNAVAILABLE: Whoop is connected but health data couldn\'t be retrieved this morning (fetch may have timed out or the token needs refresh). Acknowledge this naturally in section 1 with one sentence: "I wasn\'t able to pull your Whoop data this morning — I\'ll try again for tomorrow." Don\'t dwell on it. Do not guess at recovery or energy.\n';
+      }
+      return '';
+    }
     const lines = [`HEALTH DATA (WHOOP):\n${whoopSection}`];
     const freshness = whoopFreshnessNote(whoopRecovery?.date, whoopSleep?.date, today);
     if (freshness) lines.push(freshness);

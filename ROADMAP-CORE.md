@@ -449,6 +449,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-DAILY-CALL DC2-3b — honest Whoop data acknowledgment when fetch fails.**
+  - `lib/briefing.ts` `whoopContextBlock`: when `whoopIsConnected` but all three Whoop data points are null (fetch timed out or token needs refresh), now injects a `WHOOP CONNECTED BUT DATA UNAVAILABLE` instruction block. Edge acknowledges with "I wasn't able to pull your Whoop data this morning — I'll try again for tomorrow" rather than silently omitting the health section. The Whoop fetch timing log (already live since DC0-1) provides the audit trail to diagnose repeated failures. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-TRUST T4-5 — undo coverage sweep: planWeek + rememberPreference + fact undo ops.**
   - **`planWeek`** (`app/api/vapi/tool-call/route.ts`): was creating calendar events without any undo record. Fixed by capturing `res.data.id` per insert and calling `recordUndo` with a `deleteMany` op once all events are created.
   - **`lib/undo.ts`**: two new `UndoOp` types — `retireFact { userId, factId }` (undoes a new fact insert by retiring it) and `rollbackFact { userId, historyId }` (undoes a fact update by restoring the prior version via `factHistoryQueries.rollbackFact`). Both handled in `executeUndo`.
