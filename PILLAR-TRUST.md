@@ -157,7 +157,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - If any category is missing from the UI: add it
 - Test: insert a fact in every category via a test call, verify all appear in the dashboard
 
-### T3-2 — Activity log completeness (Security)
+### T3-2 — Activity log completeness (Security) — ✅ **DOCUMENTED (content/security-audit.md)**
+**Status:** Full audit_log coverage map written to `content/security-audit.md` "Audit Log Coverage" section (78 routes reviewed 2026-06-17/18). All HIGH mutations covered; intentional non-logged routes documented with justification. Spot-check any routes added after the sweep date against the coverage map.
 **The risk:** The audit log may not cover all user-triggered mutations. Users can't trust the Activity tab if it's incomplete.
 - Audit every `POST`/`PATCH`/`DELETE` route: does it write to `audit_log`?
 - Add logging to any missing route
