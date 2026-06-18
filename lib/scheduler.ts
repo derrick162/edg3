@@ -1,10 +1,11 @@
 import cron from 'node-cron';
+import { randomBytes } from 'node:crypto';
 import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -291,13 +292,28 @@ export async function runHealthDigest(): Promise<void> {
 
 let schedulerRunning = false;
 
+// T0-4 — unique per-process id so the scheduler lock can identify this instance.
+// PID + random suffix distinguishes replicas (and restarts) sharing one DB.
+const INSTANCE_ID = `${process.pid}-${randomBytes(4).toString('hex')}`;
+const DISPATCH_LOCK = 'dispatch';
+// TTL < the 60s tick so a crashed holder's lock self-expires before the next tick.
+const DISPATCH_LOCK_TTL_SECONDS = 55;
+
 export function startScheduler() {
   if (schedulerRunning) return;
   schedulerRunning = true;
 
-  // Check every minute if any users need a call
+  // Check every minute if any users need a call. T0-4: claim a single-instance lock
+  // first so a second Railway replica (or an overlapping slow tick) can't double-dial.
   cron.schedule('* * * * *', async () => {
-    await checkAndInitiateCalls(new Date());
+    if (!schedulerLockQueries.acquire(DISPATCH_LOCK, INSTANCE_ID, DISPATCH_LOCK_TTL_SECONDS)) {
+      return; // another instance/tick owns dispatch this minute — skip silently
+    }
+    try {
+      await checkAndInitiateCalls(new Date());
+    } finally {
+      schedulerLockQueries.release(DISPATCH_LOCK, INSTANCE_ID);
+    }
   });
 
   // Nightly at 3am UTC: retention prune for PII rows + daily DB snapshot (covers no-call days).

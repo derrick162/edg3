@@ -214,6 +214,18 @@ function initSchema(db: Database.Database) {
       processed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- T0-4 — Single-instance scheduler lock. Guards the per-minute call-dispatch tick so a
+    -- second Railway replica (or an overlapping slow tick) can't double-dial the 7am call.
+    -- An instance claims the lock atomically before dispatching and releases it after; a lock
+    -- with a past expires_at is auto-reclaimable (covers a crashed holder). lock_name is the
+    -- resource ('dispatch'); holder is a per-process id; TTL < tick interval so it self-heals.
+    CREATE TABLE IF NOT EXISTS scheduler_lock (
+      lock_name   TEXT PRIMARY KEY,
+      holder      TEXT NOT NULL,
+      acquired_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at  TEXT NOT NULL
+    );
+
     -- Day-1 preview briefing — generated once on first dashboard load after onboarding.
     -- UNIQUE on user_id ensures a single preview per user; INSERT OR IGNORE handles races.
     CREATE TABLE IF NOT EXISTS preview_briefings (
@@ -1160,6 +1172,40 @@ export const toolCallDedupeQueries = {
   },
   prune: (): void => {
     getDb().prepare("DELETE FROM tool_call_dedup_keys WHERE processed_at < datetime('now', '-10 minutes')").run();
+  },
+};
+
+// T0-4 — Single-instance scheduler lock. Atomic claim via SQLite upsert so only one
+// instance dispatches the per-minute call tick (defends against multi-replica double-dial
+// and overlapping slow ticks). A held lock blocks others until expires_at; an expired lock
+// is reclaimable; an instance can always refresh its own lock.
+export const schedulerLockQueries = {
+  // Returns true if this holder now owns the lock. ttlSeconds should be < the tick interval
+  // so a crashed holder's lock self-expires before the next tick (no permanent deadlock).
+  acquire: (lockName: string, holder: string, ttlSeconds: number): boolean => {
+    try {
+      const r = getDb().prepare(
+        `INSERT INTO scheduler_lock (lock_name, holder, acquired_at, expires_at)
+         VALUES (?, ?, datetime('now'), datetime('now', ?))
+         ON CONFLICT(lock_name) DO UPDATE SET
+           holder = excluded.holder,
+           acquired_at = excluded.acquired_at,
+           expires_at = excluded.expires_at
+         WHERE scheduler_lock.expires_at < datetime('now')
+            OR scheduler_lock.holder = excluded.holder`,
+      ).run(lockName, holder, `+${Math.max(1, Math.floor(ttlSeconds))} seconds`);
+      return r.changes === 1;
+    } catch {
+      // Fail OPEN: a DB fault must not stop the morning call from ever firing. Within a
+      // single instance the existing alreadyCalled guard still prevents duplicates.
+      return true;
+    }
+  },
+  // Release only if we still hold it (don't stomp a lock another instance reclaimed after expiry).
+  release: (lockName: string, holder: string): void => {
+    try {
+      getDb().prepare('DELETE FROM scheduler_lock WHERE lock_name = ? AND holder = ?').run(lockName, holder);
+    } catch { /* non-critical — lock self-expires via TTL */ }
   },
 };
 
