@@ -588,18 +588,11 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     // T4-2 — Pre-call Vapi health check: ping Vapi API before generating the briefing
     // call so a service outage fails fast with a user notification instead of wasting
     // a full LLM gen call that can never be delivered.
+    // Non-blocking: a ping failure (network hiccup, transient timeout) must not suppress
+    // a call that might succeed — the real error will surface from initiateCall instead.
     const vapiHealthy = await pingVapiHealth();
     if (!vapiHealthy) {
-      briefingQueries.update(briefingId, { status: 'failed', error_code: 'vapi_error' });
-      try {
-        notificationQueries.create(
-          userId,
-          'call_failed',
-          "Edge couldn't place your call this morning",
-          "We couldn't reach the call service — your briefing will resume tomorrow. Check your connection settings in the dashboard if this keeps happening.",
-        );
-      } catch { /* best effort */ }
-      throw new CallError("Edge couldn't reach Vapi this morning — your briefing will resume tomorrow.", 'vapi_error');
+      console.warn(`[scheduler] Vapi health ping failed for user ${userId} — proceeding anyway (ping ≠ transport)`);
     }
 
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
