@@ -305,7 +305,7 @@ Removed internal error details (`err.message`, `String(err).slice(0,120)`) from 
 - **`memories.content` encrypted at rest (FIXED 2026-06-18):** Previously stored as plaintext — now encrypted via `encryptField` in `memoryQueries.create`; all read paths decrypted. Legacy plaintext rows pass through transparently on read (no migration needed).
 - **Consent helper:** `lib/consent.ts` — `isImproveConsented(user)` / `isPrivacyMode(user)`. Safe default: null/undefined consent → Privacy Mode (opt-IN required for improvement use). Ready for wiring once Core adds `users.data_consent` column.
 - **Memory authz:** `GET /api/memory` user-scoped to `user.id`; cross-user leakage tests confirm one user cannot read another's memories or facts.
-- **Test coverage:** 77 test files, 1501 tests (2026-06-18 Round 4). Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout+consent, support, calendar/disconnect, whoop/disconnect, profile/timezone, priorities/[id]/energy, priorities/[id]/milestones, milestones/[id]. Lib-level: auth/JWT, crypto, idempotency, backup path traversal + table coverage (20 tables), vapi secret, consent helper, db encryption (focus_milestones + support_messages).
+- **Test coverage:** 86 test files, 1672 tests (2026-06-18 PILLAR-TRUST T4-4). Route-level security tests for: waitlist, day-plan/confirm, activity/email-receipt, memory (GET — user scoping + cross-user authz), memory/facts, account (export+delete), priorities/derive+accept, admin/backup, auth/signup+login+logout+consent, support, calendar/disconnect, whoop/disconnect, profile/timezone, priorities/[id]/energy, priorities/[id]/milestones, milestones/[id]. Lib-level: auth/JWT, crypto, idempotency, backup path traversal + table coverage (20 tables), vapi secret, consent helper, db encryption (focus_milestones + support_messages).
 
 ### ⚠️ Known Gaps (Accepted / Tracked)
 
@@ -454,6 +454,12 @@ The `audit_log` table feeds Core's Activity tab and provides the security/compli
 | `POST /api/calendar/reminder` | `reminderCreate` | **Added Round 4** — failure path also logged |
 | `POST /api/calendar/disconnect` | `calendarDisconnect` | **Added Round 4** — ok + failure paths |
 | `POST /api/whoop/disconnect` | `whoopDisconnect` | **Added Round 4** — ok + failure paths |
+| `POST /api/tasks` | `createTask` | **Added T3-2** |
+| `PATCH /api/tasks/[id]` | `completeTask` / `uncompleteTask` | **Added T3-2** |
+| `DELETE /api/tasks/[id]` | `deleteTask` | **Added T3-2** |
+| `POST /api/tasks/complete-all` | `bulkCompleteTasks` | **Added T3-2** |
+| `POST /api/profile` | `updateProfile` | **Added T3-2** — length logged, not raw text |
+| `POST /api/focus/dismiss` | `dismissFocus` | **Added T3-2** |
 
 ### Intentionally NOT logged (with justification)
 
@@ -465,9 +471,8 @@ The `audit_log` table feeds Core's Activity tab and provides the security/compli
 | `POST /api/onboarding/consent` | Consent changes are now logged via `POST /api/auth/consent` (which is the settings-level endpoint with audit). Both routes call `setDataConsent`; the auth/consent route is the one with audit logging. |
 | `POST /api/priorities/keep` | Refreshes `week_of` timestamp only — no text changes. Cosmetic operation; no meaningful data change to audit. |
 | `POST /api/energy/today` | Energy level log entry — informational, low-sensitivity. |
-| `POST /api/profile` | Full profile update — logged structurally (length only, not content) via `POST /api/onboarding/profile`. Identical DB path; no separate audit needed. |
+| `POST /api/profile` (voice_preference only) | Voice preference toggle — no content data, settings-only. |
 | `POST /api/briefing/**` (call triggers) | Operational voice-call initiation. The resulting briefing is already recorded in the `briefings` table. |
-| `POST /api/tasks`, `PATCH/DELETE /api/tasks/**` | Task lifecycle managed via the vapi tool-call path; those mutations ARE in audit_log. Web-side task endpoints are low-priority; task deletions are minor. |
 | `POST /api/support` | Support message submission — goes to the `support_messages` table, not user data. |
 | `POST /api/waitlist` | Public endpoint; pre-auth; not user data. |
 | Admin routes (`/api/admin/**`) | Operator-tier; gated by `checkAdminAuth`. Admin actions are tracked by `vapi_auth_log` and server logs, not the user-facing audit trail. |

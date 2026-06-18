@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
@@ -182,7 +182,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
       <div>
         <h2 className="text-lg font-bold mb-1">Traveling this week?</h2>
         <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-          Set the timezone you're currently in. Edge uses it for your briefings and bookings until you clear it.
+          Set the timezone you're currently in. Edg3 uses it for your briefings and bookings until you clear it.
         </p>
         <div className="glass-card p-6">
           {currentTimezone ? (
@@ -219,8 +219,8 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
 
       {/* Voice preference */}
       <div>
-        <h2 className="text-lg font-bold mb-1">Edge&apos;s voice</h2>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edge uses on your morning briefings.</p>
+        <h2 className="text-lg font-bold mb-1">Edg3&apos;s voice</h2>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edg3 uses on your morning briefings.</p>
         <div className="flex gap-3">
           {([
             { key: 'daniel', label: 'Daniel', desc: 'Deep, calm' },
@@ -388,7 +388,7 @@ function PrioritiesTab({
     <div>
       <SectionHint
         id="priorities"
-        text="Your north star. Edge anchors every briefing and scheduling suggestion to these."
+        text="Your north star. Edg3 anchors every briefing and scheduling suggestion to these."
       />
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">This week&apos;s priorities</h2>
@@ -659,14 +659,14 @@ function ActivityTab() {
     <div>
       <SectionHint
         id="activity"
-        text="Every change Edge made to your calendar. Review or undo anything."
+        text="Every change Edg3 made to your calendar. Review or undo anything."
       />
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-lg font-bold">Edge&apos;s actions</h2>
+        <h2 className="text-lg font-bold">Edg3&apos;s actions</h2>
         <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
       </div>
       <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
-        Every change Edge makes appears here — review it, undo it, or just keep the audit trail.
+        Every change Edg3 makes appears here — review it, undo it, or just keep the audit trail.
       </p>
 
       {undoError && (
@@ -678,7 +678,7 @@ function ActivityTab() {
       {items.length === 0 ? (
         <div className="glass-card p-8 text-center">
           <p className="text-3xl mb-3" role="img" aria-label="shield">&#x1F6E1;</p>
-          <p className="font-semibold mb-2">Edge hasn&apos;t changed anything yet</p>
+          <p className="font-semibold mb-2">Edg3 hasn&apos;t changed anything yet</p>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             You&apos;ll see every calendar action here — nothing happens without a trace.
           </p>
@@ -795,7 +795,7 @@ function ActivityTab() {
                             return (
                               <div className="mt-3">
                                 <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-faint)', letterSpacing: '0.04em' }}>
-                                  Threads Edge reviewed
+                                  Threads Edg3 reviewed
                                 </p>
                                 {state === 'loading' ? (
                                   <div className="space-y-1.5 animate-pulse">
@@ -831,7 +831,7 @@ function ActivityTab() {
                                         <p className="pt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more threads</p>
                                       )}
                                       <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                                        Subject lines only — Edge never reads message content.
+                                        Edg3 reads subject lines only — never message content.
                                       </p>
                                     </div>
                                   );
@@ -1235,6 +1235,17 @@ export default function Dashboard() {
   );
   const toggleMemorySection = (key: string) =>
     setCollapsedMemorySections(prev => { const next = new Set(prev); prev.has(key) ? next.delete(key) : next.add(key); return next; });
+  // UX-4: once facts load, collapse all but first 3 populated categories
+  const didInitMemoryCollapse = useRef(false);
+  useEffect(() => {
+    if (facts.length === 0 || didInitMemoryCollapse.current) return;
+    didInitMemoryCollapse.current = true;
+    const CAT_ORDER = ['goal', 'project', 'person', 'pattern', 'preference', 'fact'];
+    const activeCats = CAT_ORDER.filter(cat => facts.some(f => f.category === cat));
+    const collapsed = new Set(['call-notes', 'people-m2', 'patterns-m3', 'accountability']);
+    if (activeCats.length >= 4) activeCats.slice(3).forEach(cat => collapsed.add(cat));
+    setCollapsedMemorySections(collapsed);
+  }, [facts]);
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
@@ -1673,7 +1684,7 @@ export default function Dashboard() {
   }
 
   async function disconnectWhoop() {
-    if (!confirm('Disconnect Whoop? Edge will stop including your recovery data in briefings.')) return;
+    if (!confirm('Disconnect Whoop? Edg3 will stop including your recovery data in briefings.')) return;
     setDisconnectingWhoop(true);
     const res = await fetch('/api/whoop/disconnect', { method: 'POST' });
     setDisconnectingWhoop(false);
@@ -1746,7 +1757,7 @@ export default function Dashboard() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'var(--edg-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setBookFor(null)}>
           <div className="glass-card" style={{ width: 380, maxWidth: '100%', padding: 22 }} onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Book a time</p>
-            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Confirm the details and Edge will add it to your calendar.</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Confirm the details and Edg3 will add it to your calendar.</p>
             <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Title</label>
             <input className="input mt-1 mb-3" value={bookForm.title} onChange={(e) => setBookForm(f => ({ ...f, title: e.target.value }))} />
             <div className="flex gap-2 mb-3">
@@ -1948,14 +1959,14 @@ export default function Dashboard() {
               </div>
               {energySignal ? (
                 <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>
-                  {energySignal.level === 'green' ? 'Full power — Edge will schedule high-focus work today.' :
-                   energySignal.level === 'yellow' ? 'Moderate day — Edge will mix focused + lighter tasks.' :
-                   'Low energy — Edge will protect your schedule and defer deep work.'}
+                  {energySignal.level === 'green' ? 'Full power — Edg3 will schedule high-focus work today.' :
+                   energySignal.level === 'yellow' ? 'Moderate day — Edg3 will mix focused + lighter tasks.' :
+                   'Low energy — Edg3 will protect your schedule and defer deep work.'}
                   {energySignal.source === 'whoop' && <span className="ml-1 opacity-60">(from Whoop)</span>}
                 </p>
               ) : (
                 <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
-                  Set before your call → Edge skips asking
+                  Set before your call → Edg3 skips asking
                 </p>
               )}
             </div>
@@ -2068,10 +2079,10 @@ export default function Dashboard() {
               <span style={{ color: 'var(--text-accent)', fontSize: 13, flexShrink: 0, marginTop: 2 }}>✦</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                  Edge has everything it needs.{' '}
+                  Edg3 has everything it needs.{' '}
                   <span style={{ color: 'var(--text-muted)' }}>
-                    Until your first call — everything Edge knows about you is in the
-                    &ldquo;What Edge knows&rdquo; tab. You can edit or delete anything there.
+                    Until your first call — everything Edg3 knows about you is in the
+                    &ldquo;What Edg3 knows&rdquo; tab. You can edit or delete anything there.
                   </span>
                 </p>
               </div>
@@ -2447,10 +2458,10 @@ export default function Dashboard() {
             <div>
               <SectionHint
                 id="memory"
-                text="Everything Edge has learned from your calls — the memory it draws on. Edit or remove anything that's off."
+                text="Everything Edg3 has learned from your calls — the memory it draws on. Edit or remove anything that's off."
               />
               <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap">
-                <h2 className="text-lg font-bold">Here&apos;s what Edge knows about you</h2>
+                <h2 className="text-lg font-bold">Here&apos;s what Edg3 knows about you</h2>
                 {facts.length > 0 && (
                   <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
                     {facts.length} fact{facts.length !== 1 ? 's' : ''} across {new Set(facts.map(f => f.category)).size} areas
@@ -2458,7 +2469,7 @@ export default function Dashboard() {
                 )}
               </div>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Built from your calls — not filled out by hand. Correcting anything here makes Edge smarter.
+                Built from your calls — not filled out by hand. Correcting anything here makes Edg3 smarter.
               </p>
 
               {/* Recently learned — newest 5 facts across all categories */}
@@ -2655,7 +2666,7 @@ export default function Dashboard() {
                         <div className="flex items-start gap-3">
                           <div className="flex-1 min-w-0">
                             {justSaved ? (
-                              <p className="text-xs font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edge updated</p>
+                              <p className="text-xs font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edg3 updated</p>
                             ) : (
                               <>
                                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
@@ -2665,7 +2676,7 @@ export default function Dashboard() {
                                   {correctName(f.statement, firstName)}
                                   {f.confidence === 'low' && (
                                     <button
-                                      title="Edge isn't sure it caught this right — tap to fix"
+                                      title="Edg3 isn't sure it caught this right — tap to fix"
                                       onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
                                       className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
                                       style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1 }}
@@ -2781,7 +2792,7 @@ export default function Dashboard() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                           {justSaved ? (
-                                            <p className="text-sm font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edge updated</p>
+                                            <p className="text-sm font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edg3 updated</p>
                                           ) : (
                                             <>
                                               <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
@@ -2819,10 +2830,19 @@ export default function Dashboard() {
                           (acc[key] = acc[key] || []).push(f);
                           return acc;
                         }, {});
-                        const entities = Object.keys(byEntity);
+                        // UX-2+3: filter out self-references and AI entities
+                        const userFirstName = (user?.name || '').split(' ')[0].toLowerCase();
+                        const userFullName = (user?.name || '').toLowerCase();
+                        const AI_ENTITY_NAMES = new Set(['edge', 'edg3', 'ai', 'assistant']);
+                        const allEntities = Object.keys(byEntity);
+                        const entities = allEntities.filter(entity => {
+                          const lower = entity.toLowerCase();
+                          return lower !== userFirstName && lower !== userFullName && !AI_ENTITY_NAMES.has(lower);
+                        });
                         const PERSON_LIMIT = 8;
                         const visibleEntities = entities.length > PERSON_LIMIT && !isExpanded ? entities.slice(0, PERSON_LIMIT) : entities;
                         const secCollapsed = collapsedMemorySections.has(cat);
+                        if (entities.length === 0) return null;
                         return (
                           <div key={cat}>
                             <button
@@ -2838,9 +2858,17 @@ export default function Dashboard() {
                             </button>
                             {!secCollapsed && <div className="space-y-2">
                               {visibleEntities.map(entity => {
-                                const personFacts = byEntity[entity];
                                 const firstName = (user?.name || '').split(' ')[0];
-                                const mostRecent = personFacts.reduce((a, b) => new Date(a.learned_at) > new Date(b.learned_at) ? a : b);
+                                const rawFacts = byEntity[entity];
+                                // UX-2: collapse near-identical fact statements
+                                const seenKeys = new Set<string>();
+                                const uniqueFacts: Fact[] = [];
+                                let dupeCount = 0;
+                                for (const f of rawFacts) {
+                                  const key = f.statement.trim().toLowerCase().slice(0, 80);
+                                  if (seenKeys.has(key)) { dupeCount++; } else { seenKeys.add(key); uniqueFacts.push(f); }
+                                }
+                                const mostRecent = rawFacts.reduce((a, b) => new Date(a.learned_at) > new Date(b.learned_at) ? a : b);
                                 return (
                                   <div key={entity} className="glass-card px-4 py-3" style={{ border: '1px solid var(--edg-hairline)' }}>
                                     <div className="flex items-center gap-2 mb-2">
@@ -2858,7 +2886,12 @@ export default function Dashboard() {
                                       </p>
                                     </div>
                                     <div className="space-y-0">
-                                      {personFacts.map(f => <FactRow key={f.id} f={f} indented />)}
+                                      {uniqueFacts.map(f => <FactRow key={f.id} f={f} indented />)}
+                                      {dupeCount > 0 && (
+                                        <p className="text-xs pt-1" style={{ color: 'var(--text-faint)' }}>
+                                          {dupeCount} duplicate {dupeCount === 1 ? 'entry' : 'entries'} merged
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -2924,7 +2957,7 @@ export default function Dashboard() {
                       </h3>
                       <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
                         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                          Edge is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out.
+                          Edg3 is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out.
                         </p>
                       </div>
                     </div>
@@ -2937,7 +2970,7 @@ export default function Dashboard() {
                     </h3>
                     <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
                       <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                        Major decisions and their rationale — so Edge never re-litigates what you&apos;ve already resolved.
+                        Major decisions and their rationale — so Edg3 never re-litigates what you&apos;ve already resolved.
                       </p>
                     </div>
                   </div>
@@ -2949,7 +2982,7 @@ export default function Dashboard() {
                     </h3>
                     <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
                       <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                        What you committed to, and what actually happened. Edge uses this to learn from reality, not just your intentions.
+                        What you committed to, and what actually happened. Edg3 uses this to learn from reality, not just your intentions.
                       </p>
                     </div>
                   </div>
@@ -2986,7 +3019,7 @@ export default function Dashboard() {
                   </button>
                   {!collapsedMemorySections.has('accountability') && <>
                   <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
-                    What you&apos;ve committed to on calls — Edge checks in when they stay open.
+                    What you&apos;ve committed to on calls — Edg3 checks in when they stay open.
                   </p>
                   {accountability.stillOpen.length > 0 && (
                     <div className="space-y-2 mb-3">
@@ -3048,13 +3081,13 @@ export default function Dashboard() {
                       style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                     >
                       <span aria-hidden="true">🧠</span>
-                      What Edge remembers
+                      What Edg3 remembers
                       <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {episodes.length} {episodes.length === 1 ? 'session' : 'sessions'}</span>
                       <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
                     </button>
                     {!secCollapsed && <>
                       <p className="text-xs mb-4" style={{ color: 'var(--text-faint)' }}>
-                        Every conversation Edge has held onto — the accumulated memory that makes each briefing smarter than the last.
+                        Every conversation Edg3 has held onto — the accumulated memory that makes each briefing smarter than the last.
                       </p>
                       <div className="pl-4" style={{ borderLeft: '2px solid var(--edg-accent-15)' }}>
                         {dateKeys.map((dateKey, di) => {
@@ -3137,7 +3170,7 @@ export default function Dashboard() {
                     style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                   >
                     <span aria-hidden="true">📈</span>
-                    Patterns Edge has noticed
+                    Patterns Edg3 has noticed
                     <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {patterns.length}</span>
                     <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('patterns-m3') ? '▸' : '▾'}</span>
                   </button>
@@ -3315,7 +3348,7 @@ export default function Dashboard() {
                   <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
                   <p className="font-semibold mb-2">Nothing stored yet</p>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    After your first call, Edge will start building a picture of you here — goals, projects, preferences, and more.
+                    After your first call, Edg3 will start building a picture of you here — goals, projects, preferences, and more.
                   </p>
                 </div>
               )}

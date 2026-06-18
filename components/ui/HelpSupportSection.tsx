@@ -24,15 +24,15 @@ const FAQ_SECTIONS: FaqSection[] = [
     items: [
       {
         q: 'What is Edg3?',
-        a: 'Edg3 is your daily focus OS. Each morning Edge calls you, learns what matters today, and reshapes your calendar around your top three priorities — so you spend energy on what actually moves the needle.',
+        a: 'Edg3 is your daily focus OS. Each morning Edg3 calls you, learns what matters today, and reshapes your calendar around your top three priorities — so you spend energy on what actually moves the needle.',
       },
       {
         q: 'How do I set up my first call?',
-        a: 'Complete onboarding: connect your Google Calendar, set your top three focus areas, and pick a call time. Edge will ring you at that time tomorrow morning. The first call takes about three minutes.',
+        a: 'Complete onboarding: connect your Google Calendar, set your top three focus areas, and pick a call time. Edg3 will ring you at that time tomorrow morning. The first call takes about three minutes.',
       },
       {
         q: 'Do I need to connect Google Calendar?',
-        a: 'Calendar connection is what gives Edge the data to be useful — without it Edge can\'t see your schedule or suggest changes. Gmail connection is optional (needed for email drafting and reply tracking).',
+        a: 'Calendar connection is what gives Edg3 the data to be useful — without it Edg3 can\'t see your schedule or suggest changes. Gmail connection is optional (needed for email drafting and reply tracking).',
       },
     ],
   },
@@ -42,19 +42,19 @@ const FAQ_SECTIONS: FaqSection[] = [
     items: [
       {
         q: 'What happens during a morning briefing?',
-        a: 'Edge calls you, opens with the most important event on your calendar, checks in on your energy and priorities, and proposes any calendar changes that would put more time on your top focus areas. You can accept, adjust, or dismiss each suggestion live on the call.',
+        a: 'Edg3 calls you, opens with the most important event on your calendar, checks in on your energy and priorities, and proposes any calendar changes that would put more time on your top focus areas. You can accept, adjust, or dismiss each suggestion live on the call.',
       },
       {
-        q: 'How does Edge learn my preferences?',
-        a: 'Everything you say on a call is remembered — your energy profile, recurring commitments, people you work with, and how you like your calendar structured. The more calls you complete, the sharper Edge\'s recommendations become.',
+        q: 'How does Edg3 learn my preferences?',
+        a: 'Everything you say on a call is remembered — your energy profile, recurring commitments, people you work with, and how you like your calendar structured. The more calls you complete, the sharper Edg3\'s recommendations become.',
       },
       {
-        q: 'Can Edge make changes to my calendar without asking?',
-        a: 'No. Every calendar change requires your explicit "yes" on a call or in the dashboard. Edge proposes; you decide.',
+        q: 'Can Edg3 make changes to my calendar without asking?',
+        a: 'No. Every calendar change requires your explicit "yes" on a call or in the dashboard. Edg3 proposes; you decide.',
       },
       {
-        q: 'What is the Edge Score?',
-        a: 'Your Edge Score is a daily readout (0–100) of how well-positioned you are to do your best work today. It combines Focus (is your calendar aligned with your priorities?), Energy (how\'s your recovery?), Clarity (how well does Edge know you?), and Momentum (are you showing up consistently?).',
+        q: 'What is the Edg3 Score?',
+        a: 'Your Edg3 Score is a daily readout (0–100) of how well-positioned you are to do your best work today. It combines Focus (is your calendar aligned with your priorities?), Energy (how\'s your recovery?), Clarity (how well does Edg3 know you?), and Momentum (are you showing up consistently?).',
       },
     ],
   },
@@ -77,16 +77,16 @@ const FAQ_SECTIONS: FaqSection[] = [
     ],
   },
   {
-    title: 'The Edge Score',
+    title: 'The Edg3 Score',
     icon: '✦',
     items: [
       {
-        q: 'Why is my Edge Score low?',
+        q: 'Why is my Edg3 Score low?',
         a: 'Common reasons: your calendar has little time on your stated focus areas (Focus component), your Whoop recovery is low or not connected (Energy), you haven\'t completed many calls yet (Clarity + Momentum). Tap the score on the dashboard to see a breakdown.',
       },
       {
         q: 'How do I improve my score?',
-        a: 'Complete your morning briefing each day (builds Momentum), confirm your Today\'s Focus areas, let Edge help you block time for your priorities (boosts Focus), and connect Whoop if you have one (fills in the Energy component with real data).',
+        a: 'Complete your morning briefing each day (builds Momentum), confirm your Today\'s Focus areas, let Edg3 help you block time for your priorities (boosts Focus), and connect Whoop if you have one (fills in the Energy component with real data).',
       },
     ],
   },
@@ -96,15 +96,15 @@ const FAQ_SECTIONS: FaqSection[] = [
     items: [
       {
         q: 'What if I miss a call?',
-        a: 'No problem — Edge won\'t leave a voicemail or retry. You can open the dashboard any time and review what would have been in your briefing. Tomorrow\'s call starts fresh.',
+        a: 'No problem — Edg3 won\'t leave a voicemail or retry. You can open the dashboard any time and review what would have been in your briefing. Tomorrow\'s call starts fresh.',
       },
       {
         q: 'Can I change my call time?',
         a: 'Yes. Go to your Profile (or the Settings section) and update your preferred call time. Changes take effect the next morning.',
       },
       {
-        q: 'Why did Edge say something unexpected?',
-        a: 'Edge is a voice AI and occasionally mishears or draws the wrong inference. If something is wrong — a fact it learned, a preference it logged — you can correct it in the Memory tab. That correction will be reflected immediately.',
+        q: 'Why did Edg3 say something unexpected?',
+        a: 'Edg3 is a voice AI and occasionally mishears or draws the wrong inference. If something is wrong — a fact it learned, a preference it logged — you can correct it in the Memory tab. That correction will be reflected immediately.',
       },
     ],
   },

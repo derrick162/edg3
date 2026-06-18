@@ -158,7 +158,7 @@ function ScoreGauge({
         <div className="mt-2 pl-7 space-y-2">
           {calibrating && (
             <p className="text-xs px-2 py-1 rounded" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)' }}>
-              Edge is learning your energy — call {callsCompleted ?? 0} of 10
+              Edg3 is learning your energy — call {callsCompleted ?? 0} of 10
             </p>
           )}
           {/* Drivers */}
@@ -262,7 +262,7 @@ export function CalendarFitCard({
           className="text-xs px-3 py-2 rounded-lg"
           style={{ background: 'var(--edg-accent-08)', color: 'var(--text-muted)', border: '1px solid var(--edg-accent-20)' }}
         >
-          ✦ Set your 3 focus areas and connect your calendar — Edge will start scoring your schedule.
+          ✦ Set your 3 focus areas and connect your calendar — Edg3 will start scoring your schedule.
         </div>
       ) : (
         <div className="space-y-3">

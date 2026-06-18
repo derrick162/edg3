@@ -20,7 +20,7 @@ export function DataConsentScreen({
           You control your data.
         </h2>
         <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Edge stores your calls, facts, and priorities to work — that&apos;s what makes memory and
+          Edg3 stores your calls, facts, and priorities to work — that&apos;s what makes memory and
           briefings possible. What you choose below is about how your data is used beyond that.
         </p>
       </div>

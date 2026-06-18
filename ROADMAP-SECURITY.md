@@ -105,6 +105,59 @@ Update changelog + Status Board when done.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (T3-1 part A — Add 'pattern' to facts category constraint)
+
+> Master at `87af54d`. `git merge master` first. 5-minute ticket.
+
+### Ticket 1 — Add `'pattern'` to the facts table CHECK constraint (T3-1 schema gap)
+
+**The gap:** `lib/db.ts:251` has `CHECK(category IN ('person','project','goal','preference','fact'))`. The dashboard renders a Patterns tab (`app/dashboard/page.tsx:2589`) but the constraint blocks any fact with `category='pattern'` from being inserted. Currently `lib/factPatterns.ts` stores patterns as `category='fact'` + `source='historical-pattern'` — they land in the Facts bucket, not Patterns.
+
+**Fix — two changes, both additive:**
+
+1. In `lib/db.ts` schema (line ~251): change the CHECK to include `'pattern'`:
+   ```sql
+   category TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern'))
+   ```
+   Note: SQLite CHECK constraints are not enforced via ALTER TABLE — the schema string change takes effect for new DB initializations. Add a runtime migration to cover existing DBs. The simplest safe migration is a no-op here (existing rows are valid; we're only adding a new allowed value). Add a comment noting that this is additive.
+
+2. Update the TypeScript type in `lib/db.ts` (line ~1596) to include `'pattern'`:
+   ```typescript
+   category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
+   ```
+
+That's it — schema + type only. Core (Darren) does the factPatterns.ts side. No test changes needed; the constraint is structural.
+
+- **Files:** `lib/db.ts` only
+- **Preflight:** must pass before commit
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (T3-3 — Data export completeness)
+
+> Master at `dc7653d`. `git merge master` first. Spec: `content/export-audit.md` — read it before starting.
+
+### Ticket 1 — Add missing tables to `app/api/account/export/route.ts` (T3-3)
+
+The current export (v1) is missing 4 data sources. Add them:
+
+1. **`episodes`** (HIGH) — call ground-truth records from `lib/episodeStore.ts`. Fields: `occurred_at`, `source`, topics (decrypt + JSON parse), commitments (decrypt + JSON parse). Transcripts optional but preferred.
+2. **`audit_log`** (HIGH) — every action Edge took on the user's behalf. Fields: `action`, `description`, `ok`, `created_at`. Omit `session_id`.
+3. **`fact_history`** (MEDIUM) — versioned memory audit trail. Join `fact_history` to `facts` on `fact_id` to get `user_id` scoping. Fields: `fact_id`, `statement`, `retired_at`, `retired_reason`, `source`.
+4. **`undo_history`** (LOW) — undo records. Fields: `action_type`, `created_at`, `used_at`.
+
+Also:
+- **Include retired facts** in the `facts` export: change `factQueries.getAll` to return both active and retired facts; add `status: 'active' | 'retired'` and `retiredAt: string | null` fields.
+- **Add `confidenceScore` and `lastConfirmedAt`** to each fact (both columns added in Round 6 — verify they're on the `factQueries.getAll` result).
+- **Bump version** from `'1'` to `'2'` in the payload.
+
+Full code snippets in `content/export-audit.md`. This is additive — no schema changes, no auth changes, just additional SELECT queries and payload fields.
+
+- **Files:** `app/api/account/export/route.ts` only (Security owns this route)
+- **Test:** verify all 4 new sections appear in a fresh export; verify retired facts appear with `status: 'retired'`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Bi-temporal fact schema)
 
 > Master at `e7357cc`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`
@@ -217,6 +270,84 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-18 (overnight)** — **T0-1 §4 — Automated restore drill (1707 green).**
+  - Every existing backup test **mocks** better-sqlite3, so the real create→snapshot→reopen→data-survives path was never exercised — "backups you've never restored are not backups."
+  - **`lib/backup-restore-drill.test.ts` (NEW, real SQLite, no mocks):** builds a real DB (full schema) at a temp path, seeds known rows, calls the actual `createBackup()` (the same online-backup the 3am cron uses), then `verifyBackup()` (integrity_check ok + row counts), then **reopens the snapshot read-only and asserts the actual data survived** (emails + task text, not just counts). This is the closest a unit test gets to the manual Railway restore drill. The live volume-restore remains an external Kevin step.
+  - 90 test files / 1707 total.
+- **2026-06-18 (overnight)** — **T3-4 cascade test + 2 account-deletion BUG FIXES + T4-3 lock-held warning (1705 green).**
+  - **🐞 BUG FOUND + FIXED (account deletion would 500):** `support_messages` and `fact_history` both have `user_id NOT NULL REFERENCES users(id)` with **no ON DELETE CASCADE**, and **neither was in the account-deletion route**. With `foreign_keys = ON`, deleting any user who had filed support feedback or had a retired fact would throw an FK constraint error → account deletion 500s, leaving the user undeletable. Both added to the deletion set. Surfaced by the new drift-guard test (below) — exactly its purpose.
+  - **T3-4 — `deleteUserData(userId)` extracted to `lib/db.ts`** from the inline route logic, driven by an exported `USER_SCOPED_DELETE_ORDER` (single source of truth, leaf-first, FK-safe) and **wrapped in a transaction** — a missing-table FK error now rolls back instead of half-deleting an account. `app/api/account/route.ts` calls it.
+  - **`lib/db-account-deletion.test.ts` (NEW, real in-memory DB):** (1) **drift guard** — introspects every live table with a `user_id` column and asserts it's in `USER_SCOPED_DELETE_ORDER` (fails when a new user-scoped table is added without updating deletion — this is what caught the 2 gaps); + no dead entries. (2) **cascade clean** — seeds 9 child tables (incl. the fixed gaps) for a target + a bystander, runs `deleteUserData`, asserts target fully gone (no FK throw) and bystander untouched; (3) empty-user no-op.
+  - `app/api/account/account.test.ts` updated: deletion now delegates to `deleteUserData` (mocked) — replaced the obsolete inline-SQL-count assertions with delegation + 500-on-throw tests.
+  - **T4-3 follow-up (Esther):** scheduler dispatch lock now **logs a warning naming the current holder** when an acquire is refused (was silent) — a real second instance/replica is now visible in logs. `schedulerLockQueries.currentHolder()` added (`lib/db.ts`) + 3 tests in `lib/scheduler-lock.test.ts`.
+  - 89 test files / 1705 total.
+- **2026-06-18 (overnight)** — **PILLAR-MEMORY M2-4 — Context-pack non-empty verification + metrics (1699 green).**
+  - The 11pm pre-warm job (`runNightlyContextPacks`) logged `built/total` but would silently cache an **empty** pack — which poisons the morning call's live-assembly fallback (an empty cached pack is worse than no pack). It also lacked the M2-4-requested per-pack metrics.
+  - **`lib/scheduler.ts`:** now measures `durationMs`, computes `packSize` (trimmed length), and **skips caching empty packs** — counts them, logs `Context pack EMPTY user=…`, and records a `nightly_context_packs` background-job failure so the 6am digest flags it. Per-pack metrics logged (`size=`, `durationMs=`) for non-privacy users; userId-only + suppressed metrics under Privacy Mode (respects `data_consent`). Summary line now reports `N empty (skipped)`.
+  - **Tests:** +2 in `lib/scheduler.round6.test.ts` (empty pack not encrypted/upserted; prune still runs when all empty). 88 files / 1699 total.
+- **2026-06-18 (overnight)** — **PILLAR-TRUST T0-2 step 3 — Startup encryption-key presence check (1697 green). Tier 0 + Tier 1 (Security) now COMPLETE.**
+  - T0-2 steps 1/2/4 were already shipped (key-backup doc `content/encryption-key-rotation.md`, `safeDecryptField` graceful content-path degradation, `STRICT_ENCRYPTION=1` fail-closed writes). The remaining gap was step 3: nothing alarmed if `DATA_ENCRYPTION_KEY` was missing at boot — PII would silently write as plaintext.
+  - **`lib/durability.ts`:** `assessEncryptionReadiness(env)` pure helper — CRITICAL in prod when the key is unset (distinguishes plaintext-risk vs. strict-mode write-failure); ok in dev or when key present. Wired into `runStartupDurabilityCheck()` (loud boot log + `health_log` write).
+  - **`lib/scheduler.ts` `runHealthDigest`:** daily 6am check — DEGRADED if `DATA_ENCRYPTION_KEY` unset in prod.
+  - **Tests:** +4 in `lib/durability.test.ts` (dev skip, key present, missing-no-strict plaintext, missing-strict write-fail). 88 files / 1697 total.
+  - **Tier 0 status:** T0-1 ✅, T0-2 ✅, T0-4 ✅ (all Security). T0-3 e2e smoke test is Core-owned (Darren). **Tier 1 (Security): T1-1…T1-5 all ✅** from prior sessions.
+- **2026-06-18 (overnight)** — **PILLAR-TRUST T0-4 — Single-instance scheduler lock (1693 green).**
+  - **Risk:** the per-minute call-dispatch cron has no cross-instance guard. With >1 Railway replica (or an overlapping slow tick), two instances can both pass the `alreadyCalled` check before either writes a briefing row → **double-dial** the 7am call. The existing `alreadyCalled` guard only protects within a single sequential instance.
+  - **`scheduler_lock` table** (`lib/db.ts`): `(lock_name PK, holder, acquired_at, expires_at)`. `schedulerLockQueries.acquire(name, holder, ttlSeconds)` claims atomically via SQLite upsert — `ON CONFLICT DO UPDATE ... WHERE expires_at < now OR holder = excluded.holder`, returns `changes === 1`. A held lock blocks others until expiry; an expired lock (crashed holder) is reclaimable; an instance can refresh its own. `release()` deletes only if still held (no stomping). Fails **open** on DB fault (never blocks the morning call).
+  - **`lib/scheduler.ts`:** per-process `INSTANCE_ID = pid-<rand>`; the per-minute cron now `acquire('dispatch', INSTANCE_ID, 55)` → runs `checkAndInitiateCalls` only if claimed → `release` in `finally`. TTL 55s < 60s tick so a crashed holder self-heals before the next tick. `scheduler_lock` is a system table (no `user_id`) — correctly NOT in the account-deletion route.
+  - **Tests:** `lib/scheduler-lock.test.ts` (NEW, 7 tests) against a **real in-memory better-sqlite3** (`DB_PATH=':memory:'`) — verifies acquire/block/refresh/independent-names/expiry-reclaim/release/no-stomp with the actual SQLite engine, since the atomicity is the whole point. 88 test files / 1693 total.
+- **2026-06-18 (overnight)** — **PILLAR-TRUST T0-1 — Boot-time data-durability self-check (1686 green).**
+  - **Audit:** DB lives at `/data/edg3.db` (`lib/db.ts:8`). Off-box replication is already coded — Litestream (`scripts/start.sh` + `litestream.yml`, ~1s RPO, restores on fresh volume) + daily snapshot push (`lib/backup.ts`). Both activate only when their S3 env vars are set. The real risk is **silent**: ephemeral volume + unset replication env = invisible data loss. Cannot check the Railway dashboard from code (no CLI/token) — so the fix is to make the risk LOUD.
+  - **`lib/durability.ts` (NEW):** `assessDurability(env)` pure decision matrix — classifies prod boot state as ok/warn/critical. CRITICAL on: no off-box replication, DB absent at boot w/o replication, or zero users in prod DB. WARN on: DB absent-but-replication-configured (restore should've run), or DB not under `/data`. `runStartupDurabilityCheck()` gathers real env + DB stats, logs loudly (`[durability] 🚨 ...`), writes to `health_log`. Best-effort — never throws, never blocks boot.
+  - **`instrumentation.ts`:** runs the durability check FIRST on boot, before anything opens the DB (so `dbExistedAtBoot` is accurate).
+  - **`lib/scheduler.ts` `runHealthDigest`:** added a daily off-box-replication check — 6am digest goes DEGRADED if `LITESTREAM_S3_BUCKET`/`BACKUP_S3_BUCKET` unset in prod. So the risk surfaces every morning, not just at boot.
+  - **`content/durability-runbook.md` (NEW):** documents what's coded vs. the external steps a human must do — confirm `/data` is a persistent Railway volume, set `LITESTREAM_S3_*`, run the restore drill. ⚠️ **Kevin action items flagged.**
+  - **Tests:** `lib/durability.test.ts` (NEW, 12 tests) — full decision matrix (dev skip, healthy prod, 4 critical paths, 3 warn paths, null-user-count cold start). 87 test files / 1686 total.
+- **2026-06-18** — **PILLAR-TRUST T1-2 — End-to-end call health check (1674 green).**
+  - **Approach:** reused existing `background_job_failures` + `health_log` infrastructure rather than a new table.
+  - **`app/api/vapi/webhook/route.ts`:** added `backgroundJobFailureQueries.record()` to all 4 async post-call `.catch()` handlers — `fact_extraction`, `sleep_consolidation`, `episode_store`, `open_loops_extraction`. Failures now surface in the 6am health digest's existing "background job failures" check (already queries `backgroundJobFailureQueries.recentCount(24)`).
+  - **`lib/scheduler.ts` `runHealthDigest()`:** new transcript health check — SQL query counts completed briefings in the last 24h with empty/short transcripts (< 50 chars). Surfaces as `N completed call(s) have no transcript` in the degraded summary.
+  - **2 new tests** in `lib/health-digest.test.ts`: degraded on empty transcript; nominal when 0 empty. 86 test files / 1674 total.
+- **2026-06-18** — **PILLAR-TRUST T3-2 + T3-3 — Activity log completeness + data export accuracy (1672 green, no new tests).**
+  - **T3-2 — Activity log completeness:** Audit found 6 gap routes. Added `auditLogQueries.record()` to: `POST /api/tasks` (createTask), `PATCH /api/tasks/[id]` (completeTask/uncompleteTask), `DELETE /api/tasks/[id]` (deleteTask), `POST /api/tasks/complete-all` (bulkCompleteTasks), `POST /api/profile` (updateProfile — logs length not content), `POST /api/focus/dismiss` (dismissFocus). Accepted gaps documented: account deletion (immediately erased by cascade), auth events (not Activity tab concern), voice_preference toggle (settings-only), priorities-keep (timestamp refresh only), energy log (informational), call triggers (briefings table is the record), support submissions (not user data).
+  - **T3-3 — Data export accuracy:** `GET /api/account/export` reviewed. Confirmed: exports all 10 user-scoped tables (profile, priorities, tasks, calendar tokens, memory, facts, briefings, notifications, open-loops, focus). Correctly omits `password_hash` and OAuth tokens. Decrypts all PII fields. `dataConsent` field included. Activity log intentionally omitted (ephemeral audit trail, not primary data). Whoop tokens intentionally omitted (sensitive OAuth material). No code changes needed.
+  - Documentation: `content/security-audit.md` audit log coverage table updated — T3-2 routes moved from "not logged" to "covered"; stale entries removed.
+- **2026-06-18** — **PILLAR-TRUST T4-4 — Write-idempotency sweep (1672 green).**
+  - **Audit findings:** `createEvent/copyDayEvents` already protected by `event_dedupe_keys` (5-min TTL). `deleteEvent/cleanupEvents/cleanupDuplicates/applyCalendarPlan` protected by `delete_confirm_tokens`. `moveEvent/colorEvent/colorEventsByEnergy/draftEmail` unguarded — can double-execute on Vapi retry. Webhook end-of-call-report had a TOCTOU race in the `status !== 'completed'` check.
+  - **`webhook_dedup_keys` table** added to `lib/db.ts`: `(event_key TEXT PRIMARY KEY, processed_at)`. `webhookDedupeQueries.claim(eventKey)` uses atomic `INSERT OR IGNORE` — eliminates the TOCTOU race. Pruned at 24h via 3am cron.
+  - **`tool_call_dedup_keys` table** added: `(toolcall_id TEXT PRIMARY KEY, result TEXT, processed_at)`. `toolCallDedupeQueries.claim/recordResult/getCached/prune` exported from `lib/db.ts`. 10-minute TTL matches Vapi retry window.
+  - **`lib/idempotency.ts`** extended: `claimWebhookEvent(callId, type)` + `claimToolCall(toolCallId)` + `recordToolCallResult(toolCallId, result)` + `getToolCallCached(toolCallId)`. All fail open (never block on DB fault).
+  - **`app/api/vapi/webhook/route.ts`**: atomic `claimWebhookEvent` gate added before the soft `status !== 'completed'` check — duplicate retries return immediately.
+  - **`app/api/vapi/tool-call/route.ts`**: `claimToolCall` gate wraps `executeTool` for all tool calls with a Vapi toolCallId. Duplicate returns cached result (or in-flight message). `recordToolCallResult` writes result back for concurrent retries to consume.
+  - **Tests:** 10 new tests in `lib/idempotency.test.ts` covering `claimWebhookEvent`, `claimToolCall`, `recordToolCallResult`, `getToolCallCached` (first call, duplicate, fail-open). 86 test files / 1672 total.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC1-3 — Scheduled call time accuracy audit (1662 green).**
+  - **Audit result:** calls fire within 0–60 seconds of scheduled time (cron granularity) + briefing generation overhead (typically 5–20s). The 120-minute grace window handles cold-starts correctly — if Railway restarts after call_time, the first cron tick fires the call within 1 minute of restart.
+  - **Timing delta log added** to `checkAndInitiateCalls`: `[scheduler] Calling user X — scheduled HH:MM TZ, Nmin late (cold-start/missed-tick catch-up)` or `(on time)`. Visible in Railway logs.
+  - **2 new DC1-3 tests:** cold-start at call_time+2min fires, missed-tick at call_time+1min fires. 1662 total.
+- **2026-06-18** — **PILLAR-TRUST T4-2 + DC1-2 — Vapi pre-call health check + retry at T+5min (1660 green).**
+  - **T4-2 — Vapi pre-call health check with dashboard notification:**
+    - `pingVapiHealth()` private fn in `lib/scheduler.ts`: lightweight GET to `https://api.vapi.ai/phone-number` (8s timeout, no-op when `VAPI_API_KEY` unset → returns true). Returns true on 2xx/404, false on error/timeout.
+    - Inserted before `initiateCall` in `scheduleBriefingCall`: if ping fails → marks briefing `failed` with `error_code='vapi_error'`, creates a `call_failed` notification ("Edge couldn't place your call this morning"), throws `CallError` to surface cleanly. Notification also written on `initiateCall` failure.
+    - Tests: global `fetch` stub (`vi.stubGlobal`) added to both scheduler test files — returns `{ ok: true }` by default, restored after each `vi.resetAllMocks()`.
+  - **DC1-2 — Retry at T+5min (was T+10min):**
+    - `app/api/vapi/webhook/route.ts` `scheduleRetry` path: changed `'+10 minutes'` → `'+5 minutes'` so DB-flagged retries fire sooner after call setup failures.
+  - 86 test files / 1660 tests total.
+- **2026-06-18** — **PILLAR-TRUST T0-2(partial) + T1-3(completion) + T4-1 + DC1-1 — Encryption key rotation doc + 6am health digest + Google token auth tracking + call attempt log (1660 green).**
+  - **T0-2 — Encryption key rotation protocol:** `content/encryption-key-rotation.md` written. Documents: the single rule (never rotate without a re-encryption migration), when rotation is necessary, step-by-step safe rotation process with template migration script, what `safeDecryptField` does vs. throwing variant, and the catastrophic recovery note. Accepted gaps and `DATA_ENCRYPTION_KEY` backup location placeholder included.
+  - **T1-3 completion — 6am health digest + health_log table:**
+    - `health_log` table added to `lib/db.ts` schema: `(id, status TEXT CHECK('ok'|'degraded'), summary TEXT, checked_at TEXT)`. Index on `checked_at DESC`. `healthLogQueries.write/getLatest/prune` exported.
+    - `runHealthDigest()` exported from `lib/scheduler.ts`: checks failed calls (last 24h), webhook DLQ, background job failures, and calendar auth issues. Writes `health_log` row (status=ok/degraded + combined summary). Logs `[health] HEALTH: OK` or `[health] HEALTH: DEGRADED — reason1; reason2`. New 6am UTC cron fires this before the 7am call window.
+  - **T4-1 — Google token refresh reliability:**
+    - `calendar_auth_failures INTEGER DEFAULT 0` and `calendar_reconnect_required INTEGER DEFAULT 0` columns added to `calendar_tokens` (via migration). `calendarQueries.recordAuthFailure(userId)` increments counter + sets `calendar_reconnect_required = 1` at ≥3 failures with ALERT log. `calendarQueries.clearAuthFailures(userId)` resets both on successful auth. `calendarQueries.needsReconnect(userId)` checks the flag.
+    - `checkCalendarTokenHealth(userId)` added to `lib/google-auth.ts` (Security-owned): makes a lightweight `calendarList.list` probe; on 401/invalid_grant → calls `recordAuthFailure`; on success → clears failures. Returns `{ ok, needsReconnect }`.
+    - 6am health digest proactively calls `checkCalendarTokenHealth` for all active users before the 7am call.
+  - **DC1-1 — Call attempt log:**
+    - `call_attempts` table added: `(id, user_id, scheduled_for, status CHECK('connected'|'failed'|'retrying'), fail_reason, attempted_at)`. Index on `(user_id, attempted_at DESC)`. `callAttemptQueries.record/getRecent/failedCount/prune` exported.
+    - `checkAndInitiateCalls` now records a `call_attempts` row on each attempt: `connected` on success, `failed` on exception.
+    - `callAttemptQueries.failedCount(24)` checked by 6am health digest — contributes to DEGRADED status.
+    - `call_attempts` added to account deletion (belt-and-suspenders; has CASCADE but listed for completeness).
+  - **Tests:** `lib/health-digest.test.ts` (NEW, 11 tests): `runHealthDigest` OK path (writes 'ok', prunes on every run), DEGRADED paths (failed calls, webhook DLQ, job failures, combined issues, calendar auth failures). Scheduler.test.ts + scheduler.hardening.test.ts mocks updated with `healthLogQueries`, `callAttemptQueries`, `calendarQueries` new methods.
+  - 86 test files / 1660 tests total.
 - **2026-06-18** — **PILLAR-TRUST T1-5 + T3-4 + T4-3 — Rate limit sweep clean + account deletion completeness + WAL (1596 green).**
   - **T1-5 — Rate limit sweep:** Full scan of all 37 user-facing POST/PATCH/DELETE routes in `app/api/`. All mutation routes are protected with `checkRateLimit()`. No gaps found. `vapi/webhook` and `vapi/verify-promises` use Vapi secret auth (correct — no user session on these paths). No code changes needed.
   - **T4-3 — WAL + busy_timeout:** Already confirmed in overnight hardening commit: `db.pragma('journal_mode = WAL')` was pre-existing; `db.pragma('busy_timeout = 5000')` added. ✅ Complete.

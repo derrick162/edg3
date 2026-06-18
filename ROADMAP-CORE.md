@@ -1605,6 +1605,129 @@ priority from user feedback.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests)
+
+> Master at `87af54d`. `git merge master` first. Spec: `content/briefing-regression-spec.md` — read it; the assertions are already written.
+
+### Ticket 1 — Write `lib/briefing.test.ts` with 8 regression assertions (T2-4)
+
+The spec provides exact test code. The main work is:
+1. Extract `buildBriefingContext(user, data)` from `lib/briefing.ts` — this should be the existing assembly logic promoted to an exported function. Do NOT fork or duplicate; the export IS the live path.
+2. Write the 8 tests in `lib/briefing.test.ts` (spec has the full implementation).
+3. Run `npm run preflight` — all 8 must be green.
+
+**Assertions to implement** (full code in spec):
+1. Outstanding commitments appear before calendar in context
+2. Priority text is present in context (by name)
+3. Stale facts (>90 days, unconfirmed, confidence < 0.7) are excluded
+4. Relationship context injected for people on today's calendar
+5. Relationship context NOT injected for people not on today's calendar
+6. Fill-the-gap question injected when fewer than 3 user-specific signals
+7. No fill-the-gap question when floor is met
+8. Low-confidence (< 0.5) facts get hedged with "last I heard"
+
+**Coordinate with M3-1/DC2-2/DC2-4 dispatch:** The M3-1 ticket (signal priority reorder + stale filter + personalization floor) and these tests are coupled — if you do T2-4 first, some assertions will fail until M3-1 lands. Recommended order: do M3-1+DC2-2+DC2-4 first, then T2-4 (tests validate the new behavior).
+
+- **Files:** `lib/briefing.ts` (extract `buildBriefingContext`), `lib/briefing.test.ts` (new test file)
+- **Preflight:** must be green before commit
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (M3-1 + DC2-2 + DC2-4 — Briefing context quality, 3 tickets)
+
+> Master at `076ce93`. `git merge master` first. Spec: `content/briefing-context-spec.md` — read it before starting.
+
+### Ticket 1 — Signal priority reorder in `lib/briefing.ts` (M3-1)
+
+Audit the context assembly in `lib/briefing.ts` against this priority order (highest → lowest):
+1. Outstanding commitments (tasks table, source='edg3', incomplete)
+2. Today's calendar (key/time-sensitive events only — omit routine gym/meals/habits)
+3. Active goals / priorities (priorities table + goal-category facts)
+4. Whoop recovery (if connected — one compact block; if null, don't reference it)
+5. Pattern memory (only when non-null and changes the recommendation — one sentence)
+6. Recent facts (active, learned_at >= 30 days ago)
+7. Relationship context (people-category facts — only for people on today's calendar)
+8. Episode memory
+9. Briefing context pack (pre-warmed 11pm; fall back to live assembly on miss)
+
+If total context exceeds 4,000 tokens: truncate from the bottom (lowest priority) first, never from the top.
+
+Also add the **90-day stale fact filter**: when assembling context, exclude any fact where `learned_at < (now - 90 days) AND last_confirmed_at IS NULL AND confidence_score < 0.7`. Keeps recently-confirmed old facts; removes truly stale ones. No schema changes needed — this is a WHERE clause addition.
+
+- **Files:** `lib/briefing.ts` only
+- **Test:** write a test with a user that has facts of different ages — verify stale facts are excluded from the context string; verify the priority order matches
+
+---
+
+### Ticket 2 — Personalization floor check (DC2-2)
+
+A briefing that doesn't reference ≥3 user-specific signals is a generic briefing. Add a floor check in the context assembler:
+
+**Minimum 3 user-specific signals required:**
+1. At least one active goal or priority (by name)
+2. At least one recent fact (preference, pattern, or relationship note, ≤30 days old)
+3. Any one of: Whoop recovery note, outstanding commitment, or a person from today's calendar with associated context
+
+**If the floor can't be met** (new user, thin data): inject a fill-the-gap question into the briefing prompt: `PERSONALIZATION FLOOR NOT MET — ask ONE fill-the-gap question at the start of the call: "I don't have much context on your priorities yet — what's the most important thing you're working on this week?" Do not proceed generically.`
+
+- **Files:** `lib/briefing.ts` only
+- **Test:** user with empty facts table → verify fill-the-gap question injected; user with 3 facts → verify normal briefing
+
+---
+
+### Ticket 3 — Section length guards (DC2-4)
+
+Target: briefing core content (commitments + priorities + calendar + closing question) ≤ 400 words, total call under 5 minutes.
+
+Add explicit length guards to three briefing sections in the prompt instructions in `lib/briefing.ts`:
+- **Section 3 (alignment check):** `[MAX 2 sentences: one observation + one offer. Example: "Your top priority has zero calendar blocks this week — want me to fix that?"]`
+- **Pattern memory injection:** `[ONE sentence only. The single most relevant pattern. Omit if it doesn't change the recommendation.]`
+- **Calendar narration:** `[Lead with the most time-sensitive event. Narrate the top 2–3 events that need attention — not every item on the calendar.]`
+
+Also add a dev-mode log at the end of the context assembly (log level `debug`): `console.debug('[briefing] context sections', {commitments: X, calendar: X, goals: X, whoop: X, patterns: X, facts: X, relationships: X, episodes: X})` where each X is the char count of that section. This lets us identify bloat from Railway logs without listening to every call.
+
+- **Files:** `lib/briefing.ts` only (prompt instruction strings + one console.debug)
+- **No new tests needed** — prompt instruction changes are validated by existing briefing tests
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (T3-1 part B — factPatterns.ts category fix)
+
+> Master at `87af54d`. `git merge master` first. 10-minute ticket. Coordinate with Vijay — do part B only after Vijay's DB constraint migration (T3-1 part A) merges to master.
+
+### Ticket 1 — Store pattern facts with category='pattern' in `lib/factPatterns.ts` (T3-1)
+
+**The gap:** `lib/factPatterns.ts` stores detected patterns as `category='fact'` + `source='historical-pattern'`. The dashboard has a dedicated Patterns section (`app/dashboard/page.tsx:2589`, ORDER includes `'pattern'`) but it's always empty. After Vijay adds `'pattern'` to the DB CHECK constraint, switch `factPatterns.ts` to use the correct category.
+
+**Fix:** In `lib/factPatterns.ts`, change the `upsertFact` calls from `category: 'fact'` to `category: 'pattern'`. Check for any type assertion that would need updating — the TypeScript type is updated as part of Vijay's DB change. Also update the briefing context assembly in `lib/briefing.ts` if it queries facts by `category='fact'` + `source='historical-pattern'` — switch it to `category='pattern'` after this lands.
+
+- **Files:** `lib/factPatterns.ts`, possibly `lib/briefing.ts` if it has a pattern-specific query
+- **Gate:** Do not merge until Vijay's T3-1 part A is in master (otherwise DB constraint will reject 'pattern' inserts)
+- **Test:** Trigger pattern detection, verify a row with `category='pattern'` appears in facts; verify it shows in "What Edge knows" Patterns section
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (DC3-1 — Voice anchor phrases, 1 ticket)
+
+> Master at `3e2d129`. `git merge master` first. Short ticket — 30 min. Spec: `content/edge-voice-anchor-phrases.md`.
+
+### Ticket 1 — Add 5 voice anchor phrases to `lib/vapi.ts` (PILLAR-DAILY-CALL DC3-1)
+
+The spec is written. Add a `VOICE CONSISTENCY / ANCHOR PHRASES` block to `lib/vapi.ts` (in the PART 1 section, after GROUNDED & DECISIVE):
+
+```
+ANCHOR PHRASES — use these forms consistently every call. Content varies; structure stays fixed:
+- GREETING: "Morning [firstName] — [single most important thing]." Under 15 words after the dash. No pleasantries. No warm-up.
+- CALENDAR TRANSITION: "On the calendar today: [top 2–3 events]." One sentence. No narrating every item.
+- WHOOP NOTE (when data present): "[Recovery level] today — [one plain-English implication]." Never "your Whoop says." Just "Recovery's high today — good day to go after the hard stuff."
+- CLOSING QUESTION: One concrete action Edge can do RIGHT NOW. Never "is there anything else?" or "how does that sound?"
+- END OF CALL: "Got it. [Optional one-line action note.] Talk tomorrow." Three sentences max. No "have a great day."
+```
+
+This is content-only — no logic changes. One commit. Preflight must be green. Update Status Board.
+
+---
+
 ### Later / candidates (not yet committed)
 - [ ] **🤝 Chief-of-Staff ↔ Edg3 bridge (founder tooling / intensive dogfooding)** — _user idea 2026-06-10. Build RIGHT AFTER the core loop is verified (the end-to-end test)._ Expose Edg3's capabilities (start with `draft_email` w/ availability, then `find_free_time` / `read_calendar` / `research`) to the **Chief of Staff agent** so it can *act through* Edg3 to help Derrick day-to-day. **Form:** a small **MCP server** (preferred) or CLI the CoS calls. **Value:** (a) makes Derrick effective now; (b) the CoS using Edg3 daily is the best bug-finder we have → de-risks launch. **Tradeoff:** internal tooling, not the product (scope vs the Sept freeze) — justified by the dogfooding payoff. **⚠️ Auth (🔒 Security):** needs a token that acts as the user against Edg3's API (account-level access) — coordinate with Security; for a single-user pre-launch tool a static `AGENT_TOKEN`-gated endpoint acting as user 1 is acceptable but must be deliberate. **Sequencing:** gated on (1) the core verified working, (2) Security building the token endpoint. Start with ONE capability (email drafting), prove the loop, expand.
 - [ ] **🔮 V2 / POST-LAUNCH — Google Drive / Sheets awareness** (PM-deferred 2026-06-10, user idea). Edge pulls the doc/spreadsheet tied to a calendar event (e.g. the weekly P&L sheet for the "P&L review" block) and works it into the briefing. **Deferred because:** it's another *restricted* Google scope (compounds the verification we haven't started), it's new scope against the September freeze, and summarizing financial spreadsheets accurately is high-trust/high-risk. Lighter near-term paths if ever needed: (a) surface the doc *link* in the briefing (no new scope); (b) `drive.file` + file-picker so the user designates only specific docs (non-restricted scope).

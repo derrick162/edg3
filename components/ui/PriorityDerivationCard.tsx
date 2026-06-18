@@ -62,7 +62,7 @@ export function PriorityDerivationCard({
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-xs font-bold tracking-wide uppercase mb-0.5" style={{ color: 'var(--text-accent)', letterSpacing: '0.06em' }}>
-              ✦ Edge&apos;s read
+              ✦ Edg3&apos;s read
             </p>
             <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-strong)' }}>
               Here&apos;s what I think matters
@@ -186,7 +186,7 @@ export function PriorityDerivationLoadingCard() {
         ))}
       </div>
       <p className="text-xs mt-3" style={{ color: 'var(--text-faint)' }}>
-        Edge is reading your patterns…
+        Edg3 is reading your patterns…
       </p>
     </div>
   );

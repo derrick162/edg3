@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { taskQueries } from '@/lib/db';
+import { taskQueries, auditLogQueries } from '@/lib/db';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
@@ -23,5 +23,6 @@ export async function POST(req: NextRequest) {
   if (!ids.length) return NextResponse.json({ error: 'No task IDs provided' }, { status: 400 });
 
   const completed = taskQueries.completeMany(ids, user.id);
+  try { auditLogQueries.record({ userId: user.id, action: 'bulkCompleteTasks', argsJson: JSON.stringify({ count: completed }), ok: true }); } catch { /* non-critical */ }
   return NextResponse.json({ success: true, completed });
 }

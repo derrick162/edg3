@@ -17,7 +17,7 @@ import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipie
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
 import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
-import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken } from '@/lib/idempotency';
+import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
 import { maybeCreateActivityNotif } from '@/lib/notifications';
 import { google, calendar_v3 } from 'googleapis';
@@ -1547,6 +1547,18 @@ export async function POST(req: NextRequest) {
     for (const tc of calls) {
       let result: string;
       let ok = true;
+
+      // T4-4: Tool-call idempotency — Vapi retries the same toolCallId on timeout.
+      // Claim by toolCallId (only available in the new tool-calls format where tc.id != null).
+      // Legacy function-call format has tc.id = null and is not deduplicated here.
+      if (tc.id && !claimToolCall(tc.id)) {
+        const cached = getToolCallCached(tc.id);
+        result = cached ?? 'Request already in progress — action may have completed. Please check your calendar.';
+        console.log(`[tool-call] Duplicate toolCallId ${tc.id} (${tc.name}) — ${cached ? 'returning cached result' : 'in-flight'}`);
+        results.push({ toolCallId: tc.id, result });
+        continue;
+      }
+
       if (ctxError) {
         result = ctxError;
         ok = false;
@@ -1561,6 +1573,10 @@ export async function POST(req: NextRequest) {
           ok = false;
         }
       }
+
+      // Store result for any concurrent duplicate requests waiting for this call to finish.
+      if (tc.id) recordToolCallResult(tc.id, result);
+
       console.log(`[tool-call] Result (ok=${ok}): ${result}`);
       results.push({ toolCallId: tc.id, result });
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { dailyFocusQueries, userQueries } from '@/lib/db';
+import { dailyFocusQueries, userQueries, auditLogQueries } from '@/lib/db';
 
 // POST /api/focus/dismiss
 // Body: { idOrTitle: string }
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
   dailyFocusQueries.addDismissed(user.id, date, idOrTitle.trim());
+  try { auditLogQueries.record({ userId: user.id, action: 'dismissFocus', argsJson: JSON.stringify({ idOrTitle: idOrTitle.trim(), date }), ok: true }); } catch { /* non-critical */ }
 
   return NextResponse.json({ ok: true });
 }

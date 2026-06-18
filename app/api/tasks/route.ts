@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { taskQueries } from '@/lib/db';
+import { taskQueries, auditLogQueries } from '@/lib/db';
 import { format } from 'date-fns';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -35,5 +35,6 @@ export async function POST(req: NextRequest) {
 
   const today = date || format(new Date(), 'yyyy-MM-dd');
   const result = taskQueries.create(user.id, text.trim(), today, 'manual') as { lastInsertRowid: number };
+  try { auditLogQueries.record({ userId: user.id, action: 'createTask', argsJson: JSON.stringify({ text: text.trim(), date: today }), ok: true }); } catch { /* non-critical */ }
   return NextResponse.json({ success: true, id: result.lastInsertRowid });
 }

@@ -29,13 +29,13 @@ const CONTENT: ContentCard[] = [
 
 Your energy has a rhythm. There are windows in the day when you're sharp, creative, and capable of your best thinking — and windows when you're better off on autopilot. Ignoring that rhythm doesn't make you more productive. It just means you're grinding through your hardest work at your lowest capacity.
 
-Edge learns your energy pattern — when you peak, when you dip, when you need to protect your focus — and organizes your calendar around it. High-energy tasks in high-energy windows. Admin and routine work in the dips. Recovery protected, not squeezed out.
+Edg3 learns your energy pattern — when you peak, when you dip, when you need to protect your focus — and organizes your calendar around it. High-energy tasks in high-energy windows. Admin and routine work in the dips. Recovery protected, not squeezed out.
 
 The result isn't just a better calendar. It's a day that actually feels manageable.`,
   },
   {
     id: 'burnout',
-    title: 'What burnout really is — and how Edge protects you',
+    title: 'What burnout really is — and how Edg3 protects you',
     preview: 'Burnout doesn\'t happen overnight. It accumulates — and it\'s preventable.',
     gradient: 'rose',
     icon: '🛡',
@@ -44,24 +44,24 @@ The result isn't just a better calendar. It's a day that actually feels manageab
 
 High performers are especially vulnerable because the early warning signs feel like success. Busy = productive. Tired = hard-working. Full calendar = in demand.
 
-Edge is designed to catch the pattern before it catches you. When your Energy score dips for several days running, Edge notices. When your calendar is packed with high-demand work on a low-recovery day, Edge says something. When you haven't touched a focus area in a week, Edge surfaces it.
+Edg3 is designed to catch the pattern before it catches you. When your Energy score dips for several days running, Edg3 notices. When your calendar is packed with high-demand work on a low-recovery day, Edg3 says something. When you haven't touched a focus area in a week, Edg3 surfaces it.
 
 Think of it as a chief of staff who pays attention to your energy the way a good coach pays attention to your training load — always asking: is this sustainable?`,
   },
   {
     id: 'edge-score',
-    title: 'Your Edge Score, explained',
+    title: 'Your Edg3 Score, explained',
     preview: 'One number. Four things that determine how ready you are to do your best work.',
     gradient: 'violet',
     icon: '✦',
     imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=400&h=200&q=75',
-    body: `Your Edge Score is a daily readout of how set up you are to perform — not how busy you are, but how well-positioned you are. It's made up of four components:
+    body: `Your Edg3 Score is a daily readout of how set up you are to perform — not how busy you are, but how well-positioned you are. It's made up of four components:
 
 **Focus (30%)** — Does your calendar reflect your top three priorities? A high Focus score means the things that matter most have protected time. A low score means your calendar is full of everything except the work that moves the needle.
 
-**Energy (30%)** — How's your capacity today? Informed by your Whoop data (sleep + recovery) or your self-reported check-in. Edge uses this to know whether to push or protect.
+**Energy (30%)** — How's your capacity today? Informed by your Whoop data (sleep + recovery) or your self-reported check-in. Edg3 uses this to know whether to push or protect.
 
-**Clarity (20%)** — How well does Edge know you? The more you share — your focus areas, energy profile, connected tools — the smarter Edge gets. Clarity grows as Edge learns.
+**Clarity (20%)** — How well does Edg3 know you? The more you share — your focus areas, energy profile, connected tools — the smarter Edg3 gets. Clarity grows as Edg3 learns.
 
 **Momentum (20%)** — Are you showing up consistently? Daily calls completed, focus confirmed, plans followed through. Momentum is the compounding edge. Small, consistent actions build the score — and the results.
 
@@ -80,7 +80,7 @@ The problem with a long list of priorities is that it doesn't force a decision. 
 
 Three focus areas is the constraint that makes the decision real. Which three things, if you moved them forward this week, would matter most? Not which ten things are important — which three deserve your calendar.
 
-Edge is built around this constraint deliberately. The Focus score, the morning briefing, the calendar reshaping — all of it is organized around your three areas. Not because three is a magic number, but because limits create clarity. And clarity is what lets you actually execute.
+Edg3 is built around this constraint deliberately. The Focus score, the morning briefing, the calendar reshaping — all of it is organized around your three areas. Not because three is a magic number, but because limits create clarity. And clarity is what lets you actually execute.
 
 Change them whenever you need to. But pick three.`,
   },
@@ -95,14 +95,14 @@ Change them whenever you need to. But pick three.`,
 
 A high recovery score means your body is ready. A low one means it's still catching up — and pushing hard into a low-recovery day costs more than it produces.
 
-Edge uses your recovery data to adapt your day. On green days, it protects your peak windows for your hardest focus work. On red days, it suggests lighter loads and reminds you that protecting today's recovery is an investment in tomorrow's output.
+Edg3 uses your recovery data to adapt your day. On green days, it protects your peak windows for your hardest focus work. On red days, it suggests lighter loads and reminds you that protecting today's recovery is an investment in tomorrow's output.
 
-This is what separates sustainable performance from the cycle most high performers know too well: push hard, crash, recover, push again. Edge tries to flatten that curve — not by doing less, but by doing the right things at the right time.`,
+This is what separates sustainable performance from the cycle most high performers know too well: push hard, crash, recover, push again. Edg3 tries to flatten that curve — not by doing less, but by doing the right things at the right time.`,
   },
   {
     id: 'peaks-troughs',
     title: 'Working with your peaks and troughs',
-    preview: 'You already have a rhythm. Edge just helps you use it.',
+    preview: 'You already have a rhythm. Edg3 just helps you use it.',
     gradient: 'slate',
     icon: '〰',
     imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=400&h=200&q=75',
@@ -112,7 +112,7 @@ Research on circadian rhythms and cognitive performance consistently shows the s
 
 The practical implication is simple: protect your peak for your hardest, most important work. Use your trough for email, admin, low-stakes decisions, routine tasks. Don't schedule a critical creative session at 3pm if 3pm is when you hit a wall.
 
-Tell Edge your peak and trough windows — or let it learn from your patterns — and it will organize your calendar around them automatically. Your peak hours become a protected resource, not just another time slot.`,
+Tell Edg3 your peak and trough windows — or let it learn from your patterns — and it will organize your calendar around them automatically. Your peak hours become a protected resource, not just another time slot.`,
   },
 ];
 

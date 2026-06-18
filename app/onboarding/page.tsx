@@ -141,7 +141,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">Let Edge get to know you</h2>
+      <h2 className="text-2xl font-bold mb-1">Let Edg3 get to know you</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
         The more context you share, the sharper your briefings become from day one.
       </p>
@@ -220,7 +220,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
           className="btn-primary w-full mt-4"
           disabled={loading || !summary.trim()}
         >
-          {loading ? 'Edge is reading your profile…' : 'Save & continue →'}
+          {loading ? 'Edg3 is reading your profile…' : 'Save & continue →'}
         </button>
       </form>
     </StepFade>
@@ -284,7 +284,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
     if (!popup) window.location.href = data.url;
   }
 
-  // Connected — Screen 1 transition state ("Connected. / Edge is reading your calendar now.")
+  // Connected — Screen 1 transition state ("Connected. / Edg3 is reading your calendar now.")
   if (connected) {
     return (
       <StepFade>
@@ -303,7 +303,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
             Connected.
           </h3>
           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Edge is reading your calendar now.
+            Edg3 is reading your calendar now.
             <br />
             Give it a moment.
           </p>
@@ -316,7 +316,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
     <StepFade>
       <h2 className="text-2xl font-bold mb-1">Connect your calendar</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Edge reads your schedule to spot conflicts, score your day, and suggest what to move or block.
+        Edg3 reads your schedule to spot conflicts, score your day, and suggest what to move or block.
       </p>
 
       <div
@@ -333,7 +333,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
           <div>
             <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-strong)' }}>Google Calendar</p>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Edge reads events, helps you create or move them on calls, and scores how well your day aligns with your priorities.
+              Edg3 reads events, helps you create or move them on calls, and scores how well your day aligns with your priorities.
             </p>
           </div>
         </div>
@@ -350,7 +350,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
       >
         <span className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>ℹ</span>
         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-          You can also connect Gmail and Whoop from your dashboard after setup — Edge uses those to track email threads and your recovery score.
+          You can also connect Gmail and Whoop from your dashboard after setup — Edg3 uses those to track email threads and your recovery score.
         </p>
       </div>
 
@@ -407,7 +407,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
     <StepFade>
       <h2 className="text-2xl font-bold mb-1">What matters most right now?</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Edge checks every briefing to make sure your calendar actually reflects these — not just your intentions.
+        Edg3 checks every briefing to make sure your calendar actually reflects these — not just your intentions.
       </p>
 
       {suggesting ? (
@@ -418,7 +418,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
           <span className="w-4 h-4 rounded-full border-2 flex-shrink-0 animate-spin"
             style={{ borderColor: 'var(--edg-indigo)', borderTopColor: 'transparent' }}
           />
-          Edge is reading your profile and generating suggestions…
+          Edg3 is reading your profile and generating suggestions…
         </div>
       ) : suggestionsLoaded ? (
         <div
@@ -672,9 +672,9 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">When should Edge call you?</h2>
+      <h2 className="text-2xl font-bold mb-1">When should Edg3 call you?</h2>
       <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-        Edge calls you every morning — Monday through Friday. Pick the time that fits before you start work.
+        Edg3 calls you every morning — Monday through Friday. Pick the time that fits before you start work.
       </p>
 
       {/* Suggested times note (Esther's copy) */}
@@ -752,7 +752,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             />
           </div>
           <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
-            US &amp; Canada only. Edge calls you here each morning.
+            US &amp; Canada only. Edg3 calls you here each morning.
           </p>
         </div>
 

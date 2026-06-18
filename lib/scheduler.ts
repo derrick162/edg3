@@ -1,10 +1,11 @@
 import cron from 'node-cron';
+import { randomBytes } from 'node:crypto';
 import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -174,6 +175,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
   `).all() as User[];
 
   let built = 0;
+  let empty = 0;
   for (const user of users) {
     try {
       const tz = effectiveTimezone(user);
@@ -181,13 +183,30 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
       const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000)
         .toLocaleDateString('en-CA', { timeZone: tz });
 
+      const startedAt = Date.now();
       const contextPack = await buildContextPack(user.id);
+      const durationMs = Date.now() - startedAt;
+      const packSize = typeof contextPack === 'string' ? contextPack.trim().length : 0;
+
+      // M2-4 — verify the pack is non-empty. An empty pack must NOT be cached: the
+      // morning call falls back to live assembly, which is correct, so caching '' would
+      // poison that fallback. Surface it as a job failure so the 6am digest flags it.
+      if (packSize === 0) {
+        empty++;
+        console.warn(`[scheduler] Context pack EMPTY user=${user.id} date=${tomorrowLocal} — not caching; morning call will assemble live`);
+        backgroundJobFailureQueries.record('nightly_context_packs', user.id, 'empty pack (not cached)');
+        continue;
+      }
+
       briefingContextPackQueries.upsert(user.id, tomorrowLocal, contextPack);
       built++;
 
-      // Only log pack details for users who've consented to improvement data.
+      // M2-4 observability: size + duration are operational metrics (not pack content).
+      // Respect Privacy Mode — userId only, never the name, and suppress metrics.
       if (!isPrivacyMode(user)) {
-        console.log(`[scheduler] Context pack ready for ${user.name} (${tomorrowLocal})`);
+        console.log(`[scheduler] Context pack ready user=${user.id} date=${tomorrowLocal} size=${packSize} durationMs=${durationMs}`);
+      } else {
+        console.log(`[scheduler] Context pack ready user=${user.id} date=${tomorrowLocal} (privacy mode — metrics suppressed)`);
       }
     } catch (err) {
       console.error(`[scheduler] Context pack failed for user ${user.id}:`, err);
@@ -197,7 +216,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
 
   // Prune packs older than 7 days (runs alongside the pack build to stay clean).
   try { briefingContextPackQueries.prune(); } catch (e) { console.error('[scheduler] context pack prune failed:', e); }
-  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built`);
+  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built${empty ? `, ${empty} empty (skipped)` : ''}`);
 }
 
 // ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────
@@ -219,15 +238,117 @@ export function decayFactConfidenceScores(): void {
   }
 }
 
+// ── 6am health digest (T1-3 / PILLAR-TRUST) ─────────────────────────────────
+// Runs before the 7am call. Checks for: failed calls (last 24h), webhook DLQ,
+// background job failures, and calendar auth issues. Writes to health_log and emits
+// a single summary line — "HEALTH: OK" or "HEALTH: DEGRADED (reason1; reason2)".
+export async function runHealthDigest(): Promise<void> {
+  const issues: string[] = [];
+
+  try {
+    const failedCalls = callAttemptQueries.failedCount(24);
+    if (failedCalls > 0) issues.push(`${failedCalls} call(s) failed in last 24h`);
+  } catch (e) { issues.push(`call-attempts check error: ${e}`); }
+
+  try {
+    const webhookFails = failedWebhookQueries.recentCount(24);
+    if (webhookFails > 0) issues.push(`${webhookFails} webhook(s) in DLQ`);
+  } catch (e) { issues.push(`webhook-dlq check error: ${e}`); }
+
+  try {
+    const jobFails = backgroundJobFailureQueries.recentCount(24);
+    if (jobFails > 0) issues.push(`${jobFails} background job failure(s)`);
+  } catch (e) { issues.push(`job-failures check error: ${e}`); }
+
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT COUNT(*) as count FROM briefings WHERE status = 'completed' AND created_at > datetime('now', '-24 hours') AND (transcript IS NULL OR length(transcript) < 50)`
+    ).get() as { count: number };
+    if (row.count > 0) issues.push(`${row.count} completed call(s) have no transcript`);
+  } catch (e) { issues.push(`transcript-health check error: ${e}`); }
+
+  // T0-1 — durability: in prod, off-box replication must be active or a volume
+  // loss is unrecoverable. Surface daily (not just at boot) so it can't be missed.
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const hasOffBox = Boolean(process.env.LITESTREAM_S3_BUCKET) || Boolean(process.env.BACKUP_S3_BUCKET);
+      if (!hasOffBox) issues.push('NO off-box DB replication configured (data-loss risk)');
+    }
+  } catch (e) { issues.push(`durability check error: ${e}`); }
+
+  // T0-2 — encryption key presence: in prod, a missing DATA_ENCRYPTION_KEY means
+  // PII is written as plaintext (or writes fail in strict mode). Surface daily.
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const { encryptionEnabled } = await import('./crypto');
+      if (!encryptionEnabled()) issues.push('DATA_ENCRYPTION_KEY unset in prod (PII at-rest not encrypted)');
+    }
+  } catch (e) { issues.push(`encryption check error: ${e}`); }
+
+  try {
+    // Proactively validate calendar tokens for all active users before the 7am call.
+    const { checkCalendarTokenHealth } = await import('./google-auth');
+    const db = getDb();
+    const activeUsers = db.prepare(
+      `SELECT u.id FROM users u INNER JOIN calendar_tokens ct ON ct.user_id = u.id WHERE u.onboarding_complete = 1`
+    ).all() as Array<{ id: number }>;
+    let tokenFails = 0;
+    for (const u of activeUsers) {
+      const result = await checkCalendarTokenHealth(u.id).catch(() => ({ ok: false, needsReconnect: false }));
+      if (!result.ok) tokenFails++;
+    }
+    if (tokenFails > 0) issues.push(`${tokenFails} user(s) have calendar auth issues`);
+  } catch (e) { issues.push(`calendar-auth check error: ${e}`); }
+
+  const status = issues.length === 0 ? 'ok' : 'degraded';
+  const summary = issues.length === 0
+    ? 'All systems nominal'
+    : issues.join('; ');
+
+  healthLogQueries.write(status, summary);
+  healthLogQueries.prune();
+  callAttemptQueries.prune();
+
+  if (status === 'ok') {
+    console.log('[health] HEALTH: OK — All systems nominal');
+  } else {
+    console.error(`[health] HEALTH: DEGRADED — ${summary}`);
+  }
+}
+
 let schedulerRunning = false;
+
+// T0-4 — unique per-process id so the scheduler lock can identify this instance.
+// PID + random suffix distinguishes replicas (and restarts) sharing one DB.
+const INSTANCE_ID = `${process.pid}-${randomBytes(4).toString('hex')}`;
+const DISPATCH_LOCK = 'dispatch';
+// TTL < the 60s tick so a crashed holder's lock self-expires before the next tick.
+const DISPATCH_LOCK_TTL_SECONDS = 55;
 
 export function startScheduler() {
   if (schedulerRunning) return;
   schedulerRunning = true;
 
-  // Check every minute if any users need a call
+  // Check every minute if any users need a call. T0-4: claim a single-instance lock
+  // first so a second Railway replica (or an overlapping slow tick) can't double-dial.
   cron.schedule('* * * * *', async () => {
-    await checkAndInitiateCalls(new Date());
+    if (!schedulerLockQueries.acquire(DISPATCH_LOCK, INSTANCE_ID, DISPATCH_LOCK_TTL_SECONDS)) {
+      // A refused acquire always means a DIFFERENT holder owns it (our own holder would
+      // refresh successfully) — i.e. a second instance/replica, or a still-running slow
+      // tick. Log a warning naming the holder so a real double-instance is visible, not silent.
+      const held = schedulerLockQueries.currentHolder(DISPATCH_LOCK);
+      console.warn(
+        `[scheduler] dispatch lock already held${held ? ` by ${held.holder} (expires ${held.expires_at})` : ''} — ` +
+        `instance ${INSTANCE_ID} skipping this tick (prevents double-dial)`,
+      );
+      return;
+    }
+    try {
+      await checkAndInitiateCalls(new Date());
+    } finally {
+      schedulerLockQueries.release(DISPATCH_LOCK, INSTANCE_ID);
+    }
   });
 
   // Nightly at 3am UTC: retention prune for PII rows + daily DB snapshot (covers no-call days).
@@ -239,6 +360,8 @@ export function startScheduler() {
     try { episodeQueries.pruneAll(); } catch (e) { console.error('[scheduler] episodeQueries.pruneAll failed:', e); }
     try { failedWebhookQueries.prune(); } catch (e) { console.error('[scheduler] failedWebhookQueries.prune failed:', e); }
     try { backgroundJobFailureQueries.prune(); } catch (e) { console.error('[scheduler] backgroundJobFailureQueries.prune failed:', e); }
+    try { webhookDedupeQueries.prune(); } catch (e) { console.error('[scheduler] webhookDedupeQueries.prune failed:', e); }
+    try { toolCallDedupeQueries.prune(); } catch (e) { console.error('[scheduler] toolCallDedupeQueries.prune failed:', e); }
     maybeDailyBackup().catch(e => console.error('[scheduler] maybeDailyBackup failed:', e));
     // Health check: log warnings if any failures accumulated in the last 24h.
     try {
@@ -247,6 +370,15 @@ export function startScheduler() {
       if (webhookFails > 0) console.error(`[health] WARN: ${webhookFails} webhook(s) in dead-letter queue in last 24h — check Railway logs`);
       if (jobFails > 0) console.error(`[health] WARN: ${jobFails} background job failure(s) in last 24h — check Railway logs`);
     } catch (e) { console.error('[scheduler] daily health check failed:', e); }
+  });
+
+  // Daily at 6am UTC: health digest — runs before the 7am call so failures surface first.
+  // Writes one row to health_log (status OK vs DEGRADED) + emits a single summary log line
+  // that Railway can alert on. Check: failed calls, job failures, webhook DLQ, calendar auth.
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      await runHealthDigest();
+    } catch (e) { console.error('[scheduler] health digest cron failed:', e); }
   });
 
   // Nightly at 11pm UTC: pre-warm tomorrow's briefing context for all active users.
@@ -314,10 +446,18 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
 
       if (alreadyCalled) continue;
 
-      console.log(`[scheduler] Calling user ${user.id} (${user.name}) at ${userCurrentTime} ${timezone}`);
+      const deltaMins = userMinutes - callMinutes;
+      console.log(
+        `[scheduler] Calling user ${user.id} (${user.name}) — scheduled ${user.call_time} ${timezone}` +
+        (deltaMins > 0 ? `, ${deltaMins}min late (cold-start/missed-tick catch-up)` : ' (on time)'),
+      );
+      const scheduledFor = `${userToday}T${user.call_time}:00`;
       await scheduleBriefingCall(user.id);
+      callAttemptQueries.record(user.id, scheduledFor, 'connected');
     } catch (err) {
       console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
+      const userToday2 = new Date(now.toLocaleString('en-US', { timeZone: user.timezone || 'America/Vancouver' })).toLocaleDateString('en-CA');
+      callAttemptQueries.record(user.id, `${userToday2}T${user.call_time}:00`, 'failed', String(err).slice(0, 500));
     }
   }
 
@@ -342,6 +482,24 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       // Write to dead-letter queue — all retries exhausted for this briefing.
       failedWebhookQueries.record(row.user_id, null, row.id, String(err));
     }
+  }
+}
+
+// T4-2 — Lightweight Vapi API health probe. Makes a GET to the phone-number list endpoint
+// (cheapest authenticated call). Returns true if reachable (2xx), false otherwise.
+// Used before initiating calls so a service outage fails fast with a user notification.
+async function pingVapiHealth(): Promise<boolean> {
+  const apiKey = process.env.VAPI_API_KEY;
+  if (!apiKey) return true; // no key = dev/test mode, skip check
+  try {
+    const res = await fetch('https://api.vapi.ai/phone-number', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000), // 8-second timeout
+    });
+    return res.ok || res.status === 404; // 404 = no numbers, but API is reachable
+  } catch {
+    return false;
   }
 }
 
@@ -427,6 +585,23 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     const recentMemories = memoryQueries.getRecent(userId, 1);
     const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
 
+    // T4-2 — Pre-call Vapi health check: ping Vapi API before generating the briefing
+    // call so a service outage fails fast with a user notification instead of wasting
+    // a full LLM gen call that can never be delivered.
+    const vapiHealthy = await pingVapiHealth();
+    if (!vapiHealthy) {
+      briefingQueries.update(briefingId, { status: 'failed', error_code: 'vapi_error' });
+      try {
+        notificationQueries.create(
+          userId,
+          'call_failed',
+          "Edge couldn't place your call this morning",
+          "We couldn't reach the call service — your briefing will resume tomorrow. Check your connection settings in the dashboard if this keeps happening.",
+        );
+      } catch { /* best effort */ }
+      throw new CallError("Edge couldn't reach Vapi this morning — your briefing will resume tomorrow.", 'vapi_error');
+    }
+
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
@@ -437,6 +612,15 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
       console.error(`[scheduler] Vapi call failed for user ${userId}:`, err);
       const callErr = classifyVapiError(err);
       briefingQueries.update(briefingId, { status: 'failed', error_code: callErr.code });
+      // Write a notification so the user sees the failure in the dashboard.
+      try {
+        notificationQueries.create(
+          userId,
+          'call_failed',
+          "Edge couldn't place your call this morning",
+          callErr.userMessage,
+        );
+      } catch { /* best effort */ }
       throw callErr;
     }
   } else {

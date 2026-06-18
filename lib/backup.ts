@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createHash, createHmac } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { getDb, DB_PATH } from './db';
+import { getDb, DB_PATH, USER_SCOPED_DELETE_ORDER } from './db';
 
 // On-volume SQLite snapshots with rotation.
 //
@@ -199,14 +199,10 @@ export function verifyBackup(fileName: string): VerifyResult {
     const integrityOk = integrityRow.integrity_check === 'ok';
 
     // Row counts on key tables — gives a sanity-check signal for restore viability.
-    const tables = [
-      'users', 'briefings', 'calendar_tokens', 'whoop_tokens',
-      'priorities', 'focus_milestones', 'memories', 'tasks', 'facts',
-      'open_loops', 'notifications', 'daily_focus', 'calendar_scores',
-      'audit_log', 'waitlist',
-      'energy_profile', 'event_energy_tags', 'calendar_plan_executions',
-      'undo_log', 'gmail_drafts_log',
-    ];
+    // Derived from USER_SCOPED_DELETE_ORDER (the canonical user-data table list) plus the
+    // two system tables that hold real data but aren't user-scoped, so this auto-covers
+    // every new table without a second hand-maintained list drifting out of sync.
+    const tables = ['users', 'waitlist', ...USER_SCOPED_DELETE_ORDER];
     const rowCounts: Record<string, number> = {};
     for (const t of tables) {
       try {

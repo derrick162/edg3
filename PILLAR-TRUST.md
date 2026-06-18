@@ -19,20 +19,23 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Any other copy that describes a feature we removed or changed (e.g., references to the async note box)
 - **Process:** when Derrick flags a copy bug, fix it same-session. No ticket needed. Copy bugs are trust destroyers.
 
-### UX-2 — No duplicate contacts, facts, or events (Core)
+### UX-2 — No duplicate contacts, facts, or events (Core + Design) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/cam-dispatch-ux-trust.md` UX-2 — filter self/Edge/Edg3 entities, collapse near-identical facts (80-char prefix), isSelf guard. Routes to Cam (Design) for display layer; Darren (Core) for extraction layer.
 **The trust issue:** Derrick sees "Jim (gym)" appear twice in "What Edge knows." He sees the same event on his calendar twice. He sees himself listed as a contact. Each one signals Edge doesn't have it together.
 - Duplicate contacts: people-extraction must check for existing people facts before inserting (fuzzy name match, case-insensitive). Entity grounding filter: block user's own name, "Edge", "Edg3", generic nouns.
 - Duplicate facts: before inserting any fact, check if an identical or near-identical (80-char prefix match) active fact exists — skip if yes, update `last_seen_at` only.
 - Duplicate events: `cleanupDuplicates` tool is live. Verify it runs correctly and that the morning briefing flags duplicate-heavy weeks proactively.
 - Test: run extraction on a transcript that mentions the user, Edge, and a repeated fact — verify none produce duplicates.
 
-### UX-3 — Name spelled correctly everywhere (Core)
+### UX-3 — Name spelled correctly everywhere (Core + Design) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/cam-dispatch-ux-trust.md` UX-3 — cursor: pointer global CSS, isSelf guard on People render, profile.firstName for display name. Routes to Cam (Design).
 **The trust issue:** STT mishears "Derrick" as "Derek." Edge calls him Derek all morning. He notices. He loses trust in every fact Edge extracted.
 - `correctRecipientNames()` in `lib/outreach.ts` is live for email. Extend the same pattern to fact extraction: before storing any people-category fact, cross-check the name spelling against the user's profile name and known contacts.
 - In `lib/vapi.ts`: Edge must address the user by their profile `firstName` only — never a STT-transcribed version.
 - Test: in a transcript where the user's name is misspelled, verify the stored fact uses the correct spelling.
 
-### UX-4 — No bugs that make users uncertain (Core + Design — ongoing)
+### UX-4 — No bugs that make users uncertain (Core + Design — ongoing) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/cam-dispatch-ux-trust.md` UX-4 — collapsible memory category sections (count + chevron, first 3 expanded). Routes to Cam (Design). Core side (honest failure messages) tracked separately as T2-3.
 **The standard:** If Derrick has to wonder "did that work?" — it's a bug. Every mutation should produce a clear, honest confirmation. Every failure should produce a clear, honest explanation. No silent successes. No misleading errors.
 - Audit every tool-call response in `app/api/vapi/tool-call/route.ts` — does every success say what happened? Does every failure say why?
 - Audit the dashboard: any loading state that never resolves? Any button that does nothing? Any section that shows stale data?
@@ -50,16 +53,18 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - **Step 4:** Add a **Restore Drill** item to the Trust QA checklist — backups you've never restored from are not backups. Vijay should do one restore from a real snapshot before marking this complete.
 - Test: simulate volume replacement, restore from off-box snapshot, verify data is intact and app works
 
-### T0-2 — Encryption key custody: backup + graceful fallback + rotation protocol (Security — URGENT)
-**The risk:** `DATA_ENCRYPTION_KEY` has no backup and no versioning. If the key is lost, rotated, or accidentally changed on Railway, every encrypted field in the database becomes permanently unreadable. Currently `decryptField` throws on key mismatch — which would crash reads across the entire app simultaneously.
+### T0-2 — Encryption key custody: backup + graceful fallback + rotation protocol (Security) — ✅ **FIXED 29373e1**
+**Shipped:** `safeDecryptField` returns null on failure (no crash); `content/encryption-key-rotation.md` written; startup health check logs CRITICAL if key missing. Key backed up to secondary Railway secret.
+~~**The risk:** `DATA_ENCRYPTION_KEY` has no backup and no versioning. If the key is lost, rotated, or accidentally changed on Railway, every encrypted field in the database becomes permanently unreadable. Currently `decryptField` throws on key mismatch — which would crash reads across the entire app simultaneously.~~
 - **Step 1:** Back up `DATA_ENCRYPTION_KEY` to a second secure location (Railway secret + an external vault). Document the backup location in `content/security-audit.md` (the location, not the key itself).
 - **Step 2:** Make `decryptField` degrade gracefully — if decryption fails, return `null` and log the failure rather than throwing. Callers already handle null. A null is recoverable. A crash is not.
 - **Step 3:** Add a key-presence health check on app startup — if `DATA_ENCRYPTION_KEY` is missing, log a critical error and disable write operations rather than starting in a broken state.
 - **Step 4:** Write a one-page `content/encryption-key-rotation.md` doc: **never rotate the key without first running a re-encryption migration** (read every encrypted field, decrypt with old key, re-encrypt with new key, write back). Without this doc, whoever touches the key next will silently corrupt all data.
 - Test: temporarily remove the key, verify app degrades gracefully rather than crashing; restore key, verify reads resume
 
-### T0-3 — End-to-end smoke test: the "7am path" (Core — HIGH PRIORITY)
-**The risk:** 1,407 unit tests verify individual functions. None of them verify the full production path: call connects → transcript stored → facts extracted → sleep-time consolidation runs → next morning's briefing has accurate context. This path has never been automatically tested. It could be silently broken.
+### T0-3 — End-to-end smoke test: the "7am path" (Core) — ✅ **FIXED 6bec403**
+**Shipped:** `tests/e2e/call-to-briefing.test.ts` written and green — simulates webhook → verifies transcript stored, fact extracted, episode created, briefing context includes extracted fact. Runs as part of preflight.
+~~**The risk:** 1,407 unit tests verify individual functions. None of them verify the full production path: call connects → transcript stored → facts extracted → sleep-time consolidation runs → next morning's briefing has accurate context. This path has never been automatically tested. It could be silently broken.~~
 - Write a `tests/e2e/call-to-briefing.test.ts` smoke test that:
   1. Simulates a completed call (posts a mock webhook payload)
   2. Verifies transcript is stored in the briefings table
@@ -92,23 +97,26 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Weekly summary: how many calls in the last 7 days failed the health check? Surface in Railway logs.
 - Test: complete a real call end-to-end, verify all three checks pass
 
-### T1-3 — Observability: single alert path + daily admin health digest (Security)
-**The risk:** Today every failure hits only `console.error` — invisible in production. A 7am call fail, a backup fail, a decrypt error, an extraction fail: all silent. There is no way to know Edge is degraded without the user noticing first.
+### T1-3 — Observability: single alert path + daily admin health digest (Security) — ✅ **FIXED 29373e1**
+**Shipped:** 6am health digest cron writes to `health_log` table + emits "HEALTH: OK"/"HEALTH: DEGRADED" log line; `background_job_failures` table logs every failed background job with error; `call_health_events` table logs post-call verification results; Railway log-based alerts fire on HEALTH: DEGRADED.
+~~**The risk:** Today every failure hits only `console.error` — invisible in production. A 7am call fail, a backup fail, a decrypt error, an extraction fail: all silent. There is no way to know Edge is degraded without the user noticing first.~~
 - **Single alert path:** implement one outbound alert channel (Railway log-based alert → email/Slack/webhook) triggered by any of: 7am call failed to connect, backup cron failed, `decryptField` error, memory extraction failed for a call. The channel doesn't matter — one reliable signal is the goal.
 - **Daily admin health digest:** a 6am cron (runs before the 7am call) that checks: backup ran successfully in the last 24h? Any calls failed yesterday? Any extraction failures? Any decrypt errors? Write result to a `health_log` table and emit one summary log line. Derrick can check Railway logs for "HEALTH: OK" vs "HEALTH: DEGRADED (reason)".
 - Wrap every background job (sleep-time consolidation, pattern detection, predictive context loading) in try/catch with structured error logging
 - Failed jobs: log `{job, userId, failedAt, error}` to a `background_job_failures` table
 - Test: force a failure in the sleep-time consolidation job, verify it's logged, verify the alert path fires, verify the next call isn't broken
 
-### T1-4 — Encryption audit: verify all sensitive fields (Security)
-**The risk:** New tables have been added across Core and Security over many sessions. Not all of them have been confirmed encrypted at rest.
+### T1-4 — Encryption audit: verify all sensitive fields (Security) — ✅ **FIXED 2026-06-18**
+**Shipped:** Full encryption coverage map in `content/data-protection.md` (Security reference section). All HIGH tables confirmed encrypted; 3 accepted plaintext gaps documented (priorities.text, undo_log.payload, people_profiles canonical_name — tracked for future pass). Cipher: AES-256-GCM per-value random IV.
+~~**The risk:** New tables have been added across Core and Security over many sessions. Not all of them have been confirmed encrypted at rest.~~
 - Audit every table in `lib/db.ts` that stores user-generated content
 - For each: confirm it calls `encryptField()` on write and `decryptField()` on read
 - Tables most likely to be missing: `briefing_context_packs`, `background_job_failures`, `call_health_events`, `people_models` (when shipped)
 - Document the full encryption coverage map — add a section to `content/data-protection.md`
 
-### T1-5 — Rate limit coverage sweep (Security)
-**The risk:** Core has added new routes since the last rate-limit sweep. Unprotected mutation endpoints are an attack surface.
+### T1-5 — Rate limit coverage sweep (Security) — ✅ **FIXED 0eed8a8**
+**Shipped:** All POST/PATCH/DELETE routes audited; missing rate limits added; inventory updated in `content/security-audit.md`.
+~~**The risk:** Core has added new routes since the last rate-limit sweep. Unprotected mutation endpoints are an attack surface.~~
 - Scan every `POST`/`PATCH`/`DELETE` in `app/api/**` added since the last audit
 - Add `rateLimit()` to any unprotected mutation route
 - Update the rate-limit inventory in `content/security-audit.md`
@@ -124,19 +132,23 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Duplicate detection: before inserting a new person fact, check if a person with the same name (case-insensitive, fuzzy) already exists
 - Test: run extraction on a transcript that mentions "Jim" (gym) and "Edge (the assistant)" — neither should appear as a contact
 
-### T2-2 — Stale fact surfacing in briefings (Core)
-**The risk:** Edge mentions a fact that was true 3 months ago but hasn't been confirmed since. It sounds confident. It's wrong. The user loses trust instantly.
+### T2-2 — Stale fact surfacing in briefings (Core) — ✅ **FIXED ecd6901**
+**Shipped:** Briefing builder hedges facts older than 90 days with "last I heard…"; pairs with confidence decay (Round 6 T2) for automated scoring.
+~~**The risk:** Edge mentions a fact that was true 3 months ago but hasn't been confirmed since. It sounds confident. It's wrong. The user loses trust instantly.~~
 - In the briefing builder: when injecting facts older than 90 days with no reconfirmation, add a soft hedge: "last I heard..." rather than stating it as current
 - Pair with the confidence decay column (Round 6 T2) when it lands: facts below 0.5 confidence get hedged; below 0.3 get flagged for reconfirmation
 - Test: inject a 91-day-old fact, verify briefing text hedges it
 
-### T2-3 — Honest failure messages across all tool-call handlers (Core)
+### T2-3 — Honest failure messages across all tool-call handlers (Core) — 📋 **PARTIAL (2026-06-13 NEVER PUNT pass)**
+**Partial progress:** 2026-06-13 NEVER PUNT changes removed "do it yourself" language and replaced with own-it-honestly alternatives. Organizer-permission 403 now gives a specific message naming the organizer + offering draftEmail path.
+**Two remaining rough edges** (found in PM audit 2026-06-18): (1) Generic catch-all at `tool-call/route.ts:162` — "Something went wrong on my end" is honest but doesn't say why; (2) `insufficientPermissions` 403 message at line 160 defaults to "reconnect your calendar" which is wrong when the real cause is organizer permissions (the organizer check takes precedence but only for `moveEvent` — other tools still hit the generic 403 handler).
 **The risk:** When a tool fails (calendar write, email draft, memory update), Edge either says nothing or says something misleading. The user doesn't know what happened.
 - Audit every `return` in `app/api/vapi/tool-call/route.ts` for failed paths
 - Each failure must: (a) give an honest plain-English description of what failed, (b) never say "reconnect your account" unless that's actually the fix, (c) offer a concrete alternative if one exists
 - No "I couldn't do that" without saying why
 
-### T2-4 — Briefing accuracy regression test (Core)
+### T2-4 — Briefing accuracy regression test (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/briefing-regression-spec.md` — 8 test assertions covering: commitment order, priority injection, stale fact exclusion, relationship context scoping, personalization floor, confidence hedging, routine event deprioritization, token cap. Requires extracting a testable `buildBriefingContext()` from `lib/briefing.ts`. Route to Darren via ROADMAP-CORE.md T2-4 dispatch.
 **The risk:** Changes to the briefing builder silently degrade briefing quality — missing facts, wrong priorities, stale context.
 - Write a `lib/briefing.test.ts` snapshot test: given a fixed set of user facts + calendar events + Whoop data, the briefing prompt should contain certain key strings
 - Run this as part of preflight — if the briefing structure changes unexpectedly, the test catches it before deploy
@@ -145,26 +157,32 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 3 — Transparency (user can see and control everything)
 
-### T3-1 — "What Edge knows" completeness audit (Core + Design)
+### T3-1 — "What Edge knows" completeness audit (Core + Design) — 📋 **AUDITED 2026-06-18**
+**Audit result:** DB CHECK constraint at `lib/db.ts:251` allows: `('person','project','goal','preference','fact')`. Dashboard CATEGORY_META + ORDER include all 5 plus `'pattern'`.
+**Gap:** `'pattern'` category appears in the dashboard ORDER/render (`app/dashboard/page.tsx:2589`) and TypeScript types, but is NOT in the DB CHECK constraint. `lib/factPatterns.ts` stores pattern facts as category=`'fact'` + `source='historical-pattern'` — so the Patterns section will always be empty. Fix: add `'pattern'` to the DB CHECK constraint via migration in `lib/db.ts` and update `factPatterns.ts` to store as category=`'pattern'`. Route to Vijay (DB constraint) + Darren (factPatterns.ts).
 **The risk:** The Memory tab shows some facts but may not show all of them. Users can't correct what they can't see.
 - Audit every fact category stored in the `facts` table: are all categories rendered in the Memory tab?
 - If any category is missing from the UI: add it
 - Test: insert a fact in every category via a test call, verify all appear in the dashboard
 
-### T3-2 — Activity log completeness (Security)
+### T3-2 — Activity log completeness (Security) — ✅ **DOCUMENTED (content/security-audit.md)**
+**Status:** Full audit_log coverage map written to `content/security-audit.md` "Audit Log Coverage" section (78 routes reviewed 2026-06-17/18). All HIGH mutations covered; intentional non-logged routes documented with justification. Spot-check any routes added after the sweep date against the coverage map.
 **The risk:** The audit log may not cover all user-triggered mutations. Users can't trust the Activity tab if it's incomplete.
 - Audit every `POST`/`PATCH`/`DELETE` route: does it write to `audit_log`?
 - Add logging to any missing route
 - Document full coverage in `content/security-audit.md`
 
-### T3-3 — Data export accuracy (Security)
+### T3-3 — Data export accuracy (Security) — 📥 **DISPATCHED 2026-06-18**
+**Audit written:** `content/export-audit.md` — full gap analysis of `app/api/account/export/route.ts`. Route to Vijay (Security).
+**Missing from current export (v1):** `episodes` (call ground-truth records — HIGH), `audit_log` (every action Edge took — HIGH), `fact_history` (versioned memory audit trail — MEDIUM), `undo_history` (LOW). Also: facts export should include retired facts with status + retiredAt; confidence_score + last_confirmed_at should be included per fact; version bump to '2'.
 **The risk:** The data export (Settings → Account → Export) may not include everything Edge stores, or may include it in an unreadable format.
 - Audit the export endpoint: does it include facts, memories, episodes, call transcripts, priorities, tasks, activity log, and the user's current privacy setting?
 - If anything is missing: add it
 - Test: create a complete user account with data in every category, export, verify completeness
 
-### T3-4 — Account deletion completeness (Security)
-**The risk:** When a user deletes their account, some data may be left behind in tables added after the deletion route was written.
+### T3-4 — Account deletion completeness (Security) — ✅ **FIXED 0eed8a8**
+**Shipped:** Deletion handler audited and updated to cover all tables including episodes, briefing_context_packs, call_health_events, background_job_failures, people_models (pre-emptive), fact_history, pattern_cache.
+~~**The risk:** When a user deletes their account, some data may be left behind in tables added after the deletion route was written.~~
 - Audit the deletion handler: does it delete from every table that stores user data?
 - Tables most likely to be missing: `briefing_context_packs`, `call_health_events`, `background_job_failures`, `people_models`, `episodes`
 - Test: create a user, populate all tables, delete, verify no rows remain anywhere
@@ -173,32 +191,42 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 4 — Resilience (Edge keeps working when things go wrong)
 
-### T4-1 — Google token refresh reliability (Security)
-**The risk:** OAuth tokens expire. If the refresh fails silently, all calendar/Gmail operations fail for that user until they manually reconnect.
+### T4-1 — Google token refresh reliability (Security) — ✅ **FIXED 29373e1**
+**Shipped:** `lib/google-auth.ts` handles refresh failures gracefully; 3 consecutive failures write a reconnect flag to user record; next briefing surfaces "reconnect Google" notice.
+~~**The risk:** OAuth tokens expire. If the refresh fails silently, all calendar/Gmail operations fail for that user until they manually reconnect.~~
 - Audit `lib/google-auth.ts`: does it handle refresh failures gracefully? Does it surface a clear error rather than a silent 401?
 - If token refresh fails 3+ times: write a flag to the user record so the next briefing can tell them to reconnect
 - Test: force a token expiry, verify refresh fires, verify failure is surfaced
 
-### T4-2 — Vapi connection resilience (Security)
-**The risk:** If Vapi is unavailable, calls fail with no user notification. The user wakes up, no call, no explanation.
+### T4-2 — Vapi connection resilience (Security) — ✅ **FIXED 82e2f6f**
+**Shipped:** Pre-call health ping 5 minutes before scheduled call; if unhealthy, dashboard notification fires immediately ("Edge couldn't reach you this morning — we'll try again tomorrow").
+~~**The risk:** If Vapi is unavailable, calls fail with no user notification. The user wakes up, no call, no explanation.~~
 - Implement a pre-call health check: 5 minutes before a scheduled call, ping Vapi status. If unhealthy, send the user a dashboard notification: "Edge couldn't reach you this morning — we'll try again tomorrow. Check your connection settings."
 - Test: simulate Vapi unavailability, verify notification fires
 
-### T4-3 — SQLite concurrency + write-lock behavior under load (Security)
-**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs (sleep-time consolidation, pattern detection, predictive context loading) running simultaneously with incoming webhooks could produce write contention. Untested at multi-user scale — will bite as users grow.
+### T4-3 — SQLite concurrency + write-lock behavior under load (Security) — ✅ **FIXED 0eed8a8**
+**Shipped:** `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` added to `getDb()` in `lib/db.ts`; `scheduler_lock` table added so second replica skips the call rather than double-dialing.
+~~**The risk:** SQLite on Railway can hit locking issues under concurrent write load. Background jobs (sleep-time consolidation, pattern detection, predictive context loading) running simultaneously with incoming webhooks could produce write contention. Untested at multi-user scale — will bite as users grow.~~
 - Audit `lib/db.ts` `getDb()`: is WAL mode enabled? Is `busy_timeout` set?
 - Add `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` if not present
 - Add a single-instance scheduler lock: if Edge ever scales beyond 1 Railway replica, the 7am call must not fire twice (double-dial). Implement a `scheduler_lock` table row that the scheduler claims before dialing and releases after — second instance sees the lock and skips.
 - Test: simulate concurrent writes from 5 simultaneous webhook calls, verify no locking errors or dropped writes
 
-### T4-4 — Write-idempotency sweep (Security + Core)
-**The risk:** The `confirmFocus` duplicate-call bug class — a webhook fires twice (Vapi retry, network retry, double-tap) and a mutation runs twice. Every write endpoint should be safe to call twice with the same payload.
+### T4-4 — Write-idempotency sweep (Security + Core) — ✅ **FIXED 5655b88**
+**Shipped:** `webhook_dedup_keys` and `tool_call_dedup_keys` tables added; atomic claim gates on all Vapi webhook + tool-call handlers; `confirmFocus` already had idempotency from earlier; 10 new dedup tests green.
+~~**The risk:** The `confirmFocus` duplicate-call bug class — a webhook fires twice (Vapi retry, network retry, double-tap) and a mutation runs twice. Every write endpoint should be safe to call twice with the same payload.~~
 - Audit every `POST`/`PATCH`/`DELETE` in `app/api/**` — does it have idempotency protection?
 - Priority endpoints: `app/api/vapi/webhook/route.ts` (call end), `app/api/tasks/**`, `app/api/memory/**`, all `tool-call` handlers
 - Pattern: accept an optional `idempotencyKey` on write endpoints; if a key has been seen in the last 24h, return the cached result rather than re-executing
 - Test: POST the same payload twice to a mutation endpoint, verify the mutation only happens once
 
-### T4-5 — Undo coverage: every mutation must be reversible (Core)
+### T4-5 — Undo coverage: every mutation must be reversible (Core) — 📋 **AUDITED 2026-06-18**
+**Audit result:** Calendar mutations are fully covered. Two significant gaps found in non-calendar handlers:
+- **`planWeek`** ❌ — creates calendar events via `cal.events.insert` but never calls `recordUndo`. Created event IDs not tracked. Fix: collect inserted IDs + call `recordUndo(userId, 'planned week', [{type:'deleteMany', calId:'primary', eventIds: created}])`.
+- **`setPriorities`** ❌ — deletes+recreates priorities rows without undo. Fix: snapshot current priorities before `deleteThisWeek`, record undo op that would re-insert them.
+- **`rememberPreference`** ⚠️ — fact upsert has no undo, but bi-temporal `fact_history` provides reversibility via dashboard (acceptable — no calendar surface).
+- **`setMyTimezone` / `setEnergyLevel` / `confirmFocus`** — low priority; reversible by re-calling; not needed for undoLastAction.
+**Covered:** editEvent ✅, researchToEvent ✅, createEvent ✅, createRecurringEvent ✅, deleteEvent ✅, moveEvent ✅, colorEvent ✅, colorEventsByEnergy ✅, copyDayEvents ✅, draftEmail ✅, cleanupEvents ✅, cleanupDuplicates ✅, applyCalendarPlan ✅.
 **The risk:** Undo was added for calendar mutations. But later mutations (email drafts, memory updates, task completions, episode inserts) may not be covered.
 - Audit every mutation in `app/api/vapi/tool-call/route.ts`: does it call `recordUndo`?
 - Add `recordUndo` to any handler that's missing it

@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
   briefingCreatePending:   vi.fn(() => ({ lastInsertRowid: 1 })),
   briefingUpdateContent:   vi.fn(),
   briefingUpdate:          vi.fn(),
+  fetchMock:               vi.fn<() => Promise<{ ok: boolean; status: number }>>(() => Promise.resolve({ ok: true, status: 200 })),
 }));
 
 // ── module mocks ──────────────────────────────────────────────────────────────
@@ -52,11 +53,26 @@ vi.mock('./db', () => ({
   memoryQueries: { getRecent: vi.fn(() => []) },
   failedWebhookQueries: { record: vi.fn(), recentCount: vi.fn(() => 0), prune: vi.fn() },
   backgroundJobFailureQueries: { record: vi.fn(), recentCount: vi.fn(() => 0), prune: vi.fn() },
+  healthLogQueries: { write: vi.fn(), prune: vi.fn(), getLatest: vi.fn() },
+  callAttemptQueries: { record: vi.fn(), failedCount: vi.fn(() => 0), getRecent: vi.fn(() => []), prune: vi.fn() },
+  calendarQueries: { get: vi.fn(), recordAuthFailure: vi.fn(), clearAuthFailures: vi.fn(), needsReconnect: vi.fn(() => false) },
+  notificationQueries: { create: vi.fn() },
+  webhookDedupeQueries: { claim: vi.fn(() => true), prune: vi.fn() },
+  toolCallDedupeQueries: { claim: vi.fn(() => true), recordResult: vi.fn(), getCached: vi.fn(() => null), prune: vi.fn() },
+  briefingContextPackQueries: { upsert: vi.fn(), prune: vi.fn() },
+  episodeQueries: { pruneAll: vi.fn() },
+  openLoopQueries: { prune: vi.fn() },
+  watchedThreadQueries: { prune: vi.fn() },
+  oauthStateQueries: { prune: vi.fn() },
+  auditLogQueries: { pruneEmailSubjects: vi.fn() },
   effectiveTimezone: (u: { timezone?: string }) => u.timezone ?? 'America/Vancouver',
 }));
 
 vi.mock('./backup', () => ({ maybeDailyBackup: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./vapi', () => ({ initiateCall: h.initiateCall }));
+
+// Stub global fetch so pingVapiHealth returns true (healthy) by default in all tests.
+vi.stubGlobal('fetch', h.fetchMock);
 vi.mock('./briefing', () => ({
   generateDailyBriefing: h.generateDailyBriefing,
   getWeekOf: vi.fn(() => '2026-06-09'),
@@ -87,6 +103,7 @@ beforeEach(() => {
   h.generateDailyBriefing.mockResolvedValue('Test briefing content');
   h.briefingCreate.mockReturnValue({ lastInsertRowid: 1 });
   h.briefingCreatePending.mockReturnValue({ lastInsertRowid: 1 });
+  h.fetchMock.mockResolvedValue({ ok: true, status: 200 });
 });
 
 // ── 1. catch-up window ────────────────────────────────────────────────────────
@@ -130,6 +147,20 @@ describe('scheduler catch-up window', () => {
 
   it('fires at the last minute of the grace window (07:00 + 119 min = 08:59)', async () => {
     await checkAndInitiateCalls(nyTime('2026-06-11', 8, 59));
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
+  });
+
+  // DC1-3 — cold-start accuracy: app restarts a few minutes after call_time and
+  // the scheduler catches up on the first tick (within the 120-minute grace window).
+  it('DC1-3: fires 2 minutes late when app cold-starts after call_time', async () => {
+    // App starts at 07:02 — the scheduler fires on the first cron tick.
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 2));
+    expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
+  });
+
+  it('DC1-3: fires at call_time + 1 minute (one missed cron tick)', async () => {
+    // If the exact 07:00 tick was missed (e.g. server load spike), 07:01 catches it.
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 1));
     expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 });

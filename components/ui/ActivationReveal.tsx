@@ -73,7 +73,7 @@ export function ActivationLoading() {
       </div>
 
       <h2 className="text-xl font-bold mb-3" style={{ color: 'var(--text-strong)' }}>
-        Edge is learning about you.
+        Edg3 is learning about you.
       </h2>
 
       {/* Rotating subtext — swap ~2.5s, end on last line before reveal */}
@@ -110,8 +110,8 @@ export function ThinDataFallback({
           Your calendar is pretty clear.
         </h2>
         <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Edge doesn&apos;t have enough calendar history yet to know what drives your week — but
-          that changes fast. Answer two quick questions and Edge will have everything it needs to
+          Edg3 doesn&apos;t have enough calendar history yet to know what drives your week — but
+          that changes fast. Answer two quick questions and Edg3 will have everything it needs to
           start.
         </p>
       </div>
@@ -282,7 +282,7 @@ export function ActivationReveal({
             className="text-xs font-semibold uppercase tracking-wider"
             style={{ color: 'var(--text-accent)', letterSpacing: '0.08em' }}
           >
-            Edge&apos;s read
+            Edg3&apos;s read
           </span>
         </div>
         <h2 className="text-xl font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
@@ -312,7 +312,7 @@ export function ActivationReveal({
         }}
       >
         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-          These are based on your calendar, not a questionnaire. Edge will use them to frame every
+          These are based on your calendar, not a questionnaire. Edg3 will use them to frame every
           morning call and score your week.
         </p>
 
