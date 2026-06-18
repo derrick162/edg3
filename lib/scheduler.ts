@@ -1,10 +1,11 @@
 import cron from 'node-cron';
+import { randomBytes } from 'node:crypto';
 import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall } from './vapi';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
@@ -174,6 +175,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
   `).all() as User[];
 
   let built = 0;
+  let empty = 0;
   for (const user of users) {
     try {
       const tz = effectiveTimezone(user);
@@ -181,13 +183,30 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
       const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000)
         .toLocaleDateString('en-CA', { timeZone: tz });
 
+      const startedAt = Date.now();
       const contextPack = await buildContextPack(user.id);
+      const durationMs = Date.now() - startedAt;
+      const packSize = typeof contextPack === 'string' ? contextPack.trim().length : 0;
+
+      // M2-4 — verify the pack is non-empty. An empty pack must NOT be cached: the
+      // morning call falls back to live assembly, which is correct, so caching '' would
+      // poison that fallback. Surface it as a job failure so the 6am digest flags it.
+      if (packSize === 0) {
+        empty++;
+        console.warn(`[scheduler] Context pack EMPTY user=${user.id} date=${tomorrowLocal} — not caching; morning call will assemble live`);
+        backgroundJobFailureQueries.record('nightly_context_packs', user.id, 'empty pack (not cached)');
+        continue;
+      }
+
       briefingContextPackQueries.upsert(user.id, tomorrowLocal, contextPack);
       built++;
 
-      // Only log pack details for users who've consented to improvement data.
+      // M2-4 observability: size + duration are operational metrics (not pack content).
+      // Respect Privacy Mode — userId only, never the name, and suppress metrics.
       if (!isPrivacyMode(user)) {
-        console.log(`[scheduler] Context pack ready for ${user.name} (${tomorrowLocal})`);
+        console.log(`[scheduler] Context pack ready user=${user.id} date=${tomorrowLocal} size=${packSize} durationMs=${durationMs}`);
+      } else {
+        console.log(`[scheduler] Context pack ready user=${user.id} date=${tomorrowLocal} (privacy mode — metrics suppressed)`);
       }
     } catch (err) {
       console.error(`[scheduler] Context pack failed for user ${user.id}:`, err);
@@ -197,7 +216,7 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
 
   // Prune packs older than 7 days (runs alongside the pack build to stay clean).
   try { briefingContextPackQueries.prune(); } catch (e) { console.error('[scheduler] context pack prune failed:', e); }
-  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built`);
+  console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built${empty ? `, ${empty} empty (skipped)` : ''}`);
 }
 
 // ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────
@@ -242,6 +261,32 @@ export async function runHealthDigest(): Promise<void> {
   } catch (e) { issues.push(`job-failures check error: ${e}`); }
 
   try {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT COUNT(*) as count FROM briefings WHERE status = 'completed' AND created_at > datetime('now', '-24 hours') AND (transcript IS NULL OR length(transcript) < 50)`
+    ).get() as { count: number };
+    if (row.count > 0) issues.push(`${row.count} completed call(s) have no transcript`);
+  } catch (e) { issues.push(`transcript-health check error: ${e}`); }
+
+  // T0-1 — durability: in prod, off-box replication must be active or a volume
+  // loss is unrecoverable. Surface daily (not just at boot) so it can't be missed.
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const hasOffBox = Boolean(process.env.LITESTREAM_S3_BUCKET) || Boolean(process.env.BACKUP_S3_BUCKET);
+      if (!hasOffBox) issues.push('NO off-box DB replication configured (data-loss risk)');
+    }
+  } catch (e) { issues.push(`durability check error: ${e}`); }
+
+  // T0-2 — encryption key presence: in prod, a missing DATA_ENCRYPTION_KEY means
+  // PII is written as plaintext (or writes fail in strict mode). Surface daily.
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const { encryptionEnabled } = await import('./crypto');
+      if (!encryptionEnabled()) issues.push('DATA_ENCRYPTION_KEY unset in prod (PII at-rest not encrypted)');
+    }
+  } catch (e) { issues.push(`encryption check error: ${e}`); }
+
+  try {
     // Proactively validate calendar tokens for all active users before the 7am call.
     const { checkCalendarTokenHealth } = await import('./google-auth');
     const db = getDb();
@@ -274,13 +319,36 @@ export async function runHealthDigest(): Promise<void> {
 
 let schedulerRunning = false;
 
+// T0-4 — unique per-process id so the scheduler lock can identify this instance.
+// PID + random suffix distinguishes replicas (and restarts) sharing one DB.
+const INSTANCE_ID = `${process.pid}-${randomBytes(4).toString('hex')}`;
+const DISPATCH_LOCK = 'dispatch';
+// TTL < the 60s tick so a crashed holder's lock self-expires before the next tick.
+const DISPATCH_LOCK_TTL_SECONDS = 55;
+
 export function startScheduler() {
   if (schedulerRunning) return;
   schedulerRunning = true;
 
-  // Check every minute if any users need a call
+  // Check every minute if any users need a call. T0-4: claim a single-instance lock
+  // first so a second Railway replica (or an overlapping slow tick) can't double-dial.
   cron.schedule('* * * * *', async () => {
-    await checkAndInitiateCalls(new Date());
+    if (!schedulerLockQueries.acquire(DISPATCH_LOCK, INSTANCE_ID, DISPATCH_LOCK_TTL_SECONDS)) {
+      // A refused acquire always means a DIFFERENT holder owns it (our own holder would
+      // refresh successfully) — i.e. a second instance/replica, or a still-running slow
+      // tick. Log a warning naming the holder so a real double-instance is visible, not silent.
+      const held = schedulerLockQueries.currentHolder(DISPATCH_LOCK);
+      console.warn(
+        `[scheduler] dispatch lock already held${held ? ` by ${held.holder} (expires ${held.expires_at})` : ''} — ` +
+        `instance ${INSTANCE_ID} skipping this tick (prevents double-dial)`,
+      );
+      return;
+    }
+    try {
+      await checkAndInitiateCalls(new Date());
+    } finally {
+      schedulerLockQueries.release(DISPATCH_LOCK, INSTANCE_ID);
+    }
   });
 
   // Nightly at 3am UTC: retention prune for PII rows + daily DB snapshot (covers no-call days).

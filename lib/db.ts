@@ -214,6 +214,18 @@ function initSchema(db: Database.Database) {
       processed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- T0-4 — Single-instance scheduler lock. Guards the per-minute call-dispatch tick so a
+    -- second Railway replica (or an overlapping slow tick) can't double-dial the 7am call.
+    -- An instance claims the lock atomically before dispatching and releases it after; a lock
+    -- with a past expires_at is auto-reclaimable (covers a crashed holder). lock_name is the
+    -- resource ('dispatch'); holder is a per-process id; TTL < tick interval so it self-heals.
+    CREATE TABLE IF NOT EXISTS scheduler_lock (
+      lock_name   TEXT PRIMARY KEY,
+      holder      TEXT NOT NULL,
+      acquired_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at  TEXT NOT NULL
+    );
+
     -- Day-1 preview briefing — generated once on first dashboard load after onboarding.
     -- UNIQUE on user_id ensures a single preview per user; INSERT OR IGNORE handles races.
     CREATE TABLE IF NOT EXISTS preview_briefings (
@@ -1162,6 +1174,102 @@ export const toolCallDedupeQueries = {
     getDb().prepare("DELETE FROM tool_call_dedup_keys WHERE processed_at < datetime('now', '-10 minutes')").run();
   },
 };
+
+// T0-4 — Single-instance scheduler lock. Atomic claim via SQLite upsert so only one
+// instance dispatches the per-minute call tick (defends against multi-replica double-dial
+// and overlapping slow ticks). A held lock blocks others until expires_at; an expired lock
+// is reclaimable; an instance can always refresh its own lock.
+export const schedulerLockQueries = {
+  // Returns true if this holder now owns the lock. ttlSeconds should be < the tick interval
+  // so a crashed holder's lock self-expires before the next tick (no permanent deadlock).
+  acquire: (lockName: string, holder: string, ttlSeconds: number): boolean => {
+    try {
+      const r = getDb().prepare(
+        `INSERT INTO scheduler_lock (lock_name, holder, acquired_at, expires_at)
+         VALUES (?, ?, datetime('now'), datetime('now', ?))
+         ON CONFLICT(lock_name) DO UPDATE SET
+           holder = excluded.holder,
+           acquired_at = excluded.acquired_at,
+           expires_at = excluded.expires_at
+         WHERE scheduler_lock.expires_at < datetime('now')
+            OR scheduler_lock.holder = excluded.holder`,
+      ).run(lockName, holder, `+${Math.max(1, Math.floor(ttlSeconds))} seconds`);
+      return r.changes === 1;
+    } catch {
+      // Fail OPEN: a DB fault must not stop the morning call from ever firing. Within a
+      // single instance the existing alreadyCalled guard still prevents duplicates.
+      return true;
+    }
+  },
+  // Release only if we still hold it (don't stomp a lock another instance reclaimed after expiry).
+  release: (lockName: string, holder: string): void => {
+    try {
+      getDb().prepare('DELETE FROM scheduler_lock WHERE lock_name = ? AND holder = ?').run(lockName, holder);
+    } catch { /* non-critical — lock self-expires via TTL */ }
+  },
+  // Current holder + expiry, for diagnostics when an acquire is refused. Null if free/unknown.
+  currentHolder: (lockName: string): { holder: string; expires_at: string } | null => {
+    try {
+      const row = getDb().prepare('SELECT holder, expires_at FROM scheduler_lock WHERE lock_name = ?').get(lockName) as { holder: string; expires_at: string } | undefined;
+      return row ?? null;
+    } catch { return null; }
+  },
+};
+
+// T3-4 — Ordered list of every user-scoped table, deleted leaf-first so foreign keys
+// (incl. inter-child FKs like facts.source_briefing_id → briefings) are satisfied with
+// foreign_keys = ON. Single source of truth: the deletion route AND the drift-guard test
+// both read this, so adding a user-scoped table without adding it here fails the test.
+// `users` is intentionally absent — it is deleted last, after all children.
+export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
+  'open_loops',
+  'calendar_plan_executions',
+  'daily_focus',
+  'event_energy_tags',
+  'calendar_scores',
+  'energy_profile',
+  'focus_milestones',
+  'energy_log',
+  'whoop_tokens',
+  'calendar_tokens',
+  'gmail_drafts_log',
+  'watched_threads',
+  'notifications',
+  'audit_log',
+  'support_messages',
+  'fact_history',     // user_id → users; no FK to facts (fact_id is a plain int)
+  'facts',            // has FK source_briefing_id → briefings; delete before briefings
+  'briefings',
+  'preview_briefings',
+  'memories',
+  'priorities',
+  'tasks',
+  'undo_log',
+  'event_dedupe_keys',
+  'delete_confirm_tokens',
+  'oauth_state',
+  'briefing_context_packs',
+  'episodes',
+  'people_profiles',
+  'pattern_cache',
+  'failed_webhooks',
+  'background_job_failures',
+  'call_attempts',
+];
+
+// T3-4 — Permanently delete all of a user's data, then the user row. Wrapped in a
+// transaction so a missing-table FK error rolls the whole thing back (no half-deleted
+// account) instead of leaving orphaned rows. Throws on failure — caller returns 500.
+export function deleteUserData(userId: number): void {
+  const db = getDb();
+  const tx = db.transaction((uid: number) => {
+    for (const table of USER_SCOPED_DELETE_ORDER) {
+      db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(uid);
+    }
+    db.prepare('DELETE FROM users WHERE id = ?').run(uid);
+  });
+  tx(userId);
+}
 
 // Append-only action audit log (#7).
 // record() is fire-and-forget — never throws so a DB fault never disrupts a tool call.

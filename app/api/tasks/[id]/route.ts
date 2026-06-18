@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { taskQueries } from '@/lib/db';
+import { taskQueries, auditLogQueries } from '@/lib/db';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   } else {
     taskQueries.uncomplete(taskId, user.id);
   }
+  try { auditLogQueries.record({ userId: user.id, action: completed ? 'completeTask' : 'uncompleteTask', argsJson: JSON.stringify({ taskId }), ok: true }); } catch { /* non-critical */ }
 
   return NextResponse.json({ success: true });
 }
@@ -41,5 +42,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const taskId = parseInt(id, 10);
   if (!Number.isFinite(taskId) || taskId < 1) return NextResponse.json({ error: 'Invalid task ID' }, { status: 400 });
   taskQueries.delete(taskId, user.id);
+  try { auditLogQueries.record({ userId: user.id, action: 'deleteTask', argsJson: JSON.stringify({ taskId }), ok: true }); } catch { /* non-critical */ }
   return NextResponse.json({ success: true });
 }

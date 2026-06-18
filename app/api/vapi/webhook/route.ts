@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, Briefing, getDb } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, Briefing, getDb } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
@@ -150,6 +150,7 @@ export async function POST(req: NextRequest) {
             .catch(err => {
               console.error('[webhook] Fact extraction failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { facts_ok: false, facts_error: String(err).slice(0, 200) });
+              try { backgroundJobFailureQueries.record('fact_extraction', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
           // Sleep-time consolidation: one Haiku call resolves contradictions between the
           // transcript and stored facts via the bi-temporal retire+insert pipeline.
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest) {
             .catch(err => {
               console.error('[webhook] Sleep-time consolidation failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: false, consolidation_error: String(err).slice(0, 200) });
+              try { backgroundJobFailureQueries.record('sleep_consolidation', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
           // Extract open loops / commitments from the call transcript.
           import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
@@ -165,6 +167,7 @@ export async function POST(req: NextRequest) {
             .catch(err => {
               console.error('[webhook] Open loops extraction failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { loops_ok: false, loops_error: String(err).slice(0, 200) });
+              try { backgroundJobFailureQueries.record('open_loops_extraction', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
           // Episode store: persist the raw (grounded) transcript for episodic recall.
           import('@/lib/episodeStore').then(m => {
@@ -182,6 +185,7 @@ export async function POST(req: NextRequest) {
             .catch(err => {
               console.error('[webhook] Episode store failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { episode_ok: false, episode_error: String(err).slice(0, 200) });
+              try { backgroundJobFailureQueries.record('episode_store', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
         }
 

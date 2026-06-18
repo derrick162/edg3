@@ -109,6 +109,10 @@ const REQUIRED_TABLES = [
   'audit_log', 'waitlist',
   'energy_profile', 'event_energy_tags', 'calendar_plan_executions',
   'undo_log', 'gmail_drafts_log',
+  // Newer tables — now auto-covered because verifyBackup derives its list from
+  // USER_SCOPED_DELETE_ORDER. Guards against a backup silently missing recent schema.
+  'episodes', 'briefing_context_packs', 'call_attempts', 'failed_webhooks',
+  'background_job_failures', 'fact_history', 'support_messages',
 ];
 
 describe('verifyBackup — table coverage', () => {

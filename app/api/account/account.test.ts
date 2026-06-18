@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   dbGet: vi.fn<() => unknown>(() => undefined),
   dbAll: vi.fn<() => unknown[]>(() => []),
   preparedSqls: [] as string[],
+  deleteUserData: vi.fn(),
 }));
 
 // ── module mocks ───────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ vi.mock('@/lib/db', () => ({
   getDb: () => ({
     prepare: (sql: string) => { h.preparedSqls.push(sql); return { run: h.dbRun, get: h.dbGet, all: h.dbAll }; },
   }),
+  deleteUserData: (userId: number) => h.deleteUserData(userId),
   userQueries: {
     findById: (_id: number) => h.user,
   },
@@ -102,6 +104,7 @@ beforeEach(() => {
   h.briefings = [];
   h.drafts = [];
   h.preparedSqls = [];
+  h.deleteUserData.mockReset();
   h.dbAll.mockReturnValue([]);
 });
 
@@ -236,22 +239,17 @@ describe('DELETE /api/account — deletion', () => {
     expect(body.success).toBe(true);
   });
 
-  it('issues DELETE statements for all user tables including recently-added ones', async () => {
+  it('delegates deletion to deleteUserData with the session user id', async () => {
+    // The actual table-by-table cascade (incl. completeness/drift) is verified against a
+    // real DB in lib/db-account-deletion.test.ts; here we only assert the route wiring.
     await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
-    const deleteSqls = h.preparedSqls.filter(s => s.startsWith('DELETE FROM'));
-    // Must cover all tables added through 2026-06-18 (briefing_context_packs,
-    // episodes, people_profiles, pattern_cache, failed_webhooks, background_job_failures)
-    expect(deleteSqls.length).toBeGreaterThanOrEqual(30);
+    expect(h.deleteUserData).toHaveBeenCalledWith(1);
   });
 
-  it('explicitly deletes briefing_context_packs (no ON DELETE CASCADE — would block user deletion otherwise)', async () => {
-    await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
-    expect(h.preparedSqls.some(s => s.includes('briefing_context_packs'))).toBe(true);
-  });
-
-  it('explicitly deletes episodes for the user', async () => {
-    await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
-    expect(h.preparedSqls.some(s => s.includes('episodes'))).toBe(true);
+  it('returns 500 (not 200) if deleteUserData throws', async () => {
+    h.deleteUserData.mockImplementationOnce(() => { throw new Error('FK constraint'); });
+    const res = await accountDELETE(makeReq('DELETE', { confirm: 'delete my account' }));
+    expect(res.status).toBe(500);
   });
 
   it('clears the session cookie on success', async () => {
