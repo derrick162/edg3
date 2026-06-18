@@ -26,11 +26,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - All briefing/memory reads filter to active facts only
 - Test: upsert a fact, then upsert a conflicting fact on the same entity+category, verify first is retired and second is active
 
-### M1-3 — Fact extraction quality: completeness + deduplication (Core)
-**The risk:** The extraction pipeline may be producing duplicate facts (same statement twice), missing certain categories, or extracting noise rather than signal.
-- Add a deduplication check in `extractAndUpsertFacts`: before inserting, check if an identical (entity, category, statement) active fact already exists — if yes, skip (just update `last_seen_at`)
-- Add extraction coverage test: given a transcript with a goal, a person, a preference, a pattern, and a commitment — verify all five categories are extracted
-- Test with a real transcript from the last week: how many facts were extracted? Are they accurate?
+### M1-3 — Fact extraction quality: completeness + deduplication (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `factQueries.upsertFact` deduplicates by (category, entity, active) — for facts with entity: exact entity match (case-insensitive); for entity-null facts: 80-char prefix match on decrypted statement. `consolidateFacts` post-pass cleans Jaccard-similar near-dups per (category, entity) group. Net-new count drives the "new fact learned" notification — counting raw upserts was fixed to count only actual row increases.
+~~**The risk:** The extraction pipeline may be producing duplicate facts...~~
 
 ### M1-4 — Memory versioning: snapshot before destructive updates (Core) — ✅ **LIVE (Round 5)**
 **Shipped:** `snapshotFactToHistory(factId, userId, source)` called before every bi-temporal retire; `fact_history` table is a read-only audit trail — no modifications after insert. Source recorded as 'extraction-update', 'manual', or 'consolidation'.
@@ -88,17 +86,13 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 - Remove any fact older than 90 days from the default briefing context (they can still be retrieved on-demand but shouldn't auto-inject)
 - Test: compare briefing context before and after — is it tighter? Is the most important information in the first 1000 tokens?
 
-### M3-2 — On-demand memory retrieval mid-call (Core)
-**The risk:** If Derrick asks "what did I say about X?" during a call, Edge can only answer from what's in the current context. If the fact was archived, Edge says "I don't know" — which is wrong.
-- Add a `searchMemory` Vapi tool: takes a query string, searches `facts` + `episodes` + `memories`, returns the most relevant matches
-- Register in `lib/vapi.ts` with a clear trigger: "what did I tell you about...", "do you remember...", "what's my..."
-- Test: store a fact, then ask Edge about it on a call where it's not in the pre-loaded context — verify Edge retrieves it correctly
+### M3-2 — On-demand memory retrieval mid-call (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `searchMemory` tool registered in `app/api/vapi/tool-call/route.ts`; searches `facts` + `episodes` + `memories` by query; `lib/vapi.ts` prompt registers trigger phrases ("what did I tell you about…", "do you remember…", "what's my…"). External: create `searchMemory` tool in Vapi dashboard (param `query`, string, required) + paste UUID into `lib/vapi.ts` toolIds.
+~~**The risk:** If Derrick asks "what did I say about X?" during a call, Edge can only answer from what's in the current context. If the fact was archived, Edge says "I don't know" — which is wrong.~~
 
-### M3-3 — Commitment tracking: outstanding loops surfaced correctly (Core)
-**The risk:** The accountability memory tracks commitments. But if the briefing doesn't surface outstanding loops prominently, they get forgotten.
-- In the briefing builder: outstanding commitments from the last 7 days should appear in section 1 (the first thing Edge says), not buried in section 4
-- Prioritize: commitments made but not yet marked complete, sorted by age (oldest first)
-- Test: make a commitment on Monday's call, verify it appears in Tuesday's and Wednesday's briefings until resolved
+### M3-3 — Commitment tracking: outstanding loops surfaced correctly (Core) — ✅ **LIVE (Round 5/6)**
+**Shipped:** Outstanding `source='edg3'` tasks from yesterday appear in briefing section 1 before anything else; sorted by age; `getOpenCommitments` feeds the accountability snapshot; briefing PART 1 instruction explicitly names commitments as the first item after the opener.
+~~**The risk:** The accountability memory tracks commitments. But if the briefing doesn't surface outstanding loops prominently, they get forgotten.~~
 
 ---
 

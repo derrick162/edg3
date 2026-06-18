@@ -1449,9 +1449,11 @@ Query: ${query}` }],
       .slice(0, 3);
     if (!texts.length) return "I didn't catch those priorities — can you say them again?";
 
+    const prevPriorities = priorityQueries.getThisWeek(userId, weekOf).map(p => ({ text: (p as { text: string }).text, rank: (p as { rank: number }).rank }));
     priorityQueries.deleteThisWeek(userId, weekOf);
     texts.forEach((text, i) => priorityQueries.create(userId, text, weekOf, i + 1));
     try { factQueries.syncPriorityFacts(userId, texts); } catch { /* non-fatal */ }
+    if (prevPriorities.length) recordUndo(userId, `updated priorities (was: ${prevPriorities.map(p => p.text).join('; ')})`, [{ type: 'restorePriorities', userId, weekOf, priorities: prevPriorities }]);
 
     auditLogQueries.record({
       userId,
