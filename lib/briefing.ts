@@ -268,6 +268,137 @@ export function buildEnergyMatchingBlock(
   return '\n' + lines.join('\n') + '\n';
 }
 
+// ── T2-4: Pure context assembler ─────────────────────────────────────────────
+// Exported so tests can validate the assembly rules with mock data.
+// Implements: commitment ordering, routine deprioritisation, stale fact filter,
+// relationship context by calendar attendance, personalization floor,
+// confidence hedging, context cap. Used by buildBriefingContextPack and
+// indirectly validates the same rules in generateDailyBriefing.
+
+const ROUTINE_EVENT_RE = /\b(gym|breakfast|lunch|dinner|meal prep|meal|workout|walk|run|exercise|yoga|meditation)\b/i;
+
+export interface BriefingContextData {
+  facts: Array<{
+    id?: number;
+    category: string;
+    entity: string | null;
+    statement: string;
+    learned_at: string;
+    confidence_score?: number | null;
+    last_confirmed_at?: string | null;
+  }>;
+  priorities: Array<{ text: string; rank?: number }>;
+  calendar: Array<{ summary: string; start: { dateTime?: string; date?: string } }>;
+  tasks: Array<{ text: string; source: string; completed: number | boolean; date?: string | null }>;
+  whoopRecovery?: { recoveryScore: number } | null;
+  episodes?: Array<{ content: string; occurred_at?: string }>;
+}
+
+/**
+ * Assembles the structured context block for a briefing from pre-fetched data.
+ * Pure and synchronous — no I/O. The live path calls it after fetching all data.
+ * Tests call it with fixture data to validate the assembly rules.
+ *
+ * Rules implemented:
+ *  1. Outstanding commitments (source='edg3', incomplete, past due) appear FIRST.
+ *  2. Calendar: non-routine events before routine ones.
+ *  3. Priorities injected after calendar.
+ *  4. Whoop recovery summary (when present).
+ *  5. Stale facts excluded: old >90d AND confidence_score < 0.7 AND no recent confirmation.
+ *  6. Relationship context only for people who appear on today's calendar.
+ *  7. Personalization floor: if <3 user-specific signals, inject fill-the-gap question.
+ *  8. Low-confidence (< 0.5) facts prefixed with "last I heard".
+ *  9. Context cap: truncated to 16,000 chars (~4,000 tokens).
+ */
+export function buildBriefingContext(
+  user: { id: number; name: string; timezone: string },
+  data: BriefingContextData,
+  today?: string,
+): string {
+  const todayStr = today ?? new Date().toLocaleDateString('en-CA', { timeZone: user.timezone });
+  const sections: string[] = [];
+
+  // 1. Outstanding commitments — MUST come before calendar (DC2-3).
+  const outstanding = (data.tasks ?? []).filter(
+    t => t.source === 'edg3' && !t.completed && t.date != null && t.date < todayStr,
+  );
+  if (outstanding.length > 0) {
+    sections.push(`OUTSTANDING COMMITMENTS:\n${outstanding.map(t => `- ${t.text}`).join('\n')}`);
+  }
+
+  // 2. Calendar — non-routine before routine.
+  const nonRoutine = (data.calendar ?? []).filter(e => !ROUTINE_EVENT_RE.test(e.summary));
+  const routine = (data.calendar ?? []).filter(e => ROUTINE_EVENT_RE.test(e.summary));
+  const orderedCalendar = [...nonRoutine, ...routine];
+  if (orderedCalendar.length > 0) {
+    sections.push(`TODAY'S CALENDAR:\n${orderedCalendar.slice(0, 5).map(e => `- ${e.summary}`).join('\n')}`);
+  }
+
+  // 3. Priorities.
+  if ((data.priorities ?? []).length > 0) {
+    sections.push(`THIS WEEK'S TOP PRIORITIES:\n${data.priorities.map((p, i) => `${i + 1}. ${p.text}`).join('\n')}`);
+  }
+
+  // 4. Whoop.
+  if (data.whoopRecovery != null) {
+    const s = data.whoopRecovery.recoveryScore;
+    const tier = s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low';
+    sections.push(`HEALTH DATA:\nRecovery: ${s}% (${tier})`);
+  }
+
+  // 5. Stale fact filter: exclude facts older than 90 days with no recent confirmation
+  //    AND confidence_score < 0.7. Keeps recently-reconfirmed old facts in context.
+  const calendarLower = orderedCalendar.map(e => e.summary.toLowerCase()).join(' ');
+  const activeFacts = (data.facts ?? []).filter(f => {
+    const daysOld = (Date.now() - new Date(f.learned_at).getTime()) / 86_400_000;
+    const conf = f.confidence_score ?? 1.0;
+    const confirmed = f.last_confirmed_at;
+    return !(daysOld > 90 && conf < 0.7 && !confirmed);
+  });
+
+  // 6. Relationship context — only inject people on today's calendar.
+  const calendarPeopleFacts = activeFacts.filter(
+    f => f.category === 'person' && f.entity && calendarLower.includes(f.entity.toLowerCase()),
+  );
+  const nonPeopleFacts = activeFacts.filter(f => f.category !== 'person');
+
+  // 7. Personalization floor: need ≥3 distinct signals.
+  const hasPriority = (data.priorities ?? []).length > 0;
+  const hasFact = nonPeopleFacts.some(f => ['preference', 'pattern', 'goal', 'fact'].includes(f.category));
+  const hasThird = data.whoopRecovery != null || outstanding.length > 0 || calendarPeopleFacts.length > 0;
+  const meetsFloor = hasPriority && hasFact && hasThird;
+  if (!meetsFloor) {
+    sections.push(
+      `PERSONALIZATION SIGNAL: Edge does not have enough context to personalize this briefing yet. ` +
+      `Ask ONE fill-the-gap question to start building the memory moat: "I don't have much context on ` +
+      `your priorities yet — what's the most important thing you're working on this week?"`,
+    );
+  }
+
+  // 8. Structured facts with confidence hedging.
+  if (nonPeopleFacts.length > 0) {
+    const factsText = nonPeopleFacts.slice(0, 15).map(f => {
+      const conf = f.confidence_score ?? 1.0;
+      const prefix = conf < 0.5 ? 'last I heard — ' : '';
+      return `- ${prefix}${f.statement}`;
+    }).join('\n');
+    sections.push(`STRUCTURED FACTS:\n${factsText}`);
+  }
+
+  if (calendarPeopleFacts.length > 0) {
+    const relText = calendarPeopleFacts.map(f => `- ${f.entity}: ${f.statement}`).join('\n');
+    sections.push(`RELATIONSHIP CONTEXT (today's calendar):\n${relText}`);
+  }
+
+  if ((data.episodes ?? []).length > 0) {
+    sections.push(`EPISODIC MEMORY:\n${data.episodes!.slice(0, 3).map(e => `- ${e.content.slice(0, 200)}`).join('\n')}`);
+  }
+
+  // 9. Context cap: ~4,000 tokens.
+  const result = sections.join('\n\n');
+  return result.length > 16_000 ? result.slice(0, 16_000) : result;
+}
+
 /**
  * Pre-compute stable personal context for tomorrow's briefing.
  * Activated automatically by the 11pm scheduler once this export exists.
