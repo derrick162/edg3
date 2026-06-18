@@ -666,7 +666,7 @@ export const userQueries = {
 
 // OAuth CSRF state — one-time-use tokens that bind a flow to a userId.
 export const oauthStateQueries = {
-  create: (state: string, userId: number, flow: 'calendar' | 'whoop'): void => {
+  create: (state: string, userId: number, flow: 'calendar' | 'whoop' | 'gmail'): void => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10-minute TTL
     getDb().prepare(
       'INSERT OR REPLACE INTO oauth_state (state, user_id, flow, expires_at) VALUES (?, ?, ?, ?)'

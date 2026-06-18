@@ -12,7 +12,10 @@ const { getDb, calendarQueries, gmailTokenQueries } = await import('./db');
 const {
   getCalendarTokens, getGmailTokens, saveGmailTokens,
   disconnectGmailAccount, hasLinkedGmailAccount, persistRefreshedToken,
+  emailFromIdToken,
 } = await import('./google-auth');
+
+const makeIdToken = (payload: object) => `hdr.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
 
 afterAll(() => {
   if (ORIGINAL_DB_PATH === undefined) delete process.env.DB_PATH;
@@ -79,6 +82,21 @@ describe('disconnectGmailAccount', () => {
     disconnectGmailAccount(1);
     expect(getGmailTokens(1)!.source).toBe('calendar'); // falls back now
     expect(getCalendarTokens(1)!.access_token).toBe('cal-access'); // untouched
+  });
+});
+
+describe('emailFromIdToken', () => {
+  it('extracts the email claim from a Google id_token', () => {
+    expect(emailFromIdToken(makeIdToken({ email: 'me@gmail.com', sub: '123' }))).toBe('me@gmail.com');
+  });
+  it('returns null when there is no email claim', () => {
+    expect(emailFromIdToken(makeIdToken({ sub: '123' }))).toBeNull();
+  });
+  it('returns null for null/undefined/malformed input', () => {
+    expect(emailFromIdToken(null)).toBeNull();
+    expect(emailFromIdToken(undefined)).toBeNull();
+    expect(emailFromIdToken('not-a-jwt')).toBeNull();
+    expect(emailFromIdToken('a.@@@.c')).toBeNull();
   });
 });
 

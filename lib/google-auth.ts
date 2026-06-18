@@ -106,6 +106,57 @@ export function persistRefreshedToken(
   }
 }
 
+// --- Dedicated Gmail account OAuth flow --------------------------------------
+// The primary account's OAuth flow (client + code exchange) lives in lib/calendar.ts and
+// is hardcoded to the calendar redirect URI + scopes. The dedicated Gmail account needs its
+// OWN redirect URI and a compose-only scope set, so its flow lives here (Security-owned).
+// ⚠️ EXTERNAL STEP: GMAIL_REDIRECT_URI must be registered as an authorized redirect URI in
+// the Google Cloud console, and gmail.compose requires OAuth app verification before prod.
+
+function gmailRedirectUri(): string {
+  return process.env.GMAIL_REDIRECT_URI || 'http://localhost:3000/api/auth/google/gmail/callback';
+}
+
+// openid + email capture the linked account's address for the accounts-status UI; compose is
+// the only Gmail data scope (drafting). gmail.readonly stays on the primary account.
+export const GMAIL_ACCOUNT_SCOPES: string[] = ['openid', 'email', GMAIL_COMPOSE_SCOPE];
+
+export async function getGmailAuthUrl(state: string): Promise<string> {
+  const { google } = await import('googleapis');
+  const client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, gmailRedirectUri());
+  return client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: GMAIL_ACCOUNT_SCOPES, state });
+}
+
+export interface GmailTokenExchange {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  expiry_date?: number | null;
+  scope?: string | null;
+  id_token?: string | null;
+}
+
+export async function exchangeGmailCode(code: string): Promise<GmailTokenExchange> {
+  const { google } = await import('googleapis');
+  const client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, gmailRedirectUri());
+  const { tokens } = await client.getToken(code);
+  return tokens as GmailTokenExchange;
+}
+
+// Decode the `email` claim from a Google id_token (JWT). Signature verification is not
+// needed here: the token came directly from Google's token endpoint over TLS during the
+// code exchange. Returns null on any malformed input.
+export function emailFromIdToken(idToken?: string | null): string | null {
+  if (!idToken) return null;
+  try {
+    const payload = idToken.split('.')[1];
+    if (!payload) return null;
+    const json = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { email?: unknown };
+    return typeof json.email === 'string' ? json.email : null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Granted-scope reasoning -------------------------------------------------
 // Google returns the granted scopes as a space-delimited string on the token
 // response (`tokens.scope`). We persist it so we can detect re-consent needs
