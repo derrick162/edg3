@@ -11,7 +11,7 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -1143,6 +1143,43 @@ Query: ${query}` }],
     const hasReadScope = hasGmailReadScope(tokenRow?.scope);
     const updates = hasReadScope ? await checkOutreachReplies(userId) : [];
     return formatRepliesForVoice(updates, hasReadScope);
+
+  } else if (fn === 'searchMemory') {
+    // M3-2: on-demand memory retrieval — searches facts + episodes + memories for the query.
+    const { query } = args as { query?: string };
+    if (!query?.trim()) return "What would you like me to look up?";
+    const needle = query.trim().toLowerCase();
+    const results: string[] = [];
+
+    // 1. Search facts (all — including stale, since user explicitly asked)
+    try {
+      const allFacts = factQueries.getAll(userId, { includeRetired: false });
+      const factHits = allFacts.filter(f =>
+        f.statement.toLowerCase().includes(needle) ||
+        (f.entity?.toLowerCase().includes(needle) ?? false)
+      ).slice(0, 3);
+      for (const f of factHits) results.push(`[${f.category}] ${f.statement}`);
+    } catch { /* degrade */ }
+
+    // 2. Search episodes (topics + commitments)
+    try {
+      const episodes = episodeQueries.search(userId, { topic: query.trim(), limit: 5 });
+      for (const e of episodes.slice(0, 2)) {
+        const d = e.occurredAt.slice(0, 10);
+        if (e.commitments?.length) results.push(`[call ${d}] committed: ${e.commitments.join('; ')}`);
+        else if (e.topics?.length) results.push(`[call ${d}] topics: ${e.topics.join(', ')}`);
+      }
+    } catch { /* degrade */ }
+
+    // 3. Search memories (weighted notes)
+    try {
+      const memories = memoryQueries.getWeighted(userId, 30);
+      const memHits = memories.filter(m => m.content.toLowerCase().includes(needle)).slice(0, 2);
+      for (const m of memHits) results.push(`[note] ${m.content.slice(0, 120)}`);
+    } catch { /* degrade */ }
+
+    if (!results.length) return `I don't have anything on "${query}" yet — you can tell me and I'll remember it.`;
+    return `Here's what I have on "${query}":\n${results.join('\n')}`;
 
   } else if (fn === 'setEnergyLevel') {
     const { level, source } = args as { level?: string; source?: string };
