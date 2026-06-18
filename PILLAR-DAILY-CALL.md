@@ -113,11 +113,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - If the user pauses for more than 10 seconds, Edge should check in warmly — not hang up, not ask a new question
 - Test: on a live call, pause for 15 seconds; verify Edge checks in rather than timing out
 
-### DC3-3 — Honest failure mid-call: Edge never makes things up (Core)
-**The risk:** A tool call fails mid-call. Edge says "I've moved that meeting" when it hasn't. User finds out later. Trust destroyed.
-- Audit every tool-call failure path in `app/api/vapi/tool-call/route.ts` — does each one return an honest spoken message?
-- No tool failure should ever sound like a success
-- Test: force a calendar write failure; verify Edge says something honest about what happened
+### DC3-3 — Honest failure mid-call: Edge never makes things up (Core) — ✅ **LIVE (Loop 7 + prior passes)**
+**Shipped:** All tool-call failure paths in `app/api/vapi/tool-call/route.ts` return honest spoken messages. `friendlyError` handles 403 (with draftEmail offer), 404, rate-limit (429), timeout (ETIMEDOUT), and catch-all. No tool failure sounds like a success. Same work as PILLAR-TRUST T2-3 (FIXED 014bd70).
+~~**The risk:** A tool call fails mid-call. Edge says "I've moved that meeting" when it hasn't.~~
 
 ---
 
