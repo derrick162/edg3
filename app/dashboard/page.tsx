@@ -939,6 +939,7 @@ interface Fact {
   confidence?: 'low' | null;
   source_briefing_id?: number | null;
   source?: string | null;
+  last_updated_at?: string | null;
 }
 
 // ── Fact source label ─────────────────────────────────────────────────────────
@@ -2687,10 +2688,19 @@ export default function Dashboard() {
                                 </p>
                                 {(() => {
                                   const src = factSourceLabel(f);
-                                  return src.href ? (
-                                    <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
-                                  ) : (
-                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                  const updatedAt = f.last_updated_at;
+                                  const showUpdated = updatedAt && updatedAt.slice(0, 10) !== f.learned_at.slice(0, 10);
+                                  return (
+                                    <>
+                                      {src.href ? (
+                                        <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                      ) : (
+                                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                      )}
+                                      {showUpdated && (
+                                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>updated {format(new Date(updatedAt!), 'MMM d')}</p>
+                                      )}
+                                    </>
                                   );
                                 })()}
                               </>
@@ -2882,7 +2892,7 @@ export default function Dashboard() {
                                         {correctName(entity, firstName)}
                                       </p>
                                       <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
-                                        last updated {format(new Date(mostRecent.learned_at), 'MMM d')}
+                                        last updated {format(new Date(mostRecent.last_updated_at ?? mostRecent.learned_at), 'MMM d')}
                                       </p>
                                     </div>
                                     <div className="space-y-0">

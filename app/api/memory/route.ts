@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { memoryQueries, factQueries } from '@/lib/db';
+import { memoryQueries, factQueries, factHistoryQueries } from '@/lib/db';
 
 export async function GET() {
   const user = await getSession();
@@ -10,5 +10,7 @@ export async function GET() {
   // Memory tab floor out after a couple of days (reported: "only goes back to June 8").
   const memories = memoryQueries.getRecent(user.id, 200);
   const facts = factQueries.getAll(user.id);
-  return NextResponse.json({ memories, facts });
+  const latestTs = factHistoryQueries.getLatestTimestamps(user.id);
+  const factsWithHistory = facts.map(f => ({ ...f, last_updated_at: latestTs[f.id] ?? null }));
+  return NextResponse.json({ memories, facts: factsWithHistory });
 }
