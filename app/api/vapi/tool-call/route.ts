@@ -1125,11 +1125,18 @@ Query: ${query}` }],
       : null;
     const isUpdate = !!(existing && existing.statement.toLowerCase() !== statement.trim().toLowerCase());
 
-    factQueries.upsertFact(userId, cat, statement.trim().slice(0, 500), ent);
+    if (isUpdate && existing) {
+      // User explicitly said to update — always write even if the old fact was high-confidence.
+      // updateFact snapshots to fact_history (reason='user-edit') before overwriting.
+      factQueries.updateFact(userId, existing.id, statement.trim().slice(0, 500), ent);
+    } else {
+      factQueries.upsertFact(userId, cat, statement.trim().slice(0, 500), ent);
+    }
 
+    const topicLabel = ent ? ` "${ent}"` : '';
     return isUpdate
-      ? `Got it — I've updated that in your memory.`
-      : `Got it — I've saved that and will apply it going forward.`;
+      ? `Got it — I've updated${topicLabel} in your memory.`
+      : `Got it — I've saved${topicLabel} and will apply it going forward.`;
 
   } else if (fn === 'checkReplies') {
     const tokenRow = calendarQueries.get(userId);
