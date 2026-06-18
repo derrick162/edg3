@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext } from './briefing';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock } from './briefing';
 import type { Fact } from './db';
 
 function makePref(statement: string, id = 1): Fact {
@@ -266,5 +266,41 @@ describe('T2-4 briefing accuracy regression', () => {
     expect(result).toContain('today 72%');
     expect(result).toMatch(/7-day avg \d+%/);
     expect(result).toMatch(/[+-]\d+ pts/);
+  });
+});
+
+// ── DC2-2: Personalization signal — minimum 3 facts floor ──────────────────
+describe('DC2-2 buildPersonalizationPromptBlock', () => {
+  it('returns null when 3 or more facts exist (personalized path)', () => {
+    expect(buildPersonalizationPromptBlock(3)).toBeNull();
+    expect(buildPersonalizationPromptBlock(10)).toBeNull();
+    expect(buildPersonalizationPromptBlock(20)).toBeNull();
+  });
+
+  it('returns an instruction block when 0 facts (new user)', () => {
+    const result = buildPersonalizationPromptBlock(0);
+    expect(result).not.toBeNull();
+    expect(result).toContain('PERSONALIZATION SIGNAL');
+    expect(result).toContain('0 stored facts');
+    expect(result).toContain('replaces the standard closing question');
+  });
+
+  it('returns an instruction block when 1 fact (singular grammar)', () => {
+    const result = buildPersonalizationPromptBlock(1);
+    expect(result).not.toBeNull();
+    expect(result).toContain('1 stored fact');
+    expect(result).not.toContain('1 stored facts');
+  });
+
+  it('returns an instruction block when 2 facts (boundary)', () => {
+    const result = buildPersonalizationPromptBlock(2);
+    expect(result).not.toBeNull();
+    expect(result).toContain('2 stored facts');
+    expect(result).toContain('PERSONALIZATION SIGNAL');
+  });
+
+  it('asks a personal-context question, not a calendar/focus question', () => {
+    const result = buildPersonalizationPromptBlock(0)!;
+    expect(result).toMatch(/challenge|stuck on|understand you better|should know about/i);
   });
 });

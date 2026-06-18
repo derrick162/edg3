@@ -481,6 +481,9 @@ Ship small / green / full preflight (real exit code) per item; log each below.
   - **DC2-1 — Forbid routine/predictable opener** (`lib/briefing.ts`): PART 1 instruction strengthened — "ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing)."
   - **DC2-3 — Commitments first in Part 1** (`lib/briefing.ts`): When `edg3Commitment` exists, it moves INTO Part 1 before the Edge Score — "Before the Edge Score, open with the commitment accountability line." Part 2 commitment opening removed to avoid repetition.
   - 1652/1652 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC2-2 — personalization signal: 3-fact floor + reconfirmation.**
+  - `lib/briefing.ts`: `buildPersonalizationPromptBlock(factCount)` exported pure helper. Returns a `PERSONALIZATION SIGNAL` instruction block when `factCount < 3` — directs Edge to close the call with a personal-context question ("what's the challenge you feel most stuck on?") instead of a generic focus question. Returns null when ≥3 facts (normal path). Used in PART 3 of the user prompt; stale-priorities nudge suppressed when personalization fires to avoid two competing closing asks.
+  - 5 new tests in `lib/briefing.test.ts`. 1701/1701 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-TRUST T2-2 — stale fact hedging in briefings.**
   - `lib/briefing.ts` `linkedMemory` formatter: facts with `learned_at` > 90 days ago are now marked `[UNCONFIRMED >90d]` in the EVENT-LINKED MEMORY block. Added instruction line telling the model to preface marked facts with "last I heard…" when spoken. No change to other sections — the hedge fires only in the event-linked memory path where facts are surfaced as statements. 1523/1523 green.
 - **2026-06-18** — **PILLAR-MEMORY M1-3 + M1-4 — fact freshness + fact_history audit trail.**

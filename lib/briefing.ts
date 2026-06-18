@@ -54,6 +54,11 @@ async function getWeatherSummary(timezone: string): Promise<string> {
   }
 }
 
+export function buildPersonalizationPromptBlock(factCount: number): string | null {
+  if (factCount >= 3) return null;
+  return `PERSONALIZATION SIGNAL: Only ${factCount} stored fact${factCount !== 1 ? 's' : ''} about this user — the briefing is running on minimal personal context. Instead of a standard focus question, close with ONE personal-context question to start building the moat: "Before I let you go — I'd love to understand you better. What's the challenge you feel most stuck on right now that we haven't tackled yet?" or "What's one thing happening in your life or work this week that I should know about?" Skip the forward-looking sentence. This replaces the standard closing question.`;
+}
+
 function extractCommitments(briefings: { user_response: string | null; scheduled_for: string }[]): string {
   const withResponses = briefings.filter(b => b.user_response).slice(0, 3);
   if (!withResponses.length) return '';
@@ -701,6 +706,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   // Reuse the already-ranked salient facts (loaded early for meeting context).
   const salientFacts = salientFactsEarly;
+  // DC2-2: personalization signal — fewer than 3 stored facts means the briefing is generic.
+  const personalizationSignal = salientFacts.length < 3 ? salientFacts.length : null;
   // Event-linked memory — degrade to [] if thrown on malformed input.
   const linkedMemory = (() => { try { return linkEventsToFacts([...calendarEvents, ...weekEvents], salientFacts); } catch { return []; } })();
   // Energy matching (V2): energy-profile preferences + recovery modulator.
@@ -894,7 +901,7 @@ PART 2 — FOCUS + ACTION (4–5 sentences MAX):
 ${edg3Commitment ? '' : ''}${focusRec && focusRec.areas.length > 0 ? `Propose focus: "For today, I'd focus you on: [area 1], [area 2], [area 3]. Sound right?" Then name what to DO first this morning, anchored to their top focus area and a specific calendar event where one connects. If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?"). If FREE TIME SLOTS shows an open afternoon window (3pm+) and the user has multiple priorities, offer a choice: "You've got a free window this afternoon — would you rather push on [priority 1] or [priority 2]?" One choice, then let them respond.` : `Name the top 2 concrete things to DO today anchored to priorities. No listing events — name ACTIONS.`}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
 
 PART 3 — CLOSING (2–3 sentences MAX):
-ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.${prioritiesStaleAge > 7 ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
+${buildPersonalizationPromptBlock(salientFacts.length) ?? `ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.`}${prioritiesStaleAge > 7 && personalizationSignal === null ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
 
 Write as flowing spoken language.`;
 
