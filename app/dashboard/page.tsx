@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
@@ -1235,6 +1235,17 @@ export default function Dashboard() {
   );
   const toggleMemorySection = (key: string) =>
     setCollapsedMemorySections(prev => { const next = new Set(prev); prev.has(key) ? next.delete(key) : next.add(key); return next; });
+  // UX-4: once facts load, collapse all but first 3 populated categories
+  const didInitMemoryCollapse = useRef(false);
+  useEffect(() => {
+    if (facts.length === 0 || didInitMemoryCollapse.current) return;
+    didInitMemoryCollapse.current = true;
+    const CAT_ORDER = ['goal', 'project', 'person', 'pattern', 'preference', 'fact'];
+    const activeCats = CAT_ORDER.filter(cat => facts.some(f => f.category === cat));
+    const collapsed = new Set(['call-notes', 'people-m2', 'patterns-m3', 'accountability']);
+    if (activeCats.length >= 4) activeCats.slice(3).forEach(cat => collapsed.add(cat));
+    setCollapsedMemorySections(collapsed);
+  }, [facts]);
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
@@ -2819,10 +2830,19 @@ export default function Dashboard() {
                           (acc[key] = acc[key] || []).push(f);
                           return acc;
                         }, {});
-                        const entities = Object.keys(byEntity);
+                        // UX-2+3: filter out self-references and AI entities
+                        const userFirstName = (user?.name || '').split(' ')[0].toLowerCase();
+                        const userFullName = (user?.name || '').toLowerCase();
+                        const AI_ENTITY_NAMES = new Set(['edge', 'edg3', 'ai', 'assistant']);
+                        const allEntities = Object.keys(byEntity);
+                        const entities = allEntities.filter(entity => {
+                          const lower = entity.toLowerCase();
+                          return lower !== userFirstName && lower !== userFullName && !AI_ENTITY_NAMES.has(lower);
+                        });
                         const PERSON_LIMIT = 8;
                         const visibleEntities = entities.length > PERSON_LIMIT && !isExpanded ? entities.slice(0, PERSON_LIMIT) : entities;
                         const secCollapsed = collapsedMemorySections.has(cat);
+                        if (entities.length === 0) return null;
                         return (
                           <div key={cat}>
                             <button
@@ -2838,9 +2858,17 @@ export default function Dashboard() {
                             </button>
                             {!secCollapsed && <div className="space-y-2">
                               {visibleEntities.map(entity => {
-                                const personFacts = byEntity[entity];
                                 const firstName = (user?.name || '').split(' ')[0];
-                                const mostRecent = personFacts.reduce((a, b) => new Date(a.learned_at) > new Date(b.learned_at) ? a : b);
+                                const rawFacts = byEntity[entity];
+                                // UX-2: collapse near-identical fact statements
+                                const seenKeys = new Set<string>();
+                                const uniqueFacts: Fact[] = [];
+                                let dupeCount = 0;
+                                for (const f of rawFacts) {
+                                  const key = f.statement.trim().toLowerCase().slice(0, 80);
+                                  if (seenKeys.has(key)) { dupeCount++; } else { seenKeys.add(key); uniqueFacts.push(f); }
+                                }
+                                const mostRecent = rawFacts.reduce((a, b) => new Date(a.learned_at) > new Date(b.learned_at) ? a : b);
                                 return (
                                   <div key={entity} className="glass-card px-4 py-3" style={{ border: '1px solid var(--edg-hairline)' }}>
                                     <div className="flex items-center gap-2 mb-2">
@@ -2858,7 +2886,12 @@ export default function Dashboard() {
                                       </p>
                                     </div>
                                     <div className="space-y-0">
-                                      {personFacts.map(f => <FactRow key={f.id} f={f} indented />)}
+                                      {uniqueFacts.map(f => <FactRow key={f.id} f={f} indented />)}
+                                      {dupeCount > 0 && (
+                                        <p className="text-xs pt-1" style={{ color: 'var(--text-faint)' }}>
+                                          {dupeCount} duplicate {dupeCount === 1 ? 'entry' : 'entries'} merged
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                 );
