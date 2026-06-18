@@ -1251,6 +1251,10 @@ export default function Dashboard() {
   const [editFactText, setEditFactText] = useState('');
   const [deletingFactId, setDeletingFactId] = useState<number | null>(null);
   const [savedFactId, setSavedFactId] = useState<number | null>(null);
+  const [expandedHistoryFactId, setExpandedHistoryFactId] = useState<number | null>(null);
+  const [factHistory, setFactHistory] = useState<Record<number, { id: number; statement: string; retired_at: string; reason: string | null }[]>>({});
+  const [historyLoadingId, setHistoryLoadingId] = useState<number | null>(null);
+  const [rollingBackId, setRollingBackId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
@@ -1420,6 +1424,45 @@ export default function Dashboard() {
     setFacts(prev => prev.filter(f => f.id !== id));
     setDeletingFactId(null);
     await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
+  async function loadFactHistory(id: number) {
+    if (factHistory[id]) {
+      setExpandedHistoryFactId(prev => prev === id ? null : id);
+      return;
+    }
+    setHistoryLoadingId(id);
+    try {
+      const res = await fetch(`/api/memory/facts/${id}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setFactHistory(prev => ({ ...prev, [id]: data.history ?? [] }));
+      }
+    } finally {
+      setHistoryLoadingId(null);
+      setExpandedHistoryFactId(id);
+    }
+  }
+
+  async function rollbackToVersion(factId: number, historyId: number) {
+    setRollingBackId(historyId);
+    try {
+      const res = await fetch(`/api/memory/facts/${factId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historyId }),
+      });
+      if (res.ok) {
+        setExpandedHistoryFactId(null);
+        setFactHistory(prev => { const n = { ...prev }; delete n[factId]; return n; });
+        // Refresh facts from server
+        fetch('/api/memory').then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.facts) setFacts(d.facts);
+        });
+      }
+    } finally {
+      setRollingBackId(null);
+    }
   }
 
   async function handleConfirmFocus(areas: FocusRecommendationArea[]) {
@@ -2698,7 +2741,36 @@ export default function Dashboard() {
                                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
                                       )}
                                       {showUpdated && (
-                                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>updated {format(new Date(updatedAt!), 'MMM d')}</p>
+                                        <button
+                                          onClick={() => loadFactHistory(f.id)}
+                                          className="text-xs mt-0.5 block text-left"
+                                          style={{ color: 'var(--text-faint)', background: 'none', border: 'none', padding: 0 }}
+                                        >
+                                          {historyLoadingId === f.id ? 'loading…' : `updated ${format(new Date(updatedAt!), 'MMM d')} ${expandedHistoryFactId === f.id ? '▴' : '▸'}`}
+                                        </button>
+                                      )}
+                                      {showUpdated && expandedHistoryFactId === f.id && factHistory[f.id] && (
+                                        <div className="mt-2 pl-2 space-y-1.5" style={{ borderLeft: '2px solid var(--edg-hairline)' }}>
+                                          {factHistory[f.id].filter(h => h.reason !== 'created').slice(0, 5).map(h => (
+                                            <div key={h.id} className="flex items-start justify-between gap-2">
+                                              <div className="min-w-0">
+                                                <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{h.statement}</p>
+                                                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{format(new Date(h.retired_at), 'MMM d')}</p>
+                                              </div>
+                                              <button
+                                                onClick={() => rollbackToVersion(f.id, h.id)}
+                                                disabled={rollingBackId === h.id}
+                                                className="text-xs flex-shrink-0 px-2 py-0.5 rounded"
+                                                style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}
+                                              >
+                                                {rollingBackId === h.id ? '…' : 'Restore'}
+                                              </button>
+                                            </div>
+                                          ))}
+                                          {factHistory[f.id].filter(h => h.reason !== 'created').length === 0 && (
+                                            <p className="text-xs" style={{ color: 'var(--text-faint)' }}>No previous versions</p>
+                                          )}
+                                        </div>
                                       )}
                                     </>
                                   );
