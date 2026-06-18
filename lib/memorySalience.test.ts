@@ -186,4 +186,25 @@ describe('topFacts', () => {
   it('returns empty for empty input', () => {
     expect(topFacts([], [], TODAY)).toEqual([]);
   });
+
+  it('M3-1 filterStale: excludes facts older than 90 days when filterStale=true', () => {
+    const fresh = fact({ id: 1, statement: 'Recent goal', category: 'goal', learned_at: TODAY });
+    const stale = fact({ id: 2, statement: 'Old pref', category: 'preference', learned_at: '2025-01-01' }); // >90 days ago
+    const result = topFacts([fresh, stale], [], TODAY, { filterStale: true });
+    expect(result.map(f => f.id)).toContain(1);
+    expect(result.map(f => f.id)).not.toContain(2);
+  });
+
+  it('M3-1 filterStale: includes stale facts when filterStale=false (default)', () => {
+    const stale = fact({ id: 2, statement: 'Old pref', category: 'preference', learned_at: '2025-01-01' });
+    const result = topFacts([stale], [], TODAY, { filterStale: false });
+    expect(result).toHaveLength(1);
+  });
+
+  it('M3-1 filterStale: fact exactly at 90-day boundary has recency 0 and is excluded', () => {
+    // 90 days before TODAY (2026-06-15) = 2026-03-17
+    const boundaryFact = fact({ id: 3, statement: 'Old goal', category: 'goal', learned_at: '2026-03-17' });
+    const result = topFacts([boundaryFact], [], TODAY, { filterStale: true });
+    expect(result).toHaveLength(0);
+  });
 });

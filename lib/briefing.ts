@@ -282,7 +282,7 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
   const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
   const recentMemories = memoryQueries.getWeighted(userId, 20);
   const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
-  const salientFacts = topFacts(allRawFacts, latestPriorities, today, { max: 20, maxPerCategory: 6 });
+  const salientFacts = topFacts(allRawFacts, latestPriorities, today, { max: 20, maxPerCategory: 6, filterStale: true });
 
   const [whoopRecovery, whoopSleep, whoopStrain] = await Promise.all([
     getLatestRecovery(userId).catch(() => null),
