@@ -111,7 +111,7 @@ export function selectReconfirmationFact(facts: Fact[], today: string): Fact | n
 export function buildReconfirmationPromptBlock(fact: Fact | null): string | null {
   if (!fact) return null;
   const subject = fact.entity ? `${fact.entity}: ${fact.statement}` : fact.statement;
-  return `RECONFIRM ONE FACT (it's been a while since this was verified — don't state it as current truth): "${subject}". Weave ONE natural confirmation question into the call (not a list, not an interrogation): e.g. "Last I heard ${lowerFirst(fact.statement)} — is that still right?" If they confirm, just move on. If they correct it, update it. Ask at most this one fact — nothing else gets re-litigated.`;
+  return `RECONFIRM ONE FACT (it's been a while since this was verified — don't state it as current truth): "${subject}". Fold a SHORT inline check into the moment this fact is naturally relevant (Part 1 or 2) — e.g. "Last I heard ${lowerFirst(fact.statement)} — still right?" Keep it to a half-sentence; this does NOT replace or duplicate the Part 3 closing question, and it is the ONLY fact you re-verify this call. If it's not naturally relevant to today, skip it rather than forcing it in.`;
 }
 
 function lowerFirst(s: string): string {
