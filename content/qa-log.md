@@ -249,6 +249,16 @@ _Log of pillar QA checklist results. Code-verifiable items verified in-session; 
 
 ---
 
+## 2026-06-18 (overnight loop 3) — Dashboard batch + multi-account + pillar exhaustion (Core lane)
+
+- [x] **Derrick dashboard-review batch — 9/10 shipped** (tickets 1-7, 9, 10). Ticket 8 (consolidate dup priority sections) DEFERRED to a Core+Design structural call.
+- [x] **Multi-account Google linking UI (P1)** — two sidebar slots (Calendar + Gmail) on Vijay's `GET /api/auth/accounts`; connect/disconnect Gmail wired.
+- [x] **Pillar status re-audited against current files:** PILLAR-DAILY-CALL — all DC0-DC3 ✅ LIVE/FIXED; only DC4-1/2/3 remain (Phase-2 **gated**: needs 50 daily-call users). PILLAR-MEMORY — all M1-M4-2 + M4-3b ✅ LIVE (incl. fact-history/rollback API **and** "What Edge knows" UI with expand-to-previous-version); only M4-3 (**gated**: 30+ calls) + M4-4 (**blocked**: people-data cleanup) + M2-3#4 stress-precursors (no overwhelm signal) remain. **Core feature backlog is genuinely exhausted** — remaining items are all gated/blocked, not skipped.
+- [x] **QA-rule E2E/route coverage added** for recently-shipped, previously-untested routes: `GET /api/priorities/history` (6 tests) + `POST /api/memory/facts/[id]/rollback` (6 tests — covers the PILLAR-MEMORY "rollback path" checklist item as an automated test). 1869/1869 green.
+- [ ] **MANUAL (live call / live data) — cannot automate here:** the ★ 7am live-path, mid-call correction path, 30+-day fact reconfirmation, and the gated DC4/M4-3/M4-4 items. Listed for Derrick's live verification.
+
+---
+
 ## 2026-06-18 (overnight loop 2) — Pillar loop additions (Core lane)
 
 - [x] **M2-3 Pattern #5 — Priority drift detection** shipped. `detectPriorityDriftPattern()` in `lib/patternMemory.ts` — week-over-week Jaccard similarity on 8 weeks of priority history. STABLE signal (one priority anchored ≥70% of weeks, still current) → positive reinforcement in briefing. CHURN signal (avg sim < 0.34, no anchor) → one-line anchor invitation. Null on thin data (<3 weeks) or ambiguous middle band. `priorityQueries.getRecentWeeks()` added to `lib/db.ts`. Wired into `generateDailyBriefing` alongside the 4 existing calendar patterns. 10 new tests. 1747/1747.
