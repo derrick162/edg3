@@ -1066,9 +1066,6 @@ function FocusScoreboardPanel() {
 
   const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
   const trendWeeks = data.weeklyTrend.slice(-4);
-  const maxTrendHours = trendWeeks.length > 0
-    ? Math.max(...trendWeeks.flatMap(w => data.perPriority.map(p => w.perPriority[p.text] ?? 0)), 1)
-    : 1;
 
   const trendDelta = (text: string): { arrow: string; up: boolean; flat: boolean } => {
     const weeks = trendWeeks.map(w => w.perPriority[text] ?? 0);
@@ -1181,52 +1178,84 @@ function FocusScoreboardPanel() {
         })}
       </div>
 
-      {/* 4-week heatmap table */}
-      {trendWeeks.length >= 2 && (
-        <div className="glass-card p-4 overflow-x-auto">
-          <p className="text-xs mb-3 font-medium" style={{ color: 'var(--text-faint)' }}>
-            {data.weeksBack}-week trend
-          </p>
-          <table className="text-xs w-full" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
-            <thead>
-              <tr>
-                <th className="text-left pb-1 font-normal pr-4" style={{ color: 'var(--text-faint)', minWidth: 100 }}>
-                  Priority
-                </th>
-                {trendWeeks.map(w => (
-                  <th key={w.weekStart} className="text-center pb-1 px-1 font-normal"
-                    style={{ color: 'var(--text-faint)', minWidth: 48 }}>
-                    {w.weekLabel}
-                  </th>
+      {/* Ticket 7: browsable priority history (replaced the fixed 4-week heatmap, which didn't
+          age well as priorities change). Reads actual per-week priority sets via a range toggle. */}
+      <PriorityHistory />
+    </div>
+  );
+}
+
+// Browsable priority history (dashboard ticket 7). Shows what the user's priorities WERE each
+// week over a selectable window — gracefully handles changing priorities and gets more useful
+// over time. Backed by GET /api/priorities/history.
+function PriorityHistory() {
+  const RANGES: ReadonlyArray<readonly [string, string]> = [
+    ['1mo', '1M'], ['3mo', '3M'], ['6mo', '6M'], ['12mo', '1Y'],
+  ];
+  const [range, setRange] = useState<string>('3mo');
+  const [weeks, setWeeks] = useState<{ weekOf: string; priorities: { text: string; rank: number }[] }[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/priorities/history?range=${range}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) { setWeeks(d?.weeks ?? []); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setWeeks([]); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [range]);
+
+  const fmtWeek = (weekOf: string) => {
+    const d = new Date(weekOf + 'T12:00:00Z');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  };
+
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>Priority history</p>
+        <div className="flex gap-1">
+          {RANGES.map(([val, label]) => (
+            <button key={val} onClick={() => setRange(val)}
+              className="text-xs px-2 py-0.5 rounded-full transition-colors"
+              style={{
+                background: range === val ? 'var(--edg-accent-15)' : 'transparent',
+                color: range === val ? 'var(--text-accent)' : 'var(--text-faint)',
+                border: 'none', cursor: 'pointer',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="space-y-2 animate-pulse">
+          {[70, 55, 60].map((w, i) => (
+            <div key={i} className="h-7 rounded" style={{ background: 'var(--edg-fill-04)', width: `${w}%` }} />
+          ))}
+        </div>
+      ) : !weeks || weeks.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+          No priority history yet for this range — it builds as you set priorities each week.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {weeks.map(w => (
+            <div key={w.weekOf} className="flex gap-3">
+              <span className="text-xs font-medium flex-shrink-0 pt-0.5" style={{ color: 'var(--text-faint)', minWidth: 48 }}>
+                {fmtWeek(w.weekOf)}
+              </span>
+              <div className="flex flex-wrap gap-1.5 min-w-0">
+                {w.priorities.map((p, i) => (
+                  <span key={i} className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: 'var(--edg-accent-08)', color: 'var(--text-muted)' }}>
+                    {p.text}
+                  </span>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.perPriority.map(p => (
-                <tr key={p.id}>
-                  <td className="pr-4 py-0.5 font-medium" style={{ color: 'var(--text-muted)', maxWidth: 120 }}>
-                    <span className="block truncate">{p.text.length > 16 ? p.text.slice(0, 14) + '…' : p.text}</span>
-                  </td>
-                  {trendWeeks.map(w => {
-                    const h = w.perPriority[p.text] ?? 0;
-                    const intensity = maxTrendHours > 0 ? h / maxTrendHours : 0;
-                    return (
-                      <td key={w.weekStart} className="text-center px-1 py-0.5">
-                        <span className="inline-block rounded px-1.5 py-0.5 font-medium transition-all"
-                          style={{
-                            background: h > 0 ? `rgba(99,102,241,${0.08 + intensity * 0.28})` : 'transparent',
-                            color: h > 0 ? `rgba(199,210,254,${0.6 + intensity * 0.4})` : 'var(--text-faint)',
-                            minWidth: 32,
-                          }}>
-                          {h > 0 ? `${h}h` : '—'}
-                        </span>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
