@@ -334,7 +334,15 @@ export function startScheduler() {
   // first so a second Railway replica (or an overlapping slow tick) can't double-dial.
   cron.schedule('* * * * *', async () => {
     if (!schedulerLockQueries.acquire(DISPATCH_LOCK, INSTANCE_ID, DISPATCH_LOCK_TTL_SECONDS)) {
-      return; // another instance/tick owns dispatch this minute — skip silently
+      // A refused acquire always means a DIFFERENT holder owns it (our own holder would
+      // refresh successfully) — i.e. a second instance/replica, or a still-running slow
+      // tick. Log a warning naming the holder so a real double-instance is visible, not silent.
+      const held = schedulerLockQueries.currentHolder(DISPATCH_LOCK);
+      console.warn(
+        `[scheduler] dispatch lock already held${held ? ` by ${held.holder} (expires ${held.expires_at})` : ''} — ` +
+        `instance ${INSTANCE_ID} skipping this tick (prevents double-dial)`,
+      );
+      return;
     }
     try {
       await checkAndInitiateCalls(new Date());

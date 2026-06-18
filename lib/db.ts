@@ -1207,7 +1207,69 @@ export const schedulerLockQueries = {
       getDb().prepare('DELETE FROM scheduler_lock WHERE lock_name = ? AND holder = ?').run(lockName, holder);
     } catch { /* non-critical — lock self-expires via TTL */ }
   },
+  // Current holder + expiry, for diagnostics when an acquire is refused. Null if free/unknown.
+  currentHolder: (lockName: string): { holder: string; expires_at: string } | null => {
+    try {
+      const row = getDb().prepare('SELECT holder, expires_at FROM scheduler_lock WHERE lock_name = ?').get(lockName) as { holder: string; expires_at: string } | undefined;
+      return row ?? null;
+    } catch { return null; }
+  },
 };
+
+// T3-4 — Ordered list of every user-scoped table, deleted leaf-first so foreign keys
+// (incl. inter-child FKs like facts.source_briefing_id → briefings) are satisfied with
+// foreign_keys = ON. Single source of truth: the deletion route AND the drift-guard test
+// both read this, so adding a user-scoped table without adding it here fails the test.
+// `users` is intentionally absent — it is deleted last, after all children.
+export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
+  'open_loops',
+  'calendar_plan_executions',
+  'daily_focus',
+  'event_energy_tags',
+  'calendar_scores',
+  'energy_profile',
+  'focus_milestones',
+  'energy_log',
+  'whoop_tokens',
+  'calendar_tokens',
+  'gmail_drafts_log',
+  'watched_threads',
+  'notifications',
+  'audit_log',
+  'support_messages',
+  'fact_history',     // user_id → users; no FK to facts (fact_id is a plain int)
+  'facts',            // has FK source_briefing_id → briefings; delete before briefings
+  'briefings',
+  'preview_briefings',
+  'memories',
+  'priorities',
+  'tasks',
+  'undo_log',
+  'event_dedupe_keys',
+  'delete_confirm_tokens',
+  'oauth_state',
+  'briefing_context_packs',
+  'episodes',
+  'people_profiles',
+  'pattern_cache',
+  'failed_webhooks',
+  'background_job_failures',
+  'call_attempts',
+];
+
+// T3-4 — Permanently delete all of a user's data, then the user row. Wrapped in a
+// transaction so a missing-table FK error rolls the whole thing back (no half-deleted
+// account) instead of leaving orphaned rows. Throws on failure — caller returns 500.
+export function deleteUserData(userId: number): void {
+  const db = getDb();
+  const tx = db.transaction((uid: number) => {
+    for (const table of USER_SCOPED_DELETE_ORDER) {
+      db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(uid);
+    }
+    db.prepare('DELETE FROM users WHERE id = ?').run(uid);
+  });
+  tx(userId);
+}
 
 // Append-only action audit log (#7).
 // record() is fire-and-forget — never throws so a DB fault never disrupts a tool call.

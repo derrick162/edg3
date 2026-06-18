@@ -53,6 +53,26 @@ describe('schedulerLockQueries — expiry + reclaim', () => {
   });
 });
 
+describe('schedulerLockQueries.currentHolder', () => {
+  it('returns null when no lock is held', () => {
+    expect(schedulerLockQueries.currentHolder('dispatch')).toBeNull();
+  });
+
+  it('names the current holder while the lock is held', () => {
+    expect(schedulerLockQueries.acquire('dispatch', 'A', 55)).toBe(true);
+    const held = schedulerLockQueries.currentHolder('dispatch');
+    expect(held?.holder).toBe('A');
+    expect(held?.expires_at).toBeTruthy();
+  });
+
+  it('reflects the new holder after an expired lock is reclaimed', () => {
+    expect(schedulerLockQueries.acquire('dispatch', 'A', 55)).toBe(true);
+    getDb().prepare("UPDATE scheduler_lock SET expires_at = datetime('now', '-1 minute') WHERE lock_name = 'dispatch'").run();
+    expect(schedulerLockQueries.acquire('dispatch', 'B', 55)).toBe(true);
+    expect(schedulerLockQueries.currentHolder('dispatch')?.holder).toBe('B');
+  });
+});
+
 describe('schedulerLockQueries.release', () => {
   it('frees the lock for another holder', () => {
     expect(schedulerLockQueries.acquire('dispatch', 'A', 55)).toBe(true);
