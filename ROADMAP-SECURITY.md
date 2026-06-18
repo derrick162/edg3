@@ -105,6 +105,34 @@ Update changelog + Status Board when done.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (T3-1 part A — Add 'pattern' to facts category constraint)
+
+> Master at `87af54d`. `git merge master` first. 5-minute ticket.
+
+### Ticket 1 — Add `'pattern'` to the facts table CHECK constraint (T3-1 schema gap)
+
+**The gap:** `lib/db.ts:251` has `CHECK(category IN ('person','project','goal','preference','fact'))`. The dashboard renders a Patterns tab (`app/dashboard/page.tsx:2589`) but the constraint blocks any fact with `category='pattern'` from being inserted. Currently `lib/factPatterns.ts` stores patterns as `category='fact'` + `source='historical-pattern'` — they land in the Facts bucket, not Patterns.
+
+**Fix — two changes, both additive:**
+
+1. In `lib/db.ts` schema (line ~251): change the CHECK to include `'pattern'`:
+   ```sql
+   category TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern'))
+   ```
+   Note: SQLite CHECK constraints are not enforced via ALTER TABLE — the schema string change takes effect for new DB initializations. Add a runtime migration to cover existing DBs. The simplest safe migration is a no-op here (existing rows are valid; we're only adding a new allowed value). Add a comment noting that this is additive.
+
+2. Update the TypeScript type in `lib/db.ts` (line ~1596) to include `'pattern'`:
+   ```typescript
+   category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
+   ```
+
+That's it — schema + type only. Core (Darren) does the factPatterns.ts side. No test changes needed; the constraint is structural.
+
+- **Files:** `lib/db.ts` only
+- **Preflight:** must pass before commit
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (T3-3 — Data export completeness)
 
 > Master at `dc7653d`. `git merge master` first. Spec: `content/export-audit.md` — read it before starting.

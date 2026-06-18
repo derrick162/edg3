@@ -1535,6 +1535,34 @@ priority from user feedback.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests)
+
+> Master at `87af54d`. `git merge master` first. Spec: `content/briefing-regression-spec.md` — read it; the assertions are already written.
+
+### Ticket 1 — Write `lib/briefing.test.ts` with 8 regression assertions (T2-4)
+
+The spec provides exact test code. The main work is:
+1. Extract `buildBriefingContext(user, data)` from `lib/briefing.ts` — this should be the existing assembly logic promoted to an exported function. Do NOT fork or duplicate; the export IS the live path.
+2. Write the 8 tests in `lib/briefing.test.ts` (spec has the full implementation).
+3. Run `npm run preflight` — all 8 must be green.
+
+**Assertions to implement** (full code in spec):
+1. Outstanding commitments appear before calendar in context
+2. Priority text is present in context (by name)
+3. Stale facts (>90 days, unconfirmed, confidence < 0.7) are excluded
+4. Relationship context injected for people on today's calendar
+5. Relationship context NOT injected for people not on today's calendar
+6. Fill-the-gap question injected when fewer than 3 user-specific signals
+7. No fill-the-gap question when floor is met
+8. Low-confidence (< 0.5) facts get hedged with "last I heard"
+
+**Coordinate with M3-1/DC2-2/DC2-4 dispatch:** The M3-1 ticket (signal priority reorder + stale filter + personalization floor) and these tests are coupled — if you do T2-4 first, some assertions will fail until M3-1 lands. Recommended order: do M3-1+DC2-2+DC2-4 first, then T2-4 (tests validate the new behavior).
+
+- **Files:** `lib/briefing.ts` (extract `buildBriefingContext`), `lib/briefing.test.ts` (new test file)
+- **Preflight:** must be green before commit
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (M3-1 + DC2-2 + DC2-4 — Briefing context quality, 3 tickets)
 
 > Master at `076ce93`. `git merge master` first. Spec: `content/briefing-context-spec.md` — read it before starting.
@@ -1590,6 +1618,22 @@ Also add a dev-mode log at the end of the context assembly (log level `debug`): 
 
 - **Files:** `lib/briefing.ts` only (prompt instruction strings + one console.debug)
 - **No new tests needed** — prompt instruction changes are validated by existing briefing tests
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (T3-1 part B — factPatterns.ts category fix)
+
+> Master at `87af54d`. `git merge master` first. 10-minute ticket. Coordinate with Vijay — do part B only after Vijay's DB constraint migration (T3-1 part A) merges to master.
+
+### Ticket 1 — Store pattern facts with category='pattern' in `lib/factPatterns.ts` (T3-1)
+
+**The gap:** `lib/factPatterns.ts` stores detected patterns as `category='fact'` + `source='historical-pattern'`. The dashboard has a dedicated Patterns section (`app/dashboard/page.tsx:2589`, ORDER includes `'pattern'`) but it's always empty. After Vijay adds `'pattern'` to the DB CHECK constraint, switch `factPatterns.ts` to use the correct category.
+
+**Fix:** In `lib/factPatterns.ts`, change the `upsertFact` calls from `category: 'fact'` to `category: 'pattern'`. Check for any type assertion that would need updating — the TypeScript type is updated as part of Vijay's DB change. Also update the briefing context assembly in `lib/briefing.ts` if it queries facts by `category='fact'` + `source='historical-pattern'` — switch it to `category='pattern'` after this lands.
+
+- **Files:** `lib/factPatterns.ts`, possibly `lib/briefing.ts` if it has a pattern-specific query
+- **Gate:** Do not merge until Vijay's T3-1 part A is in master (otherwise DB constraint will reject 'pattern' inserts)
+- **Test:** Trigger pattern detection, verify a row with `category='pattern'` appears in facts; verify it shows in "What Edge knows" Patterns section
 
 ---
 

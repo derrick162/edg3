@@ -142,7 +142,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Each failure must: (a) give an honest plain-English description of what failed, (b) never say "reconnect your account" unless that's actually the fix, (c) offer a concrete alternative if one exists
 - No "I couldn't do that" without saying why
 
-### T2-4 — Briefing accuracy regression test (Core)
+### T2-4 — Briefing accuracy regression test (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/briefing-regression-spec.md` — 8 test assertions covering: commitment order, priority injection, stale fact exclusion, relationship context scoping, personalization floor, confidence hedging, routine event deprioritization, token cap. Requires extracting a testable `buildBriefingContext()` from `lib/briefing.ts`. Route to Darren via ROADMAP-CORE.md T2-4 dispatch.
 **The risk:** Changes to the briefing builder silently degrade briefing quality — missing facts, wrong priorities, stale context.
 - Write a `lib/briefing.test.ts` snapshot test: given a fixed set of user facts + calendar events + Whoop data, the briefing prompt should contain certain key strings
 - Run this as part of preflight — if the briefing structure changes unexpectedly, the test catches it before deploy
