@@ -449,6 +449,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **QA checklist logged in `content/qa-log.md`.**
+  - Code-verifiable items from all three pillars (Memory/Trust/Daily Call) marked pass/fail. Manual live-call items listed in priority order for next 7am call. Blocked/delegated items noted. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC2-3b — honest Whoop data acknowledgment when fetch fails.**
   - `lib/briefing.ts` `whoopContextBlock`: when `whoopIsConnected` but all three Whoop data points are null (fetch timed out or token needs refresh), now injects a `WHOOP CONNECTED BUT DATA UNAVAILABLE` instruction block. Edge acknowledges with "I wasn't able to pull your Whoop data this morning — I'll try again for tomorrow" rather than silently omitting the health section. The Whoop fetch timing log (already live since DC0-1) provides the audit trail to diagnose repeated failures. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-TRUST T4-5 — undo coverage sweep: planWeek + rememberPreference + fact undo ops.**
