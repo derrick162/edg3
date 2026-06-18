@@ -33,9 +33,7 @@ export const VOICES = {
   aria: {
     provider: '11labs' as const,
     voiceId: 'cgSgspJ2msm6clMCkdW9',
-    model: 'eleven_flash_v2',
-    speed: 1.2,
-    style: 0.5,
+    model: 'eleven_turbo_v2_5',
     stability: 0.4,
     similarityBoost: 0.7,
   },
