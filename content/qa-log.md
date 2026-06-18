@@ -4,7 +4,16 @@ _Log of pillar QA checklist results. Code-verifiable items verified in-session; 
 
 ---
 
-## 2026-06-18 (overnight) — Pillar loop additions (Core lane)
+## 2026-06-18 (overnight loop 2) — Pillar loop additions (Core lane)
+
+- [x] **M2-3 Pattern #5 — Priority drift detection** shipped. `detectPriorityDriftPattern()` in `lib/patternMemory.ts` — week-over-week Jaccard similarity on 8 weeks of priority history. STABLE signal (one priority anchored ≥70% of weeks, still current) → positive reinforcement in briefing. CHURN signal (avg sim < 0.34, no anchor) → one-line anchor invitation. Null on thin data (<3 weeks) or ambiguous middle band. `priorityQueries.getRecentWeeks()` added to `lib/db.ts`. Wired into `generateDailyBriefing` alongside the 4 existing calendar patterns. 10 new tests. 1747/1747.
+- [x] **M2-4 — Context pack wiring** complete. `generateDailyBriefing` reads `briefing_context_packs` at call time, logs `[M2-4] context pack HIT/MISS`. When live Whoop fetch fails (all three null) and pack has HEALTH DATA section: uses pack's Whoop data as fallback, labeled "(using last night's context pack data)". Addresses DC2-3b edge case where token expires between 11pm pack-build and 7am call.
+- [x] **UX-4 / T2-3 — 403 friendlyError** improved. Old: "reconnect your calendar." New: acknowledges BOTH causes (expired token OR organizer restriction). Applies to deleteEvent, editEvent, and all other mutation tools that hit `friendlyError`.
+- [ ] **MANUAL (live call):** priority drift needs 3+ weeks of weekly priority rows to fire — verify once data accumulates.
+
+---
+
+## 2026-06-18 (overnight loop 1) — Pillar loop additions (Core lane)
 
 - [x] **M4-1 / Round 6 T2 — mid-call reconfirmation** shipped. `lib/factConfidence.ts` (25 tests) consumes Security's `confidence_score`/`last_confirmed_at`; briefing injects ONE RECONFIRM block (category-weighted: goals first); `confirmFact` tool resets confidence on confirmation. Dual signal (score < 0.3 OR not-confirmed 30+ days) so it works before decay-categories align. **Note:** dormant for fresh accounts (correct — nothing stale yet); activates as facts age.
 - [x] **DC0-2 — call-to-briefing latency** measured via `Promise.allSettled` over the 5 post-call memory jobs → `post_call_ms` on learning_status + `[DC0-2] HEALTH:` warn past 2 min.
