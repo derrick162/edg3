@@ -461,6 +461,7 @@ Ship small / green / full preflight (real exit code) per item; log each below.
   - **`lib/vapi.ts`**: RECONFIRM-A-FACT live-call guidance + `confirmFact(topic)` tool doc + placeholder toolId.
   - 1735/1735 green, tsc clean, next build clean.
   - ⚠️ **External step:** create `confirmFact` Vapi tool (param: `topic`, string, required) → paste UUID into `lib/vapi.ts` toolIds and uncomment.
+  - ⚠️ **FLAG FOR SECURITY (lib/scheduler.ts):** the weekly `decayFactConfidenceScores` job decays categories `priorities/projects/current_focus/personality/working_style/relationships`, but the `facts` table CHECK constraint only allows `person/project/goal/preference/fact`. The category lists don't match → the decay job currently updates **0 rows** (`confidence_score` stays 1.0 for all real facts). Core's reconfirmation still fires via the `last_confirmed_at` 30-day recency path (intentional dual-signal), but the decay-score path is dormant until Security aligns `VOLATILE_CATEGORIES`/`STABLE_CATEGORIES` to the real fact categories (suggest: volatile = `goal`,`project`; stable = `person`,`preference`,`fact`).
 - **2026-06-18** — **QA checklist logged in `content/qa-log.md`.**
   - Code-verifiable items from all three pillars (Memory/Trust/Daily Call) marked pass/fail. Manual live-call items listed in priority order for next 7am call. Blocked/delegated items noted. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC2-3b — honest Whoop data acknowledgment when fetch fails.**
