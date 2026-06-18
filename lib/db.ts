@@ -98,6 +98,23 @@ function initSchema(db: Database.Database) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- Multi-account Google linking: a SECOND, optional Google account dedicated to Gmail
+    -- (e.g. work calendar + personal Gmail). Kept as a separate table (mirroring whoop_tokens)
+    -- rather than adding account_type to calendar_tokens — that table's user_id is UNIQUE, so
+    -- supporting two accounts there would require rebuilding the encrypted-token table. A new
+    -- additive table is zero-migration-risk and yields the same outcome. access/refresh tokens
+    -- encrypted at rest; email stored plaintext (display field, same tier as users.email).
+    CREATE TABLE IF NOT EXISTS gmail_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE NOT NULL REFERENCES users(id),
+      access_token TEXT NOT NULL,
+      refresh_token TEXT,
+      expiry TEXT,
+      scope TEXT,
+      email TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- Append-only audit of Gmail drafts created on a user's behalf (draft-only;
     -- we never send). Recipient + subject are encrypted at rest (PII). Doubles as
     -- the source for the per-user anti-spam rate limit (count rows in a window).
@@ -931,6 +948,47 @@ export const calendarQueries = {
   },
 };
 
+export interface GmailToken {
+  id: number;
+  user_id: number;
+  access_token: string;
+  refresh_token: string | null;
+  expiry: string | null;
+  scope: string | null;
+  email: string | null;
+  updated_at: string;
+}
+
+// Multi-account: tokens for an optional SECOND Google account dedicated to Gmail.
+// Mirrors calendarQueries' encryption (access/refresh encrypted; email plaintext display
+// field). One row per user (user_id UNIQUE) — upsert replaces.
+export const gmailTokenQueries = {
+  upsert: (userId: number, accessToken: string, refreshToken: string | null, expiry: string | null, scope?: string | null, email?: string | null) => {
+    return getDb().prepare(`
+      INSERT INTO gmail_tokens (user_id, access_token, refresh_token, expiry, scope, email, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token,
+        expiry = excluded.expiry,
+        scope = COALESCE(excluded.scope, gmail_tokens.scope),
+        email = COALESCE(excluded.email, gmail_tokens.email),
+        updated_at = excluded.updated_at
+    `).run(userId, encryptField(accessToken), encryptNullable(refreshToken), expiry ?? null, scope ?? null, email ?? null);
+  },
+  get: (userId: number): GmailToken | undefined => {
+    const row = getDb().prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(userId) as GmailToken | undefined;
+    if (!row) return undefined;
+    // Decrypt transparently — legacy plaintext rows pass through unchanged.
+    row.access_token = decryptField(row.access_token);
+    row.refresh_token = decryptNullable(row.refresh_token);
+    return row;
+  },
+  delete: (userId: number) => {
+    return getDb().prepare('DELETE FROM gmail_tokens WHERE user_id = ?').run(userId);
+  },
+};
+
 // Gmail draft audit + rate-limit queries. recipient/subject are PII → encrypted at
 // rest with the same field cipher as tokens/transcripts (#4).
 export const gmailQueries = {
@@ -1241,6 +1299,7 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'energy_log',
   'whoop_tokens',
   'calendar_tokens',
+  'gmail_tokens',
   'gmail_drafts_log',
   'watched_threads',
   'notifications',
