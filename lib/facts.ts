@@ -618,6 +618,24 @@ export async function runSleepTimeConsolidation(
   if (!transcript || transcript.length < 50) return;
   try {
     const activeFacts = factQueries.getAll(userId);
+
+    // M2-1: reconcile any duplicate active facts (same entity+category). Shouldn't happen
+    // normally but race conditions or import bugs can produce them. Keep the most-recent, retire the rest.
+    const seen = new Map<string, { id: number; learned_at: string }>();
+    let reconciled = 0;
+    for (const f of activeFacts) {
+      const key = `${f.category}|${(f.entity ?? '').toLowerCase()}`;
+      const existing = seen.get(key);
+      if (!existing) { seen.set(key, { id: f.id, learned_at: f.learned_at }); continue; }
+      // Retire whichever is older; keep the newer one.
+      const retireId = f.learned_at >= existing.learned_at ? existing.id : f.id;
+      const keepId = retireId === existing.id ? f.id : existing.id;
+      factQueries.retire(userId, retireId);
+      seen.set(key, { id: keepId, learned_at: retireId === existing.id ? f.learned_at : existing.learned_at });
+      reconciled++;
+    }
+    if (reconciled > 0) console.log(`[facts] Sleep-time consolidation: reconciled ${reconciled} duplicate active facts for user ${userId}`);
+
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

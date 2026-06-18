@@ -689,4 +689,25 @@ describe('runSleepTimeConsolidation', () => {
     await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
     expect(factQueries.upsertFact).not.toHaveBeenCalled();
   });
+
+  it('M2-1: retires the older of two active facts with the same entity+category', async () => {
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      { id: 10, user_id: 1, category: 'goal', statement: 'Raise $500K', entity: 'fundraising', learned_at: '2026-06-01T00:00:00', confidence: 'high', source_briefing_id: null },
+      { id: 11, user_id: 1, category: 'goal', statement: 'Raise $1M', entity: 'fundraising', learned_at: '2026-06-15T00:00:00', confidence: 'high', source_briefing_id: null },
+    ]);
+    h.create.mockResolvedValue(textResponse('[]'));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).toHaveBeenCalledWith(1, 10);
+    expect(factQueries.retire).not.toHaveBeenCalledWith(1, 11);
+  });
+
+  it('M2-1: no spurious retires when all facts are unique entity+category', async () => {
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      { id: 1, user_id: 1, category: 'goal', statement: 'Fundraising', entity: 'fundraising', learned_at: '2026-06-10T00:00:00', confidence: 'high', source_briefing_id: null },
+      { id: 2, user_id: 1, category: 'preference', statement: 'Morning workouts', entity: 'gym', learned_at: '2026-06-10T00:00:00', confidence: 'high', source_briefing_id: null },
+    ]);
+    h.create.mockResolvedValue(textResponse('[]'));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).not.toHaveBeenCalled();
+  });
 });
