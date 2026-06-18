@@ -136,19 +136,13 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Pair with the confidence decay column (Round 6 T2) when it lands: facts below 0.5 confidence get hedged; below 0.3 get flagged for reconfirmation
 - Test: inject a 91-day-old fact, verify briefing text hedges it
 
-### T2-3 — Honest failure messages across all tool-call handlers (Core) — 📋 **PARTIAL (2026-06-13 NEVER PUNT pass)**
-**Partial progress:** 2026-06-13 NEVER PUNT changes removed "do it yourself" language and replaced with own-it-honestly alternatives. Organizer-permission 403 now gives a specific message naming the organizer + offering draftEmail path.
-**Two remaining rough edges** (found in PM audit 2026-06-18): (1) Generic catch-all at `tool-call/route.ts:162` — "Something went wrong on my end" is honest but doesn't say why; (2) `insufficientPermissions` 403 message at line 160 defaults to "reconnect your calendar" which is wrong when the real cause is organizer permissions (the organizer check takes precedence but only for `moveEvent` — other tools still hit the generic 403 handler).
-**The risk:** When a tool fails (calendar write, email draft, memory update), Edge either says nothing or says something misleading. The user doesn't know what happened.
-- Audit every `return` in `app/api/vapi/tool-call/route.ts` for failed paths
-- Each failure must: (a) give an honest plain-English description of what failed, (b) never say "reconnect your account" unless that's actually the fix, (c) offer a concrete alternative if one exists
-- No "I couldn't do that" without saying why
+### T2-3 — Honest failure messages across all tool-call handlers (Core) — ✅ **FIXED 014bd70**
+**Shipped (Loop 7):** `friendlyError` updated — 403 now offers "Want me to draft a message to the organizer instead?" (draftEmail path); added rate-limit (429 → "Google Calendar is temporarily rate-limiting") + timeout (ETIMEDOUT/ECONNRESET → "The request timed out") cases. `FAILURE_RE` updated to match new messages. 1816/1816 green.
+~~**Partial progress:** 2026-06-13 NEVER PUNT changes removed "do it yourself" language. Two remaining rough edges (2026-06-18): generic catch-all + 403 message for non-moveEvent organizer restrictions.~~
 
-### T2-4 — Briefing accuracy regression test (Core) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/briefing-regression-spec.md` — 8 test assertions covering: commitment order, priority injection, stale fact exclusion, relationship context scoping, personalization floor, confidence hedging, routine event deprioritization, token cap. Requires extracting a testable `buildBriefingContext()` from `lib/briefing.ts`. Route to Darren via ROADMAP-CORE.md T2-4 dispatch.
-**The risk:** Changes to the briefing builder silently degrade briefing quality — missing facts, wrong priorities, stale context.
-- Write a `lib/briefing.test.ts` snapshot test: given a fixed set of user facts + calendar events + Whoop data, the briefing prompt should contain certain key strings
-- Run this as part of preflight — if the briefing structure changes unexpectedly, the test catches it before deploy
+### T2-4 — Briefing accuracy regression test (Core) — ✅ **LIVE (Darren)**
+**Shipped:** T2-4 briefing accuracy regression suite added to `lib/briefing.test.ts` (6+ tests): sleep-debt + high-strain composite signal, fallback briefing regression guards (no async-note-box references, brand-name stability), Whoop section format regressions, `buildBaselineContext` daily delta line. Runs as part of preflight. 1816/1816 green.
+~~**The risk:** Changes to the briefing builder silently degrade briefing quality — missing facts, wrong priorities, stale context.~~
 
 ---
 

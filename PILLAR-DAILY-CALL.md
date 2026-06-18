@@ -76,12 +76,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - The opener must land on something time-sensitive, surprising, or decision-relevant — not something the user already has on their radar
 - Test: review the last 5 real briefings — did each one open with something that required Edge to know the user?
 
-### DC2-2 — Personalization signal: does the briefing reflect who this person is? (Core) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/briefing-context-spec.md` §Personalization floor — minimum 3 user-specific signals (goal, recent fact, + one of Whoop/commitment/calendar person); fill-the-gap question if floor not met. Routed to Darren via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch.
-**The risk:** Two different users with identical calendars get identical briefings. The memory moat isn't being used.
-- Audit `lib/briefing.ts` context assembly: how many user-specific facts are injected per briefing? Is there a minimum floor?
-- If fewer than 3 user-specific facts are available: Edge should surface a reconfirmation question rather than briefing generically
-- Test: compare briefings for two test users with identical calendars but different facts — they must differ meaningfully
+### DC2-2 — Personalization signal: does the briefing reflect who this person is? (Core) — ✅ **LIVE (Darren)**
+**Shipped:** `buildPersonalizationPromptBlock(factCount)` in `lib/briefing.ts` — when fewer than 3 user-specific facts are available, injects a fill-the-gap question into the briefing closing section rather than briefing generically; `salientFacts.length` drives the check (now uses `filterStale: true` so only fresh facts count toward the floor).
+~~**The risk:** Two different users with identical calendars get identical briefings. The memory moat isn't being used.~~
 
 ### DC2-3 — Commitment surfacing: yesterday's commitments must open the call (Core) — ✅ **FIXED 41f978f**
 **Shipped:** Commitment accountability moved into PART 1 of the briefing structure — verified it appears before Edge Score and calendar; outstanding commitments from yesterday surface as the first thing Edge addresses.
@@ -99,24 +96,17 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - If Whoop token is expired: trigger a refresh before the briefing, not during it. The predictive context pack (11pm job) should pre-validate the Whoop token.
 - Test: with Whoop connected, run a briefing — verify recovery score appears. Disconnect Whoop briefly, run again — verify Edge mentions it's unavailable rather than skipping silently.
 
-### DC2-4 — Briefing length calibration: 3 minutes, not 8 (Core) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/briefing-context-spec.md` §Target length — section 3 max 2 sentences, pattern memory max 1 sentence, calendar top 2–3 events only; dev debug log of section char counts added. Routed to Darren via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch.
-**The risk:** The briefing runs long because Edge tries to cover everything. The user stops picking up.
-- Target: core briefing content (opening + priorities + calendar + closing question) should fit in 3 minutes at normal speech pace (~400 words)
-- Audit the briefing prompt for length — is it producing 400-word briefings or 800-word briefings?
-- If long: identify which section bloats and tighten the instruction for that section
-- Test: time a real briefing end-to-end; if over 5 minutes, identify the longest section and trim
+### DC2-4 — Briefing length calibration: 3 minutes, not 8 (Core) — ✅ **LIVE (Darren + Loop 6)**
+**Shipped:** `lib/briefing.ts` PART 1 tightened to "2 sentences MAX", PART 2 to "3–4 sentences MAX"; `max_tokens` lowered 320→290 (≈220-word ceiling); word-count log after generation (`[DC2-4] briefing N: X words`); warns on Railway if >250 words. Section char-count dev log added (`[DC2-4] prompt sections chars: total=...`). Target: ≤220 words (~90s spoken + user response = ≤3 min call).
+~~**The risk:** The briefing runs long because Edge tries to cover everything. The user stops picking up.~~
 
 ---
 
 ## Tier 3 — Call experience (the call must feel right)
 
-### DC3-1 — Voice consistency: Edge sounds the same every call (Core) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/edge-voice-anchor-phrases.md` — 5 anchor phrases (greeting, calendar transition, Whoop note, closing question, end-of-call). Dispatch block in ROADMAP-CORE.md DC3-1 dispatch. Routes to Darren (Core).
-**The risk:** Edge uses slightly different phrasing, different energy, or different formality call-to-call because the prompt is non-deterministic.
-- Identify 3–5 "anchor phrases" that Edge uses at consistent moments (greeting, transition to calendar, closing question)
-- Add them explicitly to `lib/vapi.ts` as required phrasings
-- Test: listen to 3 consecutive briefings — does Edge have a consistent voice and rhythm?
+### DC3-1 — Voice consistency: Edge sounds the same every call (Core) — ✅ **LIVE (Darren)**
+**Shipped:** ANCHOR PHRASES block added to `lib/vapi.ts` (line 209) — 5 structured anchor phrases: greeting, calendar transition, Whoop note, closing question, end-of-call. Structure fixed; content varies per call.
+~~**The risk:** Edge uses slightly different phrasing, different energy, or different formality call-to-call because the prompt is non-deterministic.~~
 
 ### DC3-2 — Silence handling: Edge doesn't hang up on thinking (Security) — ✅ **SHIPPED (T5)**
 **Shipped:** `messagePlan` with 3 idle messages at 10s intervals ("Still here — take your time." / "No rush…" / check-in) + `silenceTimeoutSeconds` extended 30→40, wired into both inline-assistant and assistantOverrides in `lib/vapi.ts`. Pending live-call verification (idle behaviour cannot be unit-tested).
