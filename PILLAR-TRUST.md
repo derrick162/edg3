@@ -151,7 +151,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 3 — Transparency (user can see and control everything)
 
-### T3-1 — "What Edge knows" completeness audit (Core + Design)
+### T3-1 — "What Edge knows" completeness audit (Core + Design) — 📋 **AUDITED 2026-06-18**
+**Audit result:** DB CHECK constraint at `lib/db.ts:251` allows: `('person','project','goal','preference','fact')`. Dashboard CATEGORY_META + ORDER include all 5 plus `'pattern'`.
+**Gap:** `'pattern'` category appears in the dashboard ORDER/render (`app/dashboard/page.tsx:2589`) and TypeScript types, but is NOT in the DB CHECK constraint. `lib/factPatterns.ts` stores pattern facts as category=`'fact'` + `source='historical-pattern'` — so the Patterns section will always be empty. Fix: add `'pattern'` to the DB CHECK constraint via migration in `lib/db.ts` and update `factPatterns.ts` to store as category=`'pattern'`. Route to Vijay (DB constraint) + Darren (factPatterns.ts).
 **The risk:** The Memory tab shows some facts but may not show all of them. Users can't correct what they can't see.
 - Audit every fact category stored in the `facts` table: are all categories rendered in the Memory tab?
 - If any category is missing from the UI: add it
