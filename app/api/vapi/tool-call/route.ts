@@ -157,14 +157,16 @@ function resolveEvent(matches: { event: calendar_v3.Schema$Event; calId: string 
 function friendlyError(err: unknown): string {
   const msg = String(err);
   if (msg.includes('No calendar connected')) return "I can't access your calendar right now — it may need to be reconnected in the dashboard.";
-  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — it may be on a calendar that needs reconnecting, or the event was organized by someone else (only the organizer can change it in Google Calendar).";
+  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — the event may be on a read-only calendar or organized by someone else. Want me to draft a message to the organizer instead?";
   if (msg.includes('notFound') || msg.includes('404')) return "I couldn't find that event to modify it.";
+  if (msg.includes('rateLimitExceeded') || msg.includes('429')) return "Google Calendar is temporarily rate-limiting requests — try again in a moment.";
+  if (msg.includes('timeout') || msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED')) return "The request timed out — want me to try again?";
   return "Something went wrong on my end — want me to try again or take a different approach?";
 }
 
 // Result strings that indicate the action did NOT succeed (used for the activity log status).
 // Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
-const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date)/i;
+const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
 
 // Research notes Edge attaches are wrapped in these delimiters so a later research call can
 // REPLACE the prior block (not stack on it) while leaving the user's own typed notes intact.
