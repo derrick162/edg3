@@ -1079,9 +1079,9 @@ function FocusScoreboardPanel() {
                   <span className="flex-shrink-0 flex items-center justify-center rounded-full text-xs font-black"
                     style={{
                       width: 28, height: 28,
-                      background: p.rank === 1 ? 'rgba(99,102,241,0.18)' : 'var(--edg-accent-08)',
+                      background: p.rank === 1 ? 'var(--edg-accent-20)' : 'var(--edg-accent-08)',
                       color: p.rank === 1 ? 'var(--edg-indigo)' : 'var(--text-muted)',
-                      border: p.rank === 1 ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                      border: p.rank === 1 ? '1px solid var(--edg-accent-glow)' : '1px solid transparent',
                     }}>
                     {p.rank}
                   </span>
@@ -3028,14 +3028,14 @@ export default function Dashboard() {
                         const urgent = c.daysOpen >= 7;
                         return (
                           <div key={`ol-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3"
-                            style={urgent ? { borderColor: 'rgba(245,158,11,0.25)' } : undefined}>
+                            style={urgent ? { borderColor: 'var(--edg-warning-border)' } : undefined}>
                             <span className="mt-0.5 flex-shrink-0 text-base" aria-hidden="true"
-                              style={{ color: urgent ? 'rgba(245,158,11,0.8)' : 'var(--text-faint)' }}>
+                              style={{ color: urgent ? 'var(--edg-warning)' : 'var(--text-faint)' }}>
                               {urgent ? '⚠' : '⏳'}
                             </span>
                             <div className="min-w-0 flex-1">
                               <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
-                              <p className="text-xs mt-0.5" style={{ color: urgent ? 'rgba(245,158,11,0.7)' : 'var(--text-faint)' }}>
+                              <p className="text-xs mt-0.5" style={{ color: urgent ? 'var(--edg-warning)' : 'var(--text-faint)' }}>
                                 Open {c.daysOpen === 1 ? '1 day' : `${c.daysOpen} days`}
                                 {c.dueDate ? ` · due ${c.dueDate}` : ''}
                               </p>
@@ -3050,7 +3050,7 @@ export default function Dashboard() {
                       <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Completed</p>
                       {accountability.done.slice(0, 3).map(c => (
                         <div key={`done-${c.id}-${c.source}`} className="flex items-start gap-3 px-4 py-2.5 rounded-xl"
-                          style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
+                          style={{ background: 'var(--edg-success-soft)', border: '1px solid var(--edg-success-ring)' }}>
                           <span className="mt-0.5 flex-shrink-0 text-sm" aria-hidden="true" style={{ color: 'var(--edg-success)' }}>✓</span>
                           <p className="text-sm leading-snug" style={{ color: 'var(--text-muted)' }}>{c.text}</p>
                         </div>

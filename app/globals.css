@@ -59,6 +59,8 @@
   --edg-success-tint:   rgba(16,  185, 129, 0.15);
   --edg-success-border: rgba(16,  185, 129, 0.40);
   --edg-success-glow:   0 0 20px rgba(16, 185, 129, 0.12);
+  --edg-success-soft:   rgba(34,  197, 94,  0.06);
+  --edg-success-ring:   rgba(34,  197, 94,  0.12);
   --edg-warning-tint:   rgba(245, 158, 11,  0.15);
   --edg-warning-border: rgba(245, 158, 11,  0.25);
   --edg-danger-tint:    rgba(239, 68,  68,  0.15);
