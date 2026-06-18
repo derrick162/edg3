@@ -8,6 +8,13 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
+// Stub ./calendar so extractAndUpsertFacts' auto-fetch of today's events (used for name
+// grounding when calendarEventTitles isn't supplied) returns deterministically. Without this
+// the real getCalendarEvents path runs and is flaky under parallel test load.
+vi.mock('./calendar', () => ({
+  getCalendarEvents: vi.fn(async () => []),
+}));
+
 // Stub factQueries and peopleProfileQueries so tests don't need a real DB
 vi.mock('./db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./db')>();

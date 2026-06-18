@@ -53,12 +53,20 @@ export function isSensitiveFact(fact: Pick<Fact, 'statement'>): boolean {
   return SENSITIVE_KEYWORDS.some(k => s.includes(k));
 }
 
-/** Unverified = low confidence OR not confirmed in a long time. Reconfirmation candidate. */
+/**
+ * Unverified = a reconfirmation candidate. True when ANY of:
+ *  - decay score has dropped below 0.3 (Security's weekly decay job), OR
+ *  - the fact hasn't been confirmed in 30+ days (recency), OR
+ *  - extraction flagged it categorically low-confidence (STT-garbled name/address) — these are
+ *    uncertain from day one, so worth a quick "did I get that right?" even on a fresh account.
+ */
 export function isUnverified(
-  fact: Pick<Fact, 'confidence_score' | 'last_confirmed_at' | 'learned_at'>,
+  fact: Pick<Fact, 'confidence_score' | 'last_confirmed_at' | 'learned_at' | 'confidence'>,
   today: string,
 ): boolean {
-  return factConfidence(fact) < UNVERIFIED_SCORE || daysSinceConfirmed(fact, today) >= STALE_DAYS;
+  return fact.confidence === 'low'
+    || factConfidence(fact) < UNVERIFIED_SCORE
+    || daysSinceConfirmed(fact, today) >= STALE_DAYS;
 }
 
 /** Should this fact be hedged ("last I heard…") rather than stated as current truth? */
@@ -69,9 +77,20 @@ export function shouldHedge(
   return factConfidence(fact) < HEDGE_SCORE || daysSinceConfirmed(fact, today) >= STALE_DAYS;
 }
 
+// How much each category is worth reconfirming aloud. A stale GOAL ("still targeting 500K?")
+// makes the call far sharper than a stale trivia fact, so weight the question toward facts
+// that actually change and matter day-to-day. Lower number = higher priority.
+const CATEGORY_PRIORITY: Record<Fact['category'], number> = {
+  goal: 0,
+  project: 1,
+  preference: 2,
+  person: 3,
+  fact: 4,
+};
+
 /**
  * Pick the single best fact to reconfirm on the call, or null if none qualifies.
- * Prefers the lowest-confidence non-sensitive fact; ties broken by longest-since-confirmed.
+ * Ranks by category importance (goals first), then lowest confidence, then most stale.
  * Never returns a sensitive fact (those route to dashboard surfacing instead).
  */
 export function selectReconfirmationFact(facts: Fact[], today: string): Fact | null {
@@ -84,8 +103,10 @@ export function selectReconfirmationFact(facts: Fact[], today: string): Fact | n
   if (candidates.length === 0) return null;
 
   candidates.sort((a, b) => {
+    const pa = CATEGORY_PRIORITY[a.category] ?? 9, pb = CATEGORY_PRIORITY[b.category] ?? 9;
+    if (pa !== pb) return pa - pb;                 // most-important category first
     const ca = factConfidence(a), cb = factConfidence(b);
-    if (ca !== cb) return ca - cb;                 // lowest confidence first
+    if (ca !== cb) return ca - cb;                 // then lowest confidence
     return daysSinceConfirmed(b, today) - daysSinceConfirmed(a, today); // then most stale
   });
   return candidates[0];
@@ -98,7 +119,12 @@ export function selectReconfirmationFact(facts: Fact[], today: string): Fact | n
 export function buildReconfirmationPromptBlock(fact: Fact | null): string | null {
   if (!fact) return null;
   const subject = fact.entity ? `${fact.entity}: ${fact.statement}` : fact.statement;
-  return `RECONFIRM ONE FACT (it's been a while since this was verified — don't state it as current truth): "${subject}". Weave ONE natural confirmation question into the call (not a list, not an interrogation): e.g. "Last I heard ${lowerFirst(fact.statement)} — is that still right?" If they confirm, just move on. If they correct it, update it. Ask at most this one fact — nothing else gets re-litigated.`;
+  // Garbled-at-extraction facts get a "did I catch that right?" framing; aged facts get
+  // "last I heard…". Both are a short inline check, never a second closing question.
+  const cue = fact.confidence === 'low'
+    ? `I want to make sure I caught this right — e.g. "I've got ${lowerFirst(fact.statement)} — did I get that right?"`
+    : `it's been a while since this was verified — e.g. "Last I heard ${lowerFirst(fact.statement)} — still right?"`;
+  return `RECONFIRM ONE FACT (${cue.startsWith('I want') ? 'I may have mis-heard this' : "don't state it as current truth"}): "${subject}". ${cue} Fold this SHORT inline check into the moment the fact is naturally relevant (Part 1 or 2) — half a sentence. It does NOT replace or duplicate the Part 3 closing question, and it is the ONLY fact you re-verify this call. If it's not naturally relevant to today, skip it.`;
 }
 
 function lowerFirst(s: string): string {

@@ -20,6 +20,14 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
+// ── Calendar mock ─────────────────────────────────────────────────────────────
+// extractAndUpsertFacts auto-fetches today's events for name grounding when
+// calendarEventTitles is omitted. Stub it so that path is deterministic (the real
+// getCalendarEvents is flaky under parallel test load).
+vi.mock('./calendar', () => ({
+  getCalendarEvents: vi.fn(async () => []),
+}));
+
 // ── DB mock ───────────────────────────────────────────────────────────────────
 // Spread ...actual so type helpers (Fact type, etc.) are preserved.
 // Override only the query namespaces that touch the DB.
