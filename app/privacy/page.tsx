@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         <div className="space-y-10">
           <div>
             <h1 className="text-4xl font-black mb-3">Privacy Policy</h1>
-            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Last updated: June 14, 2026</p>
+            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Last updated: June 18, 2026</p>
             <p className="text-sm mt-4 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               Edg3 (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) operates the Edg3 AI Chief of Staff service accessible at edg3.ai.
               This Privacy Policy explains how we collect, use, and protect your information.
@@ -42,14 +42,14 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Google Calendar Data</p>
-                <p>If you connect Google Calendar, we request access to <strong style={{ color: 'var(--text-strong)' }}>read your calendar and to create, edit, move, and delete events</strong> on your behalf. We use this to surface your schedule in your briefings and to make the calendar changes you ask Edge to make (for example, booking, rescheduling, or cancelling events). Events Edge creates are marked, and Edge can undo its own changes. We do not share your calendar data. You can disconnect Google Calendar at any time from your dashboard.</p>
+                <p>If you connect Google Calendar, we request access to <strong style={{ color: 'var(--text-strong)' }}>read your calendar and to create, edit, move, and delete events</strong> on your behalf. We use this to surface your schedule in your briefings and to make the calendar changes you ask Edg3 to make (for example, booking, rescheduling, or cancelling events). Events Edg3 creates are marked, and Edg3 can undo its own changes. We do not share your calendar data. You can disconnect Google Calendar at any time from your dashboard.</p>
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Google Gmail Data</p>
                 <p>If you grant Gmail access, we use it in two ways:</p>
                 <ul className="mt-2 space-y-2 pl-1">
-                  <li><strong style={{ color: 'var(--text-strong)' }}>Draft creation:</strong> Edge creates email drafts on your behalf for outreach you asked for. <strong style={{ color: 'var(--text-strong)' }}>Edge never sends email</strong> — it only creates drafts for you to review and send yourself.</li>
-                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox signal (metadata only):</strong> Edge reads <em>metadata</em> from recent inbox threads — sender name, subject line, and the auto-generated snippet Google provides. <strong style={{ color: 'var(--text-strong)' }}>Edge never reads email body content.</strong> This metadata is used to compute your daily Focus score and to recognize replies to outreach Edge drafted for you. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edge reviewed — visible only to you in your Activity tab. Subjects are retained for 90 days then automatically deleted. Senders, snippets, and bodies are never stored.</li>
+                  <li><strong style={{ color: 'var(--text-strong)' }}>Draft creation:</strong> Edg3 creates email drafts on your behalf for outreach you asked for. <strong style={{ color: 'var(--text-strong)' }}>Edg3 never sends email</strong> — it only creates drafts for you to review and send yourself.</li>
+                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox signal (metadata only):</strong> Edg3 reads <em>metadata</em> from recent inbox threads — sender name, subject line, and the auto-generated snippet Google provides. <strong style={{ color: 'var(--text-strong)' }}>Edg3 never reads email body content.</strong> This metadata is used to compute your daily Focus score and to recognize replies to outreach Edg3 drafted for you. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edg3 reviewed — visible only to you in your Activity tab. Subjects are retained for 90 days then automatically deleted. Senders, snippets, and bodies are never stored.</li>
                 </ul>
                 <p className="mt-2">You can disconnect Gmail at any time from your dashboard, which immediately revokes both draft and read access.</p>
               </div>
@@ -107,7 +107,7 @@ export default function PrivacyPage() {
                 'We do not allow humans to read your Google Calendar or Gmail data except for security, to comply with the law, or with your explicit consent',
                 'We do not transfer Google user data to third parties except as necessary to provide the service or as required by law',
                 'We do not use Google user data for any purpose unrelated to the features you requested',
-                'For Gmail specifically: Edge creates drafts only (it never sends email); it reads inbox thread metadata (sender, subject, auto-snippet — never message bodies) to compute your Focus score and recognize replies. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and bodies are never stored.',
+                'For Gmail specifically: Edg3 creates drafts only (it never sends email); it reads inbox thread metadata (sender, subject, auto-snippet — never message bodies) to compute your Focus score and recognize replies. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and bodies are never stored.',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>
@@ -153,10 +153,12 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-sm" style={{ color: 'var(--text-body)' }}>
               {[
                 'Access — request a copy of the data we hold about you',
+                'Export — download a copy of all your data at any time from Settings → Account → Export (includes your privacy setting)',
                 'Correction — update or correct your personal information at any time from your dashboard',
                 'Deletion — request permanent deletion of your account and all associated data',
                 'Opt-out — stop receiving calls or texts at any time via your dashboard or by saying "stop" during a call',
-                'Disconnect — remove Google Calendar access at any time from your dashboard',
+                'Disconnect Google — remove Google Calendar and Gmail access at any time from your dashboard',
+                'Disconnect Whoop — remove Whoop access at any time from your dashboard',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>
@@ -171,7 +173,7 @@ export default function PrivacyPage() {
             <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
               We use industry-standard security practices including encrypted connections (HTTPS), hashed passwords,
               encryption of sensitive data at rest (such as your connected-account access tokens and call transcripts,
-              using AES-256), and access controls to protect your data. No method of transmission over the internet is
+              using AES-256-GCM), and access controls to protect your data. No method of transmission over the internet is
               100% secure, and we cannot guarantee absolute security.
             </p>
           </section>

@@ -385,6 +385,86 @@ export function detectFocusWindowPattern(
   };
 }
 
+// ── Pattern 5 — Priority drift / stability (M2-3 #5) ─────────────────────────
+
+export interface PriorityWeek {
+  weekOf: string;        // 'yyyy-MM-dd' — the week these priorities were set for
+  priorities: string[];  // the stated priority texts that week
+}
+
+/**
+ * Detects whether the user's stated priorities have stayed STABLE or CHURNED
+ * week-over-week. Stability is reinforced positively (consistency compounds);
+ * heavy churn is surfaced as an opportunity to anchor — never as criticism (TONE rule).
+ *
+ * Pure. Returns null on thin data (< minWeeks distinct weeks) or a moderate/ambiguous
+ * signal not worth a briefing line.
+ */
+export function detectPriorityDriftPattern(
+  weeks: PriorityWeek[],
+  minWeeks = 3,
+): PatternInsight | null {
+  const sorted = weeks
+    .filter(w => w.priorities.some(p => p.trim().length > 0))
+    .sort((a, b) => (a.weekOf < b.weekOf ? -1 : a.weekOf > b.weekOf ? 1 : 0));
+  if (sorted.length < minWeeks) return null;
+
+  const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ');
+  const sets = sorted.map(w => new Set(w.priorities.map(norm).filter(Boolean)));
+
+  // Week-over-week Jaccard similarity (1 = identical priorities, 0 = total churn).
+  let totalSim = 0, comparisons = 0;
+  for (let i = 1; i < sets.length; i++) {
+    const a = sets[i - 1], b = sets[i];
+    const inter = [...a].filter(x => b.has(x)).length;
+    const union = new Set([...a, ...b]).size;
+    if (union > 0) { totalSim += inter / union; comparisons++; }
+  }
+  if (comparisons === 0) return null;
+  const avgSim = totalSim / comparisons;
+
+  const sampleDays = sorted.length;
+  const confidence: 'high' | 'medium' = sorted.length >= 5 ? 'high' : 'medium';
+
+  // Most persistent priority (appears in the most weeks) — keep original casing for display.
+  const counts = new Map<string, number>();
+  const display = new Map<string, string>();
+  for (let i = 0; i < sorted.length; i++) {
+    for (const raw of sorted[i].priorities) {
+      const key = norm(raw);
+      if (!key) continue;
+      if (!display.has(key)) display.set(key, raw.trim());
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const topEntry = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const persistence = topEntry ? topEntry[1] / sorted.length : 0;
+  const mostRecentSet = sets[sets.length - 1];
+  const topIsCurrent = !!topEntry && mostRecentSet.has(topEntry[0]);
+
+  // STABLE: one priority has anchored most weeks AND is still current. Reinforce it (positive).
+  // Persistence (not whole-set similarity) is the signal — secondary priorities can rotate.
+  if (topEntry && persistence >= 0.7 && topIsCurrent) {
+    return {
+      type: 'priority_drift',
+      summary: `You've held "${display.get(topEntry[0])}" as a top priority across ${topEntry[1]} of the last ${sorted.length} weeks — that consistency is what compounds. Worth protecting time for it again.`,
+      confidence,
+      sampleDays,
+    };
+  }
+  // CHURN: priorities shift nearly every week with no persistent anchor. Frame as opportunity,
+  // never as criticism (TONE rule — no "you keep changing"/blame language).
+  if (avgSim < 0.34 && persistence < 0.5) {
+    return {
+      type: 'priority_drift',
+      summary: `Your top priorities have shifted most weeks recently — picking one to anchor the next stretch could help it actually move forward.`,
+      confidence,
+      sampleDays,
+    };
+  }
+  return null; // moderate stability — no signal worth a briefing line
+}
+
 // ── Synthesis ─────────────────────────────────────────────────────────────────
 
 /**

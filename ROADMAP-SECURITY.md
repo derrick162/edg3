@@ -105,6 +105,59 @@ Update changelog + Status Board when done.
 
 ---
 
+## 📥 PM DISPATCH — 2026-06-18 (T3-1 part A — Add 'pattern' to facts category constraint)
+
+> Master at `87af54d`. `git merge master` first. 5-minute ticket.
+
+### Ticket 1 — Add `'pattern'` to the facts table CHECK constraint (T3-1 schema gap)
+
+**The gap:** `lib/db.ts:251` has `CHECK(category IN ('person','project','goal','preference','fact'))`. The dashboard renders a Patterns tab (`app/dashboard/page.tsx:2589`) but the constraint blocks any fact with `category='pattern'` from being inserted. Currently `lib/factPatterns.ts` stores patterns as `category='fact'` + `source='historical-pattern'` — they land in the Facts bucket, not Patterns.
+
+**Fix — two changes, both additive:**
+
+1. In `lib/db.ts` schema (line ~251): change the CHECK to include `'pattern'`:
+   ```sql
+   category TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern'))
+   ```
+   Note: SQLite CHECK constraints are not enforced via ALTER TABLE — the schema string change takes effect for new DB initializations. Add a runtime migration to cover existing DBs. The simplest safe migration is a no-op here (existing rows are valid; we're only adding a new allowed value). Add a comment noting that this is additive.
+
+2. Update the TypeScript type in `lib/db.ts` (line ~1596) to include `'pattern'`:
+   ```typescript
+   category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
+   ```
+
+That's it — schema + type only. Core (Darren) does the factPatterns.ts side. No test changes needed; the constraint is structural.
+
+- **Files:** `lib/db.ts` only
+- **Preflight:** must pass before commit
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (T3-3 — Data export completeness)
+
+> Master at `dc7653d`. `git merge master` first. Spec: `content/export-audit.md` — read it before starting.
+
+### Ticket 1 — Add missing tables to `app/api/account/export/route.ts` (T3-3)
+
+The current export (v1) is missing 4 data sources. Add them:
+
+1. **`episodes`** (HIGH) — call ground-truth records from `lib/episodeStore.ts`. Fields: `occurred_at`, `source`, topics (decrypt + JSON parse), commitments (decrypt + JSON parse). Transcripts optional but preferred.
+2. **`audit_log`** (HIGH) — every action Edge took on the user's behalf. Fields: `action`, `description`, `ok`, `created_at`. Omit `session_id`.
+3. **`fact_history`** (MEDIUM) — versioned memory audit trail. Join `fact_history` to `facts` on `fact_id` to get `user_id` scoping. Fields: `fact_id`, `statement`, `retired_at`, `retired_reason`, `source`.
+4. **`undo_history`** (LOW) — undo records. Fields: `action_type`, `created_at`, `used_at`.
+
+Also:
+- **Include retired facts** in the `facts` export: change `factQueries.getAll` to return both active and retired facts; add `status: 'active' | 'retired'` and `retiredAt: string | null` fields.
+- **Add `confidenceScore` and `lastConfirmedAt`** to each fact (both columns added in Round 6 — verify they're on the `factQueries.getAll` result).
+- **Bump version** from `'1'` to `'2'` in the payload.
+
+Full code snippets in `content/export-audit.md`. This is additive — no schema changes, no auth changes, just additional SELECT queries and payload fields.
+
+- **Files:** `app/api/account/export/route.ts` only (Security owns this route)
+- **Test:** verify all 4 new sections appear in a fresh export; verify retired facts appear with `status: 'retired'`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-17 (ROUND 5 — Bi-temporal fact schema)
 
 > Master at `e7357cc`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`

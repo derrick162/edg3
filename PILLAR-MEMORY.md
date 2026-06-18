@@ -9,15 +9,17 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 1 — Storage (ground truth, correct and complete)
 
-### M1-1 — Episode store ingestion: wire all call sources (Core)
-**The risk:** The episode store exists but may not be receiving data from every call type. If calls aren't creating episodes, the entire self-learning flywheel has no fuel.
+### M1-1 — Episode store ingestion: wire all call sources (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `lib/episodeStore.ts` wired in `app/api/vapi/webhook/route.ts` (dynamic import, line 170, fire-and-forget); inserts episode per call with userId, source='call', transcript, extracted topics + commitments.
+~~**The risk:** The episode store exists but may not be receiving data from every call type. If calls aren't creating episodes, the entire self-learning flywheel has no fuel.~~
 - Audit the vapi webhook handler: after every call, does it write an episode to the `episodes` table?
 - If not: add `episodeQueries.insert(userId, 'call', occurredAt, encryptedTranscript, topics, commitments)` after transcript processing
 - Verify calendar events also produce episodes when they occur (or at briefing time)
 - Test: complete a call, verify episode row exists with correct userId, source, occurred_at, and encrypted content
 
-### M1-2 — Bi-temporal facts: conflict resolution in the extraction pipeline (Core)
-**The status:** Security ships the schema (valid_from/valid_until columns). Core wires the logic.
+### M1-2 — Bi-temporal facts: conflict resolution in the extraction pipeline (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `factQueries.upsertFact` checks for existing active fact (valid_until IS NULL) on same entity+category; if conflict: snapshot to history → retire old (set valid_until) → insert new. High-confidence facts not overwritten by extraction. All briefing reads filter active facts only.
+~~**The status:** Security ships the schema (valid_from/valid_until columns). Core wires the logic.~~
 - In `lib/facts.ts` `upsertFact`: before inserting, check for an active fact with the same entity + category
 - If conflict: call `factQueries.retire(userId, existingFactId)` then insert new fact
 - Active = `valid_until IS NULL`. Never hard-delete — retired facts are historical record
@@ -30,8 +32,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Add extraction coverage test: given a transcript with a goal, a person, a preference, a pattern, and a commitment — verify all five categories are extracted
 - Test with a real transcript from the last week: how many facts were extracted? Are they accurate?
 
-### M1-4 — Memory versioning: snapshot before destructive updates (Core)
-**The risk:** If a bad fact extraction run overwrites good data, there's no way to recover. The memory is gone.
+### M1-4 — Memory versioning: snapshot before destructive updates (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `snapshotFactToHistory(factId, userId, source)` called before every bi-temporal retire; `fact_history` table is a read-only audit trail — no modifications after insert. Source recorded as 'extraction-update', 'manual', or 'consolidation'.
+~~**The risk:** If a bad fact extraction run overwrites good data, there's no way to recover. The memory is gone.~~
 - Before retiring a fact (bi-temporal update): write its current value to a `fact_history` table (`factId`, `statement`, `retiredAt`, `retiredReason`)
 - This is a read-only audit trail — nothing modifies `fact_history` after insert
 - Test: retire a fact, verify the old value is preserved in `fact_history`
@@ -40,20 +43,23 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 2 — Learning (memory that improves between calls)
 
-### M2-1 — Sleep-time consolidation agent: stale fact reconciliation (Core)
-**The status:** Dispatched in Round 5. This item deepens it once T2 is live.
+### M2-1 — Sleep-time consolidation agent: stale fact reconciliation (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `runSleepTimeConsolidation(userId, transcript, userName)` in `lib/facts.ts`; wired fire-and-forget from webhook after call end; reconciles stale/contradicted facts; logs `{factsAdded, factsRetired, factsUpdated}` per run; `background_job_failures` table catches any failure.
+~~**The status:** Dispatched in Round 5. This item deepens it once T2 is live.~~
 - After the consolidation agent runs: verify it checks for facts that haven't been confirmed in 60+ days and flags them as `confidence < 0.5` (once the confidence column lands)
 - Add a reconciliation step: if two active facts on the same entity+category exist (shouldn't happen, but check), retire the older one
 - Log every consolidation run: how many facts updated, how many retired, how many added
 
-### M2-2 — In-call memory trigger: immediate overwrite on correction (Core)
-**The status:** Dispatched in Round 5 T3. This item adds verification.
+### M2-2 — In-call memory trigger: immediate overwrite on correction (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `rememberPreference` tool-call handler in `app/api/vapi/tool-call/route.ts` (line 1109): retires conflicting active fact + inserts new one immediately (bi-temporal); before/after state logged to `fact_history`; spoken confirmation: "Got it — I've updated that in your memory."
+~~**The status:** Dispatched in Round 5 T3. This item adds verification.~~
 - When `rememberPreference` fires: log the before/after state to `fact_history`
 - Return spoken confirmation to the user: "Got it — I've updated [X]"
 - Test: during a call, say "actually my goal is now Y not X" — verify fact is updated before call ends and the next call's briefing reflects Y
 
-### M2-3 — Pattern detection: deepen M3 with temporal history (Core)
-**The status:** Dispatched in Round 5 T4. This item defines the specific patterns to detect.
+### M2-3 — Pattern detection: deepen M3 with temporal history (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `lib/patternMemory.ts` + `lib/factPatterns.ts` + `lib/calendarPatterns.ts`; weekly job detects commitment reliability, recovery predictors, focus windows, stress precursors, goal drift; pattern facts stored under category `pattern`; injected into briefing via `patternMemoryBlock`.
+~~**The status:** Dispatched in Round 5 T4. This item defines the specific patterns to detect.~~
 Priority patterns to detect (in order of value):
 1. **Commitment reliability by category:** what % of same-day commitments does Derrick keep vs. long-horizon ones?
 2. **Recovery predictors:** which week structures correlate with high vs. low Whoop recovery scores?
@@ -62,8 +68,9 @@ Priority patterns to detect (in order of value):
 5. **Goal drift:** how have Derrick's stated priorities shifted over the last 90 days?
 Output: structured pattern facts stored under category `pattern` in the `facts` table — NOT raw prose. Each pattern fact should be a falsifiable statement ("gym attendance is 80% on MWF, 40% on TTh").
 
-### M2-4 — Predictive context loading: pre-call prep pack (Security + Core)
-**The status:** Dispatched in Round 6. This item adds quality verification once it's live.
+### M2-4 — Predictive context loading: pre-call prep pack (Security + Core) — ✅ **LIVE (Round 6)**
+**Shipped:** Security wired 11pm UTC nightly cron in `lib/scheduler.ts`; Core exported `buildBriefingContextPack(userId)` from `lib/briefing.ts`; cron calls it, writes to `briefing_context_packs` table (encrypted); morning call reads pre-warmed pack, falls back to live assembly on miss; pruned after 7 days. `{userId, packDate, packSize, generatedAt, durationMs}` logged per pack.
+~~**The status:** Dispatched in Round 6. This item adds quality verification once it's live.~~
 - After the 11pm job runs: verify the pack was written and is non-empty for every active user
 - Log: `{userId, packDate, packSize, generatedAt, durationMs}` — visible in Railway
 - If a pack is missing at call time (job failed or user added late): fall back to live assembly seamlessly
@@ -73,10 +80,11 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 
 ## Tier 3 — Retrieval (the right memory at the right moment)
 
-### M3-1 — Briefing context relevance audit (Core)
+### M3-1 — Briefing context relevance audit (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/briefing-context-spec.md` — signal priority order, 90-day stale fact filter, personalization floor, target length. Routed to Darren (Core) via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch block.
 **The risk:** The briefing context assembler may be including stale, low-signal, or irrelevant facts — wasting context space that could go to higher-signal content.
 - Audit `lib/briefing.ts` context assembly: what's included? In what order? How much context does each section consume?
-- Reorder by signal priority: today's calendar + outstanding commitments + active goals → recent facts → Whoop recovery → pattern summary → relationship context
+- Reorder by signal priority: outstanding commitments → today's calendar → active goals → Whoop → patterns → recent facts (30d) → relationship context (calendar people only) → episodes → pre-warmed pack
 - Remove any fact older than 90 days from the default briefing context (they can still be retrieved on-demand but shouldn't auto-inject)
 - Test: compare briefing context before and after — is it tighter? Is the most important information in the first 1000 tokens?
 
@@ -96,15 +104,17 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 
 ## Tier 4 — Compounding (memory that gets better over time)
 
-### M4-1 — Confidence decay: weight briefing content by recency (Core)
-**The status:** Dispatched in Round 6. This item defines the UX once the schema lands.
+### M4-1 — Confidence decay: weight briefing content by recency (Core) — ✅ **LIVE (Round 6)**
+**Shipped:** `confidence_score REAL DEFAULT 1.0` column on facts; weekly decay job (4am UTC Sunday) — volatile categories (goal/priority/preference) -10%/week, stable (people/pattern/accountability) -3%/week; `factQueries.confirmFact` resets to 1.0 on mention/reconfirmation; briefing hedges facts confidence < 0.5 with "last I heard…"; T2-2 provides the UX layer. Mid-call reconfirmation trigger for facts < 0.3 is Round 6 Ticket 2 (Darren, in-flight).
+~~**The status:** Dispatched in Round 6. This item defines the UX once the schema lands.~~
 - In the briefing prompt: facts with confidence < 0.5 should be prefaced with "last I heard..." rather than stated as current truth
 - Facts with confidence < 0.3: inject ONE reconfirmation question per call ("Still aiming for X?")
 - Facts with confidence > 0.9 (recently confirmed): state confidently, no hedge
 - Test: artificially lower a fact's confidence, verify briefing hedges it appropriately
 
-### M4-2 — Outcome-weighted memory: extend M4 accountability (Core)
-**The status:** Dispatched in Round 6 T3. This item defines the weighting logic.
+### M4-2 — Outcome-weighted memory: extend M4 accountability (Core) — ✅ **LIVE (Round 6)**
+**Shipped:** `getReliabilitySignal(userId, category?)` in `lib/accountabilityMemory.ts` returns 0.0–1.0 reliability score by commitment category; briefing builder calibrates language based on signal: high (>0.7) = confident nudge, medium (0.4–0.7) = offer to block time, low (<0.4) = question whether it's the right priority; sleep-time agent updates reliability signal after each transcript.
+~~**The status:** Dispatched in Round 6 T3. This item defines the weighting logic.~~
 - Reliability signal by category: `{sameDay: 0.8, thisWeek: 0.6, longHorizon: 0.3}` (example values — seed from real data after 30+ calls)
 - In the briefing: when surfacing a commitment, use the reliability signal to calibrate language
   - High reliability (>0.7): "You said you'd do X — you're good at these"

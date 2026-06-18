@@ -11,7 +11,7 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
 import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
@@ -157,7 +157,7 @@ function resolveEvent(matches: { event: calendar_v3.Schema$Event; calId: string 
 function friendlyError(err: unknown): string {
   const msg = String(err);
   if (msg.includes('No calendar connected')) return "I can't access your calendar right now — it may need to be reconnected in the dashboard.";
-  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — you may need to reconnect your calendar.";
+  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — it may be on a calendar that needs reconnecting, or the event was organized by someone else (only the organizer can change it in Google Calendar).";
   if (msg.includes('notFound') || msg.includes('404')) return "I couldn't find that event to modify it.";
   return "Something went wrong on my end — want me to try again or take a different approach?";
 }
@@ -774,12 +774,17 @@ Query: ${query}` }],
     const planMatch = planText.match(/\[[\s\S]*\]/);
     const planEvents: Array<{ title: string; startDateTime: string; endDateTime: string }> = planMatch ? JSON.parse(planMatch[0]) : [];
     const created: string[] = [];
+    const planCreatedIds: string[] = [];
     for (const ev of planEvents) {
       try {
-        await cal.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${ev.title}`, start: { dateTime: ev.startDateTime, timeZone: user.timezone }, end: { dateTime: ev.endDateTime, timeZone: user.timezone }, colorId: '9' } });
-        created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
+        const planRes = await cal.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${ev.title}`, start: { dateTime: ev.startDateTime, timeZone: user.timezone }, end: { dateTime: ev.endDateTime, timeZone: user.timezone }, colorId: '9' } });
+        if (planRes.data.id) {
+          created.push(`${ev.title} (${ev.startDateTime.slice(5, 10)} ${ev.startDateTime.slice(11, 16)})`);
+          planCreatedIds.push(planRes.data.id);
+        }
       } catch (_e) { /* skip conflicts */ }
     }
+    if (planCreatedIds.length) recordUndo(userId, `week plan — ${planCreatedIds.length} focus block(s)`, [{ type: 'deleteMany', calId: 'primary', eventIds: planCreatedIds }]);
     return created.length ? `Planned your week! Added: ${created.join(', ')}. Priorities: ${priorityText}.` : 'Week fully packed — no free slots.';
 
   } else if (fn === 'copyDayEvents') {
@@ -822,7 +827,7 @@ Query: ${query}` }],
     if (createdIds.length) recordUndo(userId, `copied ${src.length} event(s) to ${targetDates.length} day(s)`, [{ type: 'deleteMany', calId: 'primary', eventIds: createdIds }]);
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
-      : `Couldn't copy events from ${sourceDate}.`;
+      : `Couldn't save the copies from ${sourceDate} — Google didn't confirm them. Want me to try again?`;
 
   } else if (fn === 'draftEmail') {
     // Draft (never send) a personalized outreach email per recipient, optionally proposing the
@@ -1125,17 +1130,94 @@ Query: ${query}` }],
       : null;
     const isUpdate = !!(existing && existing.statement.toLowerCase() !== statement.trim().toLowerCase());
 
-    factQueries.upsertFact(userId, cat, statement.trim().slice(0, 500), ent);
+    if (isUpdate && existing) {
+      // User explicitly said to update — always write even if the old fact was high-confidence.
+      // updateFact snapshots to fact_history (reason='user-edit') before overwriting.
+      factQueries.updateFact(userId, existing.id, statement.trim().slice(0, 500), ent);
+      // Undo = rollback to the history entry just created (most recent for this fact).
+      try {
+        const hist = factHistoryQueries.getForFact(existing.id, userId);
+        if (hist.length) recordUndo(userId, `updated fact${ent ? ` "${ent}"` : ''}`, [{ type: 'rollbackFact', userId, historyId: hist[0].id }]);
+      } catch { /* non-critical */ }
+    } else {
+      factQueries.upsertFact(userId, cat, statement.trim().slice(0, 500), ent);
+      // Undo = retire the newly inserted active fact (query by entity/category to find its id).
+      try {
+        const newFact = ent
+          ? factQueries.getByCategory(userId, cat).find(f => f.entity?.toLowerCase() === ent.toLowerCase())
+          : factQueries.getByCategory(userId, cat).find(f => !f.entity && f.statement.slice(0, 80).toLowerCase() === statement.slice(0, 80).toLowerCase());
+        if (newFact) recordUndo(userId, `saved fact${ent ? ` "${ent}"` : ''}`, [{ type: 'retireFact', userId, factId: newFact.id }]);
+      } catch { /* non-critical */ }
+    }
 
+    const topicLabel = ent ? ` "${ent}"` : '';
     return isUpdate
-      ? `Got it — I've updated that in your memory.`
-      : `Got it — I've saved that and will apply it going forward.`;
+      ? `Got it — I've updated${topicLabel} in your memory.`
+      : `Got it — I've saved${topicLabel} and will apply it going forward.`;
+
+  } else if (fn === 'confirmFact') {
+    // M4-1 / Round 6 Ticket 2: when Edge surfaces a low-confidence/stale fact and the user
+    // confirms it's still true (no correction), reset its confidence so it stops being
+    // flagged for reconfirmation. The model passes the topic (entity) or a statement fragment
+    // it just confirmed; we resolve the active fact and reset it. Corrections go through
+    // rememberPreference instead (retire + replace).
+    const { topic, statement } = args as { topic?: string; statement?: string };
+    const needle = (topic || statement || '').trim().toLowerCase();
+    if (!needle) return "Which fact should I mark as still current?";
+    let match = null as ReturnType<typeof factQueries.getAll>[number] | null;
+    try {
+      const active = factQueries.getAll(userId, { includeRetired: false });
+      // Prefer an entity match; fall back to a statement substring match.
+      match = active.find(f => f.entity?.toLowerCase() === needle)
+        ?? active.find(f => f.statement.toLowerCase().includes(needle))
+        ?? null;
+    } catch { /* degrade */ }
+    if (!match) return "I couldn't find that one to confirm — no harm, I'll keep what I have.";
+    try { factQueries.confirmFact(userId, match.id); } catch { /* non-critical */ }
+    return "Great — I've got that confirmed as current.";
 
   } else if (fn === 'checkReplies') {
     const tokenRow = calendarQueries.get(userId);
     const hasReadScope = hasGmailReadScope(tokenRow?.scope);
     const updates = hasReadScope ? await checkOutreachReplies(userId) : [];
     return formatRepliesForVoice(updates, hasReadScope);
+
+  } else if (fn === 'searchMemory') {
+    // M3-2: on-demand memory retrieval — searches facts + episodes + memories for the query.
+    const { query } = args as { query?: string };
+    if (!query?.trim()) return "What would you like me to look up?";
+    const needle = query.trim().toLowerCase();
+    const results: string[] = [];
+
+    // 1. Search facts (all — including stale, since user explicitly asked)
+    try {
+      const allFacts = factQueries.getAll(userId, { includeRetired: false });
+      const factHits = allFacts.filter(f =>
+        f.statement.toLowerCase().includes(needle) ||
+        (f.entity?.toLowerCase().includes(needle) ?? false)
+      ).slice(0, 3);
+      for (const f of factHits) results.push(`[${f.category}] ${f.statement}`);
+    } catch { /* degrade */ }
+
+    // 2. Search episodes (topics + commitments)
+    try {
+      const episodes = episodeQueries.search(userId, { topic: query.trim(), limit: 5 });
+      for (const e of episodes.slice(0, 2)) {
+        const d = e.occurredAt.slice(0, 10);
+        if (e.commitments?.length) results.push(`[call ${d}] committed: ${e.commitments.join('; ')}`);
+        else if (e.topics?.length) results.push(`[call ${d}] topics: ${e.topics.join(', ')}`);
+      }
+    } catch { /* degrade */ }
+
+    // 3. Search memories (weighted notes)
+    try {
+      const memories = memoryQueries.getWeighted(userId, 30);
+      const memHits = memories.filter(m => m.content.toLowerCase().includes(needle)).slice(0, 2);
+      for (const m of memHits) results.push(`[note] ${m.content.slice(0, 120)}`);
+    } catch { /* degrade */ }
+
+    if (!results.length) return `I don't have anything on "${query}" yet — you can tell me and I'll remember it.`;
+    return `Here's what I have on "${query}":\n${results.join('\n')}`;
 
   } else if (fn === 'setEnergyLevel') {
     const { level, source } = args as { level?: string; source?: string };

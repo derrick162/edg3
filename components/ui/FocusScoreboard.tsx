@@ -391,7 +391,7 @@ export function FocusScoreboard({ areas, onToggleMilestone, onAddMilestone }: Fo
           No focus areas yet.
         </p>
         <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-          Set your top 3 priorities and Edge will track your progress here.
+          Set your top 3 priorities and Edg3 will track your progress here.
         </p>
       </div>
     );
@@ -411,7 +411,7 @@ export function FocusScoreboard({ areas, onToggleMilestone, onAddMilestone }: Fo
             All focus areas complete 🎉
           </p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Edge will celebrate with you on tomorrow&apos;s call.
+            Edg3 will celebrate with you on tomorrow&apos;s call.
           </p>
         </div>
       )}

@@ -52,10 +52,10 @@ export function ActivationCard({ facts, name, onDismiss }: ActivationCardProps) 
         </span>
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ HERE&apos;S WHAT I ALREADY KNOW ABOUT YOU
+            HERE&apos;S WHAT I ALREADY KNOW ABOUT YOU
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-            {name ? `${name}, Edge is already on your side.` : 'Edge is already on your side.'}
+            {name ? `${name}, Edg3 is already on your side.` : 'Edg3 is already on your side.'}
           </p>
         </div>
       </div>
@@ -84,7 +84,7 @@ export function ActivationCard({ facts, name, onDismiss }: ActivationCardProps) 
 
       {/* Footer */}
       <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-        Edge learns more with every morning briefing — your first call will make this even sharper.
+        Edg3 learns more with every morning briefing — your first call will make this even sharper.
       </p>
     </div>
   );

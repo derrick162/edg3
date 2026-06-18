@@ -38,16 +38,16 @@ export interface DayPlanCardProps {
 
 const OP_ICONS: Record<PlanChangeOp, string> = {
   create:  '＋',
-  move:    '↗',
-  delete:  '✕',
-  recolor: '●',
+  move:    '◆',
+  delete:  '◆',
+  recolor: '◆',
 };
 
 const OP_COLORS: Record<PlanChangeOp, string> = {
   create:  'var(--edg-success)',
   move:    'var(--edg-indigo)',
-  delete:  'var(--edg-danger)',
-  recolor: 'var(--rec-medium)',
+  delete:  'var(--text-muted)',
+  recolor: 'var(--edg-indigo)',
 };
 
 function scoreDeltaColor(delta: number): string {
@@ -82,7 +82,7 @@ export function DayPlanCard({
       <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
         <div className="flex items-center gap-2 mb-4">
           <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
-          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Edge is building your plan…</span>
+          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Edg3 is building your plan…</span>
         </div>
         <div className="space-y-2">
           {[1, 2, 3].map(i => (
@@ -96,14 +96,26 @@ export function DayPlanCard({
   // ── No plan
   if (!plan) {
     return (
-      <div className="glass-card p-5 text-center" style={{ borderColor: 'var(--plan-border)' }}>
-        <p className="text-xl mb-2">✦</p>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-          Your day looks good
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          No changes needed — Edge will keep watching.
-        </p>
+      <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
+        <div className="flex items-start gap-3.5">
+          <div
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
+          >
+            <span style={{ color: 'var(--text-accent)', fontSize: 14 }}>✦</span>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-accent)' }}>
+              EDGE ASSESSMENT
+            </p>
+            <p className="text-sm font-bold leading-snug mb-0.5" style={{ color: 'var(--text-strong)' }}>
+              Your day looks well-aligned.
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Nothing needs reshaping right now. Edg3 will flag changes as your calendar fills in.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -128,9 +140,9 @@ export function DayPlanCard({
           <span
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
             style={{
-              background: 'rgba(34,197,94,0.15)',
+              background: 'var(--plan-success-tint)',
               border: '1.5px solid var(--plan-success-border)',
-              boxShadow: '0 0 14px rgba(34,197,94,0.20)',
+              boxShadow: 'var(--plan-success-glow)',
               animation: 'pop-in 0.45s ease both',
             }}
           >
@@ -142,8 +154,8 @@ export function DayPlanCard({
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {noChanges
-                ? 'Nothing needed changing — your Edge Score is up top.'
-                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edge Score updated up top`}
+                ? 'Nothing needed changing — your Edg3 Score is up top.'
+                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edg3 Score updated up top`}
             </p>
           </div>
         </div>
@@ -151,9 +163,9 @@ export function DayPlanCard({
           <div
             className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold mt-3"
             style={{
-              background: 'rgba(34,197,94,0.08)',
+              background: 'var(--plan-success-delta-bg)',
               color: scoreDeltaColor(delta),
-              border: '1px solid rgba(34,197,94,0.22)',
+              border: '1px solid var(--plan-success-ring)',
             }}
           >
             +{delta} points{delta >= 15 ? ' 🚀' : delta >= 10 ? ' — big improvement' : ' — solid gain'}
@@ -177,7 +189,7 @@ export function DayPlanCard({
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ HERE&apos;S WHAT I&apos;D CHANGE
+            ✦ EDGE ASSESSMENT
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {plan.summary}
@@ -211,7 +223,7 @@ export function DayPlanCard({
             +{delta}
           </span>
         </div>
-        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Edge Score</span>
+        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Edg3 Score</span>
       </div>
 
       {/* Change list */}

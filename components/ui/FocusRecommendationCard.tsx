@@ -190,7 +190,7 @@ export function FocusRecommendationCard({
         <div className="flex items-center gap-2 mb-4">
           <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
           <span className="text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
-            Edge is reading your data…
+            Edg3 is reading your data…
           </span>
         </div>
         <div className="space-y-3">
@@ -223,8 +223,8 @@ export function FocusRecommendationCard({
             </p>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               {hasStarted
-                ? `Edge is learning from your ${callsCompleted} call${callsCompleted !== 1 ? 's' : ''} so far — a full recommendation appears after a few more briefings.`
-                : 'After your first morning briefing, Edge will tell you exactly what to focus on today — based on your calendar, goals, and energy.'}
+                ? `Edg3 is learning from your ${callsCompleted} call${callsCompleted !== 1 ? 's' : ''} so far — a full recommendation appears after a few more briefings.`
+                : 'After your first morning briefing, Edg3 will tell you exactly what to focus on today — based on your calendar, goals, and energy.'}
             </p>
             {hasStarted && (
               <div className="flex gap-1 mt-2">
@@ -274,7 +274,7 @@ export function FocusRecommendationCard({
               Focus set for today
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              Edge will score your calendar against these.
+              Edg3 will score your calendar against these.
             </p>
           </div>
         </div>
@@ -375,7 +375,7 @@ export function FocusRecommendationCard({
       </div>
 
       <p className="text-xs text-center mt-3" style={{ color: 'var(--text-faint)' }}>
-        Edge re-reads your data each morning. You can always adjust in the Priorities tab.
+        Edg3 re-reads your data each morning. You can always adjust in the Priorities tab.
       </p>
     </div>
   );

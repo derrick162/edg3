@@ -140,13 +140,24 @@ export async function POST(req: NextRequest) {
             });
         }
         if (transcript) {
-          extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
+          // DC0-2: measure call-end → memory-landed latency. Facts must be extracted well
+          // within 30 min of call end; this tracks the actual post-call processing time so a
+          // slow pipeline is visible (logged + stored on learning_status; warns past 2 min).
+          const briefingId = briefing.id;
+          const postCallStart = Date.now();
+
+          const taskP = extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
           // Compounding memory: extract durable structured facts and deduplicate against
           // existing ones. Fire-and-forget — never blocks the webhook response.
-          const briefingId = briefing.id;
-          import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
-            .then(() => briefingQueries.updateLearningStatus(briefingId, { facts_ok: true }))
+          const t0 = Date.now();
+          const factsP = import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
+            .then((factsExtracted) => {
+              const extractionMs = Date.now() - t0;
+              const flagged = factsExtracted === 0;
+              briefingQueries.updateLearningStatus(briefingId, { facts_ok: true, facts_extracted: factsExtracted, extraction_ms: extractionMs, ...(flagged ? { flagged_for_review: true } : {}) });
+              if (flagged) console.warn(`[DC0-1] briefing ${briefingId}: 0 facts extracted — flagged for sleep-time review`);
+            })
             .catch(err => {
               console.error('[webhook] Fact extraction failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { facts_ok: false, facts_error: String(err).slice(0, 200) });
@@ -154,7 +165,7 @@ export async function POST(req: NextRequest) {
             });
           // Sleep-time consolidation: one Haiku call resolves contradictions between the
           // transcript and stored facts via the bi-temporal retire+insert pipeline.
-          import('@/lib/facts').then(m => m.runSleepTimeConsolidation(briefing.user_id, transcript, user.name))
+          const consolidationP = import('@/lib/facts').then(m => m.runSleepTimeConsolidation(briefing.user_id, transcript, user.name))
             .then(() => briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: true }))
             .catch(err => {
               console.error('[webhook] Sleep-time consolidation failed:', err);
@@ -162,7 +173,7 @@ export async function POST(req: NextRequest) {
               try { backgroundJobFailureQueries.record('sleep_consolidation', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
           // Extract open loops / commitments from the call transcript.
-          import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
+          const loopsP = import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
             .then(() => briefingQueries.updateLearningStatus(briefingId, { loops_ok: true }))
             .catch(err => {
               console.error('[webhook] Open loops extraction failed:', err);
@@ -170,7 +181,7 @@ export async function POST(req: NextRequest) {
               try { backgroundJobFailureQueries.record('open_loops_extraction', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
           // Episode store: persist the raw (grounded) transcript for episodic recall.
-          import('@/lib/episodeStore').then(m => {
+          const episodeP = import('@/lib/episodeStore').then(m => {
             const priorities = (() => { try { return priorityQueries.getMostRecent(briefing.user_id); } catch { return []; } })();
             const taskTexts = (() => { try { return taskQueries.getRecent(briefing.user_id, 1).map(t => t.text); } catch { return []; } })();
             return m.persistCallEpisode(
@@ -187,6 +198,18 @@ export async function POST(req: NextRequest) {
               briefingQueries.updateLearningStatus(briefingId, { episode_ok: false, episode_error: String(err).slice(0, 200) });
               try { backgroundJobFailureQueries.record('episode_store', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
+
+          // DC0-2: once all memory jobs settle, record total latency. A line the Security
+          // health digest (T1-3) can scrape; warns when it exceeds the 2-minute target.
+          Promise.allSettled([taskP, factsP, consolidationP, loopsP, episodeP]).then(() => {
+            const postCallMs = Date.now() - postCallStart;
+            briefingQueries.updateLearningStatus(briefingId, { post_call_ms: postCallMs });
+            if (postCallMs > 120_000) {
+              console.warn(`[DC0-2] HEALTH: post-call memory pipeline took ${postCallMs}ms for briefing ${briefingId} (target ≤120000ms)`);
+            } else {
+              console.log(`[DC0-2] post-call memory pipeline ${postCallMs}ms for briefing ${briefingId}`);
+            }
+          });
         }
 
         // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and
@@ -348,13 +371,21 @@ ${toolSummary}`,
 
 async function extractTasksFromTranscript(userId: number, transcript: string, timezone: string) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const targetDate = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-  targetDate.setDate(targetDate.getDate() + 1);
-  const today = targetDate.toLocaleDateString('en-CA');
+  const nowLocal = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const todayStr = nowLocal.toLocaleDateString('en-CA');
+  // Default due date: tomorrow (tasks committed to on the call are expected by next morning)
+  const tomorrowDate = new Date(nowLocal);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = tomorrowDate.toLocaleDateString('en-CA');
+  // Compute this week's dates for relative resolution ("by Friday" → actual date)
+  const dayMs = 86_400_000;
+  const dayOfWeek = nowLocal.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+  const fridayStr = new Date(nowLocal.getTime() + daysUntilFriday * dayMs).toLocaleDateString('en-CA');
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+    max_tokens: 400,
     messages: [{
       role: 'user',
       content: `Read this call transcript between a user and their AI Chief of Staff.
@@ -362,11 +393,19 @@ Extract NEW tasks or action items that the USER personally needs to do — thing
 
 IMPORTANT rules:
 - Only include tasks for the USER to complete themselves
-- Do NOT include instructions the user gave to the AI (e.g. "delete that event", "move my meeting", "add hot tub time") — those are requests to Edge, not user tasks
+- Do NOT include instructions the user gave to the AI (e.g. "delete that event", "move my meeting") — those are Edge requests, not user tasks
 - Do NOT include calendar management requests — Edge handles those separately
-- Only include real personal actions: calls to make, things to build, workouts, errands, decisions to make, people to contact
+- Only include real personal actions: calls to make, things to build, errands, decisions, people to contact
 
-Return ONLY a JSON array of short task strings (max 8 words each). If no user tasks were committed to, return [].
+Today is ${todayStr}. This Friday is ${fridayStr}.
+For each task, include the due date in YYYY-MM-DD format. Rules:
+- Explicit date ("by Friday", "this week", "tomorrow"): resolve to the actual date using today = ${todayStr}
+- No explicit date mentioned: use ${tomorrowStr} (default — next morning)
+- "This week" = ${fridayStr}; "next week" = 7 days from today
+
+Return ONLY a JSON array — no preamble, no markdown.
+Each item: {"text":"<short task, max 8 words>","dueDate":"YYYY-MM-DD"}
+If no user tasks were committed to, return [].
 
 Transcript:
 ${transcript}`,
@@ -379,9 +418,13 @@ ${transcript}`,
   try {
     const match = content.text.match(/\[[\s\S]*\]/);
     if (!match) return;
-    const tasks: string[] = JSON.parse(match[0]);
-    for (const text of tasks.slice(0, 5)) {
-      if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), today, 'edg3');
+    const tasks: Array<{ text?: string; dueDate?: string } | string> = JSON.parse(match[0]);
+    for (const item of tasks.slice(0, 5)) {
+      const text = typeof item === 'string' ? item : item?.text;
+      const rawDate = typeof item === 'object' && item?.dueDate ? item.dueDate : tomorrowStr;
+      // Validate date format; fall back to tomorrow if malformed
+      const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : tomorrowStr;
+      if (text?.trim()) taskQueries.create(userId, text.trim().slice(0, 500), dueDate, 'edg3');
     }
   } catch {
     // ignore parse errors

@@ -139,7 +139,7 @@ function NotifRow({
         border: `1px solid ${typeBorder(type, n.read)}`,
         opacity: n.read && type === 'general' ? 0.55 : 1,
         animation: isCelebration && !n.read ? 'score-rise 0.4s ease both' : undefined,
-        boxShadow: isCelebration && !n.read ? '0 0 20px rgba(99,102,241,0.12)' : undefined,
+        boxShadow: isCelebration && !n.read ? 'var(--notif-celebrate-glow)' : undefined,
       }}
     >
       <div className="flex items-start gap-2.5">
@@ -148,7 +148,7 @@ function NotifRow({
           className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
           style={{
             background: n.read ? 'var(--edg-fill-04)' : typeBg(type, false),
-            boxShadow: isCelebration && !n.read ? '0 0 12px rgba(99,102,241,0.30)' : undefined,
+            boxShadow: isCelebration && !n.read ? 'var(--notif-celebrate-dot-glow)' : undefined,
             animation: isCelebration && !n.read ? 'pop-in 0.45s ease both' : undefined,
           }}
         >
@@ -173,7 +173,7 @@ function NotifRow({
           {type === 'energy_prompt' && onSetEnergy && (
             selectedEnergy ? (
               <p className="text-xs font-medium mb-1" style={{ color: ENERGY_ACTIVE[selectedEnergy].color }}>
-                {selectedEnergy === 'green' ? '🟢' : selectedEnergy === 'yellow' ? '🟡' : '🔴'} Logged — Edge has you.
+                {selectedEnergy === 'green' ? '🟢' : selectedEnergy === 'yellow' ? '🟡' : '🔴'} Logged — Edg3 has you.
               </p>
             ) : (
               <div className="flex items-center gap-1.5 mb-1">
@@ -269,7 +269,7 @@ export function NotificationCenter({
     return (
       <div className="p-3">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>From Edge</span>
+          <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>From Edg3</span>
         </div>
         <div className="space-y-2">
           {[1, 2].map(i => (
@@ -284,7 +284,7 @@ export function NotificationCenter({
     <div className="p-3">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>From Edge</span>
+        <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>From Edg3</span>
         {unread > 0 && (
           <span
             className="text-xs px-2 py-0.5 rounded-full font-medium"
@@ -299,7 +299,7 @@ export function NotificationCenter({
       {notifications.length === 0 ? (
         <div className="py-8 text-center">
           <p className="text-xl mb-2">✦</p>
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Edge is on it</p>
+          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Edg3 is on it</p>
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
             Celebrations, nudges, and one-tap actions will appear here.
           </p>

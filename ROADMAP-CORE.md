@@ -449,15 +449,113 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — ⚠️ **CONCURRENCY ALERT (PM please read):** a **second session was editing this same `edg3-core` worktree** during the overnight Core loop (§2 isolation violation — never two lanes in one worktree). That session swept up the working tree — including this loop's in-progress M2-3 priority-drift code (`lib/patternMemory.ts`, `lib/db.ts`, `lib/briefing.ts`) — and committed it together with its own M2-4 + UX-4-403 work as **`c14ce31`** + qa-log `fae5e92`. Nothing was lost (M2-3 code is intact in `c14ce31`, tree green at 1747/1747), but attribution is merged and two sessions shared one worktree. PM: please re-establish single-session ownership of `edg3-core`. The M2-3 detail entry below documents the priority-drift work that landed in `c14ce31`.
+- **2026-06-18** — **PILLAR-MEMORY M2-3 #5 — priority-drift / stability pattern detection (extends M3, shipped in `c14ce31`).**
+  - `lib/patternMemory.ts`: implemented `detectPriorityDriftPattern` — the previously-stubbed `priority_drift` PatternType now has a detector. Pure, takes `PriorityWeek[]` (weekly priority snapshots). **STABLE** signal: one priority anchored ≥70% of weeks AND still current → positive reinforcement ("you've held 'fundraising' across 4 of the last 5 weeks — consistency compounds; worth protecting time for it again"). **CHURN** signal: week-over-week Jaccard < 0.34 with no persistent anchor → opportunity-framed ("priorities have shifted most weeks — picking one to anchor could help it move"), never critical (TONE rule). Returns null on < 3 weeks or moderate/ambiguous signal. 7 new tests.
+  - `lib/db.ts`: additive read-only `priorityQueries.getRecentWeeks(userId, weeks=8)` — priorities across the most recent N distinct weeks (text is plaintext, not encrypted).
+  - `lib/briefing.ts`: builds `PriorityWeek[]` from history and feeds `detectPriorityDriftPattern` into both `pickBestPattern` call sites. Flows through the existing PATTERN INSIGHT briefing block (section 5). Data-gated: fires once 3+ weeks of priority history accrue; degrades to null before then.
+  - 1747/1747 green, tsc clean, next build clean.
+- **2026-06-18** — **M2-4 context pack wiring + UX-4 403 message fix.**
+  - **M2-4 (PILLAR-MEMORY)**: `generateDailyBriefing` now reads the pre-warmed context pack from `briefing_context_packs`. Logs `[M2-4] context pack HIT/MISS (N chars)` on every call for Railway observability. When the live Whoop fetch fails completely (all three null), the function extracts the Whoop section from the pack as a fallback — addresses the DC2-3b edge case where the token expires between 11pm pack-build and 7am call. Pack data is labeled "(Whoop live-fetch unavailable — using last night's context pack data)" in the prompt. 1747/1747 green.
+  - **UX-4 / T2-3 (PILLAR-TRUST)**: `friendlyError` 403 handler in `app/api/vapi/tool-call/route.ts` updated to acknowledge BOTH causes — expired token (reconnect) AND organizer restriction. Old: "you may need to reconnect your calendar." New: "it may be on a calendar that needs reconnecting, or the event was organized by someone else (only the organizer can change it in Google Calendar)." No tests changed — this is a user-facing string fix.
+- **2026-06-18** — **M4-1 reconfirmation now fires for fresh STT-garbled facts (helps tomorrow's call).**
+  - `lib/factConfidence.ts` `isUnverified`: now also true when extraction flagged a fact categorically `confidence === 'low'` (STT-garbled name/address) — these are uncertain from day one, so they're reconfirmation candidates even on a brand-new account. Previously reconfirmation only fired for 30+ day-old facts, so it would never help a fresh user; this makes it useful on the very next call ("I've got a meeting with Yassen — did I get that right?"). `buildReconfirmationPromptBlock` uses a "did I catch that right?" framing for low-confidence facts vs "last I heard…" for aged ones. 3 new tests (28 total in factConfidence).
+  - **Shared-file additive touch** (`lib/db.ts` `factQueries.confirmFact`): now also sets `confidence = 'high'` (not just `confidence_score = 1.0`) so a once-garbled fact the user verifies stops re-triggering reconfirmation every call. Verified Security's Round 6 T2 `confirmFact` tests (partial `toContain`/`toMatch` assertions) still pass. ⚠️ Security: heads-up on this additive change to your function.
+  - 1740/1740 green, tsc clean, next build clean.
+- **2026-06-18** — **M4-1 reconfirmation polish + flaky-suite fix.**
+  - **Category weighting** (`lib/factConfidence.ts`): `selectReconfirmationFact` now ranks candidates by category importance (goal > project > preference > person > fact) before confidence/staleness, so the one reconfirmation question lands on what matters (a stale goal — "still targeting 500K?") rather than trivia. 2 new tests (25 total).
+  - **vapi wording fix**: reconfirmation guidance now keys off the spoken "last I heard…" line the assistant actually delivered, not an internal briefing block it never sees.
+  - **Flaky preflight FIXED**: `facts.test.ts` + `call-to-briefing.test.ts` didn't mock `./calendar`, so `extractAndUpsertFacts`' auto-fetch of today's events (`getCalendarEvents`, used for name grounding when `calendarEventTitles` is omitted) hit real code that was nondeterministic under parallel load — caused 2–3 intermittent failures per full run. Added `vi.mock('./calendar', { getCalendarEvents: async () => [] })` to both. Three consecutive clean full runs at 1737/1737.
+- **2026-06-18** — **PILLAR-TRUST UX-4 — no false hedging on known facts.**
+  - `lib/vapi.ts` (live call) + `lib/briefing.ts` (spoken opener): added a NO FALSE HEDGING rule to the GROUNDED & DECISIVE anchor / briefing IMPORTANT rules. Edge states facts confirmed by calendar/priorities/memory plainly — never "I think", "I believe", "maybe", "probably" about something it's certain of. Explicitly carves out the ONE exception: facts under a RECONFIRM instruction (long-unconfirmed) are hedged with "last I heard…" on purpose. This complements M4-1: hedge stale facts deliberately, state confident facts directly. Prompt-only; 1735/1735 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC0-2 — call-to-briefing latency measurement.**
+  - `app/api/vapi/webhook/route.ts`: the five post-call memory jobs (tasks, facts, consolidation, open loops, episode) are now captured as promises and wrapped in `Promise.allSettled` to measure end-to-end post-call processing latency. Records `post_call_ms` on the briefing's `learning_status` (no schema change — flexible JSON column). Logs `[DC0-2] post-call memory pipeline Xms`; emits a `[DC0-2] HEALTH:` warn line (scrapeable by Security's T1-3 digest) when latency exceeds the 2-minute target. Gives visibility into whether facts land well within the 30-min window before the next morning's briefing. 1735/1735 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M4-1 + Round 6 Ticket 2 — mid-call fact reconfirmation (confidence decay now consumed).**
+  - Security's Round 6 T2 (confidence decay schema) has landed: `facts.confidence_score`, `facts.last_confirmed_at`, `factQueries.confirmFact`, and the weekly `decayFactConfidenceScores` cron all exist. This is the Core-side consumer — nothing read `confidence_score` before now.
+  - **New `lib/factConfidence.ts`** (pure, 0 I/O, 23 tests): `factConfidence` (default 1.0 for legacy rows), `daysSinceConfirmed` (last_confirmed_at → learned_at fallback), `isSensitiveFact` (keyword guard — health/relationship/finance skip spoken reconfirmation), `isUnverified` (score < 0.3 OR not confirmed 30+ days), `shouldHedge` (score < 0.5 OR stale), `selectReconfirmationFact` (single lowest-confidence non-sensitive active fact, ties broken by most-stale), `buildReconfirmationPromptBlock`. Dual signal (decay score OR recency) so it works even before the decay job's categories fully align.
+  - **`lib/briefing.ts`**: picks ONE reconfirmation fact per briefing → injects a `RECONFIRM ONE FACT` block instructing Edge to hedge ("last I heard…") and ask one natural confirmation question rather than stating a stale fact as truth. Also **removed the DC2-3b duplicate** — my prior commit's `whoopContextBlock` "data unavailable" string duplicated the pre-existing inline `WHOOP STATUS` block; reverted to avoid double instruction.
+  - **`confirmFact` tool** (`app/api/vapi/tool-call/route.ts`): when the user confirms a reconfirmed fact (no correction), resolves the active fact by topic/entity and calls `factQueries.confirmFact` → resets `confidence_score=1.0`, `last_confirmed_at=now`. Corrections still route through `rememberPreference` (retire+replace).
+  - **`lib/vapi.ts`**: RECONFIRM-A-FACT live-call guidance + `confirmFact(topic)` tool doc + placeholder toolId.
+  - 1735/1735 green, tsc clean, next build clean.
+  - ⚠️ **External step:** create `confirmFact` Vapi tool (param: `topic`, string, required) → paste UUID into `lib/vapi.ts` toolIds and uncomment.
+  - ⚠️ **FLAG FOR SECURITY (lib/scheduler.ts):** the weekly `decayFactConfidenceScores` job decays categories `priorities/projects/current_focus/personality/working_style/relationships`, but the `facts` table CHECK constraint only allows `person/project/goal/preference/fact`. The category lists don't match → the decay job currently updates **0 rows** (`confidence_score` stays 1.0 for all real facts). Core's reconfirmation still fires via the `last_confirmed_at` 30-day recency path (intentional dual-signal), but the decay-score path is dormant until Security aligns `VOLATILE_CATEGORIES`/`STABLE_CATEGORIES` to the real fact categories (suggest: volatile = `goal`,`project`; stable = `person`,`preference`,`fact`).
+- **2026-06-18** — **QA checklist logged in `content/qa-log.md`.**
+  - Code-verifiable items from all three pillars (Memory/Trust/Daily Call) marked pass/fail. Manual live-call items listed in priority order for next 7am call. Blocked/delegated items noted. 1712/1712 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC2-3b — honest Whoop data acknowledgment when fetch fails.**
+  - `lib/briefing.ts` `whoopContextBlock`: when `whoopIsConnected` but all three Whoop data points are null (fetch timed out or token needs refresh), now injects a `WHOOP CONNECTED BUT DATA UNAVAILABLE` instruction block. Edge acknowledges with "I wasn't able to pull your Whoop data this morning — I'll try again for tomorrow" rather than silently omitting the health section. The Whoop fetch timing log (already live since DC0-1) provides the audit trail to diagnose repeated failures. 1712/1712 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-TRUST T4-5 — undo coverage sweep: planWeek + rememberPreference + fact undo ops.**
+  - **`planWeek`** (`app/api/vapi/tool-call/route.ts`): was creating calendar events without any undo record. Fixed by capturing `res.data.id` per insert and calling `recordUndo` with a `deleteMany` op once all events are created.
+  - **`lib/undo.ts`**: two new `UndoOp` types — `retireFact { userId, factId }` (undoes a new fact insert by retiring it) and `rollbackFact { userId, historyId }` (undoes a fact update by restoring the prior version via `factHistoryQueries.rollbackFact`). Both handled in `executeUndo`.
+  - **`rememberPreference`**: now calls `recordUndo` after every write. For new facts (upsert path): queries the newly created fact by category+entity and records `retireFact`. For updates (updateFact path): reads the `fact_history` row just written and records `rollbackFact`. Both wrapped in try/catch — non-critical, never blocks the main response.
+  - `factHistoryQueries` added to `tool-call/route.ts` import. 1712/1712 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M4-3b — memory block versioning + rollback.**
+  - `lib/db.ts` `upsertFact`: both INSERT paths (new fact + bi-temporal update) now capture `lastInsertRowid` and call `snapshotFactToHistory(newId, userId, 'created')` — every fact creation is logged to `fact_history` (extends M1-4 which only logged retire/edit/extraction-update).
+  - `factHistoryQueries.rollbackFact(userId, historyId)` added: reads history row, retires the currently active fact (if any) with a 'retired' snapshot, re-inserts the historical statement/entity/category as a new active fact with `confidence='high'`. Statement stays encrypted byte-for-byte (no re-encrypt needed — `fact_history` stores the raw ciphertext).
+  - 6 new tests in `lib/db-facts.test.ts` (M4-3b suite): created-logging after new INSERT, created-logging after bi-temporal UPDATE INSERT, rollback with active fact (retire + re-insert), rollback with no active fact (re-insert only), confidence='high' after restore. 1712/1712 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-TRUST UX-2+UX-3 — duplicate entity guard verification + name spelling tests.**
+  - **UX-2** (`lib/facts.test.ts`): 4 new tests — blocks "Edg3" and "Edg3 AI" as person entities, consolidates identical goal duplicates, full end-to-end scenario (user + Edge + Edg3 + repeated goal transcript → only goal upserted, 3 blocked). 1696/1696 green.
+  - **UX-3** (`lib/facts.test.ts`): 3 new tests — first-name self-entity blocked, full-name self-entity blocked, Anthropic prompt includes userName hint (confirmed the "Derek = Derrick" model-level correction wiring is live). 1696/1696 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-TRUST T2-3+T2-4 — honest failure messages + briefing accuracy regression tests.**
+  - **T2-3**: Audited all failure paths in `app/api/vapi/tool-call/route.ts`. All major paths were already specific (read-only calendars, 403s, 404s, organizer-restricted events, Gmail scope, rate limits). One vague message fixed: `copyEvents` "Couldn't copy events from X" → now says "Google didn't confirm them — want me to try again?" Error strings match `FAILURE_RE` pattern throughout. `friendlyError` fallback is honest last-resort for unknown failures.
+  - **T2-4**: Added T2-4 briefing accuracy regression suite to `lib/briefing.test.ts` (6 new tests): sleep-debt + high-strain composite signal, fallback briefing regression guards (no async-note-box references, brand-name stability), Whoop section format regressions (% symbol, no trailing "0 minutes"), `buildBaselineContext` always outputs today + delta line. Also added the 3-signal composite test (sleep debt + high strain, no red recovery). 1689/1689 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M4-2 — outcome-weighted reliability signal for commitment language calibration.**
+  - `lib/accountabilityMemory.ts`: Added `ReliabilitySignal` type + `getReliabilitySignal(tasks, today, lookbackDays=30)` — pure function that buckets edg3-sourced tasks into sameDay / thisWeek / longHorizon using `created_at` vs `date` delta. Returns completion rate per bucket (null when <2 data points). `TaskLike` extended with optional `created_at` (present for DC0-1b+ tasks; absent → falls back to same-day bucket, treating date as creation date).
+  - `calibrateCommitmentLanguage(text, dueDate, madeAt, signal)` — picks the right horizon bucket and returns calibrated language: high (>0.7) → "did that happen?", medium (0.4–0.7) → "want to block time?", low (<0.4) → "is it still the right priority, or should we let it go?". Falls back to neutral when signal is null.
+  - `accountabilityBriefingInstruction` updated to accept optional `ReliabilitySignal` and use `calibrateCommitmentLanguage` for the most overdue outstanding commitment.
+  - `lib/briefing.ts`: 30-day task fetch after the 7-day accountability snapshot → `getReliabilitySignal` computes the signal → passed to `accountabilityBriefingInstruction`. Both degrade gracefully on DB error.
+  - 13 new tests in `lib/accountabilityMemory.test.ts`. 1683/1683 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY T0-3 — end-to-end smoke test: "7am path."**
+  - `lib/call-to-briefing.test.ts` (new): 18 tests covering the post-call chain:
+    `extractAndUpsertFacts` → `factQueries.upsertFact` called; `persistCallEpisode` → `episodeQueries.insert` called.
+    Pure helpers covered: `tagTopicsFromTranscript` (domain keyword detection, priority matching, 10-tag cap),
+    `tagCommitmentsFromTasks` (cap at 10). DB contract: skips short transcripts (<50 chars), self-entity
+    and assistant-entity person facts are filtered, malformed Anthropic JSON degrades without throw.
+    End-to-end "7am path" test: both writes fire in the same pipeline and the stored episode surfaces in
+    `buildEpisodeMemoryBlock`. 1670/1670 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-TRUST UX-1 — landing page brand + timing copy fixes.**
+  - `app/page.tsx`: All "Edge" instances replaced with "Edg3" on public-facing surfaces (Derrick's explicit feedback 2026-06-17). "5 minutes" replaced with "3 minutes" throughout (hero, section heading, "How it works" step 1, features list). The mock UI chip showing the assistant speaking updated to "Edg3:" label. 1652/1652 green.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC0-1b — after-call memory audit: due date extraction fix.**
+  - `app/api/vapi/webhook/route.ts` `extractTasksFromTranscript`: previously hardcoded all commitment tasks to "tomorrow." Now extracts explicit due dates from the transcript ("by Friday", "this week", "next week") and resolves them to YYYY-MM-DD. Return format changed from `string[]` to `{text, dueDate}[]`. Validation falls back to tomorrow if date is malformed. People + goal extraction already correct in `lib/facts.ts` extraction prompt.
+  - 1652/1652 green, tsc clean, next build clean.
+- **2026-06-18** — **Round 6 T1 + PILLAR-DAILY-CALL DC2-0/DC2-1/DC2-3/DC2-3b — context pack + briefing quality.**
+  - **Round 6 T1 — `buildBriefingContextPack(userId)` exported** (`lib/briefing.ts`): New async export collects stable personal context (priorities, salient facts by category, Whoop snapshot, accountability block, open loops, episode memory, weighted memories) and returns it as a labeled string. Calendar events excluded — time-sensitive, must be fetched live. The 11pm scheduler's `runNightlyContextPacks` was already wired and dynamically imports this fn — it activates automatically now that the export exists. 1652/1652 green.
+  - **DC2-3b — Whoop timing log + "connected but unavailable" acknowledgment** (`lib/briefing.ts`): Added timing log `{whoopFetchMs, recoveryNull, sleepNull, strainNull}` after the main parallel fetch. Added `hasWhoopConnected(userId)` check — if Whoop is connected but data came back null, briefs Edge to acknowledge once in Part 1 ("Your Whoop data didn't come through this morning — I'll keep trying") rather than silently skipping. Import: `hasWhoopConnected` added to whoop import.
+  - **DC2-0 — No-preamble opener rule** (`lib/briefing.ts` + `lib/vapi.ts`): PART 1 instruction now opens with: "CRITICAL — NO PREAMBLE: zero warm-up, zero scene-setting, zero 'here's what we'll cover.' Actionable information within 10 seconds is the standard." `lib/vapi.ts`: added OPENER RULE instructing Edge never to re-greet or re-introduce after the briefing; call is already in motion.
+  - **DC2-1 — Forbid routine/predictable opener** (`lib/briefing.ts`): PART 1 instruction strengthened — "ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing)."
+  - **DC2-3 — Commitments first in Part 1** (`lib/briefing.ts`): When `edg3Commitment` exists, it moves INTO Part 1 before the Edge Score — "Before the Edge Score, open with the commitment accountability line." Part 2 commitment opening removed to avoid repetition.
+  - 1652/1652 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M3-3 — commitment tracking: 7-day window + oldest-first ordering.**
+  - `lib/db.ts` `taskQueries.getIncomplete`: widened window from `-1 days` → `-7 days` so edg3 commitments from the past week surface in the briefing (not just yesterday's).
+  - `lib/briefing.ts` `edg3Commitment`: changed from `.at(-1)` (most recent = newest) to `.at(0)` (oldest = most overdue). The most overdue commitment now opens the briefing, not the most recently-made one. 1706/1706 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M3-2 — on-demand memory retrieval: searchMemory Vapi tool.**
+  - `app/api/vapi/tool-call/route.ts`: `searchMemory(query)` handler — searches active facts (all, including >90-day stale since user explicitly asked), episodes (topic match via `episodeQueries.search`), and memories (content substring). Returns up to 7 results as spoken lines. Degrades each source independently. If nothing found, offers to remember it now.
+  - `lib/vapi.ts`: prompt instruction added — triggers on "what do you know about X?", "do you remember what I said about X?". Placeholder toolId comment added; external step: create tool in Vapi dashboard (param: `query: string, required`), paste UUID, uncomment.
+  - `memoryQueries` + `episodeQueries` added to `tool-call/route.ts` import. 1706/1706 green, tsc clean, next build clean.
+  - ⚠️ **External step:** create `searchMemory` Vapi tool (param: `query`, string, required) → paste UUID into `lib/vapi.ts` toolIds and uncomment.
+- **2026-06-18** — **PILLAR-MEMORY M3-1 — briefing context relevance: 90-day hard cutoff for stale facts.**
+  - `lib/memorySalience.ts` `topFacts`: new `filterStale?: boolean` option. When `true`, facts where `recencyScore === 0` (≥90 days since `learned_at`) are excluded before the top-N selection. The recency score was already 0 but other components (type weight, reinforcement) could still pull stale facts into the top 20. Hard cutoff closes this gap.
+  - `lib/briefing.ts`: both `topFacts` calls now pass `filterStale: true` — stale facts no longer auto-inject into briefing context or event-linked memory. T2-2 hedge code (`[UNCONFIRMED >90d]`) remains as a defensive measure for any path that bypasses the cutoff. On-demand retrieval (M3-2 `searchMemory`) can still surface stale facts when explicitly asked.
+  - 3 new tests. 1706/1706 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M2-2 — in-call memory trigger: always-write + fact_history + specific confirmation.**
+  - `app/api/vapi/tool-call/route.ts` `rememberPreference`: when `isUpdate` (existing fact with different statement), now calls `factQueries.updateFact` (snapshots old value to `fact_history` with reason `'user-edit'`, always overwrites) instead of `upsertFact` (which skips high-confidence facts). Fixes silent no-op when user explicitly says "update X." Spoken confirmation now includes the topic name: `"Got it — I've updated "goal" in your memory."` 1703/1703 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M2-1 — sleep-time consolidation: duplicate active fact reconciliation.**
+  - `lib/facts.ts` `runSleepTimeConsolidation`: before the Haiku call, sweeps active facts for same entity+category pairs (race condition / import bug artifact). Keeps the most-recently-learned fact; retires the older one. Logs count when any are retired. Confidence-decay portion of M2-1 (flag facts not confirmed in 60+ days) remains BLOCKED on Security Round 6 T2 (confidence decay schema). 2 new tests. 1703/1703 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC2-4 — briefing length calibration: 220-word / 3-minute target.**
+  - `lib/briefing.ts`: PART 1 tightened from "2–3 sentences" → "2 sentences MAX"; PART 2 from "4–5 sentences" → "3–4 sentences MAX". `max_tokens` lowered 320 → 290 (≈223 words ceiling, enforces the stated 220-word limit). Word count log added post-generation: `[DC2-4] briefing N: X words` — warns at >250 words for monitoring. Total call duration target: ≤3 minutes (briefing text ≈90s + user response). 1701/1701 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-DAILY-CALL DC2-2 — personalization signal: 3-fact floor + reconfirmation.**
+  - `lib/briefing.ts`: `buildPersonalizationPromptBlock(factCount)` exported pure helper. Returns a `PERSONALIZATION SIGNAL` instruction block when `factCount < 3` — directs Edge to close the call with a personal-context question ("what's the challenge you feel most stuck on?") instead of a generic focus question. Returns null when ≥3 facts (normal path). Used in PART 3 of the user prompt; stale-priorities nudge suppressed when personalization fires to avoid two competing closing asks.
+  - 5 new tests in `lib/briefing.test.ts`. 1701/1701 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-TRUST T2-2 — stale fact hedging in briefings.**
+  - `lib/briefing.ts` `linkedMemory` formatter: facts with `learned_at` > 90 days ago are now marked `[UNCONFIRMED >90d]` in the EVENT-LINKED MEMORY block. Added instruction line telling the model to preface marked facts with "last I heard…" when spoken. No change to other sections — the hedge fires only in the event-linked memory path where facts are surfaced as statements. 1523/1523 green.
 - **2026-06-18** — **PILLAR-MEMORY M1-3 + M1-4 — fact freshness + fact_history audit trail.**
   - **M1-3 fact freshness** (`lib/db.ts` `upsertFact`): On exact-match (same statement already active), now updates `learned_at=datetime('now')` regardless of confidence. Prevents facts seen repeatedly from drifting toward "stale" classification. High-confidence + different statement still silently skips (user edit wins). Low-confidence + same statement → learned_at refreshed.
   - **M1-4 fact_history audit table** (`lib/db.ts`): `fact_history` table (id, fact_id, user_id, statement encrypted, entity, category, retired_at, reason). `snapshotFactToHistory()` internal helper — copies raw encrypted statement byte-for-byte, non-fatal try/catch. `factHistoryQueries.getForFact(factId, userId)` + `getRecentForUser(userId, limit)` exported. Snapshot fires in: `retire()` (reason='retired'), `updateFact()` (reason='user-edit'), `upsertFact` bi-temporal path (reason='extraction-update').
   - 1523/1523 green, tsc clean, next build clean.
 - **2026-06-18** — **Learning pipeline reliability — per-call learning status.**
   - **`lib/db.ts`**: `"ALTER TABLE briefings ADD COLUMN learning_status TEXT"` migration. `briefingQueries.updateLearningStatus(briefingId, update)` — read-merge-write JSON patch; non-fatal try/catch (observability only).
-  - **`app/api/vapi/webhook/route.ts`**: Each fire-and-forget (fact extraction, sleep-time consolidation, open loops, episode store, briefing task extraction) now calls `updateLearningStatus` on `.then()` with `{ facts_ok: true }` and on `.catch()` with `{ facts_ok: false, facts_error: String(err).slice(0,200) }`. Failure still console.errors — learning status is additive, not a retry mechanism.
+  - **`app/api/vapi/webhook/route.ts`**: Each fire-and-forget (fact extraction, sleep-time consolidation, open loops, episode store, briefing task extraction) now calls `updateLearningStatus` on `.then()` with `{ facts_ok: true }` and on `.catch()` with `{ facts_ok: false, facts_error: String(err).slice(0,200) }`. Failure still console.errors — learning status is additive, not a retry mechanism. **DC0-1 extension:** fact extraction path now captures `facts_extracted` count + `extraction_ms` timing; sets `flagged_for_review: true` + console.warn when count === 0. `extractAndUpsertFacts` return type changed `void → number` (stored count, 0 on catch).
   - **`app/api/admin/briefings/route.ts`**: Added `learning_status` to SELECT. New `?failed=1` query param filters to briefings with any `_ok":false` in `learning_status` — allows admin to surface any call where learning failed silently.
-  - 1523/1523 green, tsc clean, next build clean.
+  - 1696/1696 green, tsc clean, next build clean.
 - **2026-06-18** — **Edge Score Transparency — `change` field in GET /api/scores.**
   - **`lib/scoreChange.ts`** (new, pure, 0 I/O): `summarizeScoreChange(currentTotal, currentComponents, prevSnapshot, today)` → `ScoreChangeSummary { delta, direction, sinceLabel, reason, asOf }` | null. Diffs today's score vs the most-recent prior `calendar_scores` snapshot. Picks the component that moved most (focus vs energy — DB only persists these two; clarity/momentum excluded from dominance). Phrases one plain-English reason: up → first driver of dominant component; down → topFix.description if available, else first driver. `sinceLabel` is "since yesterday" / "since N days ago" / "since Mon DD" depending on gap. Returns null when no prior snapshot, same-date snapshot, or prior has no `edge_score`. 13 new tests in `lib/scoreChange.test.ts`.
   - **`lib/db.ts`**: `calendarScoreQueries.getPrior(userId, beforeDate)` — fetches the most recent row with `date < beforeDate` (used to avoid same-day self-diff).
@@ -1504,6 +1602,129 @@ priority from user feedback.
   - **Fix:** A short weekly email (Sunday evening or Monday morning): what Edg3 observed this week, whether the user's calendar matched their priorities, any open threads or unresolved tasks. Plain text, personal tone. Opt-out in one click.
   - **Dependency:** Needs an email sender (Resend / SendGrid / similar). Confirm with PM before building — if no sender is configured, this stays in Later.
   - **Acceptance:** Users receive a weekly digest. Unsubscribe works in one click. Digest is generated from existing briefing + priority data with no new data collection.
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (T2-4 — Briefing accuracy regression tests)
+
+> Master at `87af54d`. `git merge master` first. Spec: `content/briefing-regression-spec.md` — read it; the assertions are already written.
+
+### Ticket 1 — Write `lib/briefing.test.ts` with 8 regression assertions (T2-4)
+
+The spec provides exact test code. The main work is:
+1. Extract `buildBriefingContext(user, data)` from `lib/briefing.ts` — this should be the existing assembly logic promoted to an exported function. Do NOT fork or duplicate; the export IS the live path.
+2. Write the 8 tests in `lib/briefing.test.ts` (spec has the full implementation).
+3. Run `npm run preflight` — all 8 must be green.
+
+**Assertions to implement** (full code in spec):
+1. Outstanding commitments appear before calendar in context
+2. Priority text is present in context (by name)
+3. Stale facts (>90 days, unconfirmed, confidence < 0.7) are excluded
+4. Relationship context injected for people on today's calendar
+5. Relationship context NOT injected for people not on today's calendar
+6. Fill-the-gap question injected when fewer than 3 user-specific signals
+7. No fill-the-gap question when floor is met
+8. Low-confidence (< 0.5) facts get hedged with "last I heard"
+
+**Coordinate with M3-1/DC2-2/DC2-4 dispatch:** The M3-1 ticket (signal priority reorder + stale filter + personalization floor) and these tests are coupled — if you do T2-4 first, some assertions will fail until M3-1 lands. Recommended order: do M3-1+DC2-2+DC2-4 first, then T2-4 (tests validate the new behavior).
+
+- **Files:** `lib/briefing.ts` (extract `buildBriefingContext`), `lib/briefing.test.ts` (new test file)
+- **Preflight:** must be green before commit
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (M3-1 + DC2-2 + DC2-4 — Briefing context quality, 3 tickets)
+
+> Master at `076ce93`. `git merge master` first. Spec: `content/briefing-context-spec.md` — read it before starting.
+
+### Ticket 1 — Signal priority reorder in `lib/briefing.ts` (M3-1)
+
+Audit the context assembly in `lib/briefing.ts` against this priority order (highest → lowest):
+1. Outstanding commitments (tasks table, source='edg3', incomplete)
+2. Today's calendar (key/time-sensitive events only — omit routine gym/meals/habits)
+3. Active goals / priorities (priorities table + goal-category facts)
+4. Whoop recovery (if connected — one compact block; if null, don't reference it)
+5. Pattern memory (only when non-null and changes the recommendation — one sentence)
+6. Recent facts (active, learned_at >= 30 days ago)
+7. Relationship context (people-category facts — only for people on today's calendar)
+8. Episode memory
+9. Briefing context pack (pre-warmed 11pm; fall back to live assembly on miss)
+
+If total context exceeds 4,000 tokens: truncate from the bottom (lowest priority) first, never from the top.
+
+Also add the **90-day stale fact filter**: when assembling context, exclude any fact where `learned_at < (now - 90 days) AND last_confirmed_at IS NULL AND confidence_score < 0.7`. Keeps recently-confirmed old facts; removes truly stale ones. No schema changes needed — this is a WHERE clause addition.
+
+- **Files:** `lib/briefing.ts` only
+- **Test:** write a test with a user that has facts of different ages — verify stale facts are excluded from the context string; verify the priority order matches
+
+---
+
+### Ticket 2 — Personalization floor check (DC2-2)
+
+A briefing that doesn't reference ≥3 user-specific signals is a generic briefing. Add a floor check in the context assembler:
+
+**Minimum 3 user-specific signals required:**
+1. At least one active goal or priority (by name)
+2. At least one recent fact (preference, pattern, or relationship note, ≤30 days old)
+3. Any one of: Whoop recovery note, outstanding commitment, or a person from today's calendar with associated context
+
+**If the floor can't be met** (new user, thin data): inject a fill-the-gap question into the briefing prompt: `PERSONALIZATION FLOOR NOT MET — ask ONE fill-the-gap question at the start of the call: "I don't have much context on your priorities yet — what's the most important thing you're working on this week?" Do not proceed generically.`
+
+- **Files:** `lib/briefing.ts` only
+- **Test:** user with empty facts table → verify fill-the-gap question injected; user with 3 facts → verify normal briefing
+
+---
+
+### Ticket 3 — Section length guards (DC2-4)
+
+Target: briefing core content (commitments + priorities + calendar + closing question) ≤ 400 words, total call under 5 minutes.
+
+Add explicit length guards to three briefing sections in the prompt instructions in `lib/briefing.ts`:
+- **Section 3 (alignment check):** `[MAX 2 sentences: one observation + one offer. Example: "Your top priority has zero calendar blocks this week — want me to fix that?"]`
+- **Pattern memory injection:** `[ONE sentence only. The single most relevant pattern. Omit if it doesn't change the recommendation.]`
+- **Calendar narration:** `[Lead with the most time-sensitive event. Narrate the top 2–3 events that need attention — not every item on the calendar.]`
+
+Also add a dev-mode log at the end of the context assembly (log level `debug`): `console.debug('[briefing] context sections', {commitments: X, calendar: X, goals: X, whoop: X, patterns: X, facts: X, relationships: X, episodes: X})` where each X is the char count of that section. This lets us identify bloat from Railway logs without listening to every call.
+
+- **Files:** `lib/briefing.ts` only (prompt instruction strings + one console.debug)
+- **No new tests needed** — prompt instruction changes are validated by existing briefing tests
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (T3-1 part B — factPatterns.ts category fix)
+
+> Master at `87af54d`. `git merge master` first. 10-minute ticket. Coordinate with Vijay — do part B only after Vijay's DB constraint migration (T3-1 part A) merges to master.
+
+### Ticket 1 — Store pattern facts with category='pattern' in `lib/factPatterns.ts` (T3-1)
+
+**The gap:** `lib/factPatterns.ts` stores detected patterns as `category='fact'` + `source='historical-pattern'`. The dashboard has a dedicated Patterns section (`app/dashboard/page.tsx:2589`, ORDER includes `'pattern'`) but it's always empty. After Vijay adds `'pattern'` to the DB CHECK constraint, switch `factPatterns.ts` to use the correct category.
+
+**Fix:** In `lib/factPatterns.ts`, change the `upsertFact` calls from `category: 'fact'` to `category: 'pattern'`. Check for any type assertion that would need updating — the TypeScript type is updated as part of Vijay's DB change. Also update the briefing context assembly in `lib/briefing.ts` if it queries facts by `category='fact'` + `source='historical-pattern'` — switch it to `category='pattern'` after this lands.
+
+- **Files:** `lib/factPatterns.ts`, possibly `lib/briefing.ts` if it has a pattern-specific query
+- **Gate:** Do not merge until Vijay's T3-1 part A is in master (otherwise DB constraint will reject 'pattern' inserts)
+- **Test:** Trigger pattern detection, verify a row with `category='pattern'` appears in facts; verify it shows in "What Edge knows" Patterns section
+
+---
+
+## 📥 PM DISPATCH — 2026-06-18 (DC3-1 — Voice anchor phrases, 1 ticket)
+
+> Master at `3e2d129`. `git merge master` first. Short ticket — 30 min. Spec: `content/edge-voice-anchor-phrases.md`.
+
+### Ticket 1 — Add 5 voice anchor phrases to `lib/vapi.ts` (PILLAR-DAILY-CALL DC3-1)
+
+The spec is written. Add a `VOICE CONSISTENCY / ANCHOR PHRASES` block to `lib/vapi.ts` (in the PART 1 section, after GROUNDED & DECISIVE):
+
+```
+ANCHOR PHRASES — use these forms consistently every call. Content varies; structure stays fixed:
+- GREETING: "Morning [firstName] — [single most important thing]." Under 15 words after the dash. No pleasantries. No warm-up.
+- CALENDAR TRANSITION: "On the calendar today: [top 2–3 events]." One sentence. No narrating every item.
+- WHOOP NOTE (when data present): "[Recovery level] today — [one plain-English implication]." Never "your Whoop says." Just "Recovery's high today — good day to go after the hard stuff."
+- CLOSING QUESTION: One concrete action Edge can do RIGHT NOW. Never "is there anything else?" or "how does that sound?"
+- END OF CALL: "Got it. [Optional one-line action note.] Talk tomorrow." Three sentences max. No "have a great day."
+```
+
+This is content-only — no logic changes. One commit. Preflight must be green. Update Status Board.
 
 ---
 

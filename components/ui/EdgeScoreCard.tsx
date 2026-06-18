@@ -45,21 +45,21 @@ function scoreSummary(s: number): string {
   if (s >= 85) return "You're set up well today — keep going.";
   if (s >= 65) return 'Good shape. A couple of small things to shift.';
   if (s >= 35) return 'A few changes could make today stronger.';
-  return 'Today needs some work — Edge can help fix it.';
+  return 'Today needs some work — Edg3 can help fix it.';
 }
 
 function scoreCardBorder(s: number): string {
-  if (s >= 85) return 'rgba(34,197,94,0.20)';
-  if (s >= 65) return 'rgba(99,102,241,0.20)';
-  if (s >= 35) return 'rgba(245,158,11,0.15)';
-  return 'rgba(239,68,68,0.18)';
+  if (s >= 85) return 'var(--score-card-border-peak)';
+  if (s >= 65) return 'var(--score-card-border-high)';
+  if (s >= 35) return 'var(--score-card-border-mid)';
+  return 'var(--score-card-border-low)';
 }
 
 function scoreCardBg(s: number): string {
-  if (s >= 85) return 'rgba(34,197,94,0.03)';
+  if (s >= 85) return 'var(--score-card-bg-peak)';
   if (s >= 65) return 'transparent';
-  if (s >= 35) return 'rgba(245,158,11,0.025)';
-  return 'rgba(239,68,68,0.03)';
+  if (s >= 35) return 'var(--score-card-bg-mid)';
+  return 'var(--score-card-bg-low)';
 }
 
 // ── Calibrating arc (dashed pulse, no score label) ────────────────────────────
@@ -250,7 +250,7 @@ function ClarityPanel({ score }: { score: ScoreResult }) {
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score.score}%`, background: scoreColor(score.score) }} />
       </div>
       <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-        How clear a picture Edge has of you — connected sources + accumulated context
+        How clear a picture Edg3 has of you — connected sources + accumulated context
       </p>
       {achievements.length > 0 && (
         <ul className="space-y-1 mb-3">
@@ -306,7 +306,7 @@ function MomentumPanel({ score }: { score: ScoreResult }) {
       </p>
       {isCalibrating ? (
         <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-          You&apos;re on day 1 — Edge will track your consistency from here. Come back tomorrow to see it grow.
+          You&apos;re on day 1 — Edg3 will track your consistency from here. Come back tomorrow to see it grow.
         </p>
       ) : (
         score.drivers.length > 0 && (
@@ -330,7 +330,7 @@ function EdgeTrendSparkline({ history }: { history: { date: string; score: numbe
   if (history.length < 2) {
     return (
       <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-        Your 7-day trend appears here once Edge has a couple of days of scores.
+        Your 7-day trend appears here once Edg3 has a couple of days of scores.
       </p>
     );
   }
@@ -350,7 +350,7 @@ function EdgeTrendSparkline({ history }: { history: { date: string; score: numbe
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>Edge Score · last {n} days</p>
+        <p className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>Edg3 Score · last {n} days</p>
         <span className="text-xs font-semibold" style={{ color: stroke }}>
           {delta > 0 ? '▲' : delta < 0 ? '▼' : '→'} {Math.abs(delta)}
         </span>
@@ -467,7 +467,7 @@ export function EdgeScoreCard({
               {sparse ? 'Connect your calendar to get scored' : 'Scores appear after your first morning briefing.'}
             </p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Edge scores how well your day is set up against your focus areas and energy.
+              Edg3 scores how well your day is set up against your focus areas and energy.
             </p>
           </div>
         </div>
@@ -487,7 +487,7 @@ export function EdgeScoreCard({
               Learning your patterns
             </p>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Your Edge Score will appear after a few morning briefings — Edge is building your baseline.
+              Your Edg3 Score will appear after a few morning briefings — Edg3 is building your baseline.
             </p>
           </div>
         </div>
@@ -539,7 +539,7 @@ export function EdgeScoreCard({
           {change && change.direction !== 'flat' && (
             <p className="text-xs mb-2 leading-snug" style={{
               color: change.direction === 'down'
-                ? 'rgba(245,158,11,0.9)'
+                ? 'var(--edg-warning)'
                 : 'var(--gauge-peak)',
             }}>
               {change.direction === 'down' ? '↓' : '↑'} {Math.abs(change.delta)} {change.sinceLabel} · {change.reason}
@@ -582,7 +582,7 @@ export function EdgeScoreCard({
                 drivers={fit.energyScore.drivers}
                 topFix={fit.energyScore.topFix}
                 calibrating={calibrating && (calibratingHalf === 'energy' || calibratingHalf === 'both')}
-                calibratingNote="Connect Whoop so Edge can score your energy from real sleep + recovery data."
+                calibratingNote="Connect Whoop so Edg3 can score your energy from real sleep + recovery data."
               />
 
               {/* ── Clarity (optional — Core populates when ready) ── */}

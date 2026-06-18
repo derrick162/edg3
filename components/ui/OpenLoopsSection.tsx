@@ -200,7 +200,7 @@ function AllClear() {
         style={{
           background: 'var(--edg-success-tint)',
           border: '1.5px solid var(--edg-success-border)',
-          boxShadow: '0 0 20px rgba(16,185,129,0.12)',
+          boxShadow: 'var(--edg-success-glow)',
           animation: 'pop-in 0.4s ease both',
         }}
       >
@@ -210,7 +210,7 @@ function AllClear() {
         You&apos;re all caught up.
       </p>
       <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-        No open threads, commitments, or deadlines Edge is tracking right now.
+        No open threads, commitments, or deadlines Edg3 is tracking right now.
       </p>
     </div>
   );
@@ -247,7 +247,7 @@ export function OpenLoopsSection({ loops, onResolve, onDismiss }: OpenLoopsSecti
             ✦ OPEN LOOPS
           </p>
           <h3 className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-            Edge has got these tracked for you.
+            Edg3 has got these tracked for you.
           </h3>
         </div>
         <span
@@ -299,7 +299,7 @@ export function OpenLoopsSection({ loops, onResolve, onDismiss }: OpenLoopsSecti
 
       {/* Footer */}
       <p className="text-xs mt-4 pt-3" style={{ color: 'var(--text-faint)', borderTop: '1px solid var(--edg-hairline)' }}>
-        Edge picks these up from your calls and email. Dismiss anything that&apos;s no longer relevant.
+        Edg3 picks these up from your calls and email. Dismiss anything that&apos;s no longer relevant.
       </p>
     </div>
   );
