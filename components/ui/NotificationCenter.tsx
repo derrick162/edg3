@@ -139,7 +139,7 @@ function NotifRow({
         border: `1px solid ${typeBorder(type, n.read)}`,
         opacity: n.read && type === 'general' ? 0.55 : 1,
         animation: isCelebration && !n.read ? 'score-rise 0.4s ease both' : undefined,
-        boxShadow: isCelebration && !n.read ? '0 0 20px rgba(99,102,241,0.12)' : undefined,
+        boxShadow: isCelebration && !n.read ? 'var(--notif-celebrate-glow)' : undefined,
       }}
     >
       <div className="flex items-start gap-2.5">
@@ -148,7 +148,7 @@ function NotifRow({
           className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
           style={{
             background: n.read ? 'var(--edg-fill-04)' : typeBg(type, false),
-            boxShadow: isCelebration && !n.read ? '0 0 12px rgba(99,102,241,0.30)' : undefined,
+            boxShadow: isCelebration && !n.read ? 'var(--notif-celebrate-dot-glow)' : undefined,
             animation: isCelebration && !n.read ? 'pop-in 0.45s ease both' : undefined,
           }}
         >
