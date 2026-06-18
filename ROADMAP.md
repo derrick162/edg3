@@ -108,8 +108,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(🔨 **Starting Derrick dashboard-review batch** — tickets 1/2/3/9 first (score "why", focus context, gate panel, spam filter). CLAIMING `app/dashboard/page.tsx` + `lib/actionSummary.ts`. ⚠️ Multi-account Google UI blocked on Vijay's `GET /api/auth/accounts`.)_ | `app/dashboard/page.tsx`, `lib/actionSummary.ts` | 2026-06-18 |
-| 🔒 Security | `security` | _(✅ **T1-1 webhook retry + DLQ done (1809 green) — merged to master.** `lib/retry.ts` withRetry (3×, exp backoff) wraps transcript fetch; failed calls dead-lettered to `failed_webhooks`. Next: multi-account Google token layer.)_ | `app/api/vapi/webhook/route.ts`, `lib/retry.ts` | 2026-06-18 |
+| 🛠️ Core | `core` | _(🔨 **Dashboard review batch in progress** — tickets 4/5/6/7/10 shipped; tickets 1/2/3/9 next. Multi-account Google UI ready to start — Vijay's endpoint is live.)_ | `app/dashboard/page.tsx`, `lib/actionSummary.ts` | 2026-06-18 |
+| 🔒 Security | `security` | _(✅ **Multi-account Google linking token layer DONE (1832 green) — merged to master.** Separate `gmail_tokens` table; `GET /api/auth/accounts` live; `GET /api/auth/google/gmail` + disconnect route ready for Darren's UI. ⚠️ EXTERNAL: register GMAIL_REDIRECT_URI in Google console + set env var.)_ | `lib/google-auth.ts`, `lib/gmail.ts`, `lib/db.ts`, `app/api/auth/**` | 2026-06-18 |
 | 🔧 PM/CoS | `master` | _(🔄 **Merging second batch — security ✅ core in progress, design pending.** ⚠️ Derrick: push to prod + read `content/qa-log.md` AM action list.)_ | `ROADMAP*.md` | 2026-06-18 |
 | 🎨 Design | `design` | _(✅ **Dispatch queue exhausted**: M4-3b stamp+history+rollback, landing T3+T5, all PM dispatches audited complete (landing T1-T5, data consent screen, activation moment, T2 inbox receipts). 1803 green. No remaining open Design items in Trust/DC/Memory pillars.)_ | `app/dashboard/page.tsx`, `app/api/memory/`, `lib/db.ts`, `app/page.tsx` | 2026-06-18 |
 

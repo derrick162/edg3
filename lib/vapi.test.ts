@@ -100,6 +100,7 @@ describe('VOICES', () => {
     expect(VOICES.aria.provider).toBe('11labs');
     expect(VOICES.aria.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
     expect(VOICES.aria.model).toBe('eleven_turbo_v2_5');
+    expect((VOICES.aria as { speed?: number }).speed).toBeUndefined();
     expect(VOICES.aria.stability).toBe(0.4);
     expect(VOICES.aria.similarityBoost).toBe(0.7);
   });

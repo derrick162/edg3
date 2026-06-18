@@ -1,7 +1,7 @@
 import { google, gmail_v1 } from 'googleapis';
 import { getOAuthClient } from './calendar';
-import { getDb, calendarQueries, gmailQueries, auditLogQueries } from './db';
-import { hasGmailScope, hasGmailReadScope } from './google-auth';
+import { getDb, gmailQueries, auditLogQueries } from './db';
+import { hasGmailScope, hasGmailReadScope, getGmailTokens, getCalendarTokens, persistRefreshedToken, type ResolvedGoogleToken } from './google-auth';
 import { encryptField, decryptField } from './crypto';
 
 // Gmail access primitive for EDG3 — the GUARDED, DRAFT-ONLY entry point.
@@ -54,17 +54,16 @@ export interface DraftResult {
   threadId: string | null;
 }
 
-// True once the user has granted Gmail access (for onboarding/settings re-consent UI).
+// True once the user has granted Gmail compose access — checks the Gmail account if a
+// separate one is linked, else the calendar account (which carries gmail.compose).
 export function userHasGmailScope(userId: number): boolean {
-  return hasGmailScope(calendarQueries.get(userId)?.scope);
+  return hasGmailScope(getGmailTokens(userId)?.scope);
 }
 
-// Build a Gmail client from the user's stored Google token. Reuses the SAME OAuth client
-// and token row as the calendar (one grant), so it only works once the Gmail scope is granted.
-// Persists refreshed access tokens, preserving the existing scope grant.
-function gmailClientFor(userId: number): gmail_v1.Gmail {
-  const tokenRow = calendarQueries.get(userId);
-  if (!tokenRow) throw new GmailScopeError('No Google account is connected for this user.');
+// Build a Gmail client from an already-resolved Google token. The token's `source` tells
+// us which account's row to write a refreshed access token back to — so a refresh on the
+// dedicated Gmail account never overwrites the calendar account's row (and vice versa).
+function gmailClientFor(userId: number, tokenRow: ResolvedGoogleToken): gmail_v1.Gmail {
   const auth = getOAuthClient();
   auth.setCredentials({
     access_token: tokenRow.access_token,
@@ -73,13 +72,12 @@ function gmailClientFor(userId: number): gmail_v1.Gmail {
   });
   auth.on('tokens', (t) => {
     if (t.access_token) {
-      calendarQueries.upsert(
-        userId,
-        t.access_token,
-        t.refresh_token || tokenRow.refresh_token || '',
-        t.expiry_date?.toString() || '',
-        tokenRow.scope,
-      );
+      persistRefreshedToken(userId, tokenRow.source, {
+        access_token: t.access_token,
+        refresh_token: t.refresh_token || tokenRow.refresh_token || undefined,
+        expiry: t.expiry_date?.toString(),
+        scope: tokenRow.scope,
+      });
     }
   });
   return google.gmail({ version: 'v1', auth });
@@ -118,7 +116,9 @@ export async function createDraft(userId: number, input: DraftInput): Promise<Dr
     throw new Error('createDraft: a subject or body is required');
   }
 
-  const tokenRow = calendarQueries.get(userId);
+  // Drafts go through the dedicated Gmail account when linked (falls back to the
+  // calendar account's grant for existing single-account users).
+  const tokenRow = getGmailTokens(userId);
   if (!tokenRow) throw new GmailScopeError('No Google account is connected for this user.');
   if (!hasGmailScope(tokenRow.scope)) throw new GmailScopeError();
 
@@ -128,7 +128,7 @@ export async function createDraft(userId: number, input: DraftInput): Promise<Dr
     throw new GmailRateLimitError(`Draft limit reached (${DRAFTS_PER_HOUR}/hour). Try again later.`);
   }
 
-  const gmail = gmailClientFor(userId);
+  const gmail = gmailClientFor(userId, tokenRow);
   const res = await gmail.users.drafts.create({
     userId: 'me',
     requestBody: { message: { raw: buildRawMessage({ ...input, to }) } },
@@ -149,7 +149,10 @@ export async function createDraft(userId: number, input: DraftInput): Promise<Dr
 // Delete a Gmail draft by id — the inverse op for undo (lib/undo.ts `deleteDraft`).
 // Not rate-limited: undo must always be able to clean up. Still draft-only.
 export async function deleteDraft(userId: number, draftId: string): Promise<void> {
-  const gmail = gmailClientFor(userId);
+  // Must target the same account the draft was created on → resolve Gmail account first.
+  const tokenRow = getGmailTokens(userId);
+  if (!tokenRow) throw new GmailScopeError('No Google account is connected for this user.');
+  const gmail = gmailClientFor(userId, tokenRow);
   await gmail.users.drafts.delete({ userId: 'me', id: draftId });
   console.log(`[gmail] Draft deleted for user ${userId}: draftId=${draftId}`);
 }
@@ -188,12 +191,14 @@ function extractPlainText(payload?: gmail_v1.Schema$MessagePart): string {
 
 // Read a single Gmail thread's messages (read-only). Requires gmail.readonly.
 export async function readThread(userId: number, threadId: string): Promise<ThreadMessage[]> {
-  const tokenRow = calendarQueries.get(userId);
+  // Read ops require gmail.readonly, which is granted on the primary (calendar) account —
+  // the dedicated Gmail account is compose-only — so read from the calendar account.
+  const tokenRow = getCalendarTokens(userId);
   if (!tokenRow) throw new GmailScopeError('No Google account is connected for this user.');
   if (!hasGmailReadScope(tokenRow.scope)) {
     throw new GmailScopeError('Gmail read access not granted (gmail.readonly). The user must re-authorize Google.');
   }
-  const gmail = gmailClientFor(userId);
+  const gmail = gmailClientFor(userId, tokenRow);
   const res = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
   const messages = res.data.messages ?? [];
   return messages.map((m) => {
@@ -261,12 +266,14 @@ export async function getRecentEmailSignal(
   const days = Math.max(1, opts.days ?? 14);
   const max = Math.min(opts.max ?? 20, EMAIL_SIGNAL_CAP);
 
-  const tokenRow = calendarQueries.get(userId);
+  // Read ops use the calendar account (gmail.readonly lives there, not on the compose-only
+  // dedicated Gmail account).
+  const tokenRow = getCalendarTokens(userId);
   if (!tokenRow || !hasGmailReadScope(tokenRow.scope)) {
     return { items: [], fetchedAt, scopeMissing: true };
   }
 
-  const gmail = gmailClientFor(userId);
+  const gmail = gmailClientFor(userId, tokenRow);
 
   // List recent INBOX threads — Gmail returns id + snippet in the list response.
   // Exclude Promotions/Social/Forums (Gmail's own categories) so only Primary +

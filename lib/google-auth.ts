@@ -33,6 +33,130 @@ export const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.reado
 // Gmail scopes appended — existing users who granted fewer must re-consent.
 export const GOOGLE_SCOPES: string[] = [...CALENDAR_SCOPES, GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE];
 
+// --- Multi-account token routing ---------------------------------------------
+// A user has ONE primary Google account (calendar_tokens — calendar + gmail scopes)
+// and may link a SECOND account dedicated to Gmail (gmail_tokens). These accessors are
+// the single routing point so callers don't hard-code which table to read.
+
+import { calendarQueries, gmailTokenQueries } from './db';
+
+export type GoogleAccountSource = 'calendar' | 'gmail';
+
+export interface ResolvedGoogleToken {
+  access_token: string;
+  refresh_token: string | null;
+  expiry: string | null;
+  scope: string | null;
+  email: string | null;
+  /** Which table the token came from — refresh write-back must target the same one. */
+  source: GoogleAccountSource;
+}
+
+/** The primary (calendar) account's tokens, or undefined if not connected. */
+export function getCalendarTokens(userId: number): ResolvedGoogleToken | undefined {
+  const row = calendarQueries.get(userId);
+  if (!row) return undefined;
+  return { access_token: row.access_token, refresh_token: row.refresh_token, expiry: row.expiry, scope: row.scope, email: null, source: 'calendar' };
+}
+
+/**
+ * Gmail account tokens. If a dedicated Gmail account is linked, returns it; otherwise
+ * FALLS BACK to the calendar account (existing users draft email via their single grant,
+ * which carries gmail.compose). Undefined only if neither account exists.
+ */
+export function getGmailTokens(userId: number): ResolvedGoogleToken | undefined {
+  const g = gmailTokenQueries.get(userId);
+  if (g) return { access_token: g.access_token, refresh_token: g.refresh_token, expiry: g.expiry, scope: g.scope, email: g.email, source: 'gmail' };
+  return getCalendarTokens(userId);
+}
+
+/** Upsert the dedicated Gmail account's tokens (account_type='gmail' equivalent). */
+export function saveGmailTokens(
+  userId: number,
+  tokens: { access_token: string; refresh_token?: string | null; expiry?: string | null; scope?: string | null },
+  email?: string | null,
+): void {
+  gmailTokenQueries.upsert(userId, tokens.access_token, tokens.refresh_token ?? null, tokens.expiry ?? null, tokens.scope ?? null, email ?? null);
+}
+
+/** Disconnect ONLY the dedicated Gmail account (leaves the calendar account intact). */
+export function disconnectGmailAccount(userId: number): void {
+  gmailTokenQueries.delete(userId);
+}
+
+/** True if the user has linked a SEPARATE Gmail account (vs. only the calendar grant). */
+export function hasLinkedGmailAccount(userId: number): boolean {
+  return gmailTokenQueries.get(userId) !== undefined;
+}
+
+/**
+ * Persist a refreshed access token back to whichever account it came from. Used by the
+ * Gmail client's token-refresh listener so a refresh on the gmail account doesn't
+ * accidentally overwrite the calendar account's row (and vice versa).
+ */
+export function persistRefreshedToken(
+  userId: number,
+  source: GoogleAccountSource,
+  t: { access_token: string; refresh_token?: string | null; expiry?: string | null; scope?: string | null },
+): void {
+  if (source === 'gmail') {
+    gmailTokenQueries.upsert(userId, t.access_token, t.refresh_token ?? null, t.expiry ?? null, t.scope ?? null);
+  } else {
+    calendarQueries.upsert(userId, t.access_token, t.refresh_token ?? '', t.expiry ?? '', t.scope);
+  }
+}
+
+// --- Dedicated Gmail account OAuth flow --------------------------------------
+// The primary account's OAuth flow (client + code exchange) lives in lib/calendar.ts and
+// is hardcoded to the calendar redirect URI + scopes. The dedicated Gmail account needs its
+// OWN redirect URI and a compose-only scope set, so its flow lives here (Security-owned).
+// ⚠️ EXTERNAL STEP: GMAIL_REDIRECT_URI must be registered as an authorized redirect URI in
+// the Google Cloud console, and gmail.compose requires OAuth app verification before prod.
+
+function gmailRedirectUri(): string {
+  return process.env.GMAIL_REDIRECT_URI || 'http://localhost:3000/api/auth/google/gmail/callback';
+}
+
+// openid + email capture the linked account's address for the accounts-status UI; compose is
+// the only Gmail data scope (drafting). gmail.readonly stays on the primary account.
+export const GMAIL_ACCOUNT_SCOPES: string[] = ['openid', 'email', GMAIL_COMPOSE_SCOPE];
+
+export async function getGmailAuthUrl(state: string): Promise<string> {
+  const { google } = await import('googleapis');
+  const client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, gmailRedirectUri());
+  return client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: GMAIL_ACCOUNT_SCOPES, state });
+}
+
+export interface GmailTokenExchange {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  expiry_date?: number | null;
+  scope?: string | null;
+  id_token?: string | null;
+}
+
+export async function exchangeGmailCode(code: string): Promise<GmailTokenExchange> {
+  const { google } = await import('googleapis');
+  const client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, gmailRedirectUri());
+  const { tokens } = await client.getToken(code);
+  return tokens as GmailTokenExchange;
+}
+
+// Decode the `email` claim from a Google id_token (JWT). Signature verification is not
+// needed here: the token came directly from Google's token endpoint over TLS during the
+// code exchange. Returns null on any malformed input.
+export function emailFromIdToken(idToken?: string | null): string | null {
+  if (!idToken) return null;
+  try {
+    const payload = idToken.split('.')[1];
+    if (!payload) return null;
+    const json = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { email?: unknown };
+    return typeof json.email === 'string' ? json.email : null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Granted-scope reasoning -------------------------------------------------
 // Google returns the granted scopes as a space-delimited string on the token
 // response (`tokens.scope`). We persist it so we can detect re-consent needs
