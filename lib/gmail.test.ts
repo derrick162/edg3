@@ -17,6 +17,9 @@ const h = vi.hoisted(() => {
     threadsList,
     calGet: vi.fn(),
     upsert: vi.fn(),
+    gmailGet: vi.fn<() => unknown>(() => undefined), // no separate Gmail account linked by default
+    gmailUpsert: vi.fn(),
+    gmailDelete: vi.fn(),
     countSince: vi.fn(() => 0),
     logDraft: vi.fn(),
     auditRecord: vi.fn(),
@@ -31,6 +34,7 @@ vi.mock('./db', () => ({
     prepare: (_sql: string) => ({ get: h.dbGet }),
   }),
   calendarQueries: { get: h.calGet, upsert: h.upsert },
+  gmailTokenQueries: { get: h.gmailGet, upsert: h.gmailUpsert, delete: h.gmailDelete },
   gmailQueries: { countSince: h.countSince, logDraft: h.logDraft },
   auditLogQueries: { record: h.auditRecord },
 }));
