@@ -81,16 +81,22 @@ describe('T3-4 cascade clean — deleteUserData', () => {
       db.prepare("INSERT INTO call_attempts (user_id, scheduled_for, status) VALUES (?, '2026-06-18T07:00:00', 'connected')").run(uid);
       db.prepare("INSERT INTO briefing_context_packs (user_id, pack_date, context_pack) VALUES (?, '2026-06-18', 'ctx')").run(uid);
       db.prepare("INSERT INTO episodes (user_id, source, occurred_at, content_raw) VALUES (?, 'call', '2026-06-18', 'raw')").run(uid);
+      // Inter-child FK: focus_milestones.priority_id → priorities(id) (no ON DELETE action).
+      // Seeding both proves deleteUserData removes focus_milestones BEFORE priorities — a
+      // reorder that breaks this throws an FK error here, not silently in prod.
+      const p = db.prepare("INSERT INTO priorities (user_id, text, week_of, rank) VALUES (?, 'p', '2026-06-15', 1)").run(uid);
+      db.prepare("INSERT INTO focus_milestones (user_id, priority_id, title) VALUES (?, ?, 'm')").run(uid, p.lastInsertRowid as number);
     };
     seed(1);
     seed(2);
 
-    // Must not throw — proves FK ordering is correct with foreign_keys=ON.
+    // Must not throw — proves FK ordering is correct with foreign_keys=ON (incl. the
+    // facts→briefings and focus_milestones→priorities inter-child FK orderings).
     expect(() => deleteUserData(1)).not.toThrow();
 
     // Target user fully gone.
     expect(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id = 1').get()).toEqual({ n: 0 });
-    for (const t of ['tasks', 'facts', 'fact_history', 'support_messages', 'briefings', 'notifications', 'call_attempts', 'briefing_context_packs', 'episodes']) {
+    for (const t of ['tasks', 'facts', 'fact_history', 'support_messages', 'briefings', 'notifications', 'call_attempts', 'briefing_context_packs', 'episodes', 'priorities', 'focus_milestones']) {
       const row = db.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = 1`).get() as { n: number };
       expect(row.n, `${t} should have 0 rows for deleted user`).toBe(0);
     }
