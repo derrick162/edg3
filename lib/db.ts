@@ -2049,6 +2049,12 @@ export const focusMilestoneQueries = {
       'DELETE FROM focus_milestones WHERE id = ? AND user_id = ?'
     ).run(id, userId);
   },
+
+  updateTitle: (id: number, userId: number, title: string) => {
+    return getDb().prepare(
+      'UPDATE focus_milestones SET title = ? WHERE id = ? AND user_id = ?'
+    ).run(title, id, userId);
+  },
 };
 
 // Nightly pre-warmed briefing context. One row per user per day; upserted on regeneration.
