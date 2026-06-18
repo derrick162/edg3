@@ -14,6 +14,7 @@ import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, g
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
 import { topFacts } from './memorySalience';
+import { selectReconfirmationFact, buildReconfirmationPromptBlock } from './factConfidence';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries, dailyFocusQueries } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
@@ -578,13 +579,9 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     whoopStrain?.strain ?? null,
   );
   const whoopContextBlock = (() => {
-    if (!whoopSection) {
-      // DC2-3b: Whoop is connected but data unavailable — acknowledge honestly, don't silently skip.
-      if (whoopIsConnected) {
-        return '\nWHOOP CONNECTED BUT DATA UNAVAILABLE: Whoop is connected but health data couldn\'t be retrieved this morning (fetch may have timed out or the token needs refresh). Acknowledge this naturally in section 1 with one sentence: "I wasn\'t able to pull your Whoop data this morning — I\'ll try again for tomorrow." Don\'t dwell on it. Do not guess at recovery or energy.\n';
-      }
-      return '';
-    }
+    // DC2-3b honest "data unavailable" acknowledgment is handled by the inline WHOOP STATUS
+    // block in the prompt template below (whoopIsConnected && !whoopSection) — not duplicated here.
+    if (!whoopSection) return '';
     const lines = [`HEALTH DATA (WHOOP):\n${whoopSection}`];
     const freshness = whoopFreshnessNote(whoopRecovery?.date, whoopSleep?.date, today);
     if (freshness) lines.push(freshness);
@@ -620,6 +617,15 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     return '\n' + lines.join('\n') + '\n';
   })();
   const whoopConnected = whoopSection !== null;
+
+  // M4-1 / Round 6 Ticket 2: pick ONE low-confidence / long-unconfirmed fact to reconfirm
+  // naturally on the call. Edge hedges it ("last I heard…") and asks if it's still right,
+  // rather than stating a possibly-stale fact as current truth. Skips sensitive topics.
+  const reconfirmationFact = (() => {
+    try { return selectReconfirmationFact(allRawFacts, today); } catch { return null; }
+  })();
+  const reconfirmationBlock = buildReconfirmationPromptBlock(reconfirmationFact);
+
   // Priority staleness: if the most-recent week_of is > 7 days old, nudge once.
   const latestPriorities = priorities.length ? priorities : priorityQueries.getMostRecent(userId);
   const prioritiesWeekOf = latestPriorities[0]?.week_of ?? null;
@@ -845,6 +851,8 @@ YESTERDAY'S COMMITMENT (Edge captured this from the last call — the user said 
 - ${edg3Commitment.text}
 ` : ''}${episodeMemoryBlock ? `
 ${episodeMemoryBlock}
+` : ''}${reconfirmationBlock ? `
+${reconfirmationBlock}
 ` : ''}${openLoopsBlock ? `
 ${openLoopsBlock}
 When Edge detects an open loop: name the loop specifically ("you told CIBC you'd send the proposal by Friday") and offer to help close it (draft an email, block time, or just acknowledge — whatever fits). Surface at most 2 loops naturally in section 4 (Action Items) or section 6 (Closing). Never anxiety-inducing — calm and helpful.

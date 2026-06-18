@@ -1155,6 +1155,27 @@ Query: ${query}` }],
       ? `Got it — I've updated${topicLabel} in your memory.`
       : `Got it — I've saved${topicLabel} and will apply it going forward.`;
 
+  } else if (fn === 'confirmFact') {
+    // M4-1 / Round 6 Ticket 2: when Edge surfaces a low-confidence/stale fact and the user
+    // confirms it's still true (no correction), reset its confidence so it stops being
+    // flagged for reconfirmation. The model passes the topic (entity) or a statement fragment
+    // it just confirmed; we resolve the active fact and reset it. Corrections go through
+    // rememberPreference instead (retire + replace).
+    const { topic, statement } = args as { topic?: string; statement?: string };
+    const needle = (topic || statement || '').trim().toLowerCase();
+    if (!needle) return "Which fact should I mark as still current?";
+    let match = null as ReturnType<typeof factQueries.getAll>[number] | null;
+    try {
+      const active = factQueries.getAll(userId, { includeRetired: false });
+      // Prefer an entity match; fall back to a statement substring match.
+      match = active.find(f => f.entity?.toLowerCase() === needle)
+        ?? active.find(f => f.statement.toLowerCase().includes(needle))
+        ?? null;
+    } catch { /* degrade */ }
+    if (!match) return "I couldn't find that one to confirm — no harm, I'll keep what I have.";
+    try { factQueries.confirmFact(userId, match.id); } catch { /* non-critical */ }
+    return "Great — I've got that confirmed as current.";
+
   } else if (fn === 'checkReplies') {
     const tokenRow = calendarQueries.get(userId);
     const hasReadScope = hasGmailReadScope(tokenRow?.scope);

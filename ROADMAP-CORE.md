@@ -449,6 +449,14 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-MEMORY M4-1 + Round 6 Ticket 2 — mid-call fact reconfirmation (confidence decay now consumed).**
+  - Security's Round 6 T2 (confidence decay schema) has landed: `facts.confidence_score`, `facts.last_confirmed_at`, `factQueries.confirmFact`, and the weekly `decayFactConfidenceScores` cron all exist. This is the Core-side consumer — nothing read `confidence_score` before now.
+  - **New `lib/factConfidence.ts`** (pure, 0 I/O, 23 tests): `factConfidence` (default 1.0 for legacy rows), `daysSinceConfirmed` (last_confirmed_at → learned_at fallback), `isSensitiveFact` (keyword guard — health/relationship/finance skip spoken reconfirmation), `isUnverified` (score < 0.3 OR not confirmed 30+ days), `shouldHedge` (score < 0.5 OR stale), `selectReconfirmationFact` (single lowest-confidence non-sensitive active fact, ties broken by most-stale), `buildReconfirmationPromptBlock`. Dual signal (decay score OR recency) so it works even before the decay job's categories fully align.
+  - **`lib/briefing.ts`**: picks ONE reconfirmation fact per briefing → injects a `RECONFIRM ONE FACT` block instructing Edge to hedge ("last I heard…") and ask one natural confirmation question rather than stating a stale fact as truth. Also **removed the DC2-3b duplicate** — my prior commit's `whoopContextBlock` "data unavailable" string duplicated the pre-existing inline `WHOOP STATUS` block; reverted to avoid double instruction.
+  - **`confirmFact` tool** (`app/api/vapi/tool-call/route.ts`): when the user confirms a reconfirmed fact (no correction), resolves the active fact by topic/entity and calls `factQueries.confirmFact` → resets `confidence_score=1.0`, `last_confirmed_at=now`. Corrections still route through `rememberPreference` (retire+replace).
+  - **`lib/vapi.ts`**: RECONFIRM-A-FACT live-call guidance + `confirmFact(topic)` tool doc + placeholder toolId.
+  - 1735/1735 green, tsc clean, next build clean.
+  - ⚠️ **External step:** create `confirmFact` Vapi tool (param: `topic`, string, required) → paste UUID into `lib/vapi.ts` toolIds and uncomment.
 - **2026-06-18** — **QA checklist logged in `content/qa-log.md`.**
   - Code-verifiable items from all three pillars (Memory/Trust/Daily Call) marked pass/fail. Manual live-call items listed in priority order for next 7am call. Blocked/delegated items noted. 1712/1712 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-DAILY-CALL DC2-3b — honest Whoop data acknowledgment when fetch fails.**
