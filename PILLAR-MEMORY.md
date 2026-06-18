@@ -9,8 +9,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 1 — Storage (ground truth, correct and complete)
 
-### M1-1 — Episode store ingestion: wire all call sources (Core)
-**The risk:** The episode store exists but may not be receiving data from every call type. If calls aren't creating episodes, the entire self-learning flywheel has no fuel.
+### M1-1 — Episode store ingestion: wire all call sources (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `lib/episodeStore.ts` wired in `app/api/vapi/webhook/route.ts` (dynamic import, line 170, fire-and-forget); inserts episode per call with userId, source='call', transcript, extracted topics + commitments.
+~~**The risk:** The episode store exists but may not be receiving data from every call type. If calls aren't creating episodes, the entire self-learning flywheel has no fuel.~~
 - Audit the vapi webhook handler: after every call, does it write an episode to the `episodes` table?
 - If not: add `episodeQueries.insert(userId, 'call', occurredAt, encryptedTranscript, topics, commitments)` after transcript processing
 - Verify calendar events also produce episodes when they occur (or at briefing time)
@@ -49,8 +50,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Add a reconciliation step: if two active facts on the same entity+category exist (shouldn't happen, but check), retire the older one
 - Log every consolidation run: how many facts updated, how many retired, how many added
 
-### M2-2 — In-call memory trigger: immediate overwrite on correction (Core)
-**The status:** Dispatched in Round 5 T3. This item adds verification.
+### M2-2 — In-call memory trigger: immediate overwrite on correction (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `rememberPreference` tool-call handler in `app/api/vapi/tool-call/route.ts` (line 1109): retires conflicting active fact + inserts new one immediately (bi-temporal); before/after state logged to `fact_history`; spoken confirmation: "Got it — I've updated that in your memory."
+~~**The status:** Dispatched in Round 5 T3. This item adds verification.~~
 - When `rememberPreference` fires: log the before/after state to `fact_history`
 - Return spoken confirmation to the user: "Got it — I've updated [X]"
 - Test: during a call, say "actually my goal is now Y not X" — verify fact is updated before call ends and the next call's briefing reflects Y
@@ -78,10 +80,11 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 
 ## Tier 3 — Retrieval (the right memory at the right moment)
 
-### M3-1 — Briefing context relevance audit (Core)
+### M3-1 — Briefing context relevance audit (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/briefing-context-spec.md` — signal priority order, 90-day stale fact filter, personalization floor, target length. Routed to Darren (Core) via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch block.
 **The risk:** The briefing context assembler may be including stale, low-signal, or irrelevant facts — wasting context space that could go to higher-signal content.
 - Audit `lib/briefing.ts` context assembly: what's included? In what order? How much context does each section consume?
-- Reorder by signal priority: today's calendar + outstanding commitments + active goals → recent facts → Whoop recovery → pattern summary → relationship context
+- Reorder by signal priority: outstanding commitments → today's calendar → active goals → Whoop → patterns → recent facts (30d) → relationship context (calendar people only) → episodes → pre-warmed pack
 - Remove any fact older than 90 days from the default briefing context (they can still be retrieved on-demand but shouldn't auto-inject)
 - Test: compare briefing context before and after — is it tighter? Is the most important information in the first 1000 tokens?
 

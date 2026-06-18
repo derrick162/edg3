@@ -38,16 +38,16 @@ export interface DayPlanCardProps {
 
 const OP_ICONS: Record<PlanChangeOp, string> = {
   create:  '＋',
-  move:    '↗',
-  delete:  '✕',
-  recolor: '●',
+  move:    '◆',
+  delete:  '◆',
+  recolor: '◆',
 };
 
 const OP_COLORS: Record<PlanChangeOp, string> = {
   create:  'var(--edg-success)',
   move:    'var(--edg-indigo)',
-  delete:  'var(--edg-danger)',
-  recolor: 'var(--rec-medium)',
+  delete:  'var(--text-muted)',
+  recolor: 'var(--edg-indigo)',
 };
 
 function scoreDeltaColor(delta: number): string {
@@ -96,14 +96,26 @@ export function DayPlanCard({
   // ── No plan
   if (!plan) {
     return (
-      <div className="glass-card p-5 text-center" style={{ borderColor: 'var(--plan-border)' }}>
-        <p className="text-xl mb-2">✦</p>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-          Your day looks good
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          No changes needed — Edg3 will keep watching.
-        </p>
+      <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
+        <div className="flex items-start gap-3.5">
+          <div
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
+          >
+            <span style={{ color: 'var(--text-accent)', fontSize: 14 }}>✦</span>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-accent)' }}>
+              EDGE ASSESSMENT
+            </p>
+            <p className="text-sm font-bold leading-snug mb-0.5" style={{ color: 'var(--text-strong)' }}>
+              Your day looks well-aligned.
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Nothing needs reshaping right now. Edg3 will flag changes as your calendar fills in.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -177,7 +189,7 @@ export function DayPlanCard({
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ HERE&apos;S WHAT I&apos;D CHANGE
+            ✦ EDGE ASSESSMENT
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {plan.summary}

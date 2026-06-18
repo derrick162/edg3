@@ -350,7 +350,7 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
       >
         <span className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>ℹ</span>
         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-          You can also connect Gmail and Whoop from your dashboard after setup — Edge uses those to track email threads and your recovery score.
+          You can also connect Gmail and Whoop from your dashboard after setup — Edg3 uses those to track email threads and your recovery score.
         </p>
       </div>
 
