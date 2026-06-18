@@ -11,12 +11,12 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 > These are not infrastructure items. They are the moment-to-moment product experience that makes a user feel Edge is reliable, smart, and on their side. A user who sees their name spelled wrong, gets a duplicate notification, or hits a stale button loses trust faster than any server outage.
 
-### UX-1 — No stale or wrong UI copy anywhere (Core + Design)
+### UX-1 — No stale or wrong UI copy anywhere (Core + Design) — ✅ **LIVE (Darren)**
+**Shipped:** `app/page.tsx` — all "Edge" → "Edg3" on public-facing surfaces; "5 minutes" → "3 minutes" (hero, section heading, "How it works" step 1, features list, mock UI chip). Async note box references removed. 1652/1652 green.
 **Known bugs (log here as found):**
-- ~~`'📅 Book a time'` button on every notification~~ — **FIXED f1e1943** (removed hardcoded action)
-- Landing page copy says "5 minutes" — should be "3 minutes" to match the actual call (or whatever the agreed number is)
-- Landing page uses "Edge" not "Edg3" in multiple places — brand name must always be **Edg3** on public-facing surfaces (Derrick flagged 2026-06-17)
-- Any other copy that describes a feature we removed or changed (e.g., references to the async note box)
+- ~~`'📅 Book a time'` button on every notification~~ — **FIXED f1e1943**
+- ~~Landing page "5 minutes" → "3 minutes"~~ — **FIXED Darren**
+- ~~Landing page "Edge" → "Edg3"~~ — **FIXED Darren**
 - **Process:** when Derrick flags a copy bug, fix it same-session. No ticket needed. Copy bugs are trust destroyers.
 
 ### UX-2 — No duplicate contacts, facts, or events (Core + Design) — 📥 **DISPATCHED 2026-06-18**
@@ -91,11 +91,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Add a daily check: any failed webhooks in the last 24h? Log a warning to Railway so it's visible
 - Test: simulate a webhook failure mid-processing, verify retry fires, verify failure is logged
 
-### T1-2 — End-to-end call health check (Security + Core)
-**The risk:** A call can "succeed" in Vapi but fail to produce a briefing, a transcript, or a memory update. No one knows until the user notices.
-- After each call webhook: verify (a) transcript stored, (b) at least one fact extracted or updated, (c) episode record created. If any check fails, write a `call_health_events` log entry.
-- Weekly summary: how many calls in the last 7 days failed the health check? Surface in Railway logs.
-- Test: complete a real call end-to-end, verify all three checks pass
+### T1-2 — End-to-end call health check (Security + Core) — ✅ **CORE SIDE LIVE (DC0-1)**
+**Core side shipped:** Webhook handler tracks `{facts_ok, facts_extracted, episode_ok, flagged_for_review}` via `briefingQueries.updateLearningStatus` — covers all three DC0-1 checks (transcript stored on call-end, facts extracted, episode created). Zero-facts calls set `flagged_for_review: true`. **Security side** (`call_health_events` table + weekly summary) owned by Vijay.
+~~**The risk:** A call can "succeed" in Vapi but fail to produce a briefing, a transcript, or a memory update.~~
 
 ### T1-3 — Observability: single alert path + daily admin health digest (Security) — ✅ **FIXED 29373e1**
 **Shipped:** 6am health digest cron writes to `health_log` table + emits "HEALTH: OK"/"HEALTH: DEGRADED" log line; `background_job_failures` table logs every failed background job with error; `call_health_events` table logs post-call verification results; Railway log-based alerts fire on HEALTH: DEGRADED.
