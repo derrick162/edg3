@@ -480,9 +480,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const incompleteTasks = taskQueries.getIncomplete(userId);
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
   // source='edg3' tasks come from extractTasksFromTranscript at call end.
+  // M3-3: oldest (most overdue) edg3 commitment surfaces first — .at(0) on ASC-sorted array.
   const edg3Commitment = incompleteTasks
     .filter(t => t.source === 'edg3' && t.date < today)
-    .at(-1) ?? null;
+    .at(0) ?? null;
   // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
   // M4-2 Reliability Signal: 30-day window to derive per-horizon completion rates for calibrated language.
   const accountabilitySnapshot = (() => {

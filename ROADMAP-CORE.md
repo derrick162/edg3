@@ -481,6 +481,9 @@ Ship small / green / full preflight (real exit code) per item; log each below.
   - **DC2-1 — Forbid routine/predictable opener** (`lib/briefing.ts`): PART 1 instruction strengthened — "ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing)."
   - **DC2-3 — Commitments first in Part 1** (`lib/briefing.ts`): When `edg3Commitment` exists, it moves INTO Part 1 before the Edge Score — "Before the Edge Score, open with the commitment accountability line." Part 2 commitment opening removed to avoid repetition.
   - 1652/1652 green, tsc clean, next build clean.
+- **2026-06-18** — **PILLAR-MEMORY M3-3 — commitment tracking: 7-day window + oldest-first ordering.**
+  - `lib/db.ts` `taskQueries.getIncomplete`: widened window from `-1 days` → `-7 days` so edg3 commitments from the past week surface in the briefing (not just yesterday's).
+  - `lib/briefing.ts` `edg3Commitment`: changed from `.at(-1)` (most recent = newest) to `.at(0)` (oldest = most overdue). The most overdue commitment now opens the briefing, not the most recently-made one. 1706/1706 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-MEMORY M3-2 — on-demand memory retrieval: searchMemory Vapi tool.**
   - `app/api/vapi/tool-call/route.ts`: `searchMemory(query)` handler — searches active facts (all, including >90-day stale since user explicitly asked), episodes (topic match via `episodeQueries.search`), and memories (content substring). Returns up to 7 results as spoken lines. Degrades each source independently. If nothing found, offers to remember it now.
   - `lib/vapi.ts`: prompt instruction added — triggers on "what do you know about X?", "do you remember what I said about X?". Placeholder toolId comment added; external step: create tool in Vapi dashboard (param: `query: string, required`), paste UUID, uncomment.

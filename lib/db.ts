@@ -1269,7 +1269,7 @@ export const taskQueries = {
   },
   getIncomplete: (userId: number) => {
     return getDb().prepare(
-      "SELECT * FROM tasks WHERE user_id = ? AND completed = 0 AND date >= date('now', '-1 days') ORDER BY date ASC"
+      "SELECT * FROM tasks WHERE user_id = ? AND completed = 0 AND date >= date('now', '-7 days') ORDER BY date ASC"
     ).all(userId) as Task[];
   },
 };
