@@ -131,13 +131,18 @@ export async function POST(req: NextRequest) {
             });
         }
         if (transcript) {
-          extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
+          // DC0-2: measure call-end → memory-landed latency. Facts must be extracted well
+          // within 30 min of call end; this tracks the actual post-call processing time so a
+          // slow pipeline is visible (logged + stored on learning_status; warns past 2 min).
+          const briefingId = briefing.id;
+          const postCallStart = Date.now();
+
+          const taskP = extractTasksFromTranscript(briefing.user_id, transcript, user.timezone)
             .catch(err => console.error('Transcript task extraction failed:', err));
           // Compounding memory: extract durable structured facts and deduplicate against
           // existing ones. Fire-and-forget — never blocks the webhook response.
-          const briefingId = briefing.id;
           const t0 = Date.now();
-          import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
+          const factsP = import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
             .then((factsExtracted) => {
               const extractionMs = Date.now() - t0;
               const flagged = factsExtracted === 0;
@@ -150,21 +155,21 @@ export async function POST(req: NextRequest) {
             });
           // Sleep-time consolidation: one Haiku call resolves contradictions between the
           // transcript and stored facts via the bi-temporal retire+insert pipeline.
-          import('@/lib/facts').then(m => m.runSleepTimeConsolidation(briefing.user_id, transcript, user.name))
+          const consolidationP = import('@/lib/facts').then(m => m.runSleepTimeConsolidation(briefing.user_id, transcript, user.name))
             .then(() => briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: true }))
             .catch(err => {
               console.error('[webhook] Sleep-time consolidation failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: false, consolidation_error: String(err).slice(0, 200) });
             });
           // Extract open loops / commitments from the call transcript.
-          import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
+          const loopsP = import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
             .then(() => briefingQueries.updateLearningStatus(briefingId, { loops_ok: true }))
             .catch(err => {
               console.error('[webhook] Open loops extraction failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { loops_ok: false, loops_error: String(err).slice(0, 200) });
             });
           // Episode store: persist the raw (grounded) transcript for episodic recall.
-          import('@/lib/episodeStore').then(m => {
+          const episodeP = import('@/lib/episodeStore').then(m => {
             const priorities = (() => { try { return priorityQueries.getMostRecent(briefing.user_id); } catch { return []; } })();
             const taskTexts = (() => { try { return taskQueries.getRecent(briefing.user_id, 1).map(t => t.text); } catch { return []; } })();
             return m.persistCallEpisode(
@@ -180,6 +185,18 @@ export async function POST(req: NextRequest) {
               console.error('[webhook] Episode store failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { episode_ok: false, episode_error: String(err).slice(0, 200) });
             });
+
+          // DC0-2: once all memory jobs settle, record total latency. A line the Security
+          // health digest (T1-3) can scrape; warns when it exceeds the 2-minute target.
+          Promise.allSettled([taskP, factsP, consolidationP, loopsP, episodeP]).then(() => {
+            const postCallMs = Date.now() - postCallStart;
+            briefingQueries.updateLearningStatus(briefingId, { post_call_ms: postCallMs });
+            if (postCallMs > 120_000) {
+              console.warn(`[DC0-2] HEALTH: post-call memory pipeline took ${postCallMs}ms for briefing ${briefingId} (target ≤120000ms)`);
+            } else {
+              console.log(`[DC0-2] post-call memory pipeline ${postCallMs}ms for briefing ${briefingId}`);
+            }
+          });
         }
 
         // 3. Verify promises — READ-ONLY. Compares verbal promises vs tool_actions/calendar and
