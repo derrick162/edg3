@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
+import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
@@ -554,6 +555,8 @@ function ActivityTab() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error' | 'none'
   const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error' | 'none'>>({});
+  // Ticket 10: which email-receipts have their full thread list expanded ("+N more threads")
+  const [expandedReceipts, setExpandedReceipts] = useState<Set<number>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -808,27 +811,58 @@ function ActivityTab() {
                                     {state === 'error' ? "Couldn't load subjects for this scan." : 'No subject lines recorded — newer scans will show them here.'}
                                   </p>
                                 ) : Array.isArray(state) ? (() => {
-                                  const flagged = state.filter(isFlagged);
-                                  const rest = state.filter(s => !isFlagged(s));
+                                  // Ticket 9: hide automated noise (receipts, promos, newsletters,
+                                  // system mail) — keep real correspondence + flagged-keyword threads.
+                                  const visible = filterReviewedSubjects(state, isFlagged);
+                                  if (visible.length === 0) {
+                                    return (
+                                      <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)' }}>
+                                        Just automated mail this scan — receipts and newsletters, nothing that needed you.
+                                      </p>
+                                    );
+                                  }
+                                  const flagged = visible.filter(isFlagged);
+                                  const rest = visible.filter(s => !isFlagged(s));
                                   const SHOW = 10;
-                                  const overflow = state.length - SHOW;
+                                  // Ticket 10: "+N more threads" expands the full list inline.
+                                  const rid = item.emailReceiptId!;
+                                  const isExpanded = expandedReceipts.has(rid);
+                                  const flaggedShown = isExpanded ? flagged : flagged.slice(0, SHOW);
+                                  const restShown = rest.slice(0, isExpanded ? rest.length : Math.max(0, SHOW - flaggedShown.length));
+                                  const overflow = visible.length - (flaggedShown.length + restShown.length);
+                                  const toggleExpand = (open: boolean) => setExpandedReceipts(prev => {
+                                    const n = new Set(prev);
+                                    if (open) n.add(rid); else n.delete(rid);
+                                    return n;
+                                  });
                                   return (
                                     <div className="space-y-1">
-                                      {flagged.slice(0, SHOW).map((s, i) => (
+                                      {flaggedShown.map((s, i) => (
                                         <div key={`f${i}`} className="flex items-start gap-2 text-xs px-2.5 py-1.5 rounded-lg"
                                              style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)' }}>
                                           <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--edg-warning)' }}>⚑</span>
                                           <span className="leading-snug">{s}</span>
                                         </div>
                                       ))}
-                                      {rest.slice(0, Math.max(0, SHOW - flagged.length)).map((s, i) => (
+                                      {restShown.map((s, i) => (
                                         <div key={`r${i}`} className="text-xs px-2.5 py-1.5 rounded-lg leading-snug"
                                              style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)' }}>
                                           {s}
                                         </div>
                                       ))}
                                       {overflow > 0 && (
-                                        <p className="pt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more threads</p>
+                                        <button onClick={() => toggleExpand(true)}
+                                          className="pt-0.5 text-xs text-left transition-opacity hover:opacity-80"
+                                          style={{ color: 'var(--text-accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                                          + {overflow} more thread{overflow !== 1 ? 's' : ''}
+                                        </button>
+                                      )}
+                                      {isExpanded && visible.length > SHOW && (
+                                        <button onClick={() => toggleExpand(false)}
+                                          className="pt-0.5 text-xs text-left transition-opacity hover:opacity-80"
+                                          style={{ color: 'var(--text-accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                                          Show less
+                                        </button>
                                       )}
                                       <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
                                         Edg3 reads subject lines only — never message content.
@@ -1033,9 +1067,6 @@ function FocusScoreboardPanel() {
 
   const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
   const trendWeeks = data.weeklyTrend.slice(-4);
-  const maxTrendHours = trendWeeks.length > 0
-    ? Math.max(...trendWeeks.flatMap(w => data.perPriority.map(p => w.perPriority[p.text] ?? 0)), 1)
-    : 1;
 
   const trendDelta = (text: string): { arrow: string; up: boolean; flat: boolean } => {
     const weeks = trendWeeks.map(w => w.perPriority[text] ?? 0);
@@ -1066,7 +1097,6 @@ function FocusScoreboardPanel() {
       <div className="space-y-3 mb-5">
         {data.perPriority.map(p => {
           const barPct    = maxHours > 0 ? Math.round((p.hoursThisWeek  / maxHours) * 100) : 0;
-          const avgBarPct = maxHours > 0 ? Math.round((p.weeklyAvgHours / maxHours) * 100) : 0;
           const delta     = trendDelta(p.text);
           const energy    = p.energyCost ? ENERGY_COLOR[p.energyCost] : null;
           const allDone   = p.milestoneTotal > 0 && p.milestoneDone === p.milestoneTotal;
@@ -1108,7 +1138,8 @@ function FocusScoreboardPanel() {
                 </div>
               </div>
 
-              {/* Hours bar with avg tick */}
+              {/* Hours bar (ticket 6: removed the running weekly-average tick — meaningless when
+                  priorities change week to week; hours-this-week is the honest metric) */}
               <div className="relative mb-1">
                 <div className="rounded-full overflow-hidden" style={{ height: 8, background: 'var(--edg-accent-08)' }}>
                   <div className="h-full rounded-full transition-all duration-500"
@@ -1121,12 +1152,6 @@ function FocusScoreboardPanel() {
                         : 'rgba(99,102,241,0.5)',
                     }} />
                 </div>
-                {/* Avg marker tick */}
-                {avgBarPct > 0 && Math.abs(avgBarPct - barPct) > 3 && (
-                  <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${avgBarPct}%` }}>
-                    <div style={{ width: 2, height: 12, marginTop: -2, background: 'var(--text-faint)', borderRadius: 1, opacity: 0.5 }} />
-                  </div>
-                )}
               </div>
 
               {/* Hours label */}
@@ -1134,9 +1159,6 @@ function FocusScoreboardPanel() {
                 <span style={{ color: p.hoursThisWeek > 0 ? 'var(--text-muted)' : 'var(--text-faint)' }}>
                   {p.hoursThisWeek > 0 ? `${p.hoursThisWeek}h this week` : 'No time logged yet'}
                 </span>
-                {p.weeklyAvgHours > 0 && (
-                  <span>avg {p.weeklyAvgHours}h/wk</span>
-                )}
               </div>
 
               {/* Milestone dots */}
@@ -1157,52 +1179,84 @@ function FocusScoreboardPanel() {
         })}
       </div>
 
-      {/* 4-week heatmap table */}
-      {trendWeeks.length >= 2 && (
-        <div className="glass-card p-4 overflow-x-auto">
-          <p className="text-xs mb-3 font-medium" style={{ color: 'var(--text-faint)' }}>
-            {data.weeksBack}-week trend
-          </p>
-          <table className="text-xs w-full" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
-            <thead>
-              <tr>
-                <th className="text-left pb-1 font-normal pr-4" style={{ color: 'var(--text-faint)', minWidth: 100 }}>
-                  Priority
-                </th>
-                {trendWeeks.map(w => (
-                  <th key={w.weekStart} className="text-center pb-1 px-1 font-normal"
-                    style={{ color: 'var(--text-faint)', minWidth: 48 }}>
-                    {w.weekLabel}
-                  </th>
+      {/* Ticket 7: browsable priority history (replaced the fixed 4-week heatmap, which didn't
+          age well as priorities change). Reads actual per-week priority sets via a range toggle. */}
+      <PriorityHistory />
+    </div>
+  );
+}
+
+// Browsable priority history (dashboard ticket 7). Shows what the user's priorities WERE each
+// week over a selectable window — gracefully handles changing priorities and gets more useful
+// over time. Backed by GET /api/priorities/history.
+function PriorityHistory() {
+  const RANGES: ReadonlyArray<readonly [string, string]> = [
+    ['1mo', '1M'], ['3mo', '3M'], ['6mo', '6M'], ['12mo', '1Y'],
+  ];
+  const [range, setRange] = useState<string>('3mo');
+  const [weeks, setWeeks] = useState<{ weekOf: string; priorities: { text: string; rank: number }[] }[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/priorities/history?range=${range}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) { setWeeks(d?.weeks ?? []); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setWeeks([]); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [range]);
+
+  const fmtWeek = (weekOf: string) => {
+    const d = new Date(weekOf + 'T12:00:00Z');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  };
+
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>Priority history</p>
+        <div className="flex gap-1">
+          {RANGES.map(([val, label]) => (
+            <button key={val} onClick={() => setRange(val)}
+              className="text-xs px-2 py-0.5 rounded-full transition-colors"
+              style={{
+                background: range === val ? 'var(--edg-accent-15)' : 'transparent',
+                color: range === val ? 'var(--text-accent)' : 'var(--text-faint)',
+                border: 'none', cursor: 'pointer',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="space-y-2 animate-pulse">
+          {[70, 55, 60].map((w, i) => (
+            <div key={i} className="h-7 rounded" style={{ background: 'var(--edg-fill-04)', width: `${w}%` }} />
+          ))}
+        </div>
+      ) : !weeks || weeks.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+          No priority history yet for this range — it builds as you set priorities each week.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {weeks.map(w => (
+            <div key={w.weekOf} className="flex gap-3">
+              <span className="text-xs font-medium flex-shrink-0 pt-0.5" style={{ color: 'var(--text-faint)', minWidth: 48 }}>
+                {fmtWeek(w.weekOf)}
+              </span>
+              <div className="flex flex-wrap gap-1.5 min-w-0">
+                {w.priorities.map((p, i) => (
+                  <span key={i} className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: 'var(--edg-accent-08)', color: 'var(--text-muted)' }}>
+                    {p.text}
+                  </span>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.perPriority.map(p => (
-                <tr key={p.id}>
-                  <td className="pr-4 py-0.5 font-medium" style={{ color: 'var(--text-muted)', maxWidth: 120 }}>
-                    <span className="block truncate">{p.text.length > 16 ? p.text.slice(0, 14) + '…' : p.text}</span>
-                  </td>
-                  {trendWeeks.map(w => {
-                    const h = w.perPriority[p.text] ?? 0;
-                    const intensity = maxTrendHours > 0 ? h / maxTrendHours : 0;
-                    return (
-                      <td key={w.weekStart} className="text-center px-1 py-0.5">
-                        <span className="inline-block rounded px-1.5 py-0.5 font-medium transition-all"
-                          style={{
-                            background: h > 0 ? `rgba(99,102,241,${0.08 + intensity * 0.28})` : 'transparent',
-                            color: h > 0 ? `rgba(199,210,254,${0.6 + intensity * 0.4})` : 'var(--text-faint)',
-                            minWidth: 32,
-                          }}>
-                          {h > 0 ? `${h}h` : '—'}
-                        </span>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -2206,14 +2260,26 @@ export default function Dashboard() {
               {/* Today's focus recommendations */}
               {focusLockedAreas ? (
                 <div className="glass-card p-4">
+                  {/* Ticket 4: locked-in state — green check header + per-item checks so confirming
+                      feels like a moment (the proposal card unmounts; this replaces it). */}
                   <div className="flex items-center gap-2 mb-2">
-                    <span style={{ color: 'var(--edg-indigo)' }}>🎯</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s focus — set for today</span>
+                    <span style={{ color: 'var(--edg-success)', fontWeight: 700 }}>✓</span>
+                    {/* Ticket 5: canonical daily label is "Today's Focus" (weekly screen = "Focus this week") */}
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s Focus · Locked in</span>
                   </div>
-                  <ol className="list-none space-y-1">
+                  <ol className="list-none space-y-2">
                     {focusLockedAreas.map((a, i) => (
-                      <li key={i} style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                        <span style={{ color: 'var(--edg-indigo)', fontWeight: 600, marginRight: '0.5rem' }}>{i + 1}.</span>{a.title}
+                      <li key={i} className="flex gap-2" style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                        <span style={{ color: 'var(--edg-success)', fontWeight: 700, flexShrink: 0 }}>✓</span>
+                        <div className="flex-1 min-w-0">
+                          <span style={{ fontWeight: 500 }}>{a.title}</span>
+                          {/* Ticket 2: one-line context so the focus list isn't a bare to-do list */}
+                          {a.rationale?.trim() && (
+                            <p style={{ color: 'var(--text-faint)', fontSize: '0.75rem', marginTop: '0.125rem', lineHeight: 1.4 }}>
+                              {a.rationale}
+                            </p>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ol>

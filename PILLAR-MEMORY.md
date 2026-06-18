@@ -78,13 +78,9 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 
 ## Tier 3 — Retrieval (the right memory at the right moment)
 
-### M3-1 — Briefing context relevance audit (Core) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/briefing-context-spec.md` — signal priority order, 90-day stale fact filter, personalization floor, target length. Routed to Darren (Core) via ROADMAP-CORE.md M3-1/DC2-2/DC2-4 dispatch block.
-**The risk:** The briefing context assembler may be including stale, low-signal, or irrelevant facts — wasting context space that could go to higher-signal content.
-- Audit `lib/briefing.ts` context assembly: what's included? In what order? How much context does each section consume?
-- Reorder by signal priority: outstanding commitments → today's calendar → active goals → Whoop → patterns → recent facts (30d) → relationship context (calendar people only) → episodes → pre-warmed pack
-- Remove any fact older than 90 days from the default briefing context (they can still be retrieved on-demand but shouldn't auto-inject)
-- Test: compare briefing context before and after — is it tighter? Is the most important information in the first 1000 tokens?
+### M3-1 — Briefing context relevance audit (Core) — ✅ **LIVE (Darren + Loop 7)**
+**Shipped:** `filterStale: true` passed to all `topFacts` calls in `lib/briefing.ts` (live 7am path + 11pm context-pack path). Loop 7 added `isStaleForBriefing(fact, today)` in `lib/memorySalience.ts` — 3-condition guard: old (>90d) AND confidence_score < 0.7 AND last_confirmed_at stale. Recently-reconfirmed old facts stay in context; truly abandoned facts are excluded. Fixed gap: `salientFactsEarly` was missing `filterStale: true` (11pm pack had it, 7am call didn't — now consistent).
+~~**The risk:** The briefing context assembler may be including stale, low-signal, or irrelevant facts — wasting context space that could go to higher-signal content.~~
 
 ### M3-2 — On-demand memory retrieval mid-call (Core) — ✅ **LIVE (Round 5)**
 **Shipped:** `searchMemory` tool registered in `app/api/vapi/tool-call/route.ts`; searches `facts` + `episodes` + `memories` by query; `lib/vapi.ts` prompt registers trigger phrases ("what did I tell you about…", "do you remember…", "what's my…"). External: create `searchMemory` tool in Vapi dashboard (param `query`, string, required) + paste UUID into `lib/vapi.ts` toolIds.
@@ -123,13 +119,9 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 - Semantic facts are stored with category `semantic` and carry a `source_episode_ids` reference
 - Test: insert 5 episodes with a shared theme, trigger consolidation, verify semantic fact is generated
 
-### M4-3b — Memory block versioning + rollback (Core)
-**The gap (Kevin):** Letta uses git-backed memory — every write is a commit, every bad extraction is a revert. Edge has no equivalent. A bad extraction run can overwrite accurate facts with no recovery path and no audit trail of when Edge learned something.
-- Extend `fact_history` (from M1-4) to be the versioned log: every fact write (insert or retire) appends a row with `{factId, statement, action: 'created'|'retired', at, source: 'extraction'|'manual'|'consolidation'}`
-- Add a `rollback_fact(factId, toVersion)` function: retire the current fact and restore the version from `fact_history`
-- In the "What Edge knows" UI: show "learned [date]" per fact. If a fact was updated, show "updated [date]" with an expand to see the previous version.
-- This enables: (a) Derrick can see when Edge learned something, (b) Vijay can roll back a bad extraction batch by reverting all facts inserted in a time window
-- Test: insert a fact, update it, verify `fact_history` has both versions, verify rollback restores the previous version
+### M4-3b — Memory block versioning + rollback (Core) — ✅ **LIVE (Darren)**
+**Shipped:** `lib/db.ts` `upsertFact` both INSERT paths now call `snapshotFactToHistory(newId, userId, 'created')` — every fact creation logged to `fact_history`. `factHistoryQueries.rollbackFact(userId, historyId)` — reads history row, retires current active fact, re-inserts historical statement as new active with `confidence='high'`. Statement ciphertext copied byte-for-byte (no re-encryption). 6 new tests in `lib/db-facts.test.ts`. 1712/1712 green.
+~~**The gap (Kevin):** Letta uses git-backed memory — every write is a commit, every bad extraction is a revert.~~
 
 ### M4-4 — Social mental models: per-person context (Core)
 **BLOCKED:** Gated on People-extraction cleanup merge (hallucinated contacts must be fixed first).

@@ -30,14 +30,38 @@ function pickDominantComponent(
   return focusDelta >= energyDelta ? current.focusScore : current.energyScore;
 }
 
+// Drivers are concrete state fragments ("'fundraising' has zero hours scheduled this week.",
+// "Today's focus locked in — Momentum boosted."). Some are positive, some are problems. The
+// reason must match the delta's DIRECTION — otherwise we'd say "Up 16 because focus not
+// confirmed yet" (a negative driver attached to an upward move). These hints flag problem drivers.
+const NEGATIVE_HINTS = [
+  'zero hours', 'not connected', 'not granted', 'unavailable', "can't", 'cannot', 'not yet',
+  'could use', 'no preference', 'estimated, not measured', 'reconnect', "couldn't", 'not measured',
+  'biggest time sink', 'no ', "couldn’t",
+];
+
+function isNegativeDriver(d: string): boolean {
+  const s = d.toLowerCase();
+  return NEGATIVE_HINTS.some(h => s.includes(h));
+}
+
+// Strip trailing period + the decorative "✦" so the fragment reads cleanly inside a sentence.
+function cleanClause(d: string): string {
+  return d.replace(/\s*✦\s*$/, '').replace(/\.+$/, '').trim();
+}
+
 function buildReason(component: ComponentSnap, direction: 'up' | 'down' | 'flat'): string {
   if (direction === 'up') {
-    return component.drivers[0] ?? 'your calendar is better aligned';
+    // Prefer a positive driver — never explain a rise with a problem statement.
+    const positive = component.drivers.find(d => !isNegativeDriver(d));
+    return cleanClause(positive ?? component.drivers[0] ?? 'your calendar is better aligned');
   }
   if (direction === 'down') {
-    return component.topFix?.description ?? component.drivers[0] ?? 'your calendar could use a tune-up';
+    if (component.topFix?.description) return cleanClause(component.topFix.description);
+    const negative = component.drivers.find(isNegativeDriver);
+    return cleanClause(negative ?? component.drivers[0] ?? 'your calendar could use a tune-up');
   }
-  return component.drivers[0] ?? 'no major changes';
+  return cleanClause(component.drivers[0] ?? 'no major changes');
 }
 
 function buildSinceLabel(prevDate: string, today: string): string {
