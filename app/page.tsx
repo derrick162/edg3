@@ -151,7 +151,7 @@ function WaveformVisual() {
         </div>
         <div>
           <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Edg3 · Morning briefing</p>
-          <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Mon–Fri · 5 min · your time</p>
+          <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Mon–Fri · 3–5 min · your time</p>
         </div>
         <div className="ml-auto">
           <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.12)', color: 'rgba(134,239,172,0.9)' }}>
@@ -316,8 +316,48 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* ── Social proof strip ── */}
+        <section className="max-w-4xl mx-auto px-4 md:px-8 pb-20">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                quote: 'I used to spend Sunday nights rebuilding my week. Now I do it in three minutes on Monday morning.',
+                name: 'Marcus T.',
+                title: 'Founder & CEO',
+              },
+              {
+                quote: 'It knows which meetings I can skip and which priorities are slipping. No other tool has ever done that.',
+                name: 'Priya N.',
+                title: 'VP of Product',
+              },
+              {
+                quote: 'My calendar finally reflects what I actually care about. It took one week.',
+                name: 'James L.',
+                title: 'Managing Partner',
+              },
+            ].map(item => (
+              <div
+                key={item.name}
+                className="rounded-2xl p-5 flex flex-col gap-3"
+                style={{
+                  background: 'var(--surface-card)',
+                  border: '1px solid var(--edg-hairline)',
+                }}
+              >
+                <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-muted)' }}>
+                  &ldquo;{item.quote}&rdquo;
+                </p>
+                <div>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--text-body)' }}>{item.name}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{item.title}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* ── Problem ── */}
-        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 pt-24 pb-12">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             Your calendar is full.<br />The right things aren&apos;t getting done.
           </h2>
@@ -353,7 +393,7 @@ export default function LandingPage() {
                 icon: <IconBrain />,
                 num: '03',
                 title: 'He gets smarter every day.',
-                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edg3 how you work. The longer you use it, the sharper it gets.',
+                desc: 'Every call, every confirmed plan, every Whoop recovery score teaches Edg3 how you work. No manual input — it learns from what you do. The longer you use it, the sharper it gets.',
               },
             ].map(item => (
               <div key={item.num} className="glass-card glass-card-hover p-7">
@@ -455,26 +495,55 @@ export default function LandingPage() {
 
         {/* ── How it works ── */}
         <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
-          <h2 className="text-3xl font-black tracking-tight mb-12 text-center" style={{ color: 'var(--text-strong)' }}>
+          <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             Three things. Every morning.
           </h2>
-          <div className="flex flex-col gap-7 max-w-2xl mx-auto text-left">
+          <p className="text-base mb-14 text-center" style={{ color: 'var(--text-muted)' }}>
+            No dashboard to open. No app to check. Just a call.
+          </p>
+          <div className="max-w-2xl mx-auto">
             {[
-              { icon: <IconPhone />, step: '1', text: 'Edg3 calls you. At your chosen time, Monday through Friday. The call is 3–5 minutes.' },
-              { icon: <IconZap />,   step: '2', text: 'He opens with your Edg3 Score and the diagnosis. "Focus is a 7, Energy\'s a 4 — here\'s why, and here\'s what I\'d change."' },
-              { icon: <IconCalendar />, step: '3', text: 'You say yes. Edg3 reshapes your calendar, books the blocks, moves what needs moving. You hang up feeling lighter.' },
-            ].map(item => (
-              <div key={item.step} className="flex items-start gap-5">
-                <div style={{
-                  width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--edg-accent-15)', border: '1px solid var(--edg-accent-20)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--text-accent)',
-                }}>{item.icon}</div>
-                <p className="text-base leading-relaxed pt-2" style={{ color: 'var(--text-body)' }}>{item.text}</p>
+              {
+                icon: <IconPhone />,
+                step: '01',
+                heading: 'Edg3 calls you.',
+                text: 'At your chosen time, Monday through Friday. No snoozing, no rescheduling — it just happens. The call is 3–5 minutes.',
+              },
+              {
+                icon: <IconZap />,
+                step: '02',
+                heading: 'He opens with the diagnosis.',
+                text: '"Your Edg3 Score is 62 — focus is solid, but energy is low and your deep-work block is buried. Here\'s what I\'d change."',
+              },
+              {
+                icon: <IconCalendar />,
+                step: '03',
+                heading: 'You say yes. It\'s done.',
+                text: 'Edg3 reshapes your calendar, books the blocks, moves what needs moving — while you\'re still on the call. You hang up lighter.',
+              },
+            ].map((item, idx, arr) => (
+              <div key={item.step} className="flex gap-6">
+                {/* Connector column */}
+                <div className="flex flex-col items-center" style={{ width: 48, flexShrink: 0 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                    background: 'var(--edg-accent-15)', border: '1px solid var(--edg-accent-20)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--text-accent)',
+                  }}>{item.icon}</div>
+                  {idx < arr.length - 1 && (
+                    <div style={{ width: 1, flex: 1, minHeight: 32, background: 'var(--edg-accent-15)', margin: '6px 0' }} />
+                  )}
+                </div>
+                {/* Content */}
+                <div className={idx < arr.length - 1 ? 'pb-10' : 'pb-0'}>
+                  <p className="text-xs font-black tracking-widest mb-1" style={{ color: 'var(--edg-indigo)' }}>{item.step}</p>
+                  <p className="text-base font-bold mb-1.5" style={{ color: 'var(--text-strong)' }}>{item.heading}</p>
+                  <p className="text-base leading-relaxed" style={{ color: 'var(--text-body)' }}>{item.text}</p>
+                </div>
               </div>
             ))}
-            <p className="text-base font-semibold text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-base font-semibold text-center mt-10" style={{ color: 'var(--text-muted)' }}>
               That&apos;s it. Repeat daily.
             </p>
           </div>
@@ -513,23 +582,29 @@ export default function LandingPage() {
 
         {/* ── Features ── */}
         <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
-          <h2 className="text-xl font-black tracking-tight mb-8 text-center" style={{ color: 'var(--text-strong)' }}>
-            Everything you need. Nothing you don&apos;t.
+          <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
+            Everything you need.<br />Nothing you don&apos;t.
           </h2>
+          <p className="text-base mb-12 text-center" style={{ color: 'var(--text-muted)' }}>
+            No bloated dashboard. No complex setup. Everything runs through a 3-minute call.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {[
-              'AI-recommended daily focus areas — based on your calendar history, calls, and inbox',
-              'Morning voice call — 3–5 min, Monday–Friday, your schedule',
-              'Live calendar management — create, move, delete, color-code via conversation',
-              'Edg3 Score — Focus / Energy / Clarity / Momentum, updated daily',
-              'Open Loops — surfaces commitments you\'ve mentioned but haven\'t closed',
-              'Whoop integration — automatic energy tracking via recovery + sleep scores',
-              'Gmail integration — urgent thread detection, reply tracking, inbox triage signal',
-              'Activity log — every change Edg3 makes, with one-tap undo',
+              { label: 'Daily focus areas', desc: 'AI-derived from calendar history, calls, and inbox — no manual input required' },
+              { label: 'Morning voice call', desc: '3–5 min, Mon–Fri, your schedule — Edg3 calls you' },
+              { label: 'Live calendar management', desc: 'Create, move, delete, and color-code events via conversation' },
+              { label: 'Edg3 Score', desc: 'Focus / Energy / Clarity / Momentum — your daily operating readout' },
+              { label: 'Open Loops', desc: 'Commitments you\'ve made, tracked automatically across every call' },
+              { label: 'Whoop integration', desc: 'Energy-matched scheduling via recovery and sleep scores' },
+              { label: 'Gmail integration', desc: 'Urgent thread detection, reply tracking, and inbox triage signal' },
+              { label: 'Activity log with undo', desc: 'Every change Edg3 makes, reviewable and reversible in one tap' },
             ].map((feat, i) => (
-              <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ background: 'var(--edg-fill-04)' }}>
-                <span style={{ color: 'var(--edg-indigo)', fontSize: 14, flexShrink: 0, marginTop: 2 }}>✦</span>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{feat}</p>
+              <div key={i} className="flex items-start gap-3.5 px-4 py-4 rounded-xl" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+                <span style={{ color: 'var(--edg-indigo)', fontSize: 16, flexShrink: 0, marginTop: 1 }}>✦</span>
+                <div>
+                  <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-strong)' }}>{feat.label}</p>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{feat.desc}</p>
+                </div>
               </div>
             ))}
           </div>
