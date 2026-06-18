@@ -139,7 +139,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Pair with the confidence decay column (Round 6 T2) when it lands: facts below 0.5 confidence get hedged; below 0.3 get flagged for reconfirmation
 - Test: inject a 91-day-old fact, verify briefing text hedges it
 
-### T2-3 — Honest failure messages across all tool-call handlers (Core)
+### T2-3 — Honest failure messages across all tool-call handlers (Core) — 📋 **PARTIAL (2026-06-13 NEVER PUNT pass)**
+**Partial progress:** 2026-06-13 NEVER PUNT changes removed "do it yourself" language and replaced with own-it-honestly alternatives. Organizer-permission 403 now gives a specific message naming the organizer + offering draftEmail path.
+**Two remaining rough edges** (found in PM audit 2026-06-18): (1) Generic catch-all at `tool-call/route.ts:162` — "Something went wrong on my end" is honest but doesn't say why; (2) `insufficientPermissions` 403 message at line 160 defaults to "reconnect your calendar" which is wrong when the real cause is organizer permissions (the organizer check takes precedence but only for `moveEvent` — other tools still hit the generic 403 handler).
 **The risk:** When a tool fails (calendar write, email draft, memory update), Edge either says nothing or says something misleading. The user doesn't know what happened.
 - Audit every `return` in `app/api/vapi/tool-call/route.ts` for failed paths
 - Each failure must: (a) give an honest plain-English description of what failed, (b) never say "reconnect your account" unless that's actually the fix, (c) offer a concrete alternative if one exists

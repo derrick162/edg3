@@ -125,8 +125,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Add them explicitly to `lib/vapi.ts` as required phrasings
 - Test: listen to 3 consecutive briefings — does Edge have a consistent voice and rhythm?
 
-### DC3-2 — Silence handling: Edge doesn't hang up on thinking (Security)
-**The status:** messagePlan + silenceTimeoutSeconds = 40 already shipped (T5). This item verifies it's working.
+### DC3-2 — Silence handling: Edge doesn't hang up on thinking (Security) — ✅ **SHIPPED (T5)**
+**Shipped:** `messagePlan` with 3 idle messages at 10s intervals ("Still here — take your time." / "No rush…" / check-in) + `silenceTimeoutSeconds` extended 30→40, wired into both inline-assistant and assistantOverrides in `lib/vapi.ts`. Pending live-call verification (idle behaviour cannot be unit-tested).
 - If the user pauses for more than 10 seconds, Edge should check in warmly — not hang up, not ask a new question
 - Test: on a live call, pause for 15 seconds; verify Edge checks in rather than timing out
 
