@@ -53,12 +53,20 @@ export function isSensitiveFact(fact: Pick<Fact, 'statement'>): boolean {
   return SENSITIVE_KEYWORDS.some(k => s.includes(k));
 }
 
-/** Unverified = low confidence OR not confirmed in a long time. Reconfirmation candidate. */
+/**
+ * Unverified = a reconfirmation candidate. True when ANY of:
+ *  - decay score has dropped below 0.3 (Security's weekly decay job), OR
+ *  - the fact hasn't been confirmed in 30+ days (recency), OR
+ *  - extraction flagged it categorically low-confidence (STT-garbled name/address) — these are
+ *    uncertain from day one, so worth a quick "did I get that right?" even on a fresh account.
+ */
 export function isUnverified(
-  fact: Pick<Fact, 'confidence_score' | 'last_confirmed_at' | 'learned_at'>,
+  fact: Pick<Fact, 'confidence_score' | 'last_confirmed_at' | 'learned_at' | 'confidence'>,
   today: string,
 ): boolean {
-  return factConfidence(fact) < UNVERIFIED_SCORE || daysSinceConfirmed(fact, today) >= STALE_DAYS;
+  return fact.confidence === 'low'
+    || factConfidence(fact) < UNVERIFIED_SCORE
+    || daysSinceConfirmed(fact, today) >= STALE_DAYS;
 }
 
 /** Should this fact be hedged ("last I heard…") rather than stated as current truth? */
@@ -111,7 +119,12 @@ export function selectReconfirmationFact(facts: Fact[], today: string): Fact | n
 export function buildReconfirmationPromptBlock(fact: Fact | null): string | null {
   if (!fact) return null;
   const subject = fact.entity ? `${fact.entity}: ${fact.statement}` : fact.statement;
-  return `RECONFIRM ONE FACT (it's been a while since this was verified — don't state it as current truth): "${subject}". Fold a SHORT inline check into the moment this fact is naturally relevant (Part 1 or 2) — e.g. "Last I heard ${lowerFirst(fact.statement)} — still right?" Keep it to a half-sentence; this does NOT replace or duplicate the Part 3 closing question, and it is the ONLY fact you re-verify this call. If it's not naturally relevant to today, skip it rather than forcing it in.`;
+  // Garbled-at-extraction facts get a "did I catch that right?" framing; aged facts get
+  // "last I heard…". Both are a short inline check, never a second closing question.
+  const cue = fact.confidence === 'low'
+    ? `I want to make sure I caught this right — e.g. "I've got ${lowerFirst(fact.statement)} — did I get that right?"`
+    : `it's been a while since this was verified — e.g. "Last I heard ${lowerFirst(fact.statement)} — still right?"`;
+  return `RECONFIRM ONE FACT (${cue.startsWith('I want') ? 'I may have mis-heard this' : "don't state it as current truth"}): "${subject}". ${cue} Fold this SHORT inline check into the moment the fact is naturally relevant (Part 1 or 2) — half a sentence. It does NOT replace or duplicate the Part 3 closing question, and it is the ONLY fact you re-verify this call. If it's not naturally relevant to today, skip it.`;
 }
 
 function lowerFirst(s: string): string {

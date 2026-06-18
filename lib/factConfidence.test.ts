@@ -77,6 +77,9 @@ describe('isUnverified', () => {
   it('false when fresh and confident', () => {
     expect(isUnverified(fact({ confidence_score: 0.9, last_confirmed_at: '2026-06-15' }), TODAY)).toBe(false);
   });
+  it('true when extraction flagged the fact categorically low-confidence (fresh STT-garbled)', () => {
+    expect(isUnverified(fact({ confidence: 'low', confidence_score: 1.0, last_confirmed_at: TODAY }), TODAY)).toBe(true);
+  });
   it('boundary: exactly STALE_DAYS old is unverified', () => {
     const d = new Date(Date.parse(TODAY) - STALE_DAYS * 86_400_000).toISOString().slice(0, 10);
     expect(isUnverified(fact({ confidence_score: 1.0, last_confirmed_at: d }), TODAY)).toBe(true);
@@ -163,5 +166,20 @@ describe('buildReconfirmationPromptBlock', () => {
   it('prefixes the entity when present', () => {
     const block = buildReconfirmationPromptBlock(fact({ statement: 'is the CFO', entity: 'Sarah' }));
     expect(block).toContain('Sarah: is the CFO');
+  });
+  it('uses a "did I catch that right" framing for low-confidence (garbled) facts', () => {
+    const block = buildReconfirmationPromptBlock(fact({ confidence: 'low', statement: 'a meeting with Yassen' }));
+    expect(block?.toLowerCase()).toContain('did i get that right');
+    expect(block).not.toContain('Last I heard');
+  });
+});
+
+describe('selectReconfirmationFact — low-confidence (fresh) facts', () => {
+  it('surfaces a fresh low-confidence fact even when nothing is stale', () => {
+    const facts = [
+      fact({ id: 1, confidence: 'high', confidence_score: 0.95, last_confirmed_at: TODAY, statement: 'A' }),
+      fact({ id: 2, confidence: 'low', confidence_score: 1.0, last_confirmed_at: TODAY, category: 'person', entity: 'Yassen', statement: 'meeting Yassen Thursday' }),
+    ];
+    expect(selectReconfirmationFact(facts, TODAY)?.id).toBe(2);
   });
 });

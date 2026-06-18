@@ -449,6 +449,10 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **M4-1 reconfirmation now fires for fresh STT-garbled facts (helps tomorrow's call).**
+  - `lib/factConfidence.ts` `isUnverified`: now also true when extraction flagged a fact categorically `confidence === 'low'` (STT-garbled name/address) — these are uncertain from day one, so they're reconfirmation candidates even on a brand-new account. Previously reconfirmation only fired for 30+ day-old facts, so it would never help a fresh user; this makes it useful on the very next call ("I've got a meeting with Yassen — did I get that right?"). `buildReconfirmationPromptBlock` uses a "did I catch that right?" framing for low-confidence facts vs "last I heard…" for aged ones. 3 new tests (28 total in factConfidence).
+  - **Shared-file additive touch** (`lib/db.ts` `factQueries.confirmFact`): now also sets `confidence = 'high'` (not just `confidence_score = 1.0`) so a once-garbled fact the user verifies stops re-triggering reconfirmation every call. Verified Security's Round 6 T2 `confirmFact` tests (partial `toContain`/`toMatch` assertions) still pass. ⚠️ Security: heads-up on this additive change to your function.
+  - 1740/1740 green, tsc clean, next build clean.
 - **2026-06-18** — **M4-1 reconfirmation polish + flaky-suite fix.**
   - **Category weighting** (`lib/factConfidence.ts`): `selectReconfirmationFact` now ranks candidates by category importance (goal > project > preference > person > fact) before confidence/staleness, so the one reconfirmation question lands on what matters (a stale goal — "still targeting 500K?") rather than trivia. 2 new tests (25 total).
   - **vapi wording fix**: reconfirmation guidance now keys off the spoken "last I heard…" line the assistant actually delivered, not an internal briefing block it never sees.

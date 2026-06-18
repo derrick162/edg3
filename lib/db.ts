@@ -1645,10 +1645,11 @@ export const factQueries = {
   },
 
   // Reset confidence_score to 1.0 when a fact is reconfirmed (mentioned again or user doesn't correct it).
-  // User-scoped; only applies to active (non-retired) facts.
+  // Also upgrades the categorical confidence to 'high' so a once-garbled ('low') fact the user has
+  // now verified stops re-triggering reconfirmation every call (Core M4-1). User-scoped; active only.
   confirmFact: (userId: number, factId: number): void => {
     getDb().prepare(
-      "UPDATE facts SET confidence_score = 1.0, last_confirmed_at = datetime('now') WHERE id = ? AND user_id = ? AND valid_until IS NULL"
+      "UPDATE facts SET confidence_score = 1.0, confidence = 'high', last_confirmed_at = datetime('now') WHERE id = ? AND user_id = ? AND valid_until IS NULL"
     ).run(factId, userId);
   },
 
