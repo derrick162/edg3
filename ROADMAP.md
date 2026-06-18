@@ -111,7 +111,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(🔨 **Starting Derrick dashboard-review batch** — tickets 1/2/3/9 first (score "why", focus context, gate panel, spam filter). CLAIMING `app/dashboard/page.tsx` + `lib/actionSummary.ts`. ⚠️ Multi-account Google UI blocked on Vijay's `GET /api/auth/accounts`.)_ | `app/dashboard/page.tsx`, `lib/actionSummary.ts` | 2026-06-18 |
 | 🔒 Security | `security` | _(✅ **T1-1 webhook retry + DLQ done (1809 green) — merged to master.** `lib/retry.ts` withRetry (3×, exp backoff) wraps transcript fetch; failed calls dead-lettered to `failed_webhooks`. Next: multi-account Google token layer.)_ | `app/api/vapi/webhook/route.ts`, `lib/retry.ts` | 2026-06-18 |
 | 🔧 PM/CoS | `master` | _(🔄 **Merging second batch — security ✅ core in progress, design pending.** ⚠️ Derrick: push to prod + read `content/qa-log.md` AM action list.)_ | `ROADMAP*.md` | 2026-06-18 |
-| 🎨 Design | `design` | _(✅ **Episode timeline + memory health + voice selector shipped.** Awaiting PM merge + dispatch.)_ | `app/dashboard/page.tsx` | 2026-06-18 |
+| 🎨 Design | `design` | _(✅ **Dispatch queue exhausted**: M4-3b stamp+history+rollback, landing T3+T5, all PM dispatches audited complete (landing T1-T5, data consent screen, activation moment, T2 inbox receipts). 1803 green. No remaining open Design items in Trust/DC/Memory pillars.)_ | `app/dashboard/page.tsx`, `app/api/memory/`, `lib/db.ts`, `app/page.tsx` | 2026-06-18 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).

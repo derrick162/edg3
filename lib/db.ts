@@ -1990,6 +1990,15 @@ export const factHistoryQueries = {
     ).run(userId, hist.category, hist.statement, hist.entity ?? null, 'high');
     snapshotFactToHistory(Number((info as { lastInsertRowid: number | bigint }).lastInsertRowid), userId, 'created');
   },
+
+  // M4-3b UI: bulk fetch most-recent activity timestamp per fact_id for a user.
+  // Returns a map of fact_id → latest retired_at string. Single query.
+  getLatestTimestamps: (userId: number): Record<number, string> => {
+    const rows = getDb().prepare(
+      'SELECT fact_id, MAX(retired_at) as latest FROM fact_history WHERE user_id=? GROUP BY fact_id'
+    ).all(userId) as { fact_id: number; latest: string }[];
+    return Object.fromEntries(rows.map(r => [r.fact_id, r.latest]));
+  },
 };
 
 export interface FocusMilestone {
