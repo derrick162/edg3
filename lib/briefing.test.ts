@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock } from './briefing';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext } from './briefing';
 import type { Fact } from './db';
 
 function makePref(statement: string, id = 1): Fact {
@@ -302,5 +302,119 @@ describe('DC2-2 buildPersonalizationPromptBlock', () => {
   it('asks a personal-context question, not a calendar/focus question', () => {
     const result = buildPersonalizationPromptBlock(0)!;
     expect(result).toMatch(/challenge|stuck on|understand you better|should know about/i);
+  });
+});
+
+// ── T2-4 buildBriefingContext — spec-driven regression assertions ──────────────
+// Source: content/briefing-regression-spec.md
+// Given fixed fixture data, verifies the assembled context string is correct.
+// These assertions guard the live 7am briefing path against silent regressions.
+
+const BC_TODAY = '2026-06-17';
+
+function bcDaysAgo(n: number): string {
+  const d = new Date(`${BC_TODAY}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+describe('buildBriefingContext — regression', () => {
+  const USER = { id: 1, name: 'Derrick Fung', timezone: 'America/Toronto' };
+
+  const FACTS = [
+    { category: 'goal', entity: 'fundraising', statement: 'Raise $500K pre-seed by August', confidence_score: 0.9, learned_at: bcDaysAgo(7), last_confirmed_at: null },
+    { category: 'preference', entity: 'energy', statement: 'Peak focus window is 9am–11am', confidence_score: 0.8, learned_at: bcDaysAgo(14), last_confirmed_at: null },
+    { category: 'person', entity: 'Sarah', statement: 'Lead investor at Tier 1 VC', confidence_score: 0.85, learned_at: bcDaysAgo(5), last_confirmed_at: null },
+    // stale: >90 days AND confidence < 0.7 AND unconfirmed — must be filtered out
+    { category: 'fact', entity: 'gym', statement: 'Goes to gym Mon/Wed/Fri at 7am', confidence_score: 0.5, learned_at: bcDaysAgo(95), last_confirmed_at: null },
+  ];
+
+  const PRIORITIES = [
+    { text: 'Close the fundraising round', rank: 1 },
+    { text: 'Get to 130 lbs', rank: 2 },
+  ];
+
+  const CALENDAR = [
+    { summary: 'Investor call — Sarah (Tier 1)', start: { dateTime: `${BC_TODAY}T14:00:00` } },
+    { summary: 'Gym', start: { dateTime: `${BC_TODAY}T07:00:00` } },
+    { summary: 'Team sync', start: { dateTime: `${BC_TODAY}T10:00:00` } },
+  ];
+
+  const TASKS = [
+    { text: 'Send term sheet to Sarah', source: 'edg3', completed: false, date: bcDaysAgo(1) },
+  ];
+
+  it('surfaces outstanding commitment before calendar entries', () => {
+    const ctx = buildBriefingContext(USER, { facts: FACTS, priorities: PRIORITIES, calendar: CALENDAR, tasks: TASKS }, BC_TODAY);
+    const commitIdx = ctx.indexOf('Send term sheet to Sarah');
+    const calIdx = ctx.indexOf('Investor call');
+    expect(commitIdx).toBeGreaterThan(-1);
+    expect(commitIdx).toBeLessThan(calIdx);
+  });
+
+  it('includes active priority text in context', () => {
+    const ctx = buildBriefingContext(USER, { facts: FACTS, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).toContain('Close the fundraising round');
+    expect(ctx).toContain('Get to 130 lbs');
+  });
+
+  it('excludes stale facts (>90 days, low confidence, unconfirmed)', () => {
+    const ctx = buildBriefingContext(USER, { facts: FACTS, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).not.toContain('Goes to gym Mon/Wed/Fri');
+  });
+
+  it('injects relationship context for people appearing on today\'s calendar', () => {
+    const ctx = buildBriefingContext(USER, { facts: FACTS, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).toContain('Sarah');
+    expect(ctx).toContain('Tier 1 VC');
+  });
+
+  it('does not inject people context for people absent from today\'s calendar', () => {
+    const factsWithMarcus = [
+      ...FACTS,
+      { category: 'person', entity: 'Marcus', statement: 'CFO at Acme', confidence_score: 0.9, learned_at: bcDaysAgo(2), last_confirmed_at: null },
+    ];
+    const ctx = buildBriefingContext(USER, { facts: factsWithMarcus, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).not.toContain('Marcus');
+  });
+
+  it('injects fill-the-gap question when fewer than 3 personalization signals', () => {
+    const ctx = buildBriefingContext(USER, { facts: [], priorities: [], calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).toContain("what's the most important thing you're working on");
+  });
+
+  it('omits fill-the-gap question when personalization floor is met', () => {
+    const ctx = buildBriefingContext(USER, { facts: FACTS, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).not.toContain("what's the most important thing you're working on");
+  });
+
+  it('hedges facts with confidence < 0.5 with "last I heard"', () => {
+    const lowConfFacts = [
+      { category: 'goal', entity: 'fundraising', statement: 'Raise $500K', confidence_score: 0.3, learned_at: bcDaysAgo(7), last_confirmed_at: null },
+    ];
+    const ctx = buildBriefingContext(USER, { facts: lowConfFacts, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx).toContain('last I heard');
+  });
+
+  it('orders non-routine events before routine ones (gym last in calendar section)', () => {
+    const ctx = buildBriefingContext(USER, { facts: FACTS, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    const gymIdx = ctx.indexOf('Gym');
+    const investorIdx = ctx.indexOf('Investor call');
+    if (gymIdx !== -1) {
+      expect(investorIdx).toBeLessThan(gymIdx);
+    }
+  });
+
+  it('truncates context to ≤16000 chars when data volume is very large', () => {
+    const manyFacts = Array.from({ length: 200 }, (_, i) => ({
+      category: 'fact',
+      entity: `item${i}`,
+      statement: 'Some statement about something '.repeat(5),
+      confidence_score: 0.9,
+      learned_at: bcDaysAgo(1),
+      last_confirmed_at: null,
+    }));
+    const ctx = buildBriefingContext(USER, { facts: manyFacts, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
+    expect(ctx.length).toBeLessThanOrEqual(16_000);
   });
 });
