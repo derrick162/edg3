@@ -52,7 +52,7 @@ export function ActivationCard({ facts, name, onDismiss }: ActivationCardProps) 
         </span>
         <div>
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-accent)' }}>
-            ✦ HERE&apos;S WHAT I ALREADY KNOW ABOUT YOU
+            HERE&apos;S WHAT I ALREADY KNOW ABOUT YOU
           </p>
           <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
             {name ? `${name}, Edg3 is already on your side.` : 'Edg3 is already on your side.'}
