@@ -3191,8 +3191,8 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2 mt-1.5">
                               <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
                                 style={{
-                                  background: isHigh ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
-                                  color: isHigh ? 'var(--edg-success)' : 'rgba(245,158,11,0.9)',
+                                  background: isHigh ? 'var(--edg-success-soft)' : 'var(--edg-warning-tint)',
+                                  color: isHigh ? 'var(--edg-success)' : 'var(--edg-warning)',
                                 }}>
                                 {isHigh ? 'High' : 'Medium'} confidence
                               </span>
