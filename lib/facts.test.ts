@@ -554,6 +554,87 @@ describe('people fact guards', () => {
   });
 });
 
+// ── UX-2: No duplicate contacts/facts/events (PILLAR-TRUST) ─────────────────────
+// Verification tests: extract from a transcript that mentions the user, Edge, Edg3,
+// and a repeated fact — none should produce duplicates or blocked entities.
+
+describe('UX-2 duplicate and blocked entity guards', () => {
+  it('blocks "Edg3" as a person entity (assistant brand variant)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Edg3 is the AI assistant Derrick uses', entity: 'Edg3', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks "Edg3 AI" as a person entity', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Edg3 AI handles briefings', entity: 'Edg3 AI', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('stores a non-duplicate goal when identical active fact already exists (consolidation dedup)', () => {
+    // Two identical goal facts → consolidateFacts should keep the higher-confidence one
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      makeFact(1, 'goal', 'Series A', 'Wants to close Series A by September'),
+      makeFact(2, 'goal', 'Series A', 'Wants to close Series A by September'),
+    ]);
+    consolidateFacts(1);
+    // One of the duplicates should be deleted
+    expect(factQueries.deleteFact).toHaveBeenCalledTimes(1);
+  });
+
+  it('full UX-2 scenario: transcript with user name, Edge, Edg3, repeated fact → zero bad upserts', async () => {
+    // Model returns 4 candidates: user self, Edge, Edg3, and a valid goal
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick runs the company', entity: 'Derrick', confidence: 'high' },
+      { category: 'person', statement: 'Edge is the AI', entity: 'Edge', confidence: 'high' },
+      { category: 'person', statement: 'Edg3 handles scheduling', entity: 'Edg3', confidence: 'high' },
+      { category: 'goal', statement: 'Wants to close Series A by September', entity: 'Series A', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'Morning briefing transcript', 'Derrick Fung');
+
+    // Only the goal should be stored — all person facts should be blocked
+    const calls = (factQueries.upsertFact as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toBe('goal'); // only the goal category passes through
+  });
+});
+
+// ── UX-3: Name spelled correctly in extraction (PILLAR-TRUST) ─────────────────
+// Verifies that the extraction prompt includes userName so the model uses correct spelling,
+// and that isSelfEntity correctly filters self-references at different name forms.
+
+describe('UX-3 name spelling and self-entity filtering', () => {
+  it('blocks first-name-only self reference (Derrick → filtered)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick is focused on fundraising', entity: 'Derrick', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks full-name self reference (Derrick Fung → filtered)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick Fung is the CEO', entity: 'Derrick Fung', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('passes user name to extractFactsFromTranscript so STT misspellings use correct name', async () => {
+    // Verify the Anthropic API receives the prompt containing the userName hint
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    await extractAndUpsertFacts(1, 'Derek said he wants to close the deal', 'Derrick Fung');
+    // The create call should have been made with a prompt containing userName
+    const callArgs = (h.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const promptText = JSON.stringify(callArgs);
+    expect(promptText).toContain('Derrick Fung');
+  });
+});
+
 // ── Sleep-time consolidation agent (T2) ───────────────────────────────────────
 describe('runSleepTimeConsolidation', () => {
   it('returns early for short transcripts without calling Haiku', async () => {

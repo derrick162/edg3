@@ -449,6 +449,9 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-18** — **PILLAR-TRUST UX-2+UX-3 — duplicate entity guard verification + name spelling tests.**
+  - **UX-2** (`lib/facts.test.ts`): 4 new tests — blocks "Edg3" and "Edg3 AI" as person entities, consolidates identical goal duplicates, full end-to-end scenario (user + Edge + Edg3 + repeated goal transcript → only goal upserted, 3 blocked). 1696/1696 green.
+  - **UX-3** (`lib/facts.test.ts`): 3 new tests — first-name self-entity blocked, full-name self-entity blocked, Anthropic prompt includes userName hint (confirmed the "Derek = Derrick" model-level correction wiring is live). 1696/1696 green, tsc clean, next build clean.
 - **2026-06-18** — **PILLAR-TRUST T2-3+T2-4 — honest failure messages + briefing accuracy regression tests.**
   - **T2-3**: Audited all failure paths in `app/api/vapi/tool-call/route.ts`. All major paths were already specific (read-only calendars, 403s, 404s, organizer-restricted events, Gmail scope, rate limits). One vague message fixed: `copyEvents` "Couldn't copy events from X" → now says "Google didn't confirm them — want me to try again?" Error strings match `FAILURE_RE` pattern throughout. `friendlyError` fallback is honest last-resort for unknown failures.
   - **T2-4**: Added T2-4 briefing accuracy regression suite to `lib/briefing.test.ts` (6 new tests): sleep-debt + high-strain composite signal, fallback briefing regression guards (no async-note-box references, brand-name stability), Whoop section format regressions (% symbol, no trailing "0 minutes"), `buildBaselineContext` always outputs today + delta line. Also added the 3-signal composite test (sleep debt + high strain, no red recovery). 1689/1689 green, tsc clean, next build clean.
