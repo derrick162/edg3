@@ -136,8 +136,14 @@ export async function POST(req: NextRequest) {
           // Compounding memory: extract durable structured facts and deduplicate against
           // existing ones. Fire-and-forget — never blocks the webhook response.
           const briefingId = briefing.id;
+          const t0 = Date.now();
           import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
-            .then(() => briefingQueries.updateLearningStatus(briefingId, { facts_ok: true }))
+            .then((factsExtracted) => {
+              const extractionMs = Date.now() - t0;
+              const flagged = factsExtracted === 0;
+              briefingQueries.updateLearningStatus(briefingId, { facts_ok: true, facts_extracted: factsExtracted, extraction_ms: extractionMs, ...(flagged ? { flagged_for_review: true } : {}) });
+              if (flagged) console.warn(`[DC0-1] briefing ${briefingId}: 0 facts extracted — flagged for sleep-time review`);
+            })
             .catch(err => {
               console.error('[webhook] Fact extraction failed:', err);
               briefingQueries.updateLearningStatus(briefingId, { facts_ok: false, facts_error: String(err).slice(0, 200) });

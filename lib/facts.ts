@@ -149,7 +149,7 @@ export async function extractAndUpsertFacts(
   userName?: string,
   sourceBriefingId?: number,
   calendarEventTitles?: string[],
-): Promise<void> {
+): Promise<number> {
   try {
     // Pass previously stored facts so the model returns only net-new items.
     // Also pass known person names so STT garbling is corrected (e.g. "Pfizer" → "Faiza").
@@ -232,8 +232,10 @@ export async function extractAndUpsertFacts(
     if (netNew > 0) {
       maybeCreateFactLearnedNotif(userId, netNew);
     }
+    return stored;
   } catch (err) {
     console.error('[facts] extractAndUpsertFacts failed:', err);
+    return 0;
   }
 }
 

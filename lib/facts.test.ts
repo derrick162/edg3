@@ -162,7 +162,7 @@ describe('extractAndUpsertFacts', () => {
 
   it('does NOT throw when extraction fails', async () => {
     h.create.mockRejectedValue(new Error('API down'));
-    await expect(extractAndUpsertFacts(1, 'transcript')).resolves.toBeUndefined();
+    await expect(extractAndUpsertFacts(1, 'transcript')).resolves.toBe(0);
   });
 });
 
