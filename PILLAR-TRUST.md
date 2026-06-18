@@ -212,7 +212,13 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Pattern: accept an optional `idempotencyKey` on write endpoints; if a key has been seen in the last 24h, return the cached result rather than re-executing
 - Test: POST the same payload twice to a mutation endpoint, verify the mutation only happens once
 
-### T4-5 — Undo coverage: every mutation must be reversible (Core)
+### T4-5 — Undo coverage: every mutation must be reversible (Core) — 📋 **AUDITED 2026-06-18**
+**Audit result:** Calendar mutations are fully covered. Two significant gaps found in non-calendar handlers:
+- **`planWeek`** ❌ — creates calendar events via `cal.events.insert` but never calls `recordUndo`. Created event IDs not tracked. Fix: collect inserted IDs + call `recordUndo(userId, 'planned week', [{type:'deleteMany', calId:'primary', eventIds: created}])`.
+- **`setPriorities`** ❌ — deletes+recreates priorities rows without undo. Fix: snapshot current priorities before `deleteThisWeek`, record undo op that would re-insert them.
+- **`rememberPreference`** ⚠️ — fact upsert has no undo, but bi-temporal `fact_history` provides reversibility via dashboard (acceptable — no calendar surface).
+- **`setMyTimezone` / `setEnergyLevel` / `confirmFocus`** — low priority; reversible by re-calling; not needed for undoLastAction.
+**Covered:** editEvent ✅, researchToEvent ✅, createEvent ✅, createRecurringEvent ✅, deleteEvent ✅, moveEvent ✅, colorEvent ✅, colorEventsByEnergy ✅, copyDayEvents ✅, draftEmail ✅, cleanupEvents ✅, cleanupDuplicates ✅, applyCalendarPlan ✅.
 **The risk:** Undo was added for calendar mutations. But later mutations (email drafts, memory updates, task completions, episode inserts) may not be covered.
 - Audit every mutation in `app/api/vapi/tool-call/route.ts`: does it call `recordUndo`?
 - Add `recordUndo` to any handler that's missing it
