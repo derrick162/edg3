@@ -410,7 +410,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── Edg3 Score ── */}
-        <section className="max-w-5xl mx-auto px-4 md:px-8 py-24">
+        <section className="max-w-5xl mx-auto px-4 md:px-8 pt-16 pb-20">
           <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             One number. Your daily readout.
           </h2>
@@ -498,7 +498,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black tracking-tight mb-4 text-center" style={{ color: 'var(--text-strong)' }}>
             Three things. Every morning.
           </h2>
-          <p className="text-base mb-14 text-center" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-base mb-8 text-center" style={{ color: 'var(--text-muted)' }}>
             No dashboard to open. No app to check. Just a call.
           </p>
           <div className="max-w-2xl mx-auto">
@@ -536,7 +536,7 @@ export default function LandingPage() {
                   )}
                 </div>
                 {/* Content */}
-                <div className={idx < arr.length - 1 ? 'pb-10' : 'pb-0'}>
+                <div className={idx < arr.length - 1 ? 'pb-6' : 'pb-0'}>
                   <p className="text-xs font-black tracking-widest mb-1" style={{ color: 'var(--edg-indigo)' }}>{item.step}</p>
                   <p className="text-base font-bold mb-1.5" style={{ color: 'var(--text-strong)' }}>{item.heading}</p>
                   <p className="text-base leading-relaxed" style={{ color: 'var(--text-body)' }}>{item.text}</p>
@@ -590,14 +590,14 @@ export default function LandingPage() {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {[
-              { label: 'Daily focus areas', desc: 'AI-derived from calendar history, calls, and inbox — no manual input required' },
-              { label: 'Morning voice call', desc: '3–5 min, Mon–Fri, your schedule — Edg3 calls you' },
-              { label: 'Live calendar management', desc: 'Create, move, delete, and color-code events via conversation' },
-              { label: 'Edg3 Score', desc: 'Focus / Energy / Clarity / Momentum — your daily operating readout' },
-              { label: 'Open Loops', desc: 'Commitments you\'ve made, tracked automatically across every call' },
-              { label: 'Whoop integration', desc: 'Energy-matched scheduling via recovery and sleep scores' },
-              { label: 'Gmail integration', desc: 'Urgent thread detection, reply tracking, and inbox triage signal' },
-              { label: 'Activity log with undo', desc: 'Every change Edg3 makes, reviewable and reversible in one tap' },
+              { label: 'Daily focus areas', desc: 'Edg3 reads your calendar, calls, and inbox every morning — and surfaces the 3 things that actually move the needle today. No manual input.' },
+              { label: 'Morning voice call', desc: 'Edg3 calls you. Not the other way around. 3–5 minutes, Mon–Fri, and your day is reshaped before you open your laptop.' },
+              { label: 'Live calendar management', desc: 'Say "move my 2 PM" on the call and it moves. Create blocks, reschedule meetings, clean up duplicates — all via voice.' },
+              { label: 'Edg3 Score', desc: 'One number — Focus, Energy, Clarity, Momentum — that tells you exactly how well your day is set up before it starts.' },
+              { label: 'Open Loops', desc: 'Said "I\'ll follow up on that"? Edg3 heard it. Every commitment you\'ve made is tracked and surfaced before it slips.' },
+              { label: 'Whoop integration', desc: 'Recovery at 34%? Edg3 automatically protects your morning and shifts the heavy cognitive work. No manual entry ever.' },
+              { label: 'Gmail integration', desc: 'Edg3 flags threads that need a reply today — without reading your emails. Subject lines only. Signal without surveillance.' },
+              { label: 'Activity log with undo', desc: 'Every calendar change Edg3 makes is logged. Didn\'t like it? One tap to undo, no questions asked.' },
             ].map((feat, i) => (
               <div key={i} className="flex items-start gap-3.5 px-4 py-4 rounded-xl" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
                 <span style={{ color: 'var(--edg-indigo)', fontSize: 16, flexShrink: 0, marginTop: 1 }}>✦</span>
