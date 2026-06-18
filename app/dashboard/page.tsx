@@ -555,6 +555,8 @@ function ActivityTab() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // email_signal_fetch subject receipts: receiptId → subjects[] | 'loading' | 'error' | 'none'
   const [emailSubjects, setEmailSubjects] = useState<Record<number, string[] | 'loading' | 'error' | 'none'>>({});
+  // Ticket 10: which email-receipts have their full thread list expanded ("+N more threads")
+  const [expandedReceipts, setExpandedReceipts] = useState<Set<number>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -822,24 +824,45 @@ function ActivityTab() {
                                   const flagged = visible.filter(isFlagged);
                                   const rest = visible.filter(s => !isFlagged(s));
                                   const SHOW = 10;
-                                  const overflow = visible.length - SHOW;
+                                  // Ticket 10: "+N more threads" expands the full list inline.
+                                  const rid = item.emailReceiptId!;
+                                  const isExpanded = expandedReceipts.has(rid);
+                                  const flaggedShown = isExpanded ? flagged : flagged.slice(0, SHOW);
+                                  const restShown = rest.slice(0, isExpanded ? rest.length : Math.max(0, SHOW - flaggedShown.length));
+                                  const overflow = visible.length - (flaggedShown.length + restShown.length);
+                                  const toggleExpand = (open: boolean) => setExpandedReceipts(prev => {
+                                    const n = new Set(prev);
+                                    if (open) n.add(rid); else n.delete(rid);
+                                    return n;
+                                  });
                                   return (
                                     <div className="space-y-1">
-                                      {flagged.slice(0, SHOW).map((s, i) => (
+                                      {flaggedShown.map((s, i) => (
                                         <div key={`f${i}`} className="flex items-start gap-2 text-xs px-2.5 py-1.5 rounded-lg"
                                              style={{ background: 'var(--edg-warning-tint)', color: 'var(--text-muted)', border: '1px solid var(--edg-warning-border)' }}>
                                           <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--edg-warning)' }}>⚑</span>
                                           <span className="leading-snug">{s}</span>
                                         </div>
                                       ))}
-                                      {rest.slice(0, Math.max(0, SHOW - flagged.length)).map((s, i) => (
+                                      {restShown.map((s, i) => (
                                         <div key={`r${i}`} className="text-xs px-2.5 py-1.5 rounded-lg leading-snug"
                                              style={{ background: 'var(--edg-fill-04)', color: 'var(--text-muted)' }}>
                                           {s}
                                         </div>
                                       ))}
                                       {overflow > 0 && (
-                                        <p className="pt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>+ {overflow} more threads</p>
+                                        <button onClick={() => toggleExpand(true)}
+                                          className="pt-0.5 text-xs text-left transition-opacity hover:opacity-80"
+                                          style={{ color: 'var(--text-accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                                          + {overflow} more thread{overflow !== 1 ? 's' : ''}
+                                        </button>
+                                      )}
+                                      {isExpanded && visible.length > SHOW && (
+                                        <button onClick={() => toggleExpand(false)}
+                                          className="pt-0.5 text-xs text-left transition-opacity hover:opacity-80"
+                                          style={{ color: 'var(--text-accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                                          Show less
+                                        </button>
                                       )}
                                       <p className="pt-1 text-xs" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
                                         Edg3 reads subject lines only — never message content.
@@ -2168,7 +2191,8 @@ export default function Dashboard() {
                       feels like a moment (the proposal card unmounts; this replaces it). */}
                   <div className="flex items-center gap-2 mb-2">
                     <span style={{ color: 'var(--edg-success)', fontWeight: 700 }}>✓</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Locked in for today</span>
+                    {/* Ticket 5: canonical daily label is "Today's Focus" (weekly screen = "Focus this week") */}
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s Focus · Locked in</span>
                   </div>
                   <ol className="list-none space-y-2">
                     {focusLockedAreas.map((a, i) => (
