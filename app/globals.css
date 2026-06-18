@@ -86,6 +86,14 @@
   --score-neglected-tint:  rgba(239, 68,  68,  0.06);
   --score-milestone-done:  rgba(34,  197, 94,  0.12);
   --score-celebrate-glow:  0 0 24px rgba(99, 102, 241, 0.50);
+  /* ── EdgeScoreCard tier borders/backgrounds ── */
+  --score-card-border-peak: rgba(34,  197, 94,  0.20);
+  --score-card-border-high: rgba(99,  102, 241, 0.20);
+  --score-card-border-mid:  rgba(245, 158, 11,  0.15);
+  --score-card-border-low:  rgba(239, 68,  68,  0.18);
+  --score-card-bg-peak:     rgba(34,  197, 94,  0.03);
+  --score-card-bg-mid:      rgba(245, 158, 11,  0.025);
+  --score-card-bg-low:      rgba(239, 68,  68,  0.03);
 
   /* ── Calendar Fit gauges (Focus Score + Energy Score) ── */
   --gauge-bg:              rgba(255, 255, 255, 0.05);   /* gauge track bg */

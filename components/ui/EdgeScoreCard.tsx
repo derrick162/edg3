@@ -49,17 +49,17 @@ function scoreSummary(s: number): string {
 }
 
 function scoreCardBorder(s: number): string {
-  if (s >= 85) return 'rgba(34,197,94,0.20)';
-  if (s >= 65) return 'rgba(99,102,241,0.20)';
-  if (s >= 35) return 'rgba(245,158,11,0.15)';
-  return 'rgba(239,68,68,0.18)';
+  if (s >= 85) return 'var(--score-card-border-peak)';
+  if (s >= 65) return 'var(--score-card-border-high)';
+  if (s >= 35) return 'var(--score-card-border-mid)';
+  return 'var(--score-card-border-low)';
 }
 
 function scoreCardBg(s: number): string {
-  if (s >= 85) return 'rgba(34,197,94,0.03)';
+  if (s >= 85) return 'var(--score-card-bg-peak)';
   if (s >= 65) return 'transparent';
-  if (s >= 35) return 'rgba(245,158,11,0.025)';
-  return 'rgba(239,68,68,0.03)';
+  if (s >= 35) return 'var(--score-card-bg-mid)';
+  return 'var(--score-card-bg-low)';
 }
 
 // ── Calibrating arc (dashed pulse, no score label) ────────────────────────────
@@ -539,7 +539,7 @@ export function EdgeScoreCard({
           {change && change.direction !== 'flat' && (
             <p className="text-xs mb-2 leading-snug" style={{
               color: change.direction === 'down'
-                ? 'rgba(245,158,11,0.9)'
+                ? 'var(--edg-warning)'
                 : 'var(--gauge-peak)',
             }}>
               {change.direction === 'down' ? '↓' : '↑'} {Math.abs(change.delta)} {change.sinceLabel} · {change.reason}
