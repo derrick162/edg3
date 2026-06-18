@@ -2177,10 +2177,19 @@ export default function Dashboard() {
                     <span style={{ color: 'var(--edg-indigo)' }}>🎯</span>
                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s focus — set for today</span>
                   </div>
-                  <ol className="list-none space-y-1">
+                  <ol className="list-none space-y-2">
                     {focusLockedAreas.map((a, i) => (
-                      <li key={i} style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                        <span style={{ color: 'var(--edg-indigo)', fontWeight: 600, marginRight: '0.5rem' }}>{i + 1}.</span>{a.title}
+                      <li key={i} className="flex gap-2" style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                        <span style={{ color: 'var(--edg-indigo)', fontWeight: 600 }}>{i + 1}.</span>
+                        <div className="flex-1 min-w-0">
+                          <span>{a.title}</span>
+                          {/* Ticket 2: one-line context so the focus list isn't a bare to-do list */}
+                          {a.rationale?.trim() && (
+                            <p style={{ color: 'var(--text-faint)', fontSize: '0.75rem', marginTop: '0.125rem', lineHeight: 1.4 }}>
+                              {a.rationale}
+                            </p>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ol>
