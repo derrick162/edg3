@@ -542,7 +542,7 @@ export function EdgeScoreCard({
                 ? 'var(--edg-warning)'
                 : 'var(--gauge-peak)',
             }}>
-              {change.direction === 'down' ? '↓' : '↑'} {Math.abs(change.delta)} {change.sinceLabel} · {change.reason}
+              {change.direction === 'down' ? 'Down' : 'Up'} {Math.abs(change.delta)} {change.sinceLabel} — {change.direction === 'up' ? 'because ' : ''}{change.reason}
               <span style={{ color: 'var(--text-faint)' }}> · updated {change.asOf}</span>
             </p>
           )}

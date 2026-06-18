@@ -89,13 +89,44 @@ describe('summarizeScoreChange', () => {
     };
     const result = summarizeScoreChange(65, comps, snap, '2026-06-17');
     expect(result!.direction).toBe('down');
-    expect(result!.reason).toBe('Block time for fundraising.');
+    expect(result!.reason).toBe('Block time for fundraising'); // trailing period stripped for sentence use
   });
 
-  it('uses first driver for reason when direction is up', () => {
+  it('uses first positive driver for reason when direction is up (period stripped)', () => {
     const snap = makeSnap({ edge_score: 60, date: '2026-06-16' });
     const result = summarizeScoreChange(80, components, snap, '2026-06-17');
-    expect(result!.reason).toBe('Fundraising has 4h scheduled this week.');
+    expect(result!.reason).toBe('Fundraising has 4h scheduled this week');
+  });
+
+  it('up direction never explains a rise with a negative/problem driver', () => {
+    const snap = makeSnap({ focus_score: 50, energy_score: 70, edge_score: 60, date: '2026-06-16' });
+    const comps = {
+      focusScore: {
+        score: 80,
+        drivers: ['"Fundraising" has zero hours scheduled this week.', "Today's focus locked in — Momentum boosted. ✦"],
+        topFix: null,
+      },
+      energyScore: { score: 71, drivers: ['Energy driver'], topFix: null },
+    };
+    const result = summarizeScoreChange(80, comps, snap, '2026-06-17');
+    expect(result!.direction).toBe('up');
+    // skips the "zero hours" negative driver, picks the positive one, strips ✦ + period
+    expect(result!.reason).toBe("Today's focus locked in — Momentum boosted");
+  });
+
+  it('down direction prefers a negative driver when no topFix', () => {
+    const snap = makeSnap({ focus_score: 80, energy_score: 70, edge_score: 80, date: '2026-06-16' });
+    const comps = {
+      focusScore: {
+        score: 55,
+        drivers: ['Some neutral note', '"Fundraising" has zero hours scheduled this week.'],
+        topFix: null,
+      },
+      energyScore: { score: 69, drivers: ['Energy driver'], topFix: null },
+    };
+    const result = summarizeScoreChange(63, comps, snap, '2026-06-17');
+    expect(result!.direction).toBe('down');
+    expect(result!.reason).toBe('"Fundraising" has zero hours scheduled this week');
   });
 
   it('sinceLabel: "since yesterday" for 1-day gap', () => {
