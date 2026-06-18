@@ -136,6 +136,18 @@ export function rankFacts(
 // Returns top N ranked facts, split by category for diversity.
 // Ensures at most `maxPerCategory` facts per category so no single
 // category dominates the context window.
+// M3-1: returns true for facts that should be excluded from auto-injection.
+// Stale = older than 90 days AND not recently confirmed AND low confidence.
+// Recently-confirmed old facts (user mentioned again → high confidence) are kept.
+export function isStaleForBriefing(fact: Fact, today: string): boolean {
+  if (recencyScore(fact.learned_at, today) > 0) return false; // < 90 days old
+  if ((fact as Fact & { confidence_score?: number }).confidence_score !== undefined &&
+      (fact as Fact & { confidence_score?: number }).confidence_score! >= 0.7) return false; // confirmed recently
+  const lastConfirmed = (fact as Fact & { last_confirmed_at?: string | null }).last_confirmed_at;
+  if (lastConfirmed && recencyScore(lastConfirmed, today) > 0) return false; // confirmed in last 90 days
+  return true; // stale: old + unconfirmed + low confidence
+}
+
 export function topFacts(
   facts: Fact[],
   anchors: { text: string }[],
@@ -144,10 +156,10 @@ export function topFacts(
 ): ScoredFact[] {
   const { max = 20, maxPerCategory = 6, filterStale = false } = opts;
   // M3-1: hard-cutoff for stale facts in default briefing context.
-  // Facts >90 days old auto-inject as stale statements; exclude them here.
+  // Facts >90 days old with no recent confirmation are excluded from auto-injection.
   // They remain in the DB and can be retrieved on-demand via searchMemory (M3-2).
   const scored = filterStale
-    ? rankFacts(facts, anchors, today).filter(f => recencyScore(f.learned_at, today) > 0)
+    ? rankFacts(facts, anchors, today).filter(f => !isStaleForBriefing(f, today))
     : rankFacts(facts, anchors, today);
 
   const catCount: Record<string, number> = {};
