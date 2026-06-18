@@ -2532,7 +2532,7 @@ export default function Dashboard() {
                 };
                 const staleCats = [...new Set(staleFacts.map(f => f.category))];
                 return (
-                  <div className="mb-6 rounded-xl px-4 py-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                  <div className="mb-6 rounded-xl px-4 py-3" style={{ background: 'var(--edg-warning-tint)', border: '1px solid var(--edg-warning-border)' }}>
                     <div className="flex items-start gap-3">
                       <span className="flex-shrink-0 text-base mt-0.5" aria-hidden="true">🔍</span>
                       <div className="flex-1 min-w-0">
@@ -2545,7 +2545,7 @@ export default function Dashboard() {
                             const meta = CATEGORY_META_HEALTH[cat] ?? { label: cat, icon: '' };
                             const count = staleFacts.filter(f => f.category === cat).length;
                             return (
-                              <span key={cat} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: 'rgba(180,120,0,0.9)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                              <span key={cat} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)' }}>
                                 {meta.icon} {meta.label} · {count}
                               </span>
                             );
