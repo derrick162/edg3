@@ -118,7 +118,8 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 3 — Call experience (the call must feel right)
 
-### DC3-1 — Voice consistency: Edge sounds the same every call (Security + Core)
+### DC3-1 — Voice consistency: Edge sounds the same every call (Core) — 📥 **DISPATCHED 2026-06-18**
+**Dispatch:** `content/edge-voice-anchor-phrases.md` — 5 anchor phrases (greeting, calendar transition, Whoop note, closing question, end-of-call). Dispatch block in ROADMAP-CORE.md DC3-1 dispatch. Routes to Darren (Core).
 **The risk:** Edge uses slightly different phrasing, different energy, or different formality call-to-call because the prompt is non-deterministic.
 - Identify 3–5 "anchor phrases" that Edge uses at consistent moments (greeting, transition to calendar, closing question)
 - Add them explicitly to `lib/vapi.ts` as required phrasings
