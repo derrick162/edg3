@@ -16,11 +16,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const id = parseInt(idStr, 10);
   if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-  let body: { done?: boolean };
+  let body: { done?: boolean; title?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
+  if (typeof body.title === 'string') {
+    const title = body.title.trim();
+    if (!title || title.length > 200) {
+      return NextResponse.json({ error: 'title must be 1–200 characters' }, { status: 400 });
+    }
+    focusMilestoneQueries.updateTitle(id, user.id, title);
+    auditLogQueries.record({ userId: user.id, action: 'milestoneEdit', argsJson: JSON.stringify({ milestoneId: id }), ok: true });
+    return NextResponse.json({ success: true });
+  }
+
   if (typeof body.done !== 'boolean') {
-    return NextResponse.json({ error: 'done (boolean) is required' }, { status: 400 });
+    return NextResponse.json({ error: 'done (boolean) or title (string) is required' }, { status: 400 });
   }
 
   if (body.done) {
