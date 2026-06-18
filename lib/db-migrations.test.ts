@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { applyMigrations, SCHEMA_MIGRATIONS, DEFERRED_INDEXES } from './db';
+import { applyMigrations, initSchema, SCHEMA_MIGRATIONS, DEFERRED_INDEXES } from './db';
 
 function cols(db: Database.Database, table: string): string[] {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(c => c.name);
@@ -64,6 +64,40 @@ describe('applyMigrations — existing-DB upgrade', () => {
     db.exec(`CREATE TABLE facts (id INTEGER PRIMARY KEY, user_id INTEGER, category TEXT)`);
     expect(() => applyMigrations(db)).not.toThrow();
     expect(cols(db, 'facts')).toContain('valid_until');
+  });
+});
+
+describe('initSchema — full init against a pre-existing (old-schema) DB', () => {
+  // This is the strongest "never again" guard: it runs the ENTIRE schema init (the big
+  // CREATE TABLE/INDEX block + migrations + deferred indexes) against a DB whose facts/
+  // briefings tables predate the migration columns — i.e. exactly the production state that
+  // broke. It would fail if ANY pre-migration statement references a migration-added column,
+  // not just idx_facts_active.
+  it('upgrades an old DB end-to-end without throwing, and applies all migration columns', () => {
+    const db = new Database(':memory:');
+    // Minimal "old" facts/briefings (no valid_until / retry_after). CREATE TABLE IF NOT EXISTS
+    // in initSchema will then be a no-op for these, forcing the migration path.
+    db.exec(`CREATE TABLE facts (id INTEGER PRIMARY KEY, user_id INTEGER, category TEXT, statement TEXT)`);
+    db.exec(`CREATE TABLE briefings (id INTEGER PRIMARY KEY, user_id INTEGER, content TEXT, vapi_call_id TEXT, status TEXT, scheduled_for TEXT)`);
+
+    expect(() => initSchema(db)).not.toThrow();
+
+    expect(cols(db, 'facts')).toContain('valid_until');
+    expect(cols(db, 'briefings')).toContain('retry_after');
+    // Deferred index created after the column exists.
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_facts_active'").get()).toBeTruthy();
+    // New tables from the CREATE block also exist (e.g. gmail_tokens shipped this session).
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='gmail_tokens'").get()).toBeTruthy();
+  });
+
+  it('is safe to run twice (every deploy re-runs initSchema)', () => {
+    const db = new Database(':memory:');
+    // Realistic "old" briefings carries its original CREATE-TABLE columns (incl. vapi_call_id,
+    // which the pre-migration idx_briefings_vapi_call_id correctly indexes).
+    db.exec(`CREATE TABLE facts (id INTEGER PRIMARY KEY, user_id INTEGER, category TEXT, statement TEXT)`);
+    db.exec(`CREATE TABLE briefings (id INTEGER PRIMARY KEY, user_id INTEGER, content TEXT, vapi_call_id TEXT, status TEXT, scheduled_for TEXT)`);
+    initSchema(db);
+    expect(() => initSchema(db)).not.toThrow();
   });
 });
 

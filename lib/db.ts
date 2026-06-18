@@ -26,7 +26,10 @@ export function getDb(): Database.Database {
   return db;
 }
 
-function initSchema(db: Database.Database) {
+// Exported for regression testing: the FULL schema init (CREATE TABLE/INDEX block →
+// applyMigrations → deferred indexes). Must succeed against an existing DB that predates
+// any migration-added column — see lib/db-migrations.test.ts (prod incident 2026-06-18).
+export function initSchema(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
