@@ -58,6 +58,7 @@
 
   --edg-success-tint:   rgba(16,  185, 129, 0.15);
   --edg-success-border: rgba(16,  185, 129, 0.40);
+  --edg-success-glow:   0 0 20px rgba(16, 185, 129, 0.12);
   --edg-warning-tint:   rgba(245, 158, 11,  0.15);
   --edg-warning-border: rgba(245, 158, 11,  0.25);
   --edg-danger-tint:    rgba(239, 68,  68,  0.15);
@@ -502,6 +503,10 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   --plan-border:          rgba(99, 102, 241, 0.18);
   --plan-success-bg:      rgba(34, 197, 94, 0.06);
   --plan-success-border:  rgba(34, 197, 94, 0.28);
+  --plan-success-tint:    rgba(34, 197, 94, 0.15);
+  --plan-success-ring:    rgba(34, 197, 94, 0.22);
+  --plan-success-glow:    0 0 14px rgba(34, 197, 94, 0.20);
+  --plan-success-delta-bg: rgba(34, 197, 94, 0.08);
 
   /* Notification center */
   --notif-celebrate-bg:      rgba(99, 102, 241, 0.08);

@@ -140,9 +140,9 @@ export function DayPlanCard({
           <span
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
             style={{
-              background: 'rgba(34,197,94,0.15)',
+              background: 'var(--plan-success-tint)',
               border: '1.5px solid var(--plan-success-border)',
-              boxShadow: '0 0 14px rgba(34,197,94,0.20)',
+              boxShadow: 'var(--plan-success-glow)',
               animation: 'pop-in 0.45s ease both',
             }}
           >
@@ -163,9 +163,9 @@ export function DayPlanCard({
           <div
             className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold mt-3"
             style={{
-              background: 'rgba(34,197,94,0.08)',
+              background: 'var(--plan-success-delta-bg)',
               color: scoreDeltaColor(delta),
-              border: '1px solid rgba(34,197,94,0.22)',
+              border: '1px solid var(--plan-success-ring)',
             }}
           >
             +{delta} points{delta >= 15 ? ' 🚀' : delta >= 10 ? ' — big improvement' : ' — solid gain'}
