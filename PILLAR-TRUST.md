@@ -125,12 +125,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 2 — Accuracy (Edge says true things)
 
-### T2-1 — Fact grounding: no hallucinated entities (Core)
-**The risk:** People-extraction has produced hallucinated contacts (Jim-from-gym appearing as a person, Edge itself appearing as a contact, duplicate Pfizer entries). These corrupt memory and produce wrong briefings.
-- In `lib/facts.ts` fact extraction pipeline: add a grounding filter before inserting people-category facts
-- Blocked entities: the user's own name, "Edge", "Edg3", generic nouns (gym, office, company)
-- Duplicate detection: before inserting a new person fact, check if a person with the same name (case-insensitive, fuzzy) already exists
-- Test: run extraction on a transcript that mentions "Jim" (gym) and "Edge (the assistant)" — neither should appear as a contact
+### T2-1 — Fact grounding: no hallucinated entities (Core) — ✅ **LIVE (Round 5)**
+**Shipped:** `lib/facts.ts` has `isSelfEntity`, `isAssistantEntity`, `isActivityEntity` guards; M2 contact grounding drops low-confidence people with no real contact match when profile data exists; `factQueries.upsertFact` deduplicates by (category, entity) + 80-char prefix match; `consolidateFacts` post-pass cleans residual near-dups. Tests cover blocking "Edge", "Jim (gym)", self-reference. See `lib/facts.test.ts`.
+~~**The risk:** People-extraction has produced hallucinated contacts (Jim-from-gym appearing as a person, Edge itself appearing as a contact, duplicate Pfizer entries). These corrupt memory and produce wrong briefings.~~
 
 ### T2-2 — Stale fact surfacing in briefings (Core) — ✅ **FIXED ecd6901**
 **Shipped:** Briefing builder hedges facts older than 90 days with "last I heard…"; pairs with confidence decay (Round 6 T2) for automated scoring.
@@ -220,13 +217,13 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Pattern: accept an optional `idempotencyKey` on write endpoints; if a key has been seen in the last 24h, return the cached result rather than re-executing
 - Test: POST the same payload twice to a mutation endpoint, verify the mutation only happens once
 
-### T4-5 — Undo coverage: every mutation must be reversible (Core) — 📋 **AUDITED 2026-06-18**
-**Audit result:** Calendar mutations are fully covered. Two significant gaps found in non-calendar handlers:
-- **`planWeek`** ❌ — creates calendar events via `cal.events.insert` but never calls `recordUndo`. Created event IDs not tracked. Fix: collect inserted IDs + call `recordUndo(userId, 'planned week', [{type:'deleteMany', calId:'primary', eventIds: created}])`.
-- **`setPriorities`** ❌ — deletes+recreates priorities rows without undo. Fix: snapshot current priorities before `deleteThisWeek`, record undo op that would re-insert them.
+### T4-5 — Undo coverage: every mutation must be reversible (Core) — ✅ **FIXED 2026-06-18**
+**Audit result (2026-06-18):** All non-calendar gaps now closed.
+- **`planWeek`** ✅ — already had `recordUndo` at `tool-call/route.ts:787` (prior audit note was stale).
+- **`setPriorities`** ✅ **FIXED 2026-06-18** — snapshots previous priorities + calls `recordUndo` with new `restorePriorities` op; `lib/undo.ts` `executeUndo` handles it. 3 new tests in `lib/undo.test.ts`.
 - **`rememberPreference`** ⚠️ — fact upsert has no undo, but bi-temporal `fact_history` provides reversibility via dashboard (acceptable — no calendar surface).
 - **`setMyTimezone` / `setEnergyLevel` / `confirmFocus`** — low priority; reversible by re-calling; not needed for undoLastAction.
-**Covered:** editEvent ✅, researchToEvent ✅, createEvent ✅, createRecurringEvent ✅, deleteEvent ✅, moveEvent ✅, colorEvent ✅, colorEventsByEnergy ✅, copyDayEvents ✅, draftEmail ✅, cleanupEvents ✅, cleanupDuplicates ✅, applyCalendarPlan ✅.
+**Covered:** editEvent ✅, researchToEvent ✅, createEvent ✅, createRecurringEvent ✅, deleteEvent ✅, moveEvent ✅, colorEvent ✅, colorEventsByEnergy ✅, copyDayEvents ✅, draftEmail ✅, cleanupEvents ✅, cleanupDuplicates ✅, applyCalendarPlan ✅, planWeek ✅, setPriorities ✅.
 **The risk:** Undo was added for calendar mutations. But later mutations (email drafts, memory updates, task completions, episode inserts) may not be covered.
 - Audit every mutation in `app/api/vapi/tool-call/route.ts`: does it call `recordUndo`?
 - Add `recordUndo` to any handler that's missing it

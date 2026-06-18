@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
     patch:  vi.fn(),
     insert: vi.fn(),
   },
+  priorityDeleteThisWeek: vi.fn(),
+  priorityCreate:         vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -32,11 +34,17 @@ vi.mock('@/lib/db', () => ({
     markApplied:  vi.fn(),
     markReverted: h.markReverted,
   },
+  factQueries:        { retire: vi.fn() },
+  factHistoryQueries: { rollbackFact: vi.fn() },
+  priorityQueries: {
+    deleteThisWeek: h.priorityDeleteThisWeek,
+    create:         h.priorityCreate,
+  },
 }));
 
 vi.mock('./gmail', () => ({ deleteDraft: vi.fn() }));
 
-import { undoPlan, recordUndo } from './undo';
+import { undoPlan, recordUndo, executeUndo } from './undo';
 import { undoQueries, calendarPlanQueries } from '@/lib/db';
 
 function makeCal() {
@@ -135,5 +143,54 @@ describe('recordUndo', () => {
     recordUndo(1, 'Empty', []);
     expect(undoQueries.record).not.toHaveBeenCalled();
     expect(undoQueries.recordForPlan).not.toHaveBeenCalled();
+  });
+});
+
+// ── executeUndo — restorePriorities ──────────────────────────────────────────
+
+describe('executeUndo restorePriorities', () => {
+  const cal = { events: h.calEvents } as any;
+
+  it('deletes current week priorities then re-inserts previous ones', async () => {
+    const op = {
+      type: 'restorePriorities' as const,
+      userId: 7,
+      weekOf: '2026-06-16',
+      priorities: [
+        { text: 'Raise funding', rank: 1 },
+        { text: 'Hire engineer', rank: 2 },
+      ],
+    };
+    const result = await executeUndo(cal, [op]);
+    expect(result).toBe(true);
+    expect(h.priorityDeleteThisWeek).toHaveBeenCalledWith(7, '2026-06-16');
+    expect(h.priorityCreate).toHaveBeenCalledTimes(2);
+    expect(h.priorityCreate).toHaveBeenCalledWith(7, 'Raise funding', '2026-06-16', 1);
+    expect(h.priorityCreate).toHaveBeenCalledWith(7, 'Hire engineer', '2026-06-16', 2);
+  });
+
+  it('restores empty priorities by only deleting (no inserts)', async () => {
+    const op = {
+      type: 'restorePriorities' as const,
+      userId: 7,
+      weekOf: '2026-06-16',
+      priorities: [],
+    };
+    const result = await executeUndo(cal, [op]);
+    expect(result).toBe(true);
+    expect(h.priorityDeleteThisWeek).toHaveBeenCalledWith(7, '2026-06-16');
+    expect(h.priorityCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns true when restorePriorities is combined with a calendar delete', async () => {
+    const ops = [
+      { type: 'delete' as const, calId: 'primary', eventId: 'evt-1' },
+      { type: 'restorePriorities' as const, userId: 3, weekOf: '2026-06-09', priorities: [{ text: 'Ship v1', rank: 1 }] },
+    ];
+    h.calEvents.delete.mockResolvedValue({});
+    const result = await executeUndo(cal, ops);
+    expect(result).toBe(true);
+    expect(h.calEvents.delete).toHaveBeenCalledWith({ calendarId: 'primary', eventId: 'evt-1' });
+    expect(h.priorityDeleteThisWeek).toHaveBeenCalledWith(3, '2026-06-09');
   });
 });

@@ -1,5 +1,5 @@
 import { calendar_v3 } from 'googleapis';
-import { undoQueries, calendarPlanQueries, factQueries, factHistoryQueries } from '@/lib/db';
+import { undoQueries, calendarPlanQueries, factQueries, factHistoryQueries, priorityQueries } from '@/lib/db';
 import { deleteDraft } from './gmail';
 
 // A reversible operation. Each mutation Edge performs records the inverse op(s)
@@ -18,7 +18,8 @@ export type UndoOp =
   | { type: 'recreate'; calId: string; event: calendar_v3.Schema$Event }
   | { type: 'deleteDraft'; userId: number; draftId: string }
   | { type: 'retireFact'; userId: number; factId: number }
-  | { type: 'rollbackFact'; userId: number; historyId: number };
+  | { type: 'rollbackFact'; userId: number; historyId: number }
+  | { type: 'restorePriorities'; userId: number; weekOf: string; priorities: Array<{ text: string; rank: number }> };
 
 // Record the inverse of a single mutation. Pass planId when the mutation is part
 // of an applyCalendarPlan batch — all ops sharing a planId can be undone together
@@ -45,6 +46,11 @@ export async function executeUndo(cal: calendar_v3.Calendar, ops: UndoOp[]): Pro
       else if (op.type === 'deleteDraft') { await deleteDraft(op.userId, op.draftId); any = true; }
       else if (op.type === 'retireFact') { factQueries.retire(op.userId, op.factId); any = true; }
       else if (op.type === 'rollbackFact') { factHistoryQueries.rollbackFact(op.userId, op.historyId); any = true; }
+      else if (op.type === 'restorePriorities') {
+        priorityQueries.deleteThisWeek(op.userId, op.weekOf);
+        op.priorities.forEach(p => priorityQueries.create(op.userId, p.text, op.weekOf, p.rank));
+        any = true;
+      }
     } catch { /* skip individual failures */ }
   }
   return any;

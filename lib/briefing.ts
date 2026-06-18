@@ -378,8 +378,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recentBriefings = briefingQueries.getRecent(userId, 30);
 
   // Load + rank all facts once, early — used by meeting context + event-linked memory below.
+  // M3-1: filterStale=true excludes facts >90d old with no recent confirmation (they remain
+  // retrievable on-demand via searchMemory). This is the correct filter for live briefings.
   const allRawFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
-  const salientFactsEarly = topFacts(allRawFacts, priorities, today, { max: 20, maxPerCategory: 6 });
+  const salientFactsEarly = topFacts(allRawFacts, priorities, today, { max: 20, maxPerCategory: 6, filterStale: true });
 
   const _parallelStart = Date.now();
   const [calendarEvents, weekEvents, fullWeekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
@@ -956,6 +958,9 @@ PART 3 — CLOSING (2–3 sentences MAX):
 ${buildPersonalizationPromptBlock(salientFacts.length) ?? `ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.`}${prioritiesStaleAge > 7 && personalizationSignal === null ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
 
 Write as flowing spoken language.`;
+
+  // DC2-4: dev log of section sizes — lets us diagnose briefing bloat without listening to calls.
+  console.log(`[DC2-4] prompt sections chars: total=${userPrompt.length} | calText=${calendarText.length} | alignment=${alignmentText?.length ?? 0} | whoopCtx=${whoopContextBlock.length} | patternMem=${patternMemoryBlock.length} | openLoops=${openLoopsBlock.length} | accountab=${accountabilityBlock.length} | episodeMem=${episodeMemoryBlock.length} | facts=${salientFacts.length}facts`);
 
   // Main briefing generation: 30-second timeout guard so a slow/hanging Anthropic call
   // can never block the scheduler from placing the call.

@@ -11,13 +11,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## 🚨 Tier 0 — Flywheel integrity (the call must generate memory)
 
-### DC0-1 — Every call produces a memory update (Core + Security)
-**The risk:** The call is the flywheel's engine — but if it runs without producing a memory update, the flywheel stalls. A call that extracts no facts, no episode, no pattern is a missed compounding opportunity.
-- After every call: verify (a) at least one fact was extracted or updated, (b) an episode record was created, (c) any explicit commitment the user made is in the tasks table
-- If extraction produced zero facts: flag the call for sleep-time review rather than silently passing
-- Log per-call: `{callId, userId, factsExtracted, episodeCreated, commitmentsCaptured, extractionMs}`
-- This is the single most important thing to get right — without it, the moat doesn't compound
-- Test: complete a call where you state a new goal; verify all three outputs exist within 5 minutes
+### DC0-1 — Every call produces a memory update (Core + Security) — ✅ **LIVE (Round 6)**
+**Shipped:** Post-call pipeline in `app/api/vapi/webhook/route.ts` fires all five jobs (facts, consolidation, tasks, open-loops, episode) as parallel fire-and-forget; each updates `briefingQueries.updateLearningStatus` with `{facts_ok, facts_extracted, extraction_ms, consolidation_ok, tasks_ok, episode_ok, loops_ok}`; zero-facts calls set `flagged_for_review: true` + warn on Railway; full `backgroundJobFailureQueries` logging on any failure.
+~~**The risk:** The call is the flywheel's engine — but if it runs without producing a memory update, the flywheel stalls.~~
 
 ### DC0-1b — After-call memory audit: verify the right things were stored (Core) — ✅ **FIXED a989057**
 **Shipped:** Due-date extraction from transcript commitments wired; category spot-check audit confirms goals/people/commitments routing correctly; `{callId, factsExtracted, episodeCreated, commitmentsCaptured}` log per call.
@@ -29,12 +25,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Verify goal extraction: when a user says "my priority this week is fundraising" — does a goal-category fact reflect this?
 - This is the flywheel's engine. If this step is wrong, nothing downstream compounds correctly.
 
-### DC0-2 — Call-to-briefing latency: facts must land before next morning (Core)
-**The risk:** A user calls at 8am. Sleep-time consolidation runs at 2am. If fact extraction is slow or retries, the consolidated facts may not be ready for the next day's briefing.
-- Audit the pipeline: call ends → transcript stored → facts extracted → sleep-time agent runs → briefing context assembled. What's the worst-case latency at each step?
-- Facts must be extracted within 30 minutes of call end (not just eventually)
-- Sleep-time consolidation must complete before 5am to be available for a 7am call
-- Test: complete a call at 11pm, verify facts are in the briefing the next morning
+### DC0-2 — Call-to-briefing latency: facts must land before next morning (Core) — ✅ **LIVE (Round 6)**
+**Shipped:** Post-call latency timer in `app/api/vapi/webhook/route.ts` measures call-end → facts-extracted → episode-created chain; logs `[DC0-2] post-call memory pipeline Xms for briefing Y`; warns on Railway if >120s; `briefingQueries.updateLearningStatus` records `{factsExtracted, extractionMs}` per call; zero-facts calls flagged for sleep-time review.
+~~**The risk:** A user calls at 8am. Sleep-time consolidation runs at 2am. If fact extraction is slow or retries, the consolidated facts may not be ready for the next day's briefing.~~
 
 ---
 
