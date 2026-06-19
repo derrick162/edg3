@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { extractGmailAccountContacts } from '@/lib/gmail';
 import { factQueries } from '@/lib/db';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 const MAX_CONTACTS = 30;
 
@@ -13,6 +14,10 @@ const MAX_CONTACTS = 30;
 export async function POST() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Rate-limited: each call fans out to many Gmail thread reads (external API cost).
+  const rl = checkRateLimit('gmailIngest', user.id.toString());
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   try {
     const contacts = await extractGmailAccountContacts(user.id, { days: 60, max: 50 });
