@@ -491,7 +491,7 @@ function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS oauth_state (
       state      TEXT PRIMARY KEY,
       user_id    INTEGER NOT NULL REFERENCES users(id),
-      flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop')),
+      flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')),
       expires_at TEXT NOT NULL
     );
 
@@ -623,6 +623,9 @@ function initSchema(db: Database.Database) {
     // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
     "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
+    // oauth_state CHECK was missing 'gmail' — recreate with updated constraint.
+    // Rows are ephemeral CSRF tokens (expire in minutes), so data loss is acceptable.
+    "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
   ];
   for (const migration of migrations) {
     try { db.exec(migration); } catch { /* column already exists */ }
