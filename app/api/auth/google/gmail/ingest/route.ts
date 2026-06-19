@@ -23,7 +23,7 @@ export async function POST() {
       const statement = c.name
         ? `Emails with ${c.name} (${c.email})`
         : `Emails with ${c.email}`;
-      factQueries.upsertFact(user.id, 'people', statement, displayName, 'low');
+      factQueries.upsertFact(user.id, 'person', statement, displayName, 'low');
       factsAdded++;
     }
 
