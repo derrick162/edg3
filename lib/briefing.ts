@@ -139,13 +139,27 @@ Rules:
  */
 export function buildFallbackBriefing(greeting: string, userName: string, calendarText: string, prioritiesText: string): string {
   const firstName = (userName || '').split(' ')[0] || userName;
-  const calSection = calendarText.trim()
-    ? `Here's what I have on your calendar: ${calendarText.trim().replace(/\n/g, ', ')}.`
-    : "I don't see any events on your calendar for today.";
-  const prioSection = prioritiesText.trim() && prioritiesText !== 'No priorities set for this week.'
-    ? `Your priorities this week are: ${prioritiesText.replace(/^\d+\.\s*/gm, '').trim().replace(/\n/g, ', ')}.`
-    : '';
-  return `${greeting}, ${firstName}. I had a little trouble loading your full briefing today — let me give you the essentials. ${calSection}${prioSection ? ' ' + prioSection : ''} I'll have everything ready on tomorrow's call. What's the most important thing I should know before then?`;
+
+  // Only surface upcoming (not already-past) events and strip [FLAG] brackets so TTS
+  // reads cleanly — otherwise it literally reads "[ALREADY HAPPENED]" on the call.
+  const upcomingLines = calendarText.trim()
+    .split('\n')
+    .filter(l => l.trim() && !l.includes('[ALREADY HAPPENED]'))
+    .slice(0, 3)
+    .map(l => l.replace(/^-\s*/, '').replace(/\[.*?\]/g, '').trim())
+    .filter(Boolean);
+
+  const calSection = upcomingLines.length > 0
+    ? `Still ahead on your calendar: ${upcomingLines.join(', ')}.`
+    : "Nothing else scheduled for today.";
+
+  // Top 2 priorities only — listing all of them creates a wall of text for TTS.
+  const topPrios = prioritiesText.trim() && prioritiesText !== 'No priorities set for this week.'
+    ? prioritiesText.replace(/^\d+\.\s*/gm, '').trim().split('\n').slice(0, 2).filter(Boolean)
+    : [];
+  const prioSection = topPrios.length > 0 ? `Top priorities this week: ${topPrios.join(', ')}.` : '';
+
+  return `${greeting}, ${firstName}. I had a little trouble loading your full briefing today — let me give you the essentials. ${calSection}${prioSection ? ' ' + prioSection : ''} What's most on your mind right now?`;
 }
 
 /**
@@ -1102,7 +1116,7 @@ Write as flowing spoken language.`;
       max_tokens: 290,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
-    }, { signal: AbortSignal.timeout(30_000) });
+    }, { signal: AbortSignal.timeout(45_000) });
     const content = message.content[0];
     briefingText = content.type === 'text' ? content.text : buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
     const wordCount = briefingText.split(/\s+/).length;
