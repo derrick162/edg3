@@ -622,8 +622,14 @@ function ActivityTab() {
     }
   }
 
+  // SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" without a 'Z' suffix.
+  // Without 'Z', JS new Date() parses as LOCAL time — wrong: it IS UTC. Add 'Z'.
+  function parseTs(ts: string): Date {
+    return new Date(ts.includes('Z') || ts.includes('+') ? ts : ts.replace(' ', 'T') + 'Z');
+  }
+
   function relativeTime(created_at: string): string {
-    const ms = Date.now() - new Date(created_at).getTime();
+    const ms = Date.now() - parseTs(created_at).getTime();
     const s = Math.floor(ms / 1000);
     if (s < 60) return 'just now';
     const m = Math.floor(s / 60);
@@ -635,7 +641,7 @@ function ActivityTab() {
   }
 
   function dayLabel(created_at: string): string {
-    const d = new Date(created_at);
+    const d = parseTs(created_at);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
@@ -1377,6 +1383,8 @@ export default function Dashboard() {
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
+  const [gmailLinkedNotice, setGmailLinkedNotice] = useState<'idle' | 'ingesting' | 'done'>('idle');
+  const [gmailIngestStats, setGmailIngestStats] = useState<{ contactsFound: number } | null>(null);
   const [notifs, setNotifs] = useState<{ id: number; title: string | null; body: string | null; read: number; created_at: number }[]>([]);
   const [notifUnread, setNotifUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -1754,6 +1762,26 @@ export default function Dashboard() {
     }
   }, []);
 
+  // After linking a Gmail account, kick off background contact ingestion and show
+  // a persistent progress notification pointing to the Memory tab.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gmail_linked')) {
+      window.history.replaceState({}, '', '/dashboard');
+      setGmailLinkedNotice('ingesting');
+      fetch('/api/auth/google/gmail/ingest', { method: 'POST' })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d?.contactsFound != null) setGmailIngestStats({ contactsFound: d.contactsFound });
+          setGmailLinkedNotice('done');
+          setTimeout(() => setGmailLinkedNotice('idle'), 10000);
+        })
+        .catch(() => {
+          setGmailLinkedNotice('done');
+          setTimeout(() => setGmailLinkedNotice('idle'), 6000);
+        });
+    }
+  }, []);
+
 
   async function callIntro() {
     setIntroCalling(true);
@@ -1878,6 +1906,28 @@ export default function Dashboard() {
       {linkedNotice && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'var(--edg-success-tint)', border: '1px solid var(--edg-success-border)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
           ✓ Google account linked
+        </div>
+      )}
+
+      {gmailLinkedNotice !== 'idle' && (
+        <div style={{ position: 'fixed', top: linkedNotice ? 56 : 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'var(--surface-elevated)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-primary)', padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 500, maxWidth: 440, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }}>
+          {gmailLinkedNotice === 'ingesting' ? (
+            <>
+              <span className="animate-spin" style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--edg-indigo)', borderTopColor: 'transparent', borderRadius: '50%', marginRight: 8, verticalAlign: 'middle' }} />
+              Gmail connected — reading your recent emails to learn more about you...
+            </>
+          ) : gmailIngestStats ? (
+            <>
+              <span style={{ color: 'var(--edg-success)', marginRight: 6 }}>✓</span>
+              Found {gmailIngestStats.contactsFound} contacts in your email history.{' '}
+              <button onClick={() => setActiveTab('memory')} style={{ color: 'var(--edg-indigo)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, padding: 0, textDecoration: 'underline' }}>
+                Check your Memory tab
+              </button>{' '}
+              to see what Edge learned.
+            </>
+          ) : (
+            <><span style={{ color: 'var(--edg-success)', marginRight: 6 }}>✓</span> Gmail account connected</>
+          )}
         </div>
       )}
 
@@ -2522,7 +2572,8 @@ export default function Dashboard() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigator.clipboard.writeText(b.transcript!).then(() => {
+                                    const firstName = (user?.name || '').split(' ')[0];
+                                    navigator.clipboard.writeText(correctName(b.transcript!, firstName)).then(() => {
                                       setCopiedTranscriptId(b.id);
                                       setTimeout(() => setCopiedTranscriptId(null), 2000);
                                     }).catch(() => {});
