@@ -31,6 +31,32 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-18 (ROUND 7 — Full email body reading for memory)
+
+> **P0 — do this before Round 6.** Derrick's core vision: Edge reads his emails to build memory. Currently `getRecentEmailSignal` only reads thread metadata + snippets (subject, sender, Gmail snippet) — NOT full message bodies. This ticket closes that gap.
+
+### Ticket 1 — Full email body reading + memory extraction (P0 — do now)
+
+**What exists:** `lib/gmail.ts` has `readThread(userId, threadId)` which fetches full message bodies. `getRecentEmailSignal` fetches thread list + snippets but stops there. `extractAndUpsertFactsFromEmail` and `extractAndUpsertOpenLoops` consume the signal but only see snippets.
+
+**What to build:**
+
+1. **Extend `getRecentEmailSignal`** in `lib/gmail.ts` to optionally fetch full bodies. Add a `fullBodies?: boolean` option (default false for backwards compat). When true: for each thread returned, call `readThread` to get the full message text. Attach as `body` on each `EmailSignalItem`. Cap at 10 threads max (cost/latency guard) and 2000 chars per body (truncate cleanly at sentence boundary).
+
+2. **Wire full bodies into the briefing** in `lib/briefing.ts`: call `getRecentEmailSignal(userId, { days: 7, max: 10, fullBodies: true })`. The existing `extractAndUpsertFactsFromEmail` and `extractAndUpsertOpenLoops` calls already consume the signal — they'll automatically get richer input once bodies are attached.
+
+3. **Extend `extractAndUpsertFactsFromEmail`** in `lib/facts.ts` to use body text when present. Currently it only sees `snippet` and `subject`. When `item.body` exists, pass it to the Haiku extraction call instead of (or in addition to) the snippet. Extract: people mentioned, commitments made, facts stated, deadlines implied.
+
+4. **Spam/noise filter**: before extracting facts from a body, check `isLikelySpam(item)` — skip threads where `isUnread=false` AND sender domain is not in a known-contacts list AND subject matches common promotional patterns (Unsubscribe, noreply, no-reply, newsletter, promo). This was already flagged as a live issue by Derrick.
+
+**Scope boundary:** Security owns `lib/gmail.ts` access primitives. Core owns the briefing wiring + fact extraction. You're extending the signal consumption side — `getRecentEmailSignal` already exists and is Security's, so coordinate: either ask Vijay to add the `fullBodies` option to `lib/gmail.ts`, OR add it yourself and note the cross-lane touch in the Status Board.
+
+**Test:** unit test `isLikelySpam` filter. Integration: call `getRecentEmailSignal` with `fullBodies:true` in a test and verify body text comes back. Verify `extractAndUpsertFactsFromEmail` produces more facts with body text than without.
+
+**Done when:** briefing runs use full email bodies for memory extraction, spam is filtered, preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay + outcome-weighted memory)
 
 > Master at `c7d2515`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`
