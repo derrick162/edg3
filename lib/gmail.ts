@@ -3,6 +3,7 @@ import { getOAuthClient } from './calendar';
 import { getDb, gmailQueries, auditLogQueries } from './db';
 import { hasGmailScope, hasGmailReadScope, getGmailTokens, getCalendarTokens, persistRefreshedToken, type ResolvedGoogleToken } from './google-auth';
 import { encryptField, decryptField } from './crypto';
+import { isLikelySpam } from './emailActivityFilter'; // Core pure helper (Round 7 — full-body fact extraction)
 
 // Gmail access primitive for EDG3 — the GUARDED, DRAFT-ONLY entry point.
 //
@@ -215,19 +216,23 @@ export async function readThread(userId: number, threadId: string): Promise<Thre
   });
 }
 
-// --- Email signal for Focus Recommendation -----------------------------------
-// Fetches a COMPACT DIGEST of recent inbox threads for use as a prioritization
-// signal by Core's recommendFocusAreas(). Design contract:
-//   - format:'metadata' only — we NEVER fetch message bodies here.
-//   - snippet comes from Gmail's own thread-list response (auto-truncated ~100 chars).
-//   - Nothing is stored: derive the signal, return it, drop the rest.
-//   - Audit: we log the fetch (thread count only) so it appears in the user's
-//     Activity feed. Zero email content enters the audit log.
+// --- Email signal for Focus Recommendation + memory -------------------------
+// Fetches a DIGEST of recent inbox threads used by Core's recommendFocusAreas()
+// (prioritization) and extractAndUpsertFactsFromEmail() (memory). Design contract:
+//   - Default (no fullBodies): format:'metadata' only — header metadata + Gmail's
+//     own auto-truncated snippet (~100 chars). NO message bodies fetched.
+//   - With { fullBodies:true } (Round 7): for up to 10 non-spam threads we ALSO call
+//     readThread() to fetch the actual inbound body text (capped 2000 chars/thread) so
+//     Edge builds memory from what emails SAY, not just subject lines.
+//   - Nothing is stored either way: bodies/snippets live in-memory on the returned
+//     items and are dropped after extraction. The audit log records thread count +
+//     subjects only — zero body text ever enters the audit log or DB.
 //
-// PRIVACY NOTE: this accesses arbitrary inbox threads, not just threads Edge
-// started. This is a USE-CASE EXPANSION of the gmail.readonly scope vs. the
-// prior reply-tracking use. The google-verification.md spec is updated to
-// reflect this. See also the CASA flag in ROADMAP-SECURITY.md.
+// PRIVACY NOTE: this accesses arbitrary inbox threads, not just threads Edge started,
+// and (with fullBodies) reads their bodies in-memory. This is a USE-CASE EXPANSION of
+// the gmail.readonly scope. ⚠️ Security/PM: update google-verification.md + the privacy
+// page to state Edge reads inbox body text (in-memory, for memory; never stored/sold).
+// See also the CASA flag in ROADMAP-SECURITY.md.
 
 // Absolute ceiling on threads fetched per call regardless of opts.max.
 const EMAIL_SIGNAL_CAP = 50;
@@ -240,6 +245,10 @@ export interface EmailSignalItem {
   date: string;       // Date header of the most recent message in the thread
   isUnread: boolean;
   isImportant: boolean;
+  // Round 7 (Core, cross-lane): full inbound body text, present only when getRecentEmailSignal
+  // is called with { fullBodies: true }. In-memory only — NEVER stored (the audit log still
+  // records subjects only). Capped to keep token cost bounded.
+  body?: string;
 }
 
 export interface EmailSignal {
@@ -260,7 +269,7 @@ export interface EmailSignal {
  */
 export async function getRecentEmailSignal(
   userId: number,
-  opts: { days?: number; max?: number } = {},
+  opts: { days?: number; max?: number; fullBodies?: boolean } = {},
 ): Promise<EmailSignal> {
   const fetchedAt = new Date().toISOString();
   const days = Math.max(1, opts.days ?? 14);
@@ -323,6 +332,30 @@ export async function getRecentEmailSignal(
   const items = settled
     .filter((r): r is PromiseFulfilledResult<EmailSignalItem> => r.status === 'fulfilled' && r.value !== null)
     .map((r) => r.value);
+
+  // Round 7 (Core, cross-lane): when fullBodies is requested, fetch the actual inbound body
+  // text for memory extraction — not just Gmail's truncated snippet. Skip likely-spam threads
+  // BEFORE the (per-thread) readThread call so we don't waste fetches on promo/automated mail.
+  // Bodies are kept in-memory on the returned items only; nothing here is stored.
+  if (opts.fullBodies && items.length > 0) {
+    const FULL_BODY_THREAD_CAP = 10;
+    const BODY_CHAR_CAP = 2000;
+    const eligible = items
+      .filter((i) => !isLikelySpam(i.subject, i.sender))
+      .slice(0, FULL_BODY_THREAD_CAP);
+    await Promise.allSettled(
+      eligible.map(async (item) => {
+        try {
+          const msgs = await readThread(userId, item.threadId);
+          // Only the inbound side — exclude the user's own sent replies (fromMe).
+          const inbound = msgs.filter((m) => !m.fromMe).map((m) => m.text).join('\n---\n').trim();
+          if (inbound) item.body = inbound.slice(0, BODY_CHAR_CAP);
+        } catch {
+          /* leave body undefined — extraction falls back to the snippet */
+        }
+      }),
+    );
+  }
 
   // Audit: thread count in argsJson; subjects encrypted in snapshotAfter so the
   // user can see which threads Edge reviewed in the Activity tab receipt, without

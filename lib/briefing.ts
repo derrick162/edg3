@@ -526,7 +526,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getSleepHistory(userId).catch(() => []),
     getStrainHistory(userId).catch(() => []),
     getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
-    getRecentEmailSignal(userId, { days: 14, max: 20 }).catch(() => null),
+    getRecentEmailSignal(userId, { days: 14, max: 20, fullBodies: true }).catch(() => null),
     getPastCalendarEvents(userId, 180).catch(() => []),
   ]);
   // DC2-3b: timing log so we can audit why Whoop data is occasionally missing.

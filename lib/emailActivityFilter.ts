@@ -70,3 +70,23 @@ export function filterReviewedSubjects(
 ): string[] {
   return subjects.filter(s => isFlagged(s) || !isNoiseSubject(s));
 }
+
+// Sender patterns typical of automated / bulk / no-reply mail. Conservative on purpose —
+// we do NOT include shared-inbox addresses (info@, support@, team@, hello@) because real
+// people and businesses use those; only clearly machine/marketing senders.
+const NOISE_SENDER_HINTS = [
+  'no-reply', 'noreply', 'no_reply', 'donotreply', 'do-not-reply', 'do_not_reply',
+  'mailer-daemon', 'mailer@', 'newsletter@', 'marketing@', 'promotions@', 'promo@',
+  'notifications@', 'notification@', 'updates@', 'mailchimp', 'sendgrid', 'mailgun',
+];
+
+/**
+ * True if an email thread looks like promotional / automated noise we should NOT read
+ * into memory (Round 7: full-body fact extraction). Combines the subject classifier with
+ * a conservative sender check. Real correspondence passes through.
+ */
+export function isLikelySpam(subject: string, sender = ''): boolean {
+  if (isNoiseSubject(subject)) return true;
+  const s = sender.toLowerCase();
+  return NOISE_SENDER_HINTS.some(h => s.includes(h));
+}
