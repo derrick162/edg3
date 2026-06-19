@@ -39,7 +39,7 @@ const ROUTINE_TITLES_ALIGNMENT = new Set([
   'breakfast', 'lunch', 'dinner', 'coffee', 'gym', 'workout', 'morning walk',
   'evening walk', 'meal prep', 'sleep', 'commute', 'transit', 'shower',
 ]);
-function isRoutineTitle(title: string): boolean {
+export function isRoutineTitle(title: string): boolean {
   const t = title.toLowerCase().trim();
   return [...ROUTINE_TITLES_ALIGNMENT].some(r => t.includes(r));
 }
