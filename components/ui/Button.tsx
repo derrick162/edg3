@@ -32,7 +32,7 @@ const VARIANT: Record<string, React.CSSProperties> = {
     border: 'none',
   },
   danger: {
-    background: 'linear-gradient(135deg, var(--edg-danger), #dc2626)',
+    background: 'linear-gradient(135deg, var(--edg-danger), var(--edg-danger))',
     color: '#fff',
     border: 'none',
   },

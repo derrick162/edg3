@@ -2238,6 +2238,13 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-3 pl-3.5 mb-1">
                   <button
+                    onClick={connectGmail}
+                    className="text-xs"
+                    style={{ color: 'var(--text-faint)' }}
+                  >
+                    Reconnect
+                  </button>
+                  <button
                     onClick={disconnectGmail}
                     disabled={disconnectingGmail}
                     className="text-xs"
@@ -2247,7 +2254,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <p className="pl-3.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                  Drafts emails on your behalf — reads nothing, send-only
+                  Drafts emails · reads contacts into Memory
                 </p>
               </div>
             ) : (
@@ -2261,8 +2268,8 @@ export default function Dashboard() {
                 </button>
                 <p className="pl-0 mt-0.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
                   {calendarHasGmailScope
-                    ? 'Drafts emails on your behalf — reads nothing, send-only. (Currently drafting via your calendar account.)'
-                    : 'Connect to unlock email drafting — reads nothing, send-only.'}
+                    ? 'Drafts emails · reads contacts into Memory. (Currently drafting via your calendar account.)'
+                    : 'Connect to unlock email drafting and contact sync.'}
                 </p>
               </div>
             )}
@@ -2544,9 +2551,16 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-sm">
-                            {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm">
+                              {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
+                            </p>
+                            {b.content && (
+                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                                · {b.content.trim().split(/\s+/).length} words
+                              </span>
+                            )}
+                          </div>
                           {b.user_response && (
                             <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: 'var(--text-muted)' }}>
                               You said: "{b.user_response}"
