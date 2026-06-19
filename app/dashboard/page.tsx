@@ -1306,7 +1306,7 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
-  const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null }[]>([]);
+  const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null; goals?: string | null; communication_style?: string | null }[]>([]);
   const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
   const [accountability, setAccountability] = useState<{ done: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; stillOpen: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; completionRate: number | null; lookbackDays: number } | null>(null);
   const [episodes, setEpisodes] = useState<{ id: number; source: string; occurredAt: string; topics: string[]; commitments: string[] }[]>([]);
@@ -3628,13 +3628,26 @@ export default function Dashboard() {
                             </div>
                             {/* Name + stats */}
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold leading-snug truncate" style={{ color: 'var(--text-strong)' }}>
-                                {p.canonical_name}
-                              </p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-semibold leading-snug truncate" style={{ color: 'var(--text-strong)' }}>
+                                  {p.canonical_name}
+                                </p>
+                                {p.communication_style && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0"
+                                    style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)', border: '1px solid var(--border-subtle)' }}>
+                                    {p.communication_style}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
                                 {p.interaction_count} meeting{p.interaction_count !== 1 ? 's' : ''}
                                 {lastDate && <> · last {lastDate}</>}
                               </p>
+                              {p.goals && (
+                                <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-faint)', fontStyle: 'italic', maxWidth: '100%' }}>
+                                  {p.goals.length > 60 ? p.goals.slice(0, 60) + '…' : p.goals}
+                                </p>
+                              )}
                             </div>
                             {/* Next meeting pill */}
                             {nextDate && (
