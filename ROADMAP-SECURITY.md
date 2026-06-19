@@ -30,6 +30,61 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 — people_models schema + setEnergyLevel Vapi tool schema)
+
+> Master at current HEAD. `git merge master` first. Coordination dispatch — Core (Darren) is building M4-4 social mental models and needs the DB schema from you.
+
+### Ticket 1 — `people_models` table schema (P1 — do first, Darren is unblocked waiting on this)
+
+Add to `lib/db.ts` as a new migration:
+
+```sql
+CREATE TABLE IF NOT EXISTS people_models (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name TEXT NOT NULL,
+  goals TEXT,
+  communication_style TEXT,
+  relationship_state TEXT,
+  last_interaction TEXT,
+  health_score REAL NOT NULL DEFAULT 1.0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, person_name)
+);
+```
+
+All TEXT fields (`goals`, `communication_style`, `relationship_state`, `last_interaction`) must be encrypted at rest with `encryptField`/`decryptField` — same pattern as `briefings.content`.
+
+Add `peopleModelQueries` to `lib/db.ts`:
+- `upsert(userId, personName, fields: Partial<{goals, communicationStyle, relationshipState, lastInteraction, healthScore}>)` — UPDATE or INSERT, sets `updated_at = datetime('now')`
+- `getForUser(userId, personName)` — single row lookup, decrypts fields
+- `listForUser(userId)` — all rows, decrypted
+- `deleteForUser(userId, personName)` — for completeness
+- Add `peopleModelQueries.deleteAllForUser(userId)` to the account deletion route
+
+**Account deletion:** `app/api/account/delete/route.ts` — add `DELETE FROM people_models WHERE user_id = ?` (same pattern as other user-scoped tables).
+
+**Test:** upsert a row with all fields, read it back via `getForUser`, verify decryption round-trips correctly. Verify account deletion cleans the table. Preflight green.
+
+---
+
+### Ticket 2 — `setEnergyLevel` Vapi tool schema (P2 — after Ticket 1)
+
+The Energy OS shipped the energy signal and day recommendations, but there's no Vapi tool letting Edge set/update the energy level mid-call. Create the route:
+
+**`POST /api/vapi/energy`** (new route) — secured with `checkVapiSecret`:
+- Body: `{ userId: number, level: 'red' | 'yellow' | 'green', source: 'self-report' }`
+- Writes to `energy_logs` table (already exists per the Energy OS spec)
+- Returns `{ ok: true, message: "Energy level updated to [level]" }`
+
+**Rate limit:** 10/hr per user (same as other Vapi tool routes).
+
+Derrick will create the Vapi dashboard tool and paste the UUID — leave a `// TODO: paste UUID` placeholder comment in `lib/vapi.ts` toolIds object once Core tells you where it goes. Coordinate with Darren.
+
+Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 6 — Predictive context loading + confidence decay schema)
 
 > Master at `c7d2515`. `git merge master` first. **READ FIRST:** `content/memory-research-applied.md`

@@ -49,6 +49,56 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 — Focus Scoreboard visual shell + dashboard cleanup)
+
+> Master at current HEAD. `git merge master` first. All three dispatch items are additive Design-owned work — no Core coordination needed for the visual shell.
+
+### Ticket 1 — Focus Scoreboard visual shell (P1 — the product's heart)
+
+> Core spec: `specs/energy-os.md` Layer 3. Core/Darren owns the data logic + milestones schema (Vijay doing schema). You own the visual presentation.
+
+The Focus Scoreboard is **the most important thing on the dashboard** — it answers "am I getting my priorities done?" Build the visual shell now so Core can wire data into it.
+
+**What to build in `components/ui/FocusScoreboard.tsx`** (already exists — extend it):
+- Three priority rows, each showing: priority label + energy-cost dot + **progress bar** (hours invested this week / target hours — from alignment engine) + optional milestone list (checkboxes, gray until Core wires data)
+- **Completion moment**: when a milestone is checked (or a priority hits 100%), show a brief visual celebration — a green flash or a subtle confetti ripple. Not animated by default; use a CSS `transition` so it feels earned.
+- **Neglected state**: if a priority has 0 hours this week, the row gets a soft amber left-border + "0h — no time blocked" label. Not alarming — just honest.
+- **Edge acknowledgment hook**: a `onMilestoneComplete` callback prop that Core wires to trigger an Edge voice note on the next call.
+
+**State:** accept `priorities: Array<{text, energyCost, hoursThisWeek, targetHours, milestones: {id, title, done}[]}>` as props — all optional/nullable so it renders gracefully empty.
+
+**Data shape:** keep it prop-driven. Core will wire the real API later.
+
+**File:** `components/ui/FocusScoreboard.tsx`. Keep visual consistent with existing `glass-card` + `--edg-accent` tokens.
+
+---
+
+### Ticket 2 — Dashboard tab order + default tab cleanup (P1)
+
+The current default tab is "Today" (home). After 10+ calls, users care more about their focus + memory than the daily briefing. Reorder:
+
+1. Move "Focus" tab to position 1 (first, leftmost in the sidebar nav)
+2. Keep "Today" at position 2
+3. Keep "Memory", "Activity", "Briefings" in order after that
+
+Also: the sidebar nav currently shows 7+ tabs which is crowded. Collapse low-priority tabs into a "More ▾" overflow button: keep Focus, Today, Memory, Activity visible; put Briefings, Tasks, Help, Profile under "More". On mobile this matters especially.
+
+**File:** `app/dashboard/page.tsx` (claim Status Board). Small structural change — Core owns behavior, you own order/layout.
+
+---
+
+### Ticket 3 — "What Edge knows" memory tab — people section visual polish (P2)
+
+Now that M4-4 social mental models is being built (Core/Darren), the People section in the Memory tab will have richer data (goals, communication style, last interaction). Pre-polish the section so it's ready when the data lands:
+
+- People profile cards: add a second line below the name/meeting-count that shows `goals` when populated (gray italic, max 60 chars, truncated). When empty, show nothing (not a placeholder).
+- Add a `communication_style` chip (e.g. "prefers async") as a small badge when populated.
+- Keep the existing avatar/meeting-count layout intact. This is purely additive rendering.
+
+**File:** `app/dashboard/page.tsx` (inside the People section of the Memory tab). These fields come from the `GET /api/memory` response — Core/Darren will add them once Vijay ships the schema.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (★ LANDING PAGE REDESIGN — Derrick's direct feedback)
 
 > Master at `f1e1943`. Sync master first. File to edit: `app/page.tsx` (claim Status Board). Inspiration reference: **ramp.com** — study it before touching a line of code.

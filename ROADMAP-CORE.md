@@ -31,6 +31,62 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 — Social mental models + Briefing V2 proactive wins)
+
+> Master at current HEAD. `git merge master` first. **Context:** Railway DB is confirmed wiped on deploys (ephemeral volume — Derrick/Kevin fixing externally). Build now so it's ready when DB is stable.
+
+### Ticket 1 — M4-4: Social mental models — `people_models` table (P1 — NOW UNBLOCKED)
+
+> Was blocked on People-extraction cleanup. That merged weeks ago. **Build this now.**
+
+The gap: Edge knows *facts* about people (from `facts` table, category='person') but has no structured per-person model. When "Sarah Chen" appears on the calendar, Edge can't recall her goals, communication style, or what the last interaction was about. This ticket adds that.
+
+**What to build:**
+
+1. **`people_models` table** (coordinate with Vijay for schema — he'll add it to `lib/db.ts`):
+   ```sql
+   CREATE TABLE IF NOT EXISTS people_models (
+     id INTEGER PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id),
+     person_name TEXT NOT NULL,
+     goals TEXT,                    -- encrypted: what this person is trying to achieve
+     communication_style TEXT,      -- encrypted: how they communicate
+     relationship_state TEXT,       -- encrypted: current relationship context
+     last_interaction TEXT,         -- encrypted: what the last conversation was about
+     health_score REAL DEFAULT 1.0, -- confidence in this model (decays like facts)
+     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+     UNIQUE(user_id, person_name)
+   );
+   ```
+
+2. **Sleep-time consolidation**: in `lib/facts.ts` `runSleepTimeConsolidation`, after extracting facts — check if any person-category facts were upserted. For each new/updated person fact, call `upsertPersonModel(userId, personName, fields)` to keep the model in sync. Extract: goals mentioned ("Sarah's trying to close a Series A"), communication style ("prefers async, brief"), relationship state ("haven't spoken in 3 weeks").
+
+3. **Briefing builder injection**: in `lib/briefing.ts`, when building calendar context — for each calendar event, look up attendee names in `people_models`. If a model exists, inject a compact block: `[Sarah Chen: Series A fundraising · prefers async · last: discussed term sheet 2 weeks ago]`. Degrade silently if no model exists. Cap at 3 people per briefing.
+
+4. **`peopleModelQueries`** in `lib/db.ts`: `upsert(userId, personName, fields)`, `getForUser(userId, personName)`, `listForUser(userId)`, `deleteForUser(userId)` (for account deletion).
+
+**Test:** person mentioned in a mocked call transcript → sleep-time consolidation creates a `people_models` row → briefing builder injects the model when that person appears on the calendar. Preflight green.
+
+---
+
+### Ticket 2 — Briefing V2 quick prompt wins (P1 — direct continuation of call quality work)
+
+> These are prompt-only changes in `lib/briefing.ts` and `lib/vapi.ts`. Low risk, high call quality impact. Derrick's feedback: "Edge should feel proactive, not just reporting."
+
+**Four specific wins — do all four in one commit:**
+
+1. **Proactive free-slot offer**: In Part 2 of the briefing (FOCUS + ACTION), after naming the top priority — if there's a free slot >60 min in the next 4 hours, Edge should name it: *"There's a clear 2-hour block at 10am — want me to lock that in for [P1]?"* Wire in `lib/vapi.ts` so Edge calls `createEvent` immediately on yes. Update the PRIORITY BLOCKING instruction.
+
+2. **Look ahead to tomorrow**: In Part 3 (ALIGNMENT), add one sentence about tomorrow if today looks heavy or if a priority has nothing scheduled tomorrow: *"Tomorrow's light — good day to push forward on [P2] if today stays packed."* Never add this if tomorrow already has dense focus work.
+
+3. **Personal event warmth**: In the opener section — if there's a personal/social event today (birthday, dinner, anniversary detected from event title keywords: "birthday", "dinner", "anniversary", "date", "family"), Edge should acknowledge it warmly and offer to help (send a message, block prep time). One sentence, naturally woven in.
+
+4. **Proactive recovery offer (when Whoop connected + red/sharp-drop)**: The `detectRecoveryDrop` function already exists in `lib/whoopTrends.ts` and returns a `RecoveryAlert`. In the briefing builder, when this fires — inject a concrete RECOVERY ALERT that names the heaviest deferrable event: *"Recovery's at 28% — that's 20 points below your week average. [Strategy session at 3pm] looks like the most deferrable thing. Want me to push it to tomorrow?"* Edge must name the specific event and offer to act. Already coded in `whoopContextBlock` in briefing.ts — verify it's wiring the specific event name, not just generic language.
+
+**Test each win individually.** Preflight green after each.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-18 (ROUND 7 — Full email body reading for memory)
 
 > **P0 — do this before Round 6.** Derrick's core vision: Edge reads his emails to build memory. Currently `getRecentEmailSignal` only reads thread metadata + snippets (subject, sender, Gmail snippet) — NOT full message bodies. This ticket closes that gap.
