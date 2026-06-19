@@ -117,9 +117,9 @@ function gmailRedirectUri(): string {
   return process.env.GMAIL_REDIRECT_URI || 'http://localhost:3000/api/auth/google/gmail/callback';
 }
 
-// openid + email capture the linked account's address for the accounts-status UI; compose is
-// the only Gmail data scope (drafting). gmail.readonly stays on the primary account.
-export const GMAIL_ACCOUNT_SCOPES: string[] = ['openid', 'email', GMAIL_COMPOSE_SCOPE];
+// openid + email capture the linked account's address for the accounts-status UI; compose
+// lets Edge draft emails; readonly lets Edge read emails for reply tracking and context.
+export const GMAIL_ACCOUNT_SCOPES: string[] = ['openid', 'email', GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE];
 
 export async function getGmailAuthUrl(state: string): Promise<string> {
   const { google } = await import('googleapis');

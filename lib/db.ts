@@ -494,7 +494,7 @@ export function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS oauth_state (
       state      TEXT PRIMARY KEY,
       user_id    INTEGER NOT NULL REFERENCES users(id),
-      flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop')),
+      flow       TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')),
       expires_at TEXT NOT NULL
     );
 
@@ -574,7 +574,7 @@ export function initSchema(db: Database.Database) {
     -- NOT live in this pre-migration block — on an existing DB whose facts table predates
     -- valid_until, creating it here throws "no such column" and aborts the whole schema exec
     -- BEFORE migrations run (leaving valid_until/retry_after/etc. unapplied). It's created in
-    -- applyMigrations() AFTER the column is added. (Prod incident 2026-06-18.)
+    -- applyMigrations() AFTER the column is added (see DEFERRED_INDEXES). Prod incident 2026-06-18.
     CREATE INDEX IF NOT EXISTS idx_whoop_tokens_user ON whoop_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_energy_log_user_date ON energy_log(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_focus_milestones_user ON focus_milestones(user_id, priority_id);
@@ -639,6 +639,9 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
   "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
+  // Multi-account: oauth_state.flow CHECK was ('calendar','whoop') — recreate to allow 'gmail'.
+  // Rows are ephemeral CSRF tokens (minutes TTL), so dropping non-matching rows on rebuild is fine.
+  "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the

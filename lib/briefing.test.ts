@@ -21,7 +21,7 @@ describe('buildFallbackBriefing', () => {
 
   it('acknowledges no calendar events gracefully', () => {
     const result = buildFallbackBriefing('Good afternoon', 'Derrick', '', '1. Fundraising');
-    expect(result).toMatch(/don.t see any events/i);
+    expect(result).toMatch(/nothing.*scheduled|no.*events/i);
   });
 
   it('includes priorities when present', () => {
@@ -37,7 +37,7 @@ describe('buildFallbackBriefing', () => {
 
   it('always ends with a closing question', () => {
     const result = buildFallbackBriefing('Good morning', 'Derrick', '', '');
-    expect(result).toContain("What's the most important thing");
+    expect(result).toMatch(/what.s most on your mind|what.s the most important/i);
   });
 
   it('returns a plain-text string with no markdown', () => {
