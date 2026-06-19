@@ -92,7 +92,7 @@ describe('VOICES', () => {
     expect(VOICES.daniel.provider).toBe('11labs');
     expect(VOICES.daniel.voiceId).toBe('3WqHLnw80rOZqJzW9YRB');
     expect(VOICES.daniel.model).toBe('eleven_turbo_v2_5');
-    expect(VOICES.daniel.stability).toBe(0.3);
+    expect(VOICES.daniel.stability).toBe(0.55);
     expect(VOICES.daniel.similarityBoost).toBe(0.75);
   });
 
