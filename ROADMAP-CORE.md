@@ -45,7 +45,41 @@ After every ticket:
 
 ---
 
-### Bug 2 — Edge Assessment suggests prep for personal health appointments (P0)
+### Bug 2 — Edge Assessment suggests prep for personal health appointments (P0) + event classifier
+
+**Symptom:** Same as above (PRP prep suggestion). Fix with a proper classification system — not a one-off boolean.
+
+**Build `classifyEvent(title: string, description?: string): EventClass` in `lib/eventMatch.ts`:**
+
+```typescript
+export type EventClass =
+  | 'work-meeting'     // investor call, team sync, 1:1, standup, interview, client, demo, review
+  | 'health'           // doctor, dentist, therapy, treatment, PRP, injection, physio, massage, chiro, appointment
+  | 'fitness'          // gym, workout, run, yoga, pilates, training, swim, CrossFit, tennis, golf
+  | 'meal'             // lunch, dinner, breakfast, coffee, drinks, brunch, happy hour
+  | 'personal'         // birthday, family, date, anniversary, wedding, party, social
+  | 'travel'           // flight, airport, drive to, uber, transit, commute
+  | 'focus-block'      // deep work, focus time, blocked, writing, coding, no meetings, maker
+  | 'reminder'         // reminder, RSVP, deadline, due, follow up, don't forget
+  | 'unknown';         // anything that doesn't match — Edge should ask, not assume
+```
+
+**Rules:**
+- Match against lowercase title + optional description. Use keyword lists per class.
+- Priority order when multiple match: `health` > `fitness` > `travel` > `work-meeting` > `meal` > `personal` > `focus-block` > `reminder` > `unknown`.
+- `unknown` is the safe default — never assume work-meeting for an ambiguous title.
+- Export a second helper `needsPrepSuggestion(cls: EventClass): boolean` — returns `true` only for `work-meeting`. Everything else: false.
+
+**Wire it in:**
+1. Edge Assessment / day plan prep logic: wrap any prep suggestion with `needsPrepSuggestion(classifyEvent(event.summary))` — skip if false.
+2. Briefing opener (PAST EVENTS RULE already exists): also use `classifyEvent` to skip `fitness`/`meal`/`reminder` from the opener — they're noise.
+3. `lib/vapi.ts` prompt note: when suggesting prep, Edge must only do so for `work-meeting` events; for `unknown` — ask on the call instead of assuming.
+
+**Tests:** at minimum — `classifyEvent('PRP')` → `'health'`, `classifyEvent('Investor call')` → `'work-meeting'`, `classifyEvent('Gym')` → `'fitness'`, `classifyEvent('Lunch with Sarah')` → `'meal'`, `classifyEvent('Deep work block')` → `'focus-block'`, `classifyEvent('XYZ123')` → `'unknown'`, `needsPrepSuggestion('work-meeting')` → `true`, `needsPrepSuggestion('health')` → `false`.
+
+**Note:** this replaces the simpler `isPersonalEvent` boolean mentioned elsewhere in this dispatch.
+
+---
 
 **Symptom:** Edge Assessment card shows "Add 15-min prep before 'PRP' at 1:45 PM." PRP is a hair loss treatment — a personal health appointment requiring no prep. Edge is treating it like a work meeting.
 
