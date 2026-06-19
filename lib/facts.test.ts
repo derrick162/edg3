@@ -61,7 +61,7 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation, derivePersonModelFields } from './facts';
 import { factQueries, peopleProfileQueries, type Fact } from './db';
 import type { EmailSignal, EmailSignalItem } from './gmail';
 
@@ -772,5 +772,39 @@ describe('extractAndUpsertFactsFromEmail (Round 7 — full bodies + spam filter)
   it('no-ops when scope is missing', async () => {
     await extractAndUpsertFactsFromEmail(1, { items: [], fetchedAt: 'x', scopeMissing: true }, 'Derrick');
     expect(h.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('derivePersonModelFields (M4-4)', () => {
+  it('returns empty object for no statements', () => {
+    expect(derivePersonModelFields([])).toEqual({});
+    expect(derivePersonModelFields(['', '  '])).toEqual({});
+  });
+
+  it('extracts goals from goal-keyword statements', () => {
+    const f = derivePersonModelFields(['Sarah is trying to close a Series A']);
+    expect(f.goals).toBe('Sarah is trying to close a Series A');
+  });
+
+  it('extracts communication style from comm-keyword statements', () => {
+    const f = derivePersonModelFields(['Jim prefers async, brief messages']);
+    expect(f.communication_style).toBe('Jim prefers async, brief messages');
+  });
+
+  it('relationship_state + last_interaction default to the most recent (first) statement', () => {
+    const f = derivePersonModelFields(['most recent context', 'older context']);
+    expect(f.relationship_state).toBe('most recent context');
+    expect(f.last_interaction).toBe('most recent context');
+  });
+
+  it('picks distinct statements for goals vs comm style when both present', () => {
+    const f = derivePersonModelFields([
+      'Alice is the CFO',
+      'Alice wants to raise a bridge round',
+      'Alice prefers detailed written updates',
+    ]);
+    expect(f.goals).toContain('raise a bridge round');
+    expect(f.communication_style).toContain('detailed written updates');
+    expect(f.relationship_state).toBe('Alice is the CFO');
   });
 });

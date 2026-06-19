@@ -464,6 +464,23 @@ export function initSchema(db: Database.Database) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_people_profiles_unique
       ON people_profiles(user_id, canonical_name);
 
+    -- Social mental models (M4-4): a structured per-person model distinct from raw person facts.
+    -- goals/communication_style/relationship_state/last_interaction are encrypted at rest (PII).
+    -- health_score is model confidence (decays like fact confidence). Kept in sync by the
+    -- sleep-time consolidation agent after each call that mentions a person.
+    CREATE TABLE IF NOT EXISTS people_models (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      person_name         TEXT NOT NULL,
+      goals               TEXT,
+      communication_style TEXT,
+      relationship_state  TEXT,
+      last_interaction    TEXT,
+      health_score        REAL NOT NULL DEFAULT 1.0,
+      updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, person_name)
+    );
+
     -- Pattern cache: computed behavioral patterns from calendar + Whoop history.
     -- One row per user, refreshed on each briefing call (fire-and-forget).
     -- Stores a JSON array of PatternInsight objects; computed_at for freshness.
@@ -1351,6 +1368,7 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'briefing_context_packs',
   'episodes',
   'people_profiles',
+  'people_models',
   'pattern_cache',
   'failed_webhooks',
   'background_job_failures',
@@ -2216,6 +2234,76 @@ export const peopleProfileQueries = {
         upcoming_interaction = excluded.upcoming_interaction,
         updated_at = datetime('now')
     `).run(userId, canonicalName, email, interactionCount, lastInteraction, upcomingInteraction);
+  },
+};
+
+// Social mental models (M4-4) — a structured per-person model, distinct from raw person facts.
+// PII fields encrypted at rest. Kept in sync by sleep-time consolidation; read by the briefing
+// builder when a person appears on the calendar.
+export interface PersonModel {
+  id: number;
+  user_id: number;
+  person_name: string;
+  goals: string | null;
+  communication_style: string | null;
+  relationship_state: string | null;
+  last_interaction: string | null;
+  health_score: number;
+  updated_at: string;
+}
+
+export interface PersonModelFields {
+  goals?: string | null;
+  communication_style?: string | null;
+  relationship_state?: string | null;
+  last_interaction?: string | null;
+}
+
+function decryptPersonModelRow(r: PersonModel): PersonModel {
+  return {
+    ...r,
+    goals: safeDecryptNullable(r.goals, 'people_models.goals'),
+    communication_style: safeDecryptNullable(r.communication_style, 'people_models.communication_style'),
+    relationship_state: safeDecryptNullable(r.relationship_state, 'people_models.relationship_state'),
+    last_interaction: safeDecryptNullable(r.last_interaction, 'people_models.last_interaction'),
+  };
+}
+
+export const peopleModelQueries = {
+  listForUser: (userId: number): PersonModel[] =>
+    (getDb().prepare('SELECT * FROM people_models WHERE user_id = ? ORDER BY updated_at DESC').all(userId) as PersonModel[]).map(decryptPersonModelRow),
+
+  getForUser: (userId: number, personName: string): PersonModel | undefined => {
+    const row = getDb().prepare(
+      'SELECT * FROM people_models WHERE user_id = ? AND LOWER(person_name) = LOWER(?)'
+    ).get(userId, personName) as PersonModel | undefined;
+    return row ? decryptPersonModelRow(row) : undefined;
+  },
+
+  // Partial upsert: only provided fields are written. On conflict, undefined/null fields preserve
+  // the existing value (COALESCE). health_score resets to 1.0 on any update — a fresh mention
+  // reconfirms the model. Provided string fields are encrypted at rest.
+  upsert: (userId: number, personName: string, fields: PersonModelFields) => {
+    const enc = (v: string | null | undefined) => (v === undefined || v === null) ? null : encryptNullable(v);
+    const goals = enc(fields.goals);
+    const comm = enc(fields.communication_style);
+    const rel = enc(fields.relationship_state);
+    const last = enc(fields.last_interaction);
+    getDb().prepare(`
+      INSERT INTO people_models (user_id, person_name, goals, communication_style, relationship_state, last_interaction, health_score, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1.0, datetime('now'))
+      ON CONFLICT(user_id, person_name) DO UPDATE SET
+        goals = COALESCE(excluded.goals, goals),
+        communication_style = COALESCE(excluded.communication_style, communication_style),
+        relationship_state = COALESCE(excluded.relationship_state, relationship_state),
+        last_interaction = COALESCE(excluded.last_interaction, last_interaction),
+        health_score = 1.0,
+        updated_at = datetime('now')
+    `).run(userId, personName, goals, comm, rel, last);
+  },
+
+  deleteForUser: (userId: number) => {
+    getDb().prepare('DELETE FROM people_models WHERE user_id = ?').run(userId);
   },
 };
 

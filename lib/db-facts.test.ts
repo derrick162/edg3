@@ -34,9 +34,10 @@ vi.mock('./crypto', () => ({
   safeDecryptField: (v: string) => v,
   encryptNullable: (v: string | null) => v,
   decryptNullable: (v: string | null) => v,
+  safeDecryptNullable: (v: string | null) => v,
 }));
 
-import { factQueries, factHistoryQueries } from './db';
+import { factQueries, factHistoryQueries, peopleModelQueries } from './db';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -256,5 +257,53 @@ describe('factHistoryQueries — M4-3b rollbackFact', () => {
     const runCalls = (m.run.mock.calls as unknown as Array<unknown[]>);
     const insertRun = runCalls.find(args => Array.isArray(args) && args.includes('high'));
     expect(insertRun).toBeTruthy();
+  });
+});
+
+describe('peopleModelQueries (M4-4)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    m.prepare.mockReturnValue({ run: m.run, get: m.get, all: m.all });
+    m.all.mockReturnValue([]);
+    m.get.mockReturnValue(undefined);
+    m.run.mockReturnValue({ lastInsertRowid: 1 });
+  });
+
+  it('upsert encrypts provided fields and uses COALESCE merge on conflict', () => {
+    peopleModelQueries.upsert(1, 'Sarah Chen', { goals: 'close Series A', communication_style: 'async' });
+    const sql = ((m.prepare.mock.calls as unknown as string[][]).at(-1)?.[0] ?? '') as string;
+    expect(sql).toContain('INSERT INTO people_models');
+    expect(sql).toContain('ON CONFLICT(user_id, person_name)');
+    expect(sql).toContain('COALESCE(excluded.goals, goals)');
+    expect(sql).toContain('health_score = 1.0');
+    // run args: userId, name, goals, comm, rel, last
+    const args = m.run.mock.calls.at(-1) as unknown[];
+    expect(args[0]).toBe(1);
+    expect(args[1]).toBe('Sarah Chen');
+    expect(args[2]).toBe('close Series A');     // goals (crypto mocked pass-through)
+    expect(args[3]).toBe('async');               // communication_style
+  });
+
+  it('upsert passes null for omitted fields (so COALESCE preserves existing)', () => {
+    peopleModelQueries.upsert(1, 'Bob', { goals: 'ship v2' });
+    const args = m.run.mock.calls.at(-1) as unknown[];
+    expect(args[2]).toBe('ship v2'); // goals
+    expect(args[3]).toBeNull();      // communication_style omitted → null
+    expect(args[4]).toBeNull();      // relationship_state omitted → null
+  });
+
+  it('getForUser is user-scoped + case-insensitive on name', () => {
+    m.get.mockReturnValue({ id: 1, user_id: 1, person_name: 'Sarah Chen', goals: 'g', communication_style: null, relationship_state: null, last_interaction: null, health_score: 1.0, updated_at: 'x' });
+    const r = peopleModelQueries.getForUser(1, 'sarah chen');
+    const sql = ((m.prepare.mock.calls as unknown as string[][]).at(-1)?.[0] ?? '') as string;
+    expect(sql).toContain('WHERE user_id = ? AND LOWER(person_name) = LOWER(?)');
+    expect(r?.person_name).toBe('Sarah Chen');
+  });
+
+  it('deleteForUser removes all of a user\'s models', () => {
+    peopleModelQueries.deleteForUser(7);
+    const sql = ((m.prepare.mock.calls as unknown as string[][]).at(-1)?.[0] ?? '') as string;
+    expect(sql).toContain('DELETE FROM people_models WHERE user_id = ?');
+    expect(m.run.mock.calls.at(-1)).toEqual([7]);
   });
 });

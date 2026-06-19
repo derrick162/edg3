@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext } from './briefing';
-import type { Fact } from './db';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock } from './briefing';
+import type { Fact, PersonModel } from './db';
 
 function makePref(statement: string, id = 1): Fact {
   return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00', confidence: 'high', source_briefing_id: null };
@@ -416,5 +416,69 @@ describe('buildBriefingContext — regression', () => {
     }));
     const ctx = buildBriefingContext(USER, { facts: manyFacts, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
     expect(ctx.length).toBeLessThanOrEqual(16_000);
+  });
+});
+
+describe('buildPeopleModelBlock (M4-4)', () => {
+  function model(over: Partial<PersonModel>): PersonModel {
+    return {
+      id: 1, user_id: 1, person_name: 'Sarah Chen',
+      goals: null, communication_style: null, relationship_state: null,
+      last_interaction: null, health_score: 1.0, updated_at: '2026-06-19T00:00:00Z', ...over,
+    };
+  }
+  const ev = (summary: string, attendees?: { displayName?: string; email?: string }[]) => ({
+    summary, start: { dateTime: '2026-06-19T15:00:00Z' }, end: { dateTime: '2026-06-19T16:00:00Z' },
+    ...(attendees ? { attendees } : {}),
+  });
+
+  it('returns empty string when no models or no events', () => {
+    expect(buildPeopleModelBlock([], [model({})])).toBe('');
+    expect(buildPeopleModelBlock([ev('Standup')], [])).toBe('');
+  });
+
+  it('injects a model when the person name is in an event title', () => {
+    const block = buildPeopleModelBlock(
+      [ev('1:1 with Sarah Chen')],
+      [model({ person_name: 'Sarah Chen', goals: 'closing a Series A', communication_style: 'prefers async' })],
+    );
+    expect(block).toContain('Sarah Chen');
+    expect(block).toContain('closing a Series A');
+    expect(block).toContain('prefers async');
+  });
+
+  it('matches on attendee display name and on first name', () => {
+    const byAttendee = buildPeopleModelBlock(
+      [ev('Strategy sync', [{ displayName: 'Sarah Chen', email: 'sarah@acme.com' }])],
+      [model({ person_name: 'Sarah Chen', goals: 'raising a round' })],
+    );
+    expect(byAttendee).toContain('raising a round');
+
+    const byFirst = buildPeopleModelBlock(
+      [ev('Coffee with Sarah')],
+      [model({ person_name: 'Sarah Chen', goals: 'raising a round' })],
+    );
+    expect(byFirst).toContain('Sarah Chen');
+  });
+
+  it('does NOT inject a model when the person is not on the calendar', () => {
+    expect(buildPeopleModelBlock([ev('Team standup')], [model({ person_name: 'Sarah Chen', goals: 'x' })])).toBe('');
+  });
+
+  it('caps at 3 people', () => {
+    const events = [ev('A with Alice'), ev('B with Bob'), ev('C with Carol'), ev('D with Dave')];
+    const models = [
+      model({ id: 1, person_name: 'Alice', goals: 'g1' }),
+      model({ id: 2, person_name: 'Bob', goals: 'g2' }),
+      model({ id: 3, person_name: 'Carol', goals: 'g3' }),
+      model({ id: 4, person_name: 'Dave', goals: 'g4' }),
+    ];
+    const block = buildPeopleModelBlock(events, models);
+    const lineCount = block.split('\n').filter(l => l.startsWith('- ')).length;
+    expect(lineCount).toBe(3);
+  });
+
+  it('skips a matched model with no usable fields', () => {
+    expect(buildPeopleModelBlock([ev('1:1 Sarah Chen')], [model({ person_name: 'Sarah Chen' })])).toBe('');
   });
 });
