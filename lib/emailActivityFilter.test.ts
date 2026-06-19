@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNoiseSubject, filterReviewedSubjects } from './emailActivityFilter';
+import { isNoiseSubject, filterReviewedSubjects, isLikelySpam } from './emailActivityFilter';
 
 const SIGNAL_KEYWORDS = ['urgent', 'invoice', 'legal', 'contract', 'overdue', 'payment', 'lawsuit', 'agreement'];
 const isFlagged = (s: string) => SIGNAL_KEYWORDS.some(k => s.toLowerCase().includes(k));
@@ -74,5 +74,33 @@ describe('filterReviewedSubjects', () => {
   it('defaults to no flagging when predicate omitted', () => {
     expect(filterReviewedSubjects(['Your receipt from Lyft'])).toEqual([]);
     expect(filterReviewedSubjects(['Re: lunch'])).toEqual(['Re: lunch']);
+  });
+});
+
+describe('isLikelySpam', () => {
+  it('flags promotional/automated subjects (via isNoiseSubject)', () => {
+    expect(isLikelySpam('Your Instacart order has shipped', 'orders@instacart.com')).toBe(true);
+    expect(isLikelySpam('30% off everything', 'deals@store.com')).toBe(true);
+  });
+
+  it('flags no-reply / bulk-mailer senders even with a neutral subject', () => {
+    expect(isLikelySpam('Account activity', 'no-reply@bank.com')).toBe(true);
+    expect(isLikelySpam('Weekly update', 'newsletter@news.com')).toBe(true);
+    expect(isLikelySpam('Notice', 'notifications@linkedin.com')).toBe(true);
+    expect(isLikelySpam('Campaign', 'bounce@mailchimp.com')).toBe(true);
+  });
+
+  it('does NOT flag real correspondence from a person', () => {
+    expect(isLikelySpam('Re: term sheet', 'sarah@acme.com')).toBe(false);
+    expect(isLikelySpam('Can we move our 1:1?', 'jim@startup.io')).toBe(false);
+  });
+
+  it('does NOT over-flag shared-inbox addresses real people use', () => {
+    expect(isLikelySpam('Question about the contract', 'support@vendor.com')).toBe(false);
+    expect(isLikelySpam('Intro', 'hello@founder.com')).toBe(false);
+  });
+
+  it('handles empty sender safely', () => {
+    expect(isLikelySpam('Re: lunch')).toBe(false);
   });
 });

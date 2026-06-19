@@ -12,6 +12,7 @@ import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import type { calendar_v3 } from 'googleapis';
 import type { EmailSignal } from './gmail';
+import { isLikelySpam } from './emailActivityFilter';
 
 export type ExtractedFact = {
   category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
@@ -441,8 +442,16 @@ export async function extractAndUpsertFactsFromEmail(
 ): Promise<void> {
   if (emailSignal.scopeMissing || emailSignal.items.length === 0) return;
   try {
-    const digest = emailSignal.items
-      .map(item => `From: ${item.sender} | Subject: ${item.subject}\nSnippet: ${item.snippet.slice(0, 120)}`)
+    // Round 7: skip likely-spam/promotional threads before extraction (defense-in-depth —
+    // getRecentEmailSignal already skips them for body-fetch; this guards the snippet path too).
+    const usableItems = emailSignal.items.filter(item => !isLikelySpam(item.subject, item.sender));
+    if (usableItems.length === 0) return;
+    const digest = usableItems
+      .map(item => {
+        // Prefer the full body when present (fullBodies fetch); fall back to the snippet.
+        const content = (item.body?.trim() || item.snippet || '').slice(0, 2000);
+        return `From: ${item.sender} | Subject: ${item.subject}\n${item.body ? 'Body' : 'Snippet'}: ${content}`;
+      })
       .join('\n\n');
 
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -471,7 +480,7 @@ Rules:
 - Skip: newsletters, promotions, casual social email, meeting invites.
 - Return [] if nothing durable found.
 
-Email digest (header + snippet only):
+Email digest (headers + body text when available, else snippet):
 ${digest}`,
       }],
     });
