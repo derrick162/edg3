@@ -31,6 +31,43 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 BUG FIXES — do before R8 feature work)
+
+> **P0 bugs from Derrick's live dashboard review — fix these first.**
+
+### Bug 1 — TODAY'S FOCUS card shows empty content with a confirm CTA (P0)
+
+**Symptom:** Dashboard Home tab shows the TODAY'S FOCUS card with the header "Here's your focus read for today" and the "Looks right — set focus" / "Skip today" buttons, but **no focus content** between the header and the buttons. The card renders as if there's nothing to confirm, yet the confirm CTA is shown.
+
+**Fix:** Find the `FocusRecommendationCard` (or equivalent component rendering TODAY'S FOCUS) and add a guard: if there are no focus items to display, either (a) show a proper empty state ("No focus items — check your Priorities tab") or (b) hide the card entirely. The "Looks right — set focus" CTA must never appear when there's no content for the user to read. Audit why the data is empty — is the API returning nothing? Is the component failing to render items silently?
+
+**Files:** `app/dashboard/page.tsx` + `components/ui/FocusRecommendationCard.tsx` (or whichever component renders this card). Check the `/api/briefing/focus` or equivalent endpoint too.
+
+---
+
+### Bug 2 — Edge Assessment suggests prep for personal health appointments (P0)
+
+**Symptom:** Edge Assessment card shows "Add 15-min prep before 'PRP' at 1:45 PM." PRP is a hair loss treatment — a personal health appointment requiring no prep. Edge is treating it like a work meeting.
+
+**Root cause:** The day plan / Edge assessment logic suggests prep time for any event without classifying whether it's a work meeting vs. personal appointment.
+
+**Fix (two parts):**
+
+1. **Event classification before prep suggestions.** Before suggesting prep time for any event, classify it. Events with titles matching personal/health/fitness/social patterns should never get a prep suggestion:
+   - Health/medical: `prp`, `treatment`, `therapy`, `doctor`, `dentist`, `physio`, `massage`, `acupuncture`, `chiro`, `appointment`, `checkup`, `injection`
+   - Fitness: `gym`, `workout`, `run`, `yoga`, `pilates`, `training`, `swim`
+   - Meals/social: `lunch`, `dinner`, `breakfast`, `coffee`, `drinks`
+   - Personal: `birthday`, `family`, `date`, `anniversary`
+   Add a pure helper `isPersonalEvent(title: string): boolean` in `lib/eventMatch.ts` (already has similar helpers). If `isPersonalEvent` returns true → skip the prep suggestion entirely.
+
+2. **Ask, don't assume, for unknown events.** If the event title is ambiguous (not clearly a work meeting and not clearly personal), Edge should NOT auto-suggest prep on the dashboard. It can ask on the morning call: *"You've got 'PRP' at 1:45 — do you need any prep time before that?"* Add a note to the vapi.ts system prompt: before suggesting prep time for an event, Edge must be confident it's a work meeting; for anything ambiguous, ask rather than assume.
+
+**Files:** wherever the day plan / prep suggestions are generated (likely `lib/briefing.ts` or `app/api/briefing/...`), `lib/eventMatch.ts` (new helper), `lib/vapi.ts` (prompt note).
+
+**Test:** `isPersonalEvent('PRP')` → true. `isPersonalEvent('Investor call')` → false. `isPersonalEvent('Team sync')` → false. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 — Social mental models + Briefing V2 proactive wins)
 
 > Master at current HEAD. `git merge master` first. **Context:** Railway DB is confirmed wiped on deploys (ephemeral volume — Derrick/Kevin fixing externally). Build now so it's ready when DB is stable.
