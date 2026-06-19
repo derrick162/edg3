@@ -71,7 +71,7 @@ describe('runHistoricalPatternDetection', () => {
     const cachedPattern = { type: 'priority_drift', summary: 'Priorities shift weekly', confidence: 'medium', sampleDays: 5 };
     const patternFact = makeFact({
       id: 10,
-      source: 'historical-pattern',
+      category: 'pattern',
       statement: JSON.stringify(cachedPattern),
       learned_at: RECENT,
       valid_until: null,
@@ -90,7 +90,7 @@ describe('runHistoricalPatternDetection', () => {
   it('calls Haiku and stores patterns when cache is stale', async () => {
     const stalePatternFact = makeFact({
       id: 10,
-      source: 'historical-pattern',
+      category: 'pattern',
       statement: JSON.stringify({ type: 'priority_drift', summary: 'Old', confidence: 'medium', sampleDays: 3 }),
       learned_at: WEEK_AGO,
       valid_until: null,
@@ -110,7 +110,7 @@ describe('runHistoricalPatternDetection', () => {
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe('commitment_follow_through');
     expect(mockRetire).toHaveBeenCalledWith(1, 10);
-    expect(mockUpsertFact).toHaveBeenCalledWith(1, 'fact', JSON.stringify(newPattern[0]), 'pattern:commitment_follow_through', 'high');
+    expect(mockUpsertFact).toHaveBeenCalledWith(1, 'pattern', JSON.stringify(newPattern[0]), 'pattern:commitment_follow_through', 'high');
   });
 
   it('filters out patterns with invalid type from Haiku response', async () => {
@@ -161,10 +161,10 @@ describe('runHistoricalPatternDetection', () => {
 describe('getHistoricalPatterns', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('returns parsed patterns from active historical-pattern facts', () => {
+  it('returns parsed patterns from active pattern-category facts', () => {
     const p = { type: 'priority_drift', summary: 'Shifts weekly', confidence: 'medium', sampleDays: 6 };
     mockGetAll.mockReturnValue([
-      makeFact({ id: 5, source: 'historical-pattern', statement: JSON.stringify(p) }),
+      makeFact({ id: 5, category: 'pattern', statement: JSON.stringify(p) }),
       makeFact({ id: 6, source: null, statement: 'Regular fact' }),
     ]);
     const result = getHistoricalPatterns(1);
@@ -174,7 +174,7 @@ describe('getHistoricalPatterns', () => {
 
   it('skips facts with unparseable JSON', () => {
     mockGetAll.mockReturnValue([
-      makeFact({ id: 7, source: 'historical-pattern', statement: 'not json' }),
+      makeFact({ id: 7, category: 'pattern', statement: 'not json' }),
     ]);
     const result = getHistoricalPatterns(1);
     expect(result).toHaveLength(0);

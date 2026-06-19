@@ -5,16 +5,16 @@
 //   - commitment_follow_through: commitments kept vs dropped
 //   - priority_drift: how often priorities shift and in what direction
 //
-// Results stored as 'fact' category rows with source='historical-pattern' so they
-// appear in "What Edge knows" AND feed into the briefing §3 alignment block via
-// pickBestPattern (same interface as M3 PatternInsight).
+// Results stored as category='pattern' fact rows (T3-1-B — the facts table has no `source`
+// column, so the old source='historical-pattern' tag was a no-op; reads/retire now key off the
+// dedicated 'pattern' category Vijay added in T3-1-A). They appear in "What Edge knows" Patterns
+// section AND feed the briefing §3 alignment block via pickBestPattern (same PatternInsight shape).
 //
 // Degrades silently: not enough history → returns []. Any error → returns [].
 
 import { factQueries } from './db';
 import type { PatternInsight } from './patternMemory';
 
-const HISTORICAL_SOURCE = 'historical-pattern';
 const WEEKLY_MS = 6.5 * 24 * 60 * 60 * 1000;
 const MIN_RETIRED_FACTS = 3;
 
@@ -34,14 +34,14 @@ export async function runHistoricalPatternDetection(userId: number): Promise<Pat
   // Throttle: check if we ran recently
   const activeFacts = allFacts.filter(f => !f.valid_until);
   const recentRun = activeFacts
-    .filter(f => f.source === HISTORICAL_SOURCE)
+    .filter(f => f.category === 'pattern')
     .sort((a, b) => (b.learned_at ?? '').localeCompare(a.learned_at ?? ''))[0];
   if (recentRun?.learned_at) {
     const age = Date.now() - new Date(recentRun.learned_at).getTime();
     if (age < WEEKLY_MS) {
       // Return cached patterns from fact store
       return activeFacts
-        .filter(f => f.source === HISTORICAL_SOURCE)
+        .filter(f => f.category === 'pattern')
         .map(f => {
           try { return JSON.parse(f.statement) as PatternInsight; } catch { return null; }
         })
@@ -102,13 +102,13 @@ Return [] if no clear pattern exists.`,
     ).slice(0, 2);
 
     // Retire any existing historical-pattern facts first
-    for (const old of activeFacts.filter(f => f.source === HISTORICAL_SOURCE)) {
+    for (const old of activeFacts.filter(f => f.category === 'pattern')) {
       factQueries.retire(userId, old.id);
     }
 
     // Store each pattern as a fact row (serialized JSON) so it persists across briefings
     for (const p of valid) {
-      factQueries.upsertFact(userId, 'fact', JSON.stringify(p), `pattern:${p.type}`, 'high');
+      factQueries.upsertFact(userId, 'pattern', JSON.stringify(p), `pattern:${p.type}`, 'high');
     }
 
     if (valid.length > 0) {
@@ -128,7 +128,7 @@ Return [] if no clear pattern exists.`,
 export function getHistoricalPatterns(userId: number): PatternInsight[] {
   try {
     return factQueries.getAll(userId)
-      .filter(f => f.source === HISTORICAL_SOURCE)
+      .filter(f => f.category === 'pattern')
       .map(f => {
         try { return JSON.parse(f.statement) as PatternInsight; } catch { return null; }
       })
