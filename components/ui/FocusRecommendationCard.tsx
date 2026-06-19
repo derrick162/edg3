@@ -309,13 +309,11 @@ export function FocusRecommendationCard({
             ✦ TODAY&apos;S FOCUS
           </p>
           <h3 className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-            {allLow
-              ? "Early read — I'm still learning you"
-              : "Here's what I'd focus you on today"}
+            Here&apos;s your focus read for today
           </h3>
           {allLow ? (
             <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-              These are my best guesses from what I know so far. Confirm them as-is or tweak any that feel off — that feedback sharpens my read.
+              Edit anything that feels off — your tweaks help me get sharper over time.
             </p>
           ) : thinData ? (
             <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
@@ -334,13 +332,6 @@ export function FocusRecommendationCard({
           </button>
         )}
       </div>
-
-      {/* Based-on provenance */}
-      {recommendation.basedOn.length > 0 && (
-        <p className="text-xs mb-4" style={{ color: 'var(--text-faint)' }}>
-          Based on: {recommendation.basedOn.join(' · ')}
-        </p>
-      )}
 
       {/* Area cards */}
       <div className="space-y-2 mb-5 group">
@@ -362,14 +353,14 @@ export function FocusRecommendationCard({
           className="btn-primary flex-1 text-sm py-2.5"
           style={{ boxShadow: confirming ? 'none' : 'var(--rec-confirm-glow)' }}
         >
-          {confirming ? 'Setting focus…' : '✓ Focus on these today'}
+          {confirming ? 'Setting focus…' : allLow ? '✓ Looks right — set focus' : '✓ Focus on these today'}
         </button>
         {onDismiss && (
           <button
             onClick={onDismiss}
             className="btn-secondary text-sm py-2.5 px-4 flex-shrink-0"
           >
-            Not now
+            Skip today
           </button>
         )}
       </div>
