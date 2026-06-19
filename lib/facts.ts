@@ -7,7 +7,7 @@
 // Design: always degrades safely — any failure is a no-op that never blocks post-call
 // processing. Extraction failure === no new facts stored, existing facts unchanged.
 
-import { factQueries, peopleProfileQueries, type Fact } from './db';
+import { factQueries, peopleProfileQueries, peopleModelQueries, type Fact, type PeopleModelFields } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import type { calendar_v3 } from 'googleapis';
@@ -711,9 +711,52 @@ Only return HIGH-CONFIDENCE changes where the user explicitly stated the change.
     if (applied > 0) {
       console.log(`[facts] Sleep-time consolidation: ${applied} updates applied for user ${userId}`);
     }
+
+    // M4-4: keep social mental models in sync with person facts. After consolidation, rebuild each
+    // mentioned person's model from their active person-category facts (deterministic, no extra LLM).
+    try {
+      const personFacts = factQueries.getByCategory(userId, 'person'); // newest-first
+      const byPerson = new Map<string, string[]>();
+      for (const f of personFacts) {
+        const name = f.entity?.trim();
+        if (!name) continue;
+        if (!byPerson.has(name)) byPerson.set(name, []);
+        byPerson.get(name)!.push(f.statement);
+      }
+      let modelsSynced = 0;
+      for (const [name, statements] of byPerson) {
+        const fields = derivePersonModelFields(statements);
+        if (fields.goals || fields.communicationStyle || fields.relationshipState) {
+          peopleModelQueries.upsert(userId, name, fields);
+          modelsSynced++;
+        }
+      }
+      if (modelsSynced > 0) console.log(`[facts] Sleep-time consolidation: synced ${modelsSynced} person model(s) for user ${userId}`);
+    } catch (e) {
+      console.error('[facts] person-model sync failed:', e);
+    }
   } catch (err) {
     console.error('[facts] runSleepTimeConsolidation failed:', err);
   }
+}
+
+// M4-4: heuristically derive a person's social-model fields from their person-category fact
+// statements (newest-first). Pure. Goals/communication-style matched by keyword; relationship_state
+// + last_interaction default to the most recent statement (best proxy for "what we last knew").
+const PERSON_GOAL_HINTS = ['trying to', 'wants to', 'working on', 'goal', 'closing', 'raising', 'building', 'launching', 'aiming', 'planning to', 'hoping to', 'focused on'];
+const PERSON_COMM_HINTS = ['prefers', 'async', 'brief', 'direct', 'formal', 'responds', 'communicat', 'over text', 'over email', 'by phone', 'concise', 'detailed', 'likes to'];
+
+export function derivePersonModelFields(statements: string[]): PeopleModelFields {
+  const clean = statements.map(s => s.trim()).filter(Boolean);
+  if (!clean.length) return {};
+  const find = (hints: string[]) => clean.find(s => hints.some(h => s.toLowerCase().includes(h))) ?? null;
+  const relationshipState = clean[0] ?? null;
+  return {
+    goals: find(PERSON_GOAL_HINTS),
+    communicationStyle: find(PERSON_COMM_HINTS),
+    relationshipState,
+    lastInteraction: relationshipState,
+  };
 }
 
 /**

@@ -2237,6 +2237,9 @@ export const peopleProfileQueries = {
   },
 };
 
+// Social mental models (M4-4) — a structured per-person model, distinct from raw person facts.
+// PII fields encrypted at rest. Kept in sync by sleep-time consolidation; read by the briefing
+// builder when a person appears on the calendar.
 export interface PeopleModel {
   id: number;
   user_id: number;

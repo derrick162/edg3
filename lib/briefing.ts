@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, briefingContextPackQueries, User, type Fact } from './db';
+import type { calendar_v3 } from 'googleapis';
 import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
@@ -24,7 +25,7 @@ import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
 import { isImproveConsented } from './consent';
 import { buildRelationshipContextBlock, syncPeopleProfiles } from './relationships';
-import { peopleProfileQueries, patternCacheQueries } from './db';
+import { peopleProfileQueries, patternCacheQueries, peopleModelQueries, type PeopleModel } from './db';
 import {
   detectProductiveDayPattern,
   detectLightDayPattern,
@@ -60,6 +61,51 @@ async function getWeatherSummary(timezone: string): Promise<string> {
 export function buildPersonalizationPromptBlock(factCount: number): string | null {
   if (factCount >= 3) return null;
   return `PERSONALIZATION SIGNAL: Only ${factCount} stored fact${factCount !== 1 ? 's' : ''} about this user — the briefing is running on minimal personal context. Instead of a standard focus question, close with ONE personal-context question to start building the moat: "Before I let you go — I'd love to understand you better. What's the challenge you feel most stuck on right now that we haven't tackled yet?" or "What's one thing happening in your life or work this week that I should know about?" Skip the forward-looking sentence. This replaces the standard closing question.`;
+}
+
+/**
+ * M4-4: compact recall block for people with a stored social model who appear on today's
+ * calendar (matched by name in event title or attendee name/email). Caps at 3. Pure; '' on no match.
+ */
+export function buildPeopleModelBlock(
+  events: calendar_v3.Schema$Event[],
+  models: PeopleModel[],
+): string {
+  if (!models.length || !events.length) return '';
+  const haystacks: string[] = [];
+  for (const e of events) {
+    if (e.summary) haystacks.push(e.summary.toLowerCase());
+    for (const a of e.attendees ?? []) {
+      if (a.displayName) haystacks.push(a.displayName.toLowerCase());
+      if (a.email) haystacks.push(a.email.toLowerCase());
+    }
+  }
+  if (!haystacks.length) return '';
+
+  const matched: PeopleModel[] = [];
+  for (const m of models) {
+    const name = m.person_name.trim().toLowerCase();
+    if (name.length < 2) continue;
+    const first = name.split(/\s+/)[0];
+    if (haystacks.some(h => h.includes(name) || (first.length >= 3 && h.includes(first)))) {
+      matched.push(m);
+    }
+    if (matched.length >= 3) break;
+  }
+  if (!matched.length) return '';
+
+  const lines = matched
+    .map(m => {
+      const parts: string[] = [];
+      if (m.goals) parts.push(m.goals);
+      if (m.communication_style) parts.push(m.communication_style);
+      if (m.relationship_state && m.relationship_state !== m.goals) parts.push(`last I knew: ${m.relationship_state}`);
+      return parts.length ? `- ${m.person_name}: ${parts.join(' · ')}` : '';
+    })
+    .filter(Boolean);
+  if (!lines.length) return '';
+
+  return `PEOPLE ON YOUR CALENDAR TODAY (social models — make ONE warm, specific recall about the most important person you're seeing today; weave it into section 2 or 3; never read the list aloud or dump all fields):\n${lines.join('\n')}`;
 }
 
 function extractCommitments(briefings: { user_response: string | null; scheduled_for: string }[]): string {
@@ -741,6 +787,15 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       return buildRelationshipContextBlock(calendarEvents, profiles, user.email);
     } catch { return ''; }
   })();
+  // M4-4: social mental models — when someone on today's calendar has a stored model, inject a
+  // compact recall block so Edge can speak to who they are, not just that they're on the calendar.
+  const peopleModelBlock = (() => {
+    try {
+      const models = peopleModelQueries.listForUser(userId);
+      if (!models.length) return '';
+      return buildPeopleModelBlock(calendarEvents, models);
+    } catch { return ''; }
+  })();
   // Pattern memory: best behavioral pattern detected from calendar + Whoop history + historical facts (T4).
   const patternMemoryBlock = (() => {
     try {
@@ -1072,6 +1127,8 @@ Use MEETING PREP as a jumping-off point — in section 2 or 3, weave in ONE spec
 ` : ''}${relationshipContextBlock ? `
 ${relationshipContextBlock}
 Use RELATIONSHIP CONTEXT to make ONE warm, specific observation about a person you're meeting today — "you've worked with Alice seven times" or "last time you connected with Bob was two months ago — might be worth an update." One line only; weave it into section 2 or 3 naturally. Never read the full list.
+` : ''}${peopleModelBlock ? `
+${peopleModelBlock}
 ` : ''}${patternMemoryBlock ? `
 ${patternMemoryBlock}
 Use PATTERN INSIGHT in section 5 (CALENDAR BLOCKS) — ONE sentence only. The single most relevant pattern, stated naturally when it strengthens a recommendation (e.g. "Tuesdays tend to be your clearest — want to protect this Tuesday morning for deep work?"). Omit if it doesn't change the recommendation. Never read the stats aloud.
