@@ -3322,16 +3322,16 @@ export default function Dashboard() {
               {/* Memory layer placeholders — shown until Core ships the relevant data */}
               {facts.length > 0 && (
                 <div className="space-y-4 mb-8">
-                  {/* Patterns (M3) */}
+                  {/* Patterns (M3) — shown only when no pattern facts exist yet */}
                   {facts.filter(f => f.category === 'pattern').length === 0 && (
                     <div>
-                      <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
+                      <p className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
                         <span aria-hidden="true">📈</span>
                         Patterns
-                      </h3>
+                      </p>
                       <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
                         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                          Edg3 is building a picture of your patterns — your most productive days, energy cycles, and what tends to get squeezed out.
+                          No patterns detected yet — Edg3 learns these from your call history over time.
                         </p>
                       </div>
                     </div>
