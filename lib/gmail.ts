@@ -341,6 +341,88 @@ export async function getRecentEmailSignal(
   return { items, fetchedAt, scopeMissing: false };
 }
 
+export interface EmailContact {
+  name: string;
+  email: string;
+  count: number;
+}
+
+/**
+ * Scan the user's dedicated Gmail account (secondary, gmail_tokens) for unique senders.
+ * Returns deduplicated contacts sorted by frequency (most frequent first).
+ * Only header metadata is fetched — no message bodies are ever read or stored.
+ * Falls back to the primary (calendar) account when no dedicated Gmail account is linked.
+ */
+export async function extractGmailAccountContacts(
+  userId: number,
+  opts: { days?: number; max?: number } = {},
+): Promise<EmailContact[]> {
+  const days = Math.max(1, opts.days ?? 60);
+  const max = Math.min(opts.max ?? 50, 100);
+
+  const tokenRow = getGmailTokens(userId);
+  if (!tokenRow || !hasGmailReadScope(tokenRow.scope)) return [];
+
+  const gmail = gmailClientFor(userId, tokenRow);
+
+  // Get the account's own email address so we can exclude self-emails.
+  const accountEmail = (tokenRow as { email?: string | null }).email?.toLowerCase() ?? '';
+
+  const listRes = await gmail.users.threads.list({
+    userId: 'me',
+    labelIds: ['INBOX'],
+    q: `newer_than:${days}d`,
+    maxResults: max,
+  });
+  const threads = listRes.data.threads ?? [];
+
+  const settled = await Promise.allSettled(
+    threads.map(async (t) => {
+      const detail = await gmail.users.threads.get({
+        userId: 'me',
+        id: t.id!,
+        format: 'metadata',
+        metadataHeaders: ['From'],
+      });
+      const messages = detail.data.messages ?? [];
+      // Collect all unique From headers across all messages in the thread.
+      return messages
+        .map(m =>
+          (m.payload?.headers ?? []).find(h => h.name?.toLowerCase() === 'from')?.value ?? null,
+        )
+        .filter((v): v is string => v !== null);
+    }),
+  );
+
+  const counts = new Map<string, EmailContact>();
+  for (const r of settled) {
+    if (r.status !== 'fulfilled') continue;
+    for (const raw of r.value) {
+      const parsed = parseFromHeader(raw);
+      if (!parsed) continue;
+      const key = parsed.email.toLowerCase();
+      if (accountEmail && key === accountEmail) continue; // skip self
+      const existing = counts.get(key);
+      if (existing) {
+        existing.count++;
+        if (!existing.name && parsed.name) existing.name = parsed.name;
+      } else {
+        counts.set(key, { name: parsed.name, email: parsed.email, count: 1 });
+      }
+    }
+  }
+
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+}
+
+function parseFromHeader(from: string): { name: string; email: string } | null {
+  const match = from.match(/^"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  const bare = from.trim();
+  if (bare.includes('@')) return { name: '', email: bare };
+  return null;
+}
+
 /**
  * Return the encrypted thread subjects stored on a specific email_signal_fetch audit entry.
  *
