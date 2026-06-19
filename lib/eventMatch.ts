@@ -2,6 +2,53 @@
 // instead of fuzzily grabbing the first loose title match. Pure logic so it can be unit-tested;
 // the calendar reads live in the tool-call route.
 
+// ── Event classification (Round 8 Bug 2) ─────────────────────────────────────
+// Classify a calendar event by title (+ optional description) so Edge stops treating personal/
+// health appointments (e.g. "PRP" — a hair treatment) like work meetings and suggesting prep.
+export type EventClass =
+  | 'work-meeting'
+  | 'health'
+  | 'fitness'
+  | 'meal'
+  | 'personal'
+  | 'travel'
+  | 'focus-block'
+  | 'reminder'
+  | 'unknown';
+
+// Keyword lists in the dispatch's priority order: health > fitness > travel > work-meeting >
+// meal > personal > focus-block > reminder. First class with any keyword match wins.
+// NOTE: bare "call" is intentionally NOT a work-meeting keyword — it over-matches personal/
+// family calls; ambiguous "X call" stays `unknown` (the safe default — Edge asks, doesn't assume).
+const EVENT_CLASS_KEYWORDS: ReadonlyArray<{ cls: EventClass; words: readonly string[] }> = [
+  { cls: 'health', words: ['doctor', 'dentist', 'dental', 'therapy', 'therapist', 'treatment', 'prp', 'injection', 'physio', 'physical therapy', 'massage', 'chiro', 'appointment', 'clinic', 'medical', 'checkup', 'check-up', 'bloodwork', 'lab work', 'surgery', 'vaccine', 'optometr', 'derm'] },
+  { cls: 'fitness', words: ['gym', 'workout', 'work out', 'run', 'jog', 'yoga', 'pilates', 'training', 'swim', 'crossfit', 'tennis', 'golf', 'cycling', 'spin class', 'cardio', 'hike', 'peloton'] },
+  { cls: 'travel', words: ['flight', 'airport', 'drive to', 'uber', 'lyft', 'transit', 'commute', 'train to', 'boarding', 'layover', 'road trip', 'departs'] },
+  { cls: 'work-meeting', words: ['investor', 'team sync', 'sync', '1:1', 'one on one', 'standup', 'stand-up', 'interview', 'client', 'demo', 'review', 'meeting', 'kickoff', 'kick-off', 'sprint', 'retro', 'planning', 'board meeting', 'pitch', 'sales call', 'client call', 'check-in', 'sync-up', 'all-hands', 'all hands', 'stakeholder', 'sales sync'] },
+  { cls: 'meal', words: ['lunch', 'dinner', 'breakfast', 'coffee', 'drinks', 'brunch', 'happy hour'] },
+  { cls: 'personal', words: ['birthday', 'family', 'date night', 'anniversary', 'wedding', 'party', 'social', 'date with', 'reunion', 'celebration', 'graduation', 'baby shower', 'haircut'] },
+  { cls: 'focus-block', words: ['deep work', 'focus time', 'focus block', 'blocked', 'writing', 'coding', 'no meetings', 'maker', 'heads down', 'heads-down', 'work block', 'vibe-coding', 'vibe coding'] },
+  { cls: 'reminder', words: ['reminder', 'rsvp', 'deadline', 'due', 'follow up', 'follow-up', "don't forget", 'dont forget', 'remember to'] },
+];
+
+/**
+ * Classify a calendar event by title (+ optional description). Lowercase keyword match in the
+ * dispatch's priority order; `unknown` when nothing matches (never assume work-meeting).
+ */
+export function classifyEvent(title: string, description?: string): EventClass {
+  const hay = `${title ?? ''} ${description ?? ''}`.toLowerCase();
+  if (!hay.trim()) return 'unknown';
+  for (const { cls, words } of EVENT_CLASS_KEYWORDS) {
+    if (words.some(w => hay.includes(w))) return cls;
+  }
+  return 'unknown';
+}
+
+/** Prep suggestions only make sense for work meetings. Everything else: no prep. */
+export function needsPrepSuggestion(cls: EventClass): boolean {
+  return cls === 'work-meeting';
+}
+
 /** Normalize a title for comparison: drop the ⚡ prefix, lowercase, strip whitespace. */
 export function normalizeTitle(s: string): string {
   return (s || '').replace(/^⚡\s*/, '').toLowerCase().replace(/\s+/g, '').trim();
