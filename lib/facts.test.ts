@@ -61,8 +61,9 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation } from './facts';
 import { factQueries, peopleProfileQueries, type Fact } from './db';
+import type { EmailSignal, EmailSignalItem } from './gmail';
 
 function textResponse(text: string) {
   return { content: [{ type: 'text', text }] };
@@ -716,5 +717,60 @@ describe('runSleepTimeConsolidation', () => {
     h.create.mockResolvedValue(textResponse('[]'));
     await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
     expect(factQueries.retire).not.toHaveBeenCalled();
+  });
+});
+
+describe('extractAndUpsertFactsFromEmail (Round 7 — full bodies + spam filter)', () => {
+  function item(over: Partial<EmailSignalItem>): EmailSignalItem {
+    return {
+      threadId: 't', sender: 'a@b.com', subject: 'Subject', snippet: 'snip',
+      date: '2026-06-18', isUnread: false, isImportant: false, ...over,
+    };
+  }
+  function signal(items: EmailSignalItem[]): EmailSignal {
+    return { items, fetchedAt: '2026-06-18T00:00:00Z', scopeMissing: false };
+  }
+
+  beforeEach(() => { h.create.mockResolvedValue(textResponse('[]')); });
+
+  it('uses full body text in the prompt when present (not the snippet)', async () => {
+    await extractAndUpsertFactsFromEmail(1, signal([
+      item({ sender: 'cfo@acme.com', subject: 'Series A', snippet: 'short snip', body: 'We are wiring the 2 million dollar tranche on Friday per the term sheet.' }),
+    ]), 'Derrick');
+    const prompt = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain('wiring the 2 million dollar tranche');
+    expect(prompt).toContain('Body:');
+    expect(prompt).not.toContain('short snip');
+  });
+
+  it('falls back to the snippet when no body is present', async () => {
+    await extractAndUpsertFactsFromEmail(1, signal([
+      item({ subject: 'Catch up', snippet: 'lets grab coffee next week', body: undefined }),
+    ]), 'Derrick');
+    const prompt = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain('lets grab coffee next week');
+    expect(prompt).toContain('Snippet:');
+  });
+
+  it('skips likely-spam threads before extraction', async () => {
+    await extractAndUpsertFactsFromEmail(1, signal([
+      item({ sender: 'no-reply@promo.com', subject: '30% off everything', body: 'Big sale ends tonight!' }),
+      item({ sender: 'sarah@acme.com', subject: 'Re: the raise', body: 'Confirming the round closes next week.' }),
+    ]), 'Derrick');
+    const prompt = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain('Confirming the round closes next week');
+    expect(prompt).not.toContain('Big sale ends tonight');
+  });
+
+  it('does nothing when every thread is filtered out as spam', async () => {
+    await extractAndUpsertFactsFromEmail(1, signal([
+      item({ sender: 'newsletter@news.com', subject: 'Your weekly digest', body: 'top stories' }),
+    ]), 'Derrick');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('no-ops when scope is missing', async () => {
+    await extractAndUpsertFactsFromEmail(1, { items: [], fetchedAt: 'x', scopeMissing: true }, 'Derrick');
+    expect(h.create).not.toHaveBeenCalled();
   });
 });
