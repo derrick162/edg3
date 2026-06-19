@@ -5,7 +5,7 @@ import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBri
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 import { checkOutreachReplies } from './replies';
-import { computeAlignment, detectHygieneFlags } from './alignment';
+import { computeAlignment, detectHygieneFlags, isRoutineTitle } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
@@ -626,6 +626,25 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const recoveryAlert = whoopRecovery
     ? detectRecoveryDrop(whoopRecovery.recoveryScore, recoveryHistoryPoints)
     : null;
+  // Win 4 (Round 8): the single most-deferrable timed event today, so the recovery alert can
+  // name a SPECIFIC event to push rather than generic "lighten your day" language.
+  const heaviestDeferrableToday = (() => {
+    try {
+      const candidates = calendarEvents
+        .filter(e => e.start?.dateTime && e.end?.dateTime && e.summary && !isRoutineTitle(e.summary))
+        .map(e => {
+          const start = new Date(e.start!.dateTime!);
+          const end = new Date(e.end!.dateTime!);
+          const mins = (end.getTime() - start.getTime()) / 60000;
+          const time = start.toLocaleTimeString('en-US', { timeZone: userTimezone, hour: 'numeric', minute: '2-digit' });
+          return { summary: (e.summary as string).replace(/^⚡\s*/, ''), mins, time };
+        })
+        .filter(c => c.mins >= 30);
+      if (!candidates.length) return null;
+      candidates.sort((a, b) => b.mins - a.mins);
+      return candidates[0];
+    } catch { return null; }
+  })();
   // Part B: calendar ↔ recovery correlation (≥10 days data required).
   const strainHistoryPoints = strainHistory.map(d => ({ date: d.date, value: d.strain }));
   const correlationInsight = computeWhoopCorrelations(recoveryHistoryPoints, pastCalendarDays, strainHistoryPoints);
@@ -783,7 +802,11 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       lines.push(`WHOOP TREND (past ~2 weeks): ${whoopTrendLine} Surface this as one honest line in section 1 — no additional commentary.`);
     }
     if (recoveryAlert) {
-      lines.push(formatRecoveryAlertForBriefing(recoveryAlert));
+      let alertText = formatRecoveryAlertForBriefing(recoveryAlert);
+      if (heaviestDeferrableToday) {
+        alertText += ` SPECIFIC TARGET — name THIS event explicitly: "${heaviestDeferrableToday.summary}" at ${heaviestDeferrableToday.time} is the most deferrable thing today. Offer to push it to tomorrow and call moveEvent on yes.`;
+      }
+      lines.push(alertText);
     }
     if (calendarActionFromRecovery) {
       lines.push(calendarActionFromRecovery);
@@ -1106,15 +1129,15 @@ BRIEFING STRUCTURE — 3 parts, in order:
 CRITICAL — NO PREAMBLE: The very first words are the greeting, then immediately the most important signal. Zero warm-up. Zero scene-setting. Zero "here's what we'll cover today." If there is a YESTERDAY'S COMMITMENT, it IS the most important signal — lead with that before anything else. Actionable information within the first 10 seconds is the standard.
 
 PART 1 — GREETING + HOOK (2 sentences MAX):
-${edg3Commitment ? `FIRST — accountability (DC2-3): Before the Edge Score, open with: "${greeting}, ${firstName}. Yesterday you committed to '${edg3Commitment.text}' — did that happen?" This is the most time-sensitive signal. Then the Edge Score as sentence two.` : `Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}."`} Then ONE energy/sleep sentence using PROGRESS HOOK data — if recovery is GREEN (≥67%), tie the encouragement to a SPECIFIC real event on TODAY'S CALENDAR (e.g. "Recovery's solid — push hard on that investor prep this morning."), not a generic "solid day ahead." If recovery is RED (≤33%), name the heaviest deferrable block: "Recovery's low at X% — I'd protect your morning and defer [specific event] if possible." If no Whoop data, skip energy sentence entirely. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing). If TODAY'S CALENDAR shows a personal all-day event (birthday, anniversary, holiday — e.g. "Dad's Birthday"), acknowledge it warmly in one sentence with a small offer ("Today's [Name]'s birthday — want me to block time for a call or draft a quick note?"). If nothing meaningful: skip entirely.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
+${edg3Commitment ? `FIRST — accountability (DC2-3): Before the Edge Score, open with: "${greeting}, ${firstName}. Yesterday you committed to '${edg3Commitment.text}' — did that happen?" This is the most time-sensitive signal. Then the Edge Score as sentence two.` : `Say: "${greeting}, ${firstName}. This is your ${callCountLabel} morning — your Edge Score is ${calendarFit.edgeScore} out of 100${scoreDeltaStr}."`} Then ONE energy/sleep sentence using PROGRESS HOOK data — if recovery is GREEN (≥67%), tie the encouragement to a SPECIFIC real event on TODAY'S CALENDAR (e.g. "Recovery's solid — push hard on that investor prep this morning."), not a generic "solid day ahead." If recovery is RED (≤33%), name the heaviest deferrable block: "Recovery's low at X% — I'd protect your morning and defer [specific event] if possible." If no Whoop data, skip energy sentence entirely. Then ONE sentence ONLY if there is a genuinely meaningful event today (not breakfast, gym, meals, or routine blocks — these are predictable and add nothing). If TODAY'S CALENDAR shows a personal or social event — an all-day one (birthday, anniversary, holiday — e.g. "Dad's Birthday") OR a timed event whose title reads personal (keywords: birthday, dinner, anniversary, date, family) — acknowledge it warmly in one sentence with a small concrete offer matched to the event ("You've got dinner with Sarah tonight — want me to block prep time, or draft a quick message?" / "Today's [Name]'s birthday — want me to draft a quick note?"). One personal touch max. If nothing meaningful: skip entirely.${callStreak >= 2 ? ` Weave in ONE warm streak line naturally.` : ''}${linkedMemory.length > 0 ? ` If EVENT-LINKED MEMORY has a genuinely relevant connection to today, add ONE dot-connecting sentence.` : ''}
 
 PAST EVENTS RULE: NEVER mention any calendar event that has already happened today. Only surface events that are STILL TO COME. If it is late evening (after 6 PM), focus on TOMORROW's events, not today's. Do not recap what already passed.
 
 PART 2 — FOCUS + ACTION (3–4 sentences MAX):
-ALWAYS open Part 2 with the user's top priorities as a simple statement: "Your three priorities today are: [P1], [P2], [P3]." If there are fewer than 3, just list what exists. Then name ONE concrete action to take RIGHT NOW anchored to the top priority. ${focusRec && focusRec.areas.length > 0 ? `If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?").` : ``}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
+ALWAYS open Part 2 with the user's top priorities as a simple statement: "Your three priorities today are: [P1], [P2], [P3]." If there are fewer than 3, just list what exists. Then name ONE concrete action to take RIGHT NOW anchored to the top priority. PROACTIVE BLOCK (Round 8 win 1): if FREE TIME SLOTS shows an open block of 60+ minutes within the next ~4 hours, NAME that exact slot and offer to lock it in for the top priority ("There's a clear two-hour block at ten — want me to lock that in for [P1]?"). On yes, Edge calls createEvent immediately (don't re-ask). Only one such offer; pick the nearest qualifying slot. ${focusRec && focusRec.areas.length > 0 ? `If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?").` : ``}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
 
 PART 3 — CLOSING (2–3 sentences MAX):
-${buildPersonalizationPromptBlock(salientFacts.length) ?? `ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow if there is a meaningful event or free window worth noting (e.g. "Tomorrow you've got a clear morning — I'll protect it for deep work."). Skip the forward-look if tomorrow is empty or nothing stands out.`}${prioritiesStaleAge > 7 && personalizationSignal === null ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
+${buildPersonalizationPromptBlock(salientFacts.length) ?? `ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow (Round 8 win 2): if today looks heavy OR a priority has nothing scheduled tomorrow, point ahead — "Tomorrow's lighter — good day to push forward on [P2] if today stays packed." If tomorrow already has dense focus work, do NOT add this. Skip the forward-look entirely if tomorrow is empty or nothing stands out.`}${prioritiesStaleAge > 7 && personalizationSignal === null ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
 
 Write as flowing spoken language.`;
 
