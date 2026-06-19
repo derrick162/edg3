@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries, peopleModelQueries } from '@/lib/db';
 import { decryptField } from '@/lib/crypto';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -96,6 +96,18 @@ export async function GET(_req: NextRequest) {
     updatedAt: p.updated_at,
   }));
 
+  // Social mental models (M4-4) — what Edge has learned about the people in the user's life.
+  // listForUser decrypts goals/communication_style/relationship_state/last_interaction.
+  const peopleModelRows = peopleModelQueries.listForUser(userId).map(m => ({
+    personName: m.person_name,
+    goals: m.goals ?? null,
+    communicationStyle: m.communication_style ?? null,
+    relationshipState: m.relationship_state ?? null,
+    lastInteraction: m.last_interaction ?? null,
+    healthScore: m.health_score,
+    updatedAt: m.updated_at,
+  }));
+
   // Open loops — descriptions are decrypted by openLoopQueries.list()
   const openLoopRows = openLoopQueries.list(userId).map(l => ({
     id:          l.id,
@@ -162,6 +174,7 @@ export async function GET(_req: NextRequest) {
     openLoops: openLoopRows,
     activityLog: activityLogRows,
     people: peopleRows,
+    peopleModels: peopleModelRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

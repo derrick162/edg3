@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   drafts: [] as unknown[],
   activity: [] as unknown[],
   people: [] as unknown[],
+  peopleModels: [] as unknown[],
   dbRun: vi.fn(),
   dbGet: vi.fn<() => unknown>(() => undefined),
   dbAll: vi.fn<() => unknown[]>(() => []),
@@ -68,6 +69,9 @@ vi.mock('@/lib/db', () => ({
   peopleProfileQueries: {
     listForUser: (_id: number) => h.people,
   },
+  peopleModelQueries: {
+    listForUser: (_id: number) => h.peopleModels,
+  },
 }));
 
 vi.mock('@/lib/crypto', () => ({
@@ -113,6 +117,7 @@ beforeEach(() => {
   h.drafts = [];
   h.activity = [];
   h.people = [];
+  h.peopleModels = [];
   h.preparedSqls = [];
   h.deleteUserData.mockReset();
   h.dbAll.mockReturnValue([]);
@@ -175,6 +180,17 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('openLoops');
     expect(data).toHaveProperty('activityLog');
     expect(data).toHaveProperty('people');
+    expect(data).toHaveProperty('peopleModels');
+  });
+
+  it('includes social mental models (people_models), decrypted', async () => {
+    h.peopleModels = [
+      { person_name: 'Sarah', goals: 'close Series A', communication_style: 'direct', relationship_state: 'warm', last_interaction: '2026-06-18', health_score: 0.8, updated_at: '2026-06-18' },
+    ];
+    const res = await exportGET(makeReq());
+    const { peopleModels } = await res.json();
+    expect(peopleModels).toHaveLength(1);
+    expect(peopleModels[0]).toMatchObject({ personName: 'Sarah', goals: 'close Series A', communicationStyle: 'direct', relationshipState: 'warm', healthScore: 0.8 });
   });
 
   it('includes the activity log (parsed args, no internal snapshot blobs)', async () => {
