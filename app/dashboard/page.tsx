@@ -2572,7 +2572,8 @@ export default function Dashboard() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigator.clipboard.writeText(b.transcript!).then(() => {
+                                    const firstName = (user?.name || '').split(' ')[0];
+                                    navigator.clipboard.writeText(correctName(b.transcript!, firstName)).then(() => {
                                       setCopiedTranscriptId(b.id);
                                       setTimeout(() => setCopiedTranscriptId(null), 2000);
                                     }).catch(() => {});
