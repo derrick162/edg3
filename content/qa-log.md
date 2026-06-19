@@ -28,7 +28,25 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 - ✅ UX-2 display layer: shipped edc52d7
 - ✅ UX-3 cursor + isSelf: shipped edc52d7
 - ✅ UX-4 collapsible sections: shipped edc52d7; dynamic init added
-- ⬜ M4-3b "updated [date]" per-fact expand: BLOCKED on Core `fact_history` table
+- ✅ M4-3b "updated [date]" per-fact expand: shipped — `getLatestTimestamps` bulk query, `last_updated_at` on Fact, FactRow chevron expand + Restore (rollback) button, people section last_updated_at wired
+- ⬜ **Live check needed:** open Memory tab with real facts — click a fact row → verify history panel loads; click Restore → verify fact reverts to prior statement
+
+### Derrick review tickets (post-dashboard review 2026-06-18)
+- ✅ Ticket 1: Removed "Edg3 reads subject lines only — never message content." from email expand panel
+- ✅ Ticket 2: Removed "Detail — Expand to see which emails Edge reviewed." from activity label builder
+- ✅ Ticket 3: Priority row trend arrow — added `title=` tooltip ("Trending up/down/flat vs last week")
+- ✅ Ticket 4: Milestone inline edit — pencil icon (opacity 30 → 100 on hover), inline input with Save/Cancel, Enter/Escape, PATCH `{ title }` wired
+- ⬜ Ticket 5: Today's Focus contextual note — BLOCKED on Darren (data shape TBD)
+- ✅ Ticket 6: "+ N more threads" changed from `<p>` to `<button>` with accent color + hover:underline
+
+### Landing page (T3 + T5)
+- ✅ T3: Memory section headline bumped to `text-4xl md:text-5xl font-black`; body replaced with 3 punchy lines
+- ✅ T5: Problem section and Edg3 Score section spacing normalized to `py-24`
+
+### Pillar sweep (Design lane exhausted as of 2026-06-18)
+- ✅ PILLAR-DAILY-CALL DC3/DC4: all Phase-2-gated or Core/Security owned — no Design items actionable
+- ✅ PILLAR-TRUST T3-1: shipped (UX-2/3/4 above); T3-2–T3-4 delegated to Security
+- ✅ PILLAR-MEMORY: M4-3b shipped (above); M4-4 blocked on Core; no remaining Design items
 
 ---
 

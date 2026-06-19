@@ -103,9 +103,9 @@ function typeBorder(type: NotifType | undefined, read: boolean): string {
 
 // Energy level → active style
 const ENERGY_ACTIVE: Record<string, { bg: string; border: string; color: string }> = {
-  green:  { bg: 'rgba(34,197,94,0.15)',   border: 'rgba(34,197,94,0.40)',   color: 'var(--whoop-high)' },
-  yellow: { bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.40)',  color: 'var(--whoop-medium)' },
-  red:    { bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.40)',   color: 'var(--whoop-low)' },
+  green:  { bg: 'var(--whoop-high-tint)',   border: 'var(--whoop-high-border)',   color: 'var(--whoop-high)' },
+  yellow: { bg: 'var(--whoop-medium-tint)', border: 'var(--whoop-medium-border)', color: 'var(--whoop-medium)' },
+  red:    { bg: 'var(--whoop-low-tint)',    border: 'var(--whoop-low-border)',    color: 'var(--whoop-low)' },
 };
 
 // ── Single notification row ───────────────────────────────────────────────────
