@@ -737,10 +737,10 @@ describe('findNextMeetingNeedingPrep', () => {
     // NOW = 8:00; meeting at 8:10 is within 15 min → skip; 10:00 meeting is the target
     const events = [
       timedEvent('Quick chat', 8 + 10 / 60, 9),
-      timedEvent('Important call', 10, 11),
+      timedEvent('Investor meeting', 10, 11),
     ];
     const result = findNextMeetingNeedingPrep(events, DATE, TZ, NOW);
-    expect(result!.meetingTitle).toBe('Important call');
+    expect(result!.meetingTitle).toBe('Investor meeting');
     expect(result!.prepStartDateTime).toBe('2026-06-15T09:45:00');
   });
 

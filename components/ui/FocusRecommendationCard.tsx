@@ -202,8 +202,10 @@ export function FocusRecommendationCard({
     );
   }
 
-  // ── No recommendation yet
-  if (!recommendation) {
+  // ── No recommendation yet — OR a recommendation with no focus items to show (Bug 1, P0):
+  // the "Looks right — set focus" CTA must never render on a blank card. An empty areas[]
+  // falls through to the same learning/empty state, not the confirm UI.
+  if (!recommendation || recommendation.areas.length === 0) {
     const hasStarted = callsCompleted > 0;
     return (
       <div

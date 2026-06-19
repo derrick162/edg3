@@ -4,6 +4,7 @@
 // step-2 (execute) in the applyCalendarPlan confirmToken flow produce identical actions.
 
 import type { calendar_v3 } from 'googleapis';
+import { classifyEvent, needsPrepSuggestion } from './eventMatch';
 import type { CalendarFit } from './calendarScore';
 import type { AlignmentResult } from './alignment';
 import { detectHygieneFlags } from './alignment';
@@ -209,6 +210,9 @@ export function findNextMeetingNeedingPrep(
     if (ev.startH <= nowH + PREP_H) continue;        // too soon for prep
     if (isRoutinePlanTitle(ev.title)) continue;       // skip gym, lunch, etc.
     if (EDGE_BLOCK_RE.test(ev.title)) continue;       // skip ⚡ blocks
+    // Bug 2 (Round 8): only WORK meetings warrant a prep block — never health (PRP), personal,
+    // fitness, travel, etc. Skip non-work events and keep scanning for the next real meeting.
+    if (!needsPrepSuggestion(classifyEvent(ev.title))) continue;
 
     const prepStart = ev.startH - PREP_H;
     const prepEnd   = ev.startH;

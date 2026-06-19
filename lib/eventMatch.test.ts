@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTitle, titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from './eventMatch';
+import { normalizeTitle, titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups, classifyEvent, needsPrepSuggestion } from './eventMatch';
 
 describe('titleMatchScore', () => {
   it('exact match beats partial', () => {
@@ -228,5 +228,65 @@ describe('findDuplicateGroups', () => {
     const dupe   = timed('Morning Walk', '2026-06-13T07:00:00Z', 'd', '2026-06-13T02:00:00Z');
     const groups = findDuplicateGroups([noStart, normal, dupe]);
     expect(groups).toHaveLength(1); // only the timed pair
+  });
+});
+
+describe('classifyEvent (Round 8 Bug 2)', () => {
+  it('classifies the spec examples correctly', () => {
+    expect(classifyEvent('PRP')).toBe('health');
+    expect(classifyEvent('Investor call')).toBe('work-meeting');
+    expect(classifyEvent('Gym')).toBe('fitness');
+    expect(classifyEvent('Lunch with Sarah')).toBe('meal');
+    expect(classifyEvent('Deep work block')).toBe('focus-block');
+    expect(classifyEvent('XYZ123')).toBe('unknown');
+  });
+
+  it('health beats fitness/work when multiple could match (priority order)', () => {
+    expect(classifyEvent('Physio appointment')).toBe('health');
+    expect(classifyEvent('Dentist')).toBe('health');
+    expect(classifyEvent('Massage')).toBe('health');
+  });
+
+  it('classifies work meetings', () => {
+    expect(classifyEvent('Team sync')).toBe('work-meeting');
+    expect(classifyEvent('1:1 with Alex')).toBe('work-meeting');
+    expect(classifyEvent('Client demo')).toBe('work-meeting');
+    expect(classifyEvent('Standup')).toBe('work-meeting');
+  });
+
+  it('classifies personal/travel/reminder', () => {
+    expect(classifyEvent("Dad's birthday")).toBe('personal');
+    expect(classifyEvent('Flight to NYC')).toBe('travel');
+    expect(classifyEvent('Reminder to submit taxes')).toBe('reminder');
+    expect(classifyEvent('Deadline: Q3 report')).toBe('reminder');
+  });
+
+  it('ambiguous "X call" stays unknown (never assume work)', () => {
+    expect(classifyEvent('Call mom')).toBe('unknown');
+    expect(classifyEvent('Quick call')).toBe('unknown');
+  });
+
+  it('uses the description when the title is ambiguous', () => {
+    expect(classifyEvent('Appt', 'PRP hair treatment session')).toBe('health');
+    expect(classifyEvent('Block', 'investor pitch review')).toBe('work-meeting');
+  });
+
+  it('empty input is unknown', () => {
+    expect(classifyEvent('')).toBe('unknown');
+    expect(classifyEvent('   ')).toBe('unknown');
+  });
+});
+
+describe('needsPrepSuggestion (Round 8 Bug 2)', () => {
+  it('true only for work-meeting', () => {
+    expect(needsPrepSuggestion('work-meeting')).toBe(true);
+    expect(needsPrepSuggestion('health')).toBe(false);
+    expect(needsPrepSuggestion('fitness')).toBe(false);
+    expect(needsPrepSuggestion('meal')).toBe(false);
+    expect(needsPrepSuggestion('personal')).toBe(false);
+    expect(needsPrepSuggestion('travel')).toBe(false);
+    expect(needsPrepSuggestion('focus-block')).toBe(false);
+    expect(needsPrepSuggestion('reminder')).toBe(false);
+    expect(needsPrepSuggestion('unknown')).toBe(false);
   });
 });
