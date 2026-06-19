@@ -1075,6 +1075,18 @@ ${linkedMemory.map(lm => {
   const staleMark = stale ? ' [UNCONFIRMED >90d]' : '';
   return `- "${lm.eventTitle}" → ${lm.fact.statement}${staleMark} (${lm.fact.category}${learnedDate ? `, learned ${learnedDate}` : ''})`;
 }).join('\n')}
+` : ''}${salientFacts.length > 0 ? `
+WHAT EDGE KNOWS (structured facts from your calls — weave in naturally, never read aloud verbatim):
+${(() => {
+  const byCategory = new Map<string, typeof salientFacts>();
+  for (const f of salientFacts) {
+    if (!byCategory.has(f.category)) byCategory.set(f.category, []);
+    byCategory.get(f.category)!.push(f);
+  }
+  return Array.from(byCategory.entries())
+    .map(([cat, facts]) => `${cat.toUpperCase()}:\n${facts.map(f => `- ${f.statement}`).join('\n')}`)
+    .join('\n');
+})()}
 ` : ''}
 MEMORY & PRIOR CONVERSATIONS:
 ${memoriesText}
