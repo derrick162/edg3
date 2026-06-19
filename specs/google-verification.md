@@ -17,7 +17,7 @@ verification review and CASA assessment before unrestricted production use.
 | `https://www.googleapis.com/auth/calendar.readonly` | Sensitive | Read the user's calendar events to build the daily briefing and detect conflicts | `lib/calendar.ts` — `listEvents()` |
 | `https://www.googleapis.com/auth/calendar.events` | **Restricted** | Create, move, delete, and edit events on the user's behalf via voice commands | `lib/calendar.ts` — `createEvent()`, `deleteEvent()`, `patchEvent()` |
 | `https://www.googleapis.com/auth/gmail.compose` | **Restricted** | Create email drafts only — user reviews and sends manually. We never call `messages.send`. | `lib/gmail.ts` — `createDraft()` only |
-| `https://www.googleapis.com/auth/gmail.readonly` | **Restricted** | (1) Check for replies to outreach emails Edge drafted (reply-tracking). (2) Read recent inbox thread metadata as a prioritization signal for the AI focus recommendation engine. ⚠️ **Use-case expanded — see CASA flag below.** | `lib/replies.ts` (reply tracking); `lib/gmail.ts getRecentEmailSignal` (prioritization) |
+| `https://www.googleapis.com/auth/gmail.readonly` | **Restricted** | (1) Check for replies to outreach emails Edge drafted (reply-tracking). (2) Read recent inbox metadata as a prioritization signal for the AI focus engine. (3) Read recent inbox **body text** (≤10 non-promotional threads, in-memory) to learn durable facts for memory. ⚠️ **Use-case expanded — see CASA flag below.** | `lib/replies.ts` (reply tracking); `lib/gmail.ts getRecentEmailSignal` (prioritization + memory) |
 
 ### Why we need each scope
 
@@ -36,19 +36,24 @@ can review, edit, and send it manually. We never send without explicit user acti
 1. **Reply tracking:** After drafting an outreach email, users ask "did Sarah reply?"
    Edge reads the specific Gmail thread it created to answer. Scope-limited to
    `watched_threads` (only threads Edge originated).
-2. **Focus prioritization (NEW):** The AI Focus Recommendation engine analyzes the
-   user's recent inbox to identify what matters to them (financial/legal/life admin
-   threads factor into suggested focus areas). Only metadata is read
-   (`format:'metadata'` — no message bodies); only INBOX label. The signal is used
-   in-memory for LLM prioritization; **no email content is stored.** An audit entry
-   (thread count only) is written to `audit_log` for transparency.
+2. **Focus prioritization + memory (EXPANDED — Round 7):** The AI Focus Recommendation
+   engine and the memory pipeline analyze the user's recent inbox to identify what
+   matters and to learn durable facts (goals, projects, people). Header metadata + Gmail's
+   snippet are read for recent INBOX threads; for a small number (up to 10) of recent,
+   non-promotional threads, the **message body text is also read** (`format:'full'`, capped
+   ~2000 chars/thread). All of this is used **in-memory** for LLM prioritization + fact
+   extraction; **the raw email body is never stored** — only short derived facts (which the
+   user can view and delete in the Memory tab) and encrypted thread subjects persist. An
+   audit entry (thread count + encrypted subjects) is written to `audit_log` for transparency.
 
 ### ⚠️ CASA FLAG — `gmail.readonly` use-case expansion
 
 **What changed:** The prior CASA submission described `gmail.readonly` as reading
-*only specific threads Edge started*. The focus recommendation feature changes
-this to also reading *recent inbox thread metadata broadly* (INBOX label, recent
-N days, up to 50 threads).
+*only specific threads Edge started*. Two expansions since: (a) the focus
+recommendation feature reads *recent inbox thread metadata broadly* (INBOX label,
+recent N days, up to 50 threads); (b) **Round 7** additionally reads the *message
+body text* of up to 10 recent non-promotional threads (in-memory, ~2000-char cap)
+to extract durable memory facts. Raw bodies are never stored.
 
 **Why this matters for CASA/verification:**
 - Google's verification review will compare our declared use against the actual
@@ -60,10 +65,12 @@ N days, up to 50 threads).
 - The demo video (§6 below) needs a scene showing the focus recommendation feature.
 
 **Privacy mitigations we've built (document to assessors):**
-- `format:'metadata'` API parameter — only headers (From, Subject, Date) and
-  Gmail's own snippet (~100 chars) are fetched. Message bodies are never
-  requested or transmitted to our server.
-- No storage of email content — the signal is derived and discarded.
+- **Body reading is bounded:** metadata-only (`format:'metadata'`) is the default path;
+  message bodies are fetched (`format:'full'`) only for up to 10 recent, non-promotional
+  INBOX threads, each capped at ~2000 chars. Spam/promotional threads are skipped.
+- **No storage of raw email content** — bodies are held in memory for the LLM call and
+  discarded immediately. Only short derived facts (user-visible and deletable in the Memory
+  tab) and encrypted thread subjects (90-day retention) persist.
 - Audit log records the fetch action (thread count only) so users see it in
   their Activity feed. Zero email content in the log.
 - Hard cap: maximum 50 threads per fetch, INBOX only.
@@ -105,16 +112,22 @@ this honestly to Google and commit to it in the questionnaire.
 | Recipient name + email | Yes — `gmail_drafts_log.recipient` | Until account deleted | AES-256-GCM at rest (`encryptNullable`) |
 | Draft subject | Yes — `gmail_drafts_log.subject` | Until account deleted | AES-256-GCM at rest |
 | Thread IDs we watch for replies | Yes — `watched_threads.thread_id` | Until handled/dismissed or account deleted | Thread ID not encrypted; recipient/context encrypted |
-| Message bodies/content | **No** — reply tracking reads snippets; focus signal uses `format:'metadata'` (headers + Gmail's own snippet only). Bodies never fetched or stored. | Never persisted | N/A |
+| Message bodies/content | **In-memory only — raw body NEVER stored.** For up to 10 recent, non-promotional threads, body text (`format:'full'`, ~2000-char cap) is read for fact extraction, then discarded after the LLM call. | Raw body never persisted | N/A |
+| Facts derived from email (e.g. a project or person mentioned) | Yes — `facts` table (short summaries, not raw email) | Until user deletes (visible/deletable in Memory tab) | AES-256-GCM at rest |
 | Recent inbox thread metadata (From, Subject, Date headers + snippet) | **No** — fetched in-memory for AI focus recommendation; discarded after LLM call | Never stored | N/A |
-| Inbox access action | Yes — `audit_log` records the fetch (thread count + days window, no content) | Audit retention policy (~90 days) | Action string not encrypted; no PII in this log entry |
-| Full inbox contents (bodies, attachments) | **Never accessed** — `format:'metadata'` parameter ensures this at the API level | — | — |
+| Inbox access action + thread subjects | Yes — `audit_log` records the fetch (thread count) + the reviewed subjects | ~90 days | Subjects encrypted (AES-256-GCM); action string not encrypted |
+| Attachments / full message history | **Never accessed** — only recent thread metadata + (for ≤10 threads) the message body text are read; attachments are never fetched | — | — |
 
 ### What we explicitly do NOT do
 
-- We do not read or store message bodies (enforced via `format:'metadata'` API param).
-- We do not read attachments, drafts, sent mail, spam, or trash — only INBOX metadata.
-- We do not store email header content, subjects, or sender addresses from inbox reads.
+- We do not **store** raw message bodies — body text (≤10 recent non-promotional threads,
+  ~2000-char cap) is read in memory for fact extraction and discarded; only short derived
+  facts (user-visible and deletable in the Memory tab) persist.
+- We do not read attachments, sent mail, spam, or trash — only recent INBOX threads
+  (metadata for all; body text for up to 10 non-promotional threads).
+- Reviewed thread subject lines ARE stored, encrypted at rest (AES-256-GCM, ~90-day
+  retention), so users can see which emails Edge reviewed. Sender addresses and raw bodies
+  are not stored.
 - We do not send emails — only create drafts for user review.
 - We do not share any Google data with third parties.
 - We do not use Google data for advertising, profiling, or model training.

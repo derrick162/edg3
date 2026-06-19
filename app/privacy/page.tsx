@@ -49,7 +49,7 @@ export default function PrivacyPage() {
                 <p>If you grant Gmail access, we use it in two ways:</p>
                 <ul className="mt-2 space-y-2 pl-1">
                   <li><strong style={{ color: 'var(--text-strong)' }}>Draft creation:</strong> Edg3 creates email drafts on your behalf for outreach you asked for. <strong style={{ color: 'var(--text-strong)' }}>Edg3 never sends email</strong> — it only creates drafts for you to review and send yourself.</li>
-                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox signal (metadata only):</strong> Edg3 reads <em>metadata</em> from recent inbox threads — sender name, subject line, and the auto-generated snippet Google provides. <strong style={{ color: 'var(--text-strong)' }}>Edg3 never reads email body content.</strong> This metadata is used to compute your daily Focus score and to recognize replies to outreach Edg3 drafted for you. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edg3 reviewed — visible only to you in your Activity tab. Subjects are retained for 90 days then automatically deleted. Senders, snippets, and bodies are never stored.</li>
+                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox reading:</strong> Edg3 reads recent inbox threads — sender name, subject line, the auto-generated snippet Google provides, and, for a small number of recent non-promotional threads, the message body text. It uses this to compute your daily Focus score, recognize replies to outreach Edg3 drafted, and learn durable facts about your work and relationships for your briefings. <strong style={{ color: 'var(--text-strong)' }}>Email body text is read in memory only and is never stored, shared, or sold</strong> — it is discarded immediately after Edg3 derives its summary. Edg3 may save short factual notes it learns from your email (for example, a project or person you mentioned), which you can view and delete anytime in your Memory tab. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edg3 reviewed — visible only to you, retained for 90 days, then automatically deleted.</li>
                 </ul>
                 <p className="mt-2">You can disconnect Gmail at any time from your dashboard, which immediately revokes both draft and read access.</p>
               </div>
@@ -74,7 +74,7 @@ export default function PrivacyPage() {
               {[
                 'To deliver your daily AI briefing call and reminder texts',
                 'To personalize briefings based on your profile, priorities, calendar, and (optionally) Whoop recovery data',
-                'To compute your daily Focus and Energy scores using calendar event patterns and inbox metadata (sender/subject/snippet — no message bodies)',
+                'To compute your daily Focus and Energy scores and learn durable facts for your briefings, using calendar event patterns and recent inbox emails (sender, subject, snippet, and message body text — read in memory only, never stored)',
                 'To remember context from previous calls and improve over time',
                 'To authenticate your account and keep it secure',
                 'To communicate service updates or account-related notices',
