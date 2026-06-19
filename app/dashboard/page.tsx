@@ -622,8 +622,14 @@ function ActivityTab() {
     }
   }
 
+  // SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" without a 'Z' suffix.
+  // Without 'Z', JS new Date() parses as LOCAL time — wrong: it IS UTC. Add 'Z'.
+  function parseTs(ts: string): Date {
+    return new Date(ts.includes('Z') || ts.includes('+') ? ts : ts.replace(' ', 'T') + 'Z');
+  }
+
   function relativeTime(created_at: string): string {
-    const ms = Date.now() - new Date(created_at).getTime();
+    const ms = Date.now() - parseTs(created_at).getTime();
     const s = Math.floor(ms / 1000);
     if (s < 60) return 'just now';
     const m = Math.floor(s / 60);
@@ -635,7 +641,7 @@ function ActivityTab() {
   }
 
   function dayLabel(created_at: string): string {
-    const d = new Date(created_at);
+    const d = parseTs(created_at);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
