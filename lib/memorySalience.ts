@@ -23,6 +23,7 @@ const CATEGORY_WEIGHTS: Record<Fact['category'], number> = {
   goal:       0.9,
   project:    0.8,
   person:     0.7,
+  pattern:    0.6,  // derived behavioral insight — meaningful signal, below directly-stated facts
   fact:       0.5,
   preference: 0.4,
 };

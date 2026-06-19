@@ -280,7 +280,13 @@ export function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS facts (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id            INTEGER NOT NULL REFERENCES users(id),
-      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact')),
+      -- T3-1-A: 'pattern' added so factPatterns can land in the Patterns tab (not Facts).
+      -- Additive for new DBs. NOTE: SQLite can't ALTER a CHECK — a long-lived DB created
+      -- before this change keeps the old CHECK and would reject category='pattern' INSERTs
+      -- until a table rebuild. Given the ephemeral-volume situation, prod DBs initialize fresh
+      -- with this CHECK; a deliberate facts rebuild is deferred/flagged (not done unprompted on
+      -- the core memory table). Fact inserts are best-effort (try/catch), so no crash either way.
+      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern')),
       statement          TEXT NOT NULL,
       entity             TEXT,
       learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1819,7 +1825,7 @@ export interface GmailDraftLog {
 export interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
   statement: string;
   entity: string | null;
   learned_at: string;

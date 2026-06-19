@@ -86,6 +86,9 @@ const CATEGORY_PRIORITY: Record<Fact['category'], number> = {
   preference: 2,
   person: 3,
   fact: 4,
+  // Patterns are DERIVED (observed behavior), not user-stated facts you'd reconfirm aloud
+  // ("are you still doing X?" doesn't apply) — lowest reconfirmation priority.
+  pattern: 5,
 };
 
 /**
