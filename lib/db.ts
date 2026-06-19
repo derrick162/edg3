@@ -464,10 +464,10 @@ export function initSchema(db: Database.Database) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_people_profiles_unique
       ON people_profiles(user_id, canonical_name);
 
-    -- Social mental models (M4-4): a structured per-person model distinct from raw person facts.
-    -- goals/communication_style/relationship_state/last_interaction are encrypted at rest (PII).
-    -- health_score is model confidence (decays like fact confidence). Kept in sync by the
-    -- sleep-time consolidation agent after each call that mentions a person.
+    -- Round 8 (M4-4): social mental models — what Edge knows about the people in the
+    -- user's life (Core writes via Darren's social-model pipeline). goals/communication_style/
+    -- relationship_state/last_interaction are encrypted at rest (PII about third parties);
+    -- person_name stays plaintext as the UNIQUE lookup key (same tier as people_profiles.canonical_name).
     CREATE TABLE IF NOT EXISTS people_models (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2240,7 +2240,7 @@ export const peopleProfileQueries = {
 // Social mental models (M4-4) — a structured per-person model, distinct from raw person facts.
 // PII fields encrypted at rest. Kept in sync by sleep-time consolidation; read by the briefing
 // builder when a person appears on the calendar.
-export interface PersonModel {
+export interface PeopleModel {
   id: number;
   user_id: number;
   person_name: string;
@@ -2252,58 +2252,67 @@ export interface PersonModel {
   updated_at: string;
 }
 
-export interface PersonModelFields {
+export interface PeopleModelFields {
   goals?: string | null;
-  communication_style?: string | null;
-  relationship_state?: string | null;
-  last_interaction?: string | null;
+  communicationStyle?: string | null;
+  relationshipState?: string | null;
+  lastInteraction?: string | null;
+  healthScore?: number;
 }
 
-function decryptPersonModelRow(r: PersonModel): PersonModel {
-  return {
-    ...r,
-    goals: safeDecryptNullable(r.goals, 'people_models.goals'),
-    communication_style: safeDecryptNullable(r.communication_style, 'people_models.communication_style'),
-    relationship_state: safeDecryptNullable(r.relationship_state, 'people_models.relationship_state'),
-    last_interaction: safeDecryptNullable(r.last_interaction, 'people_models.last_interaction'),
-  };
+// Round 8 (M4-4) — social mental models. goals/communication_style/relationship_state/
+// last_interaction encrypted at rest (PII about third parties); person_name is the plaintext
+// UNIQUE key. Core (Darren) writes via the social-model pipeline; Edge reads on calls.
+function decryptPeopleModelRow(row: PeopleModel): PeopleModel {
+  row.goals = safeDecryptNullable(row.goals, 'people_models.goals');
+  row.communication_style = safeDecryptNullable(row.communication_style, 'people_models.communication_style');
+  row.relationship_state = safeDecryptNullable(row.relationship_state, 'people_models.relationship_state');
+  row.last_interaction = safeDecryptNullable(row.last_interaction, 'people_models.last_interaction');
+  return row;
 }
 
 export const peopleModelQueries = {
-  listForUser: (userId: number): PersonModel[] =>
-    (getDb().prepare('SELECT * FROM people_models WHERE user_id = ? ORDER BY updated_at DESC').all(userId) as PersonModel[]).map(decryptPersonModelRow),
-
-  getForUser: (userId: number, personName: string): PersonModel | undefined => {
-    const row = getDb().prepare(
-      'SELECT * FROM people_models WHERE user_id = ? AND LOWER(person_name) = LOWER(?)'
-    ).get(userId, personName) as PersonModel | undefined;
-    return row ? decryptPersonModelRow(row) : undefined;
-  },
-
-  // Partial upsert: only provided fields are written. On conflict, undefined/null fields preserve
-  // the existing value (COALESCE). health_score resets to 1.0 on any update — a fresh mention
-  // reconfirms the model. Provided string fields are encrypted at rest.
-  upsert: (userId: number, personName: string, fields: PersonModelFields) => {
-    const enc = (v: string | null | undefined) => (v === undefined || v === null) ? null : encryptNullable(v);
-    const goals = enc(fields.goals);
-    const comm = enc(fields.communication_style);
-    const rel = enc(fields.relationship_state);
-    const last = enc(fields.last_interaction);
+  // UPDATE-or-INSERT by (user_id, person_name). Only the provided fields are written; omitted
+  // fields are preserved (COALESCE) so partial updates don't clobber prior knowledge.
+  upsert: (userId: number, personName: string, fields: PeopleModelFields = {}): void => {
+    const healthScore = fields.healthScore ?? null;
     getDb().prepare(`
       INSERT INTO people_models (user_id, person_name, goals, communication_style, relationship_state, last_interaction, health_score, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 1.0, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, 1.0), datetime('now'))
       ON CONFLICT(user_id, person_name) DO UPDATE SET
-        goals = COALESCE(excluded.goals, goals),
-        communication_style = COALESCE(excluded.communication_style, communication_style),
-        relationship_state = COALESCE(excluded.relationship_state, relationship_state),
-        last_interaction = COALESCE(excluded.last_interaction, last_interaction),
-        health_score = 1.0,
-        updated_at = datetime('now')
-    `).run(userId, personName, goals, comm, rel, last);
+        goals               = COALESCE(excluded.goals, people_models.goals),
+        communication_style = COALESCE(excluded.communication_style, people_models.communication_style),
+        relationship_state  = COALESCE(excluded.relationship_state, people_models.relationship_state),
+        last_interaction    = COALESCE(excluded.last_interaction, people_models.last_interaction),
+        -- reference the raw bind param (NOT excluded, which carries the VALUES default 1.0),
+        -- so an omitted health_score preserves the prior value on update.
+        health_score        = COALESCE(?, people_models.health_score),
+        updated_at          = datetime('now')
+    `).run(
+      userId,
+      personName,
+      encryptNullable(fields.goals ?? null),
+      encryptNullable(fields.communicationStyle ?? null),
+      encryptNullable(fields.relationshipState ?? null),
+      encryptNullable(fields.lastInteraction ?? null),
+      healthScore,
+      healthScore,
+    );
   },
-
-  deleteForUser: (userId: number) => {
-    getDb().prepare('DELETE FROM people_models WHERE user_id = ?').run(userId);
+  getForUser: (userId: number, personName: string): PeopleModel | undefined => {
+    const row = getDb().prepare(
+      'SELECT * FROM people_models WHERE user_id = ? AND person_name = ?'
+    ).get(userId, personName) as PeopleModel | undefined;
+    return row ? decryptPeopleModelRow(row) : undefined;
+  },
+  listForUser: (userId: number): PeopleModel[] => {
+    const rows = getDb().prepare(
+      'SELECT * FROM people_models WHERE user_id = ? ORDER BY updated_at DESC'
+    ).all(userId) as PeopleModel[];
+    return rows.map(decryptPeopleModelRow);
+  },
+  deleteForUser: (userId: number, personName: string): void => {
+    getDb().prepare('DELETE FROM people_models WHERE user_id = ? AND person_name = ?').run(userId, personName);
   },
 };
 

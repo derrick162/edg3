@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock } from './briefing';
-import type { Fact, PersonModel } from './db';
+import type { Fact, PeopleModel } from './db';
 
 function makePref(statement: string, id = 1): Fact {
   return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00', confidence: 'high', source_briefing_id: null };
@@ -420,7 +420,7 @@ describe('buildBriefingContext — regression', () => {
 });
 
 describe('buildPeopleModelBlock (M4-4)', () => {
-  function model(over: Partial<PersonModel>): PersonModel {
+  function model(over: Partial<PeopleModel>): PeopleModel {
     return {
       id: 1, user_id: 1, person_name: 'Sarah Chen',
       goals: null, communication_style: null, relationship_state: null,

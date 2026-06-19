@@ -7,7 +7,7 @@
 // Design: always degrades safely — any failure is a no-op that never blocks post-call
 // processing. Extraction failure === no new facts stored, existing facts unchanged.
 
-import { factQueries, peopleProfileQueries, peopleModelQueries, type Fact, type PersonModelFields } from './db';
+import { factQueries, peopleProfileQueries, peopleModelQueries, type Fact, type PeopleModelFields } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import type { calendar_v3 } from 'googleapis';
@@ -726,7 +726,7 @@ Only return HIGH-CONFIDENCE changes where the user explicitly stated the change.
       let modelsSynced = 0;
       for (const [name, statements] of byPerson) {
         const fields = derivePersonModelFields(statements);
-        if (fields.goals || fields.communication_style || fields.relationship_state) {
+        if (fields.goals || fields.communicationStyle || fields.relationshipState) {
           peopleModelQueries.upsert(userId, name, fields);
           modelsSynced++;
         }
@@ -746,16 +746,16 @@ Only return HIGH-CONFIDENCE changes where the user explicitly stated the change.
 const PERSON_GOAL_HINTS = ['trying to', 'wants to', 'working on', 'goal', 'closing', 'raising', 'building', 'launching', 'aiming', 'planning to', 'hoping to', 'focused on'];
 const PERSON_COMM_HINTS = ['prefers', 'async', 'brief', 'direct', 'formal', 'responds', 'communicat', 'over text', 'over email', 'by phone', 'concise', 'detailed', 'likes to'];
 
-export function derivePersonModelFields(statements: string[]): PersonModelFields {
+export function derivePersonModelFields(statements: string[]): PeopleModelFields {
   const clean = statements.map(s => s.trim()).filter(Boolean);
   if (!clean.length) return {};
   const find = (hints: string[]) => clean.find(s => hints.some(h => s.toLowerCase().includes(h))) ?? null;
-  const relationship_state = clean[0] ?? null;
+  const relationshipState = clean[0] ?? null;
   return {
     goals: find(PERSON_GOAL_HINTS),
-    communication_style: find(PERSON_COMM_HINTS),
-    relationship_state,
-    last_interaction: relationship_state,
+    communicationStyle: find(PERSON_COMM_HINTS),
+    relationshipState,
+    lastInteraction: relationshipState,
   };
 }
 

@@ -25,7 +25,7 @@ import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
 import { isImproveConsented } from './consent';
 import { buildRelationshipContextBlock, syncPeopleProfiles } from './relationships';
-import { peopleProfileQueries, patternCacheQueries, peopleModelQueries, type PersonModel } from './db';
+import { peopleProfileQueries, patternCacheQueries, peopleModelQueries, type PeopleModel } from './db';
 import {
   detectProductiveDayPattern,
   detectLightDayPattern,
@@ -69,7 +69,7 @@ export function buildPersonalizationPromptBlock(factCount: number): string | nul
  */
 export function buildPeopleModelBlock(
   events: calendar_v3.Schema$Event[],
-  models: PersonModel[],
+  models: PeopleModel[],
 ): string {
   if (!models.length || !events.length) return '';
   const haystacks: string[] = [];
@@ -82,7 +82,7 @@ export function buildPeopleModelBlock(
   }
   if (!haystacks.length) return '';
 
-  const matched: PersonModel[] = [];
+  const matched: PeopleModel[] = [];
   for (const m of models) {
     const name = m.person_name.trim().toLowerCase();
     if (name.length < 2) continue;

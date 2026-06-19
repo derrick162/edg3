@@ -788,13 +788,13 @@ describe('derivePersonModelFields (M4-4)', () => {
 
   it('extracts communication style from comm-keyword statements', () => {
     const f = derivePersonModelFields(['Jim prefers async, brief messages']);
-    expect(f.communication_style).toBe('Jim prefers async, brief messages');
+    expect(f.communicationStyle).toBe('Jim prefers async, brief messages');
   });
 
   it('relationship_state + last_interaction default to the most recent (first) statement', () => {
     const f = derivePersonModelFields(['most recent context', 'older context']);
-    expect(f.relationship_state).toBe('most recent context');
-    expect(f.last_interaction).toBe('most recent context');
+    expect(f.relationshipState).toBe('most recent context');
+    expect(f.lastInteraction).toBe('most recent context');
   });
 
   it('picks distinct statements for goals vs comm style when both present', () => {
@@ -804,7 +804,7 @@ describe('derivePersonModelFields (M4-4)', () => {
       'Alice prefers detailed written updates',
     ]);
     expect(f.goals).toContain('raise a bridge round');
-    expect(f.communication_style).toContain('detailed written updates');
-    expect(f.relationship_state).toBe('Alice is the CFO');
+    expect(f.communicationStyle).toContain('detailed written updates');
+    expect(f.relationshipState).toBe('Alice is the CFO');
   });
 });
