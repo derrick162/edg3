@@ -1318,7 +1318,8 @@ export default function Dashboard() {
 
   const [initiatingCall, setInitiatingCall] = useState(false);
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('priorities');
+  const [moreOpen, setMoreOpen] = useState(false);
   const [memoryPage, setMemoryPage] = useState(1);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [collapsedMemorySections, setCollapsedMemorySections] = useState<Set<string>>(
@@ -2008,19 +2009,16 @@ export default function Dashboard() {
             <span className="logo-text text-lg">EDG3</span>
           </div>
 
-          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
+          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0 relative">
             {[
-              { id: 'home', label: 'Home', icon: '✦' },
-              { id: 'briefings', label: 'Briefings', icon: '📋' },
-              { id: 'priorities', label: 'Priorities', icon: '🎯' },
-              { id: 'activity', label: 'Activity', icon: '⏪' },
+              { id: 'priorities', label: 'Focus', icon: '🎯' },
+              { id: 'home', label: 'Today', icon: '✦' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
-              { id: 'profile', label: 'Profile', icon: '👤' },
-              { id: 'help', label: 'Help', icon: '?' },
+              { id: 'activity', label: 'Activity', icon: '⏪' },
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => { setActiveTab(tab.id as any); setMoreOpen(false); }}
                 aria-label={tab.label}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
                 className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
@@ -2034,6 +2032,48 @@ export default function Dashboard() {
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
             ))}
+
+            {/* More ▾ overflow */}
+            <div className="relative">
+              <button
+                onClick={() => setMoreOpen(o => !o)}
+                aria-expanded={moreOpen}
+                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
+                style={{
+                  background: (['briefings', 'profile', 'help'] as const).includes(activeTab as any) ? 'var(--edg-accent-15)' : 'transparent',
+                  color: (['briefings', 'profile', 'help'] as const).includes(activeTab as any) ? 'var(--text-accent)' : 'var(--text-muted)',
+                  border: (['briefings', 'profile', 'help'] as const).includes(activeTab as any) ? '1px solid var(--edg-accent-20)' : '1px solid transparent',
+                }}
+              >
+                <span aria-hidden="true">···</span>
+                <span className="hidden md:inline">More ▾</span>
+              </button>
+              {moreOpen && (
+                <div
+                  className="absolute left-0 md:left-full md:top-0 top-full z-50 mt-1 md:mt-0 md:ml-2 rounded-lg shadow-lg overflow-hidden"
+                  style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', minWidth: 140 }}
+                >
+                  {[
+                    { id: 'briefings', label: 'Briefings', icon: '📋' },
+                    { id: 'profile', label: 'Profile', icon: '👤' },
+                    { id: 'help', label: 'Help', icon: '?' },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => { setActiveTab(tab.id as any); setMoreOpen(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-left transition-colors"
+                      style={{
+                        background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
+                        color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
+                      }}
+                    >
+                      <span aria-hidden="true">{tab.icon}</span>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
 
           <div className="hidden md:flex md:flex-col mt-6 space-y-3">

@@ -16,6 +16,7 @@ export interface FocusArea {
   priorityId: number;
   title: string;
   hoursThisWeek: number;
+  targetHours?: number;
   milestonesDone: number;
   milestonesTotal: number;
   isComplete: boolean;
@@ -28,12 +29,14 @@ export interface FocusScoreboardProps {
   areas: FocusArea[];
   onToggleMilestone: (priorityId: number, milestoneId: number, done: boolean) => Promise<void>;
   onAddMilestone: (priorityId: number, title: string) => Promise<void>;
+  onMilestoneComplete?: (priorityId: number, milestoneId: number) => void;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function progressPct(area: FocusArea): number {
-  const timePct = Math.min(area.hoursThisWeek / 10, 1); // 10h = full credit
+  const target = area.targetHours ?? 10;
+  const timePct = Math.min(area.hoursThisWeek / Math.max(target, 1), 1);
   const milestonePct = area.milestonesTotal > 0
     ? area.milestonesDone / area.milestonesTotal
     : 0;
@@ -42,6 +45,11 @@ function progressPct(area: FocusArea): number {
     ? timePct * 0.4 + milestonePct * 0.6
     : timePct;
   return Math.min(pct, 1);
+}
+
+function hoursBarPct(area: FocusArea): number {
+  const target = area.targetHours ?? 10;
+  return Math.min(area.hoursThisWeek / Math.max(target, 1), 1);
 }
 
 function fillColor(pct: number, isComplete: boolean): string {
@@ -267,13 +275,16 @@ function FocusAreaCard({
   rank,
   onToggleMilestone,
   onAddMilestone,
+  onMilestoneComplete,
 }: {
   area: FocusArea;
   rank: number;
   onToggleMilestone: (milestoneId: number, done: boolean) => Promise<void>;
   onAddMilestone: (title: string) => Promise<void>;
+  onMilestoneComplete?: (milestoneId: number) => void;
 }) {
   const pct = progressPct(area);
+  const hBarPct = hoursBarPct(area);
   const [celebratingId, setCelebratingId] = useState<number | null>(null);
   const [areaJustCompleted, setAreaJustCompleted] = useState(false);
   const prevComplete = useRef(area.isComplete);
@@ -292,6 +303,7 @@ function FocusAreaCard({
     if (done) {
       setCelebratingId(milestoneId);
       setTimeout(() => setCelebratingId(null), 1800);
+      onMilestoneComplete?.(milestoneId);
     }
   }
 
@@ -333,7 +345,7 @@ function FocusAreaCard({
             {area.neglected && !area.isComplete && (
               <span className="text-xs px-1.5 py-0.5 rounded font-semibold flex-shrink-0"
                 style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)' }}>
-                needs time
+                0h — no time blocked
               </span>
             )}
           </div>
@@ -342,7 +354,11 @@ function FocusAreaCard({
           <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-faint)' }}>
             <span>
               <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{area.hoursThisWeek.toFixed(1)}h</span>
-              {' '}this week
+              {area.targetHours ? (
+                <span> / {area.targetHours}h target</span>
+              ) : (
+                <span> this week</span>
+              )}
             </span>
             {area.milestonesTotal > 0 && (
               <span>
@@ -357,6 +373,25 @@ function FocusAreaCard({
                 {ENERGY_LABEL[area.energyCost]}
               </span>
             )}
+          </div>
+
+          {/* Hours progress bar */}
+          <div className="mt-2" style={{ height: 6, borderRadius: 3, background: 'var(--edg-fill-04)', overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${Math.round(hBarPct * 100)}%`,
+                borderRadius: 3,
+                background: area.isComplete
+                  ? 'var(--score-fill-done)'
+                  : hBarPct >= 0.7
+                  ? 'var(--score-fill-high)'
+                  : hBarPct >= 0.3
+                  ? 'var(--score-fill-mid)'
+                  : 'var(--score-fill-low)',
+                transition: 'width 0.4s ease',
+              }}
+            />
           </div>
         </div>
       </div>
@@ -383,7 +418,7 @@ function FocusAreaCard({
 
 // ── Scoreboard ───────────────────────────────────────────────────────────────
 
-export function FocusScoreboard({ areas, onToggleMilestone, onAddMilestone }: FocusScoreboardProps) {
+export function FocusScoreboard({ areas, onToggleMilestone, onAddMilestone, onMilestoneComplete }: FocusScoreboardProps) {
   if (areas.length === 0) {
     return (
       <div className="glass-card p-8 text-center">
@@ -422,6 +457,7 @@ export function FocusScoreboard({ areas, onToggleMilestone, onAddMilestone }: Fo
           rank={i + 1}
           onToggleMilestone={(milestoneId, done) => onToggleMilestone(area.priorityId, milestoneId, done)}
           onAddMilestone={title => onAddMilestone(area.priorityId, title)}
+          onMilestoneComplete={onMilestoneComplete ? (milestoneId) => onMilestoneComplete(area.priorityId, milestoneId) : undefined}
         />
       ))}
     </div>
