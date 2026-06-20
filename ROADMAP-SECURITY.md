@@ -30,6 +30,51 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 11 — Gmail scope close-out + rate-limit hardening + key rotation doc)
+
+> `git merge master` first (master is at `9918c01`). Three tickets, no Core coordination needed.
+
+---
+
+### T1 — Close out Gmail scope decision from R10 T2 (FAST — 20 min, doc only)
+
+Your R10 T2 audit surfaced that the Gmail second flow requests `gmail.readonly` — and flagged it as "keep vs. tighten." Make the call now and close it out.
+
+**Decision (PM-authorized):** **Keep `gmail.readonly`.** It's required by `extractGmailAccountContacts` for contact ingest, which is a core Clarity Score input. Tightening to a narrower scope would break that feature. The scope is justified.
+
+**What to do:** In `content/security-audit.md`, find the T2 entry for the gmail.readonly decision and update the status from "keep-vs-tighten: open" to "**accepted**: `gmail.readonly` retained — required for `extractGmailAccountContacts` (contact ingest + Clarity Score). Reviewed 2026-06-20." No code change. Preflight green.
+
+---
+
+### T2 — Rate-limit gap check: tool-call + memory routes (MEDIUM — 1.5h)
+
+The R4 T2 rate-limit gap check is in the backlog but it's unclear whether it shipped. Verify and fill any gaps.
+
+**What to check:**
+1. `/api/vapi/tool-call/route.ts` — is there a per-user rate limit on tool calls? Without one, a runaway Vapi call loop could rack up API costs or spam the calendar. Add: 60 tool calls per user per minute (in-memory Map with timestamp sliding window is fine for now — no Redis needed until multi-instance Railway).
+2. `/api/memory/` routes — is there a per-user rate limit on fact writes? Add: 30 writes per user per minute.
+3. `/api/briefing/generate` — already has a once-per-day guard? Confirm it's there. If not, add: block re-generation within 2 hours of the last one.
+
+**Implementation:** Add a lightweight `checkRateLimit(userId, key, maxPerMinute)` helper to `lib/auth.ts` or a new `lib/rateLimit.ts`. Uses `Map<string, number[]>` (timestamps), slides the window. Returns `{ allowed: boolean }`. Apply it at the top of each route handler — 429 with `"Too many requests"` when exceeded. Pure in-memory is fine pre-scale.
+
+**Test:** call the helper 61 times in 60 seconds → 61st returns `allowed: false`. Preflight green.
+
+---
+
+### T3 — Key rotation runbook (FAST — 45 min, doc + utility)
+
+`DATA_ENCRYPTION_KEY` is a single key. If Derrick ever needs to rotate it (key leak, audit requirement), there's no procedure and all encrypted data would be unreadable mid-rotation.
+
+**What to build:**
+
+1. **`reEncryptAllUserData(oldKey: string, newKey: string): Promise<void>`** utility in `lib/crypto.ts`. Fetches all encrypted fields from all tables (`facts`, `memories`, `whoop_tokens`, `gmail_tokens`, `google_tokens`, `people_models` encrypted fields). For each: decrypt with `oldKey`, re-encrypt with `newKey`, write back. Runs as a single transaction per user. Log progress: `"Re-encrypting user ${userId}..."`. Dry-run mode: `reEncryptAllUserData(old, new, { dryRun: true })` logs what it would do but writes nothing.
+
+2. **Runbook entry** in `content/durability-runbook.md`: Add a "Key Rotation" section. Steps: (1) Set new `DATA_ENCRYPTION_KEY_NEXT` env var in Railway. (2) Run `reEncryptAllUserData(process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_KEY_NEXT)` from a one-off Railway job. (3) Swap `DATA_ENCRYPTION_KEY` to the new value + remove `_NEXT`. (4) Verify a decrypt round-trip. Note: zero-downtime because the re-encrypt runs before the key swap.
+
+**Test:** encrypt a value with key A → `reEncryptAllUserData(A, B)` → decrypt with key B → same value. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 — people_models schema + setEnergyLevel Vapi tool schema)
 
 > Master at current HEAD. `git merge master` first. Coordination dispatch — Core (Darren) is building M4-4 social mental models and needs the DB schema from you.
