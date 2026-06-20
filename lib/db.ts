@@ -652,6 +652,8 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1",
   "ALTER TABLE users ADD COLUMN data_consent TEXT CHECK(data_consent IN ('improve', 'privacy'))",
   "ALTER TABLE users ADD COLUMN voice_preference TEXT NOT NULL DEFAULT 'daniel'",
+  // R12 T6 — per-user speaking-speed preset (slow/default/fast) applied on every call.
+  "ALTER TABLE users ADD COLUMN voice_speed TEXT NOT NULL DEFAULT 'default'",
   "ALTER TABLE people_profiles ADD COLUMN email TEXT",
   // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
   "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
@@ -721,6 +723,10 @@ export const userQueries = {
   },
   setVoicePreference: (id: number, pref: 'daniel' | 'aria') => {
     return getDb().prepare("UPDATE users SET voice_preference = ? WHERE id = ?").run(pref, id);
+  },
+  // R12 T6 — set the user's speaking-speed preset.
+  setVoiceSpeed: (id: number, speed: 'slow' | 'default' | 'fast') => {
+    return getDb().prepare("UPDATE users SET voice_speed = ? WHERE id = ?").run(speed, id);
   },
 };
 
@@ -1782,6 +1788,7 @@ export interface User {
   // Optional here so reads are safe before the column exists in the DB.
   data_consent?: 'improve' | 'privacy' | null;
   voice_preference?: 'daniel' | 'aria' | null;
+  voice_speed?: 'slow' | 'default' | 'fast' | null;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,

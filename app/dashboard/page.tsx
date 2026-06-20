@@ -63,6 +63,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [dataConsent, setDataConsent] = useState<DataConsent>('privacy');
   const [savingConsent, setSavingConsent] = useState(false);
   const [voicePref, setVoicePref] = useState<'daniel' | 'aria'>('daniel');
+  const [voiceSpeed, setVoiceSpeed] = useState<'slow' | 'default' | 'fast'>('default');
 
   const [profileName, setProfileName] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
@@ -81,6 +82,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         setCurrentTimezone(d.current_timezone || '');
         if (d.data_consent) setDataConsent(d.data_consent as DataConsent);
         if (d.voice_preference === 'aria') setVoicePref('aria');
+        if (d.voice_speed === 'slow' || d.voice_speed === 'fast') setVoiceSpeed(d.voice_speed);
         if (d.name) setProfileName(d.name);
         if (d.email) setProfileEmail(d.email);
         if (d.phone_number) setProfilePhone(d.phone_number);
@@ -256,6 +258,48 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
                   }).catch(() => {});
                 }}
                 className="flex-1 rounded-xl px-4 py-3 text-left transition-colors"
+                style={{
+                  minHeight: 48,
+                  background: active ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)',
+                  border: `1px solid ${active ? 'var(--edg-accent-25, var(--edg-accent-20))' : 'var(--edg-hairline)'}`,
+                  cursor: 'pointer',
+                }}
+                aria-pressed={active}
+              >
+                <p className="text-sm font-semibold mb-0.5" style={{ color: active ? 'var(--text-accent)' : 'var(--text-strong)' }}>{opt.label}</p>
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{opt.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>Applies to your next call.</p>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+
+      {/* Speaking speed (R12 T6) */}
+      <section>
+        <p className="label-caps mb-1">Speaking speed</p>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>How fast Edg3 talks on your calls.</p>
+        <div className="flex gap-3">
+          {([
+            { key: 'slow',    label: 'Slow',    desc: '0.75×' },
+            { key: 'default', label: 'Default', desc: '0.9×' },
+            { key: 'fast',    label: 'Fast',    desc: '1.1×' },
+          ] as { key: 'slow' | 'default' | 'fast'; label: string; desc: string }[]).map(opt => {
+            const active = voiceSpeed === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={async () => {
+                  setVoiceSpeed(opt.key);
+                  await fetch('/api/profile/voice-speed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speed: opt.key }),
+                  }).catch(() => {});
+                }}
+                className="flex-1 rounded-xl px-4 py-3 text-center transition-colors"
                 style={{
                   minHeight: 48,
                   background: active ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)',

@@ -20,6 +20,7 @@ export async function GET() {
     current_timezone: isValidTimeZone(fullUser?.current_timezone) ? fullUser!.current_timezone : null,
     data_consent: fullUser?.data_consent ?? 'privacy',
     voice_preference: fullUser?.voice_preference ?? 'daniel',
+    voice_speed: fullUser?.voice_speed ?? 'default',
   });
 }
 
