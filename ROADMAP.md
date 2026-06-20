@@ -108,9 +108,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R12 ALL DONE (T1–T7, 1958 green). Idle, awaiting next dispatch.** T7: email feature removed — handlers, outreach/replies libs deleted. FYI: `checkOutreachReplies` also consumed by `lib/briefing.ts` + notifications route — both cleaned up.)_ | `app/api/vapi/tool-call/route.ts`, `lib/briefing.ts`, `app/api/notifications/route.ts` | 2026-06-20 |
+| 🛠️ Core | `core` | _(📋 **R13 DISPATCHED (2026-06-20) — Calendar management: batchReschedule + recurring skip/end + travel blocking + conflict surfacing (T1–T4).**)_ | `app/api/vapi/tool-call/route.ts`, `lib/vapi.ts` | 2026-06-20 |
 | 🔒 Security | `security` | _(✅ **R12 T2 FULLY DONE (1939 green); idle/polling.** Follow-up shipped after Core T7 unblocked it: removed `createDraft` + `DraftInput`/`DraftResult` + draft rate-limit/audit + `userHasGmailScope` from `lib/gmail.ts`; **deleted `GMAIL_COMPOSE_SCOPE`** + `hasGmailScope` from `google-auth.ts` + dropped it from `GOOGLE_SCOPES`; accounts route lost its `hasGmailScope` field. `deleteDraft` kept (undo). **Net: `gmail.readonly` is the ONLY Gmail scope now — no compose/send.** Tests updated, security-audit done. **⚠️ EXTERNAL (Derrick):** Railway volume + `LITESTREAM_S3_*`, `DATA_ENCRYPTION_KEY` backup, restore drill.)_ | `lib/gmail.ts`, `lib/google-auth.ts`, `app/api/auth/accounts/route.ts`, `content/security-audit.md` | 2026-06-20 |
-| 🔧 PM/CoS | `master` | _(✅ **Email feature dropped: Vapi tools deleted, `lib/vapi.ts` cleaned (prompt + toolIds). T7 → Core. T2 → Security.)_ | `lib/vapi.ts`, `ROADMAP*.md` | 2026-06-20 |
+| 🔧 PM/CoS | `master` | _(✅ **R13 dispatched to Core (T1–T4 — calendar management: batchReschedule, recurring skip/end, travel blocking, conflict surfacing).)_ | `ROADMAP-CORE.md`, `ROADMAP.md` | 2026-06-20 |
 | 🎨 Design | `design` | _(✅ **Pillar + launch-readiness pass done (2002 green).** Memory tab danger-border fix, onboarding arrival screen, 4 missing CSS token aliases resolved. Idle, awaiting next dispatch.)_ | `app/dashboard/page.tsx`, `app/onboarding/page.tsx`, `app/globals.css` | 2026-06-20 |
 
 ---

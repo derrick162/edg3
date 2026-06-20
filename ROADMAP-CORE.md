@@ -31,6 +31,94 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 13 — Calendar management: batch operations + recurring skip/end + travel blocking + conflict surfacing)
+
+> `git merge master` first. Four tickets to improve calendar management on live calls. **Do all before any R12 or pillar work.**
+
+---
+
+### T1 — `batchReschedule` tool: move or clear multiple events in one confirmation (HIGH — 2h)
+
+**Problem:** "Move everything this afternoon to tomorrow" or "clear my Monday morning" requires Edge to do each event one-by-one with separate confirm tokens — stalls the call badly.
+
+**Fix — three parts:**
+
+**Part A — new `batchReschedule` handler (`app/api/vapi/tool-call/route.ts`):**
+Add `} else if (fn === 'batchReschedule') {` handler. Accepts:
+- `window: { date: string, startTime?: string, endTime?: string }` — the source window (e.g. "today afternoon" = today 12:00–18:00)
+- `action: 'move' | 'delete'` — move to a new day, or delete entirely
+- `targetDate?: string` — required when action is `'move'`
+- `confirmToken?: string` — one-time gate (same `issueDeleteToken`/`consumeDeleteToken` pattern)
+
+Flow: first call (no token) → reads the window with `readCalendar`, filters to timed events in range, skips all-day events and read-only calendars, returns a plain-English preview ("Found 3 events: Gym at 2pm, Focus block at 3pm, Call at 4pm — move them all to tomorrow?") + a `confirmToken`. Second call (with token) → executes moves or deletes, `recordUndo` per event, returns spoken summary.
+
+**Part B — prompt (`lib/vapi.ts`):**
+Add `BATCH OPERATIONS` block:
+> "BATCH RESCHEDULE — when user says 'move everything this afternoon', 'clear my Monday morning', 'reschedule all my meetings tomorrow', or similar: call `batchReschedule` with the time window + action. First call returns a preview and token — read the preview out loud, get a yes, then call again with the token. Never do this one-by-one with separate deleteEvent/moveEvent calls."
+
+**Part C — Vapi tool:**
+⚠️ External step (PM): create `batchReschedule` tool in Vapi dashboard. Params: `window` (object: `date` string, `startTime` string optional, `endTime` string optional), `action` (string: 'move'|'delete'), `targetDate` (string, optional), `confirmToken` (string, optional). Add UUID to `lib/vapi.ts` toolIds (both arrays) + to the stored Vapi assistant.
+
+**Tests:** window with 3 events → correct preview string; confirmToken gate works; read-only events skipped; all-day events skipped. Preflight green.
+
+---
+
+### T2 — Recurring event skip + end-series support (MEDIUM — 1.5h)
+
+**Problem:** "Skip gym this Friday" and "end this series after next week" both fail — `moveEvent`/`deleteEvent` only handle `recurringScope: 'this' | 'all'`, not skip-and-resume or series termination.
+
+**Fix — two parts:**
+
+**Part A — `skipRecurringOccurrence` in `app/api/vapi/tool-call/route.ts`:**
+New handler. Accepts `title: string`, `occurrenceDate: string`. Resolves the specific occurrence (reuse `resolveEventExact`), deletes just that occurrence (no confirm token needed for a single skip — low-stakes enough), records undo. Returns "Skipped [title] on [date] — the series continues as normal."
+
+**Part B — `endRecurringSeries` handler:**
+Accepts `title: string`, `occurrenceDate: string`, `endAfterDate: string`. Fetches the master event, patches its `recurrence` RRULE to add `UNTIL=<endAfterDate in YYYYMMDD>`. No delete — just caps the series. Returns "Got it — [title] will end after [date]."
+
+**Prompt (`lib/vapi.ts`):**
+Add to RECURRING EVENTS block:
+> "SKIP ONE OCCURRENCE — 'skip gym this Friday', 'cancel just this week's standup' → call `skipRecurringOccurrence` with title + occurrenceDate. No confirmation needed.
+> END A SERIES — 'end my weekly gym after June 30', 'stop the series next week' → call `endRecurringSeries` with title + occurrenceDate + endAfterDate."
+
+⚠️ External step (PM): create `skipRecurringOccurrence` (params: `title` string, `occurrenceDate` string) and `endRecurringSeries` (params: `title` string, `occurrenceDate` string, `endAfterDate` string) in Vapi dashboard. Add UUIDs to both toolIds arrays + stored Vapi assistant.
+
+**Tests:** skip → only that occurrence deleted, master untouched; end-series → RRULE UNTIL set correctly; resolveEventExact used for precision. Preflight green.
+
+---
+
+### T3 — Travel time blocking: "I'm flying to NYC Tuesday" (MEDIUM — 1.5h)
+
+**Problem:** When Derrick mentions travel, Edge has no way to auto-block the travel window and warn about close-scheduled meetings.
+
+**Fix — two parts:**
+
+**Part A — `blockTravelTime` handler (`app/api/vapi/tool-call/route.ts`):**
+Accepts `date: string`, `destination: string`, `departureTime?: string`, `returnDate?: string`, `returnTime?: string`. Creates an all-day or timed event titled "✈ Travel: [destination]" on the travel date (and return date if given). If `departureTime` provided, creates a timed block instead. Checks for any existing timed events within 90 min of departure/return — if found, returns a warning ("You have a call at 8am — want me to move it?"). `recordUndo` for the created block.
+
+**Part B — prompt (`lib/vapi.ts`):**
+Add `TRAVEL BLOCKING` note:
+> "When the user mentions flying, driving long-distance, or traveling: call `blockTravelTime` with the destination + date. If they give departure/arrival times, use those for a timed block. If they mention a return, block that too. After blocking, check if anything is scheduled within 90 min of departure/return and offer to move it."
+
+⚠️ External step (PM): create `blockTravelTime` tool in Vapi dashboard. Params: `date` string, `destination` string, `departureTime` string (optional), `returnDate` string (optional), `returnTime` string (optional). Add UUID to both toolIds arrays + stored Vapi assistant.
+
+**Tests:** creates travel block with correct title; timed block when departureTime given; returns warning when close events found; undo recorded. Preflight green.
+
+---
+
+### T4 — Proactive conflict surfacing mid-call (MEDIUM — 1h)
+
+**Problem:** When Edge creates a new event, it reports `overrideConflicts: true` without naming what's being overridden — or the model just books it silently. Users don't know they've double-booked until they look at the calendar.
+
+**Fix — `createEvent` handler (`app/api/vapi/tool-call/route.ts`):**
+After getting a conflict response from Google (or detecting an overlap via `findTime`), before applying `overrideConflicts: true`, return a spoken warning that names the conflict: "There's a conflict — you already have [event name] at [time]. Should I book over it anyway, or find a different slot?" Only if user says "book it anyway" → re-call with `overrideConflicts: true`. If user says "find another time" → call `findTime` and suggest the next available slot.
+
+**Prompt (`lib/vapi.ts`):** Update BOOKING CONFLICTS block:
+> "When createEvent returns a conflict, NAME the conflicting event out loud — 'You already have [X] at that time.' Then offer: book over it, or find a free slot. Only pass `overrideConflicts: true` after the user explicitly says to book over it."
+
+No new Vapi tool needed. Tests: conflict detected → correct warning message returned; `overrideConflicts` not set on first response. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 12 — Live call bugs: deletion token loop + token leakage + replace-at-wrong-time)
 
 > From Derrick's live call with Aria (2026-06-20 afternoon). Three bugs from the transcript. **Do all 3 before any R9 work.**
