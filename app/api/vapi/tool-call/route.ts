@@ -4,6 +4,7 @@ import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalen
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes, computeFreeSlots } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
+import { mergeAttendees } from '@/lib/attendees';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -359,10 +360,14 @@ Query: ${query}` }],
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location, recurrence } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string; recurrence?: string };
+    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location, recurrence, attendees } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string; recurrence?: string; attendees?: { email?: string; name?: string }[] };
     if (!rawCreateTitle) return "I didn't catch what to call that event — what's the title?";
     // R14 T2 — only accept a well-formed RRULE string (the model passes it directly).
     const recur = typeof recurrence === 'string' && /^RRULE:/i.test(recurrence.trim()) ? recurrence.trim() : undefined;
+    // R14 T3 — Google sends invites for any attendees with an email.
+    const attendeeList = Array.isArray(attendees)
+      ? attendees.filter(a => a?.email && /@/.test(a.email)).map(a => ({ email: a.email!, ...(a.name ? { displayName: a.name } : {}) }))
+      : [];
     const title = groundTitle(rawCreateTitle);
 
     // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
@@ -392,6 +397,7 @@ Query: ${query}` }],
         ...(description ? { description } : {}),
         ...(location ? { location } : {}),
         ...(recur ? { recurrence: [recur] } : {}),
+        ...(attendeeList.length ? { attendees: attendeeList } : {}),
       } });
       if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
@@ -452,11 +458,12 @@ Query: ${query}` }],
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}) };
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}), ...(attendeeList.length ? { attendees: attendeeList } : {}) };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
-    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
+    const inviteNote = attendeeList.length ? ` Invited ${attendeeList.length} ${attendeeList.length === 1 ? 'person' : 'people'}.` : '';
+    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
@@ -947,6 +954,40 @@ Query: ${query}` }],
     const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long' });
     const list = slots.map(s => `${fmtDay(s.date)} at ${fmtT(s.startMs)}–${fmtT(s.endMs)}`).join(', ');
     return `Here are some open windows: ${list}. Want me to block one?`;
+
+  } else if (fn === 'editEventAttendees') {
+    // R14 T3 — add/remove guests on an existing event (Google sends invites/cancellations).
+    const { title: rawTitle, currentTime, add, remove } = args as {
+      title?: string; currentTime?: string; add?: { email?: string; name?: string }[]; remove?: string[];
+    };
+    if (!rawTitle) return "Which event's guest list should I change?";
+    const addList = Array.isArray(add) ? add : [];
+    const removeList = Array.isArray(remove) ? remove : [];
+    if (!addList.length && !removeList.length) return 'Who should I add or remove?';
+    const title = groundTitle(rawTitle);
+    // Search the next 30 days for the event by title (no date param on this tool).
+    const eaToday = todayInTz(tz);
+    const eaEnd = (() => { const d = new Date(`${eaToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 30); return d.toISOString().slice(0, 10); })();
+    const eaMatches = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, eaToday).start.toISOString(), timeMax: dayRangeUtc(tz, eaEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime' })
+        .then(r => (r.data.items ?? []).map(e => ({ event: e, calId }))).catch(() => [] as { event: calendar_v3.Schema$Event; calId: string }[])
+    ))).flat();
+    const r = resolveEvent(eaMatches, title, tz, currentTime);
+    if (r.kind === 'none') return `I couldn't find "${title}" on your upcoming calendar to change its guest list.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events: ${r.message}. Which one? Re-call with currentTime set to its start time.`;
+    const eaName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+    const eaMeta = calMeta.get(r.calId);
+    if (eaMeta && !isWritable(eaMeta.accessRole)) return `"${eaName}" is on a read-only calendar — I can't change its guests from here.`;
+    const origAttendees = r.event.attendees ?? [];
+    const merged = mergeAttendees(origAttendees, addList, removeList);
+    const patched = await cal.events.patch({ calendarId: r.calId, eventId: r.event.id!, requestBody: { attendees: merged }, sendUpdates: 'all' })
+      .catch((e: unknown) => { console.error('[editEventAttendees] patch failed:', e instanceof Error ? e.message : e); return null; });
+    if (!patched) return `I couldn't update the guest list for "${eaName}" just now — want me to try again?`;
+    recordUndo(userId, `changed guests on "${eaName}"`, [{ type: 'patch', calId: r.calId, eventId: r.event.id!, requestBody: { attendees: origAttendees } }]);
+    const parts: string[] = [];
+    if (addList.length) parts.push(`added ${addList.map(a => a.name || a.email).filter(Boolean).join(', ')}`);
+    if (removeList.length) parts.push(`removed ${removeList.join(', ')}`);
+    return `Updated "${eaName}" — ${parts.join(' and ')}.${addList.length ? " They'll get an invite (Google accounts only)." : ''}`;
 
   } else if (fn === 'skipRecurringOccurrence') {
     // R13 T2 — cancel ONE occurrence of a recurring series (low-stakes → no confirm token).
