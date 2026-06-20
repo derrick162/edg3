@@ -614,6 +614,15 @@ select:focus-visible {
   backdrop-filter: var(--blur-glass);
 }
 
+/* Spinner — token-consistent loading indicator (replaces border-indigo-* Tailwind classes) */
+.spinner {
+  border-color: var(--edg-indigo);
+  border-top-color: transparent;
+  border-radius: 9999px;
+  border-style: solid;
+  animation: spin 0.8s linear infinite;
+}
+
 /* Cursor affordances — pointer on all interactive elements, not-allowed on disabled */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]),

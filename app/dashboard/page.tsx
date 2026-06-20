@@ -2042,7 +2042,7 @@ export default function Dashboard() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface-page)' }}>
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 spinner animate-spin" />
       </div>
     );
   }
@@ -2679,7 +2679,7 @@ export default function Dashboard() {
                   <div className="glass-card p-8 text-center" style={{ borderColor: 'var(--edg-accent-20)' }}>
                     <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
                     <div className="flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}>
-                      <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                      <span className="w-4 h-4 border-2 spinner animate-spin inline-block" />
                       <span className="text-sm">Edg3 is putting together your preview…</span>
                     </div>
                   </div>
@@ -3689,7 +3689,7 @@ export default function Dashboard() {
             ) : (
               <div className="text-center space-y-4">
                 <div className="flex items-center justify-center gap-3 py-3">
-                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="w-5 h-5 border-2 spinner animate-spin" />
                   <span className="font-semibold" style={{ color: 'var(--text-accent)' }}>Edg3 is calling you now…</span>
                 </div>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Pick up — it'll only take 30 seconds.</p>
