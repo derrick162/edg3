@@ -606,12 +606,13 @@ returns `[]` with no fallback, since a token row exists).
 - **Action taken:** corrected the misleading "(compose-only)" comment on the initiate route (the scope
   set was already accurately documented in `google-auth.ts:120-122`). **Did NOT remove readonly** —
   that would break a shipped feature.
-- **Decision for PM (Kevin):** keep `gmail.readonly` on the dedicated account (contact ingest needs it;
-  current state) **vs.** drop dedicated-account contact ingest and tighten the dedicated flow to
-  compose-only. Recommendation: **keep** — the scope is disclosed (privacy page + verification doc),
-  audited (`gmail_contacts_fetch` receipt), and the ingest is a real onboarding value-add. If strict
-  compose-only on the dedicated account is desired for CASA, route contact ingest through the calendar
-  account (which already holds readonly) and drop readonly from `GMAIL_ACCOUNT_SCOPES`.
+- **Decision — ✅ ACCEPTED (PM Kevin, reviewed 2026-06-20, R11 T1):** `gmail.readonly` on the dedicated
+  Gmail account is **retained**. It is required by `extractGmailAccountContacts` for contact ingest, which
+  is a core **Clarity Score** input; tightening to a narrower scope would break that feature. The scope is
+  justified, disclosed (privacy page + `specs/google-verification.md`), and audited (`gmail_contacts_fetch`
+  receipt). No further action — this is the intended, accepted state.
+  - _(Original options, for the record: keep `gmail.readonly` (chosen) vs. drop dedicated-account contact
+    ingest + route it through the calendar account and tighten `GMAIL_ACCOUNT_SCOPES` to compose-only.)_
 
 **Result:** CSRF, rate-limit, and audit protections on the Gmail flow are equivalent to the calendar
-flow. The only finding is the scope decision above — surfaced, not silently changed.
+flow. The one scope finding is now **accepted/closed** — surfaced, decided, documented.
