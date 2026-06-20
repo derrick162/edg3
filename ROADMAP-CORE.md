@@ -143,6 +143,29 @@ Add `voiceSpeedPref: 'slow' | 'default' | 'fast' = 'default'` parameter to `init
 
 ---
 
+### T7 — Email feature code removal (MEDIUM — 1h)
+
+**Context:** Derrick decided to drop the email drafting feature ("a whole other beast"). The Vapi tools (`draftEmail`, `checkReplies`) have already been deleted from the Vapi dashboard and removed from `lib/vapi.ts` by the PM. Core owns the route handlers and the composition/reply libs.
+
+**What to remove:**
+
+**Part A — `app/api/vapi/tool-call/route.ts`:**
+1. Remove the three imports at the top: `emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames` from `@/lib/outreach`; `checkOutreachReplies, formatRepliesForVoice` from `@/lib/replies`; `createDraft, GmailScopeError, GmailRateLimitError` from `@/lib/gmail` (line ~19 — keep the rest of the gmail import if `deleteDraft` or other exports are still used, but `createDraft`/`GmailScopeError`/`GmailRateLimitError` are only used by the removed handlers). Also remove `hasGmailReadScope` from `@/lib/google-auth` if it's only used by `checkReplies`.
+2. Remove the `draftEmail` handler block (starts at `} else if (fn === 'draftEmail') {`, runs ~75 lines through the batch draft loop and `recordUndo` per draft).
+3. Remove the `checkReplies` handler block (starts at `} else if (fn === 'checkReplies') {`, ~5 lines).
+
+**Part B — Delete these files entirely:**
+- `lib/outreach.ts`
+- `lib/outreach.test.ts`
+- `lib/replies.ts`
+- `lib/replies.test.ts`
+
+**Note:** Keep `deleteDraft` in `lib/gmail.ts` — `lib/undo.ts` still imports it for backward compat with any existing undo records. Only `createDraft` (and its associated imports) are removed by Security (T2 in Security R12).
+
+**Tests:** After deletions, run `npm run preflight`. Zero new tests needed — we're removing tests. Preflight should still pass (lower count is expected). Preflight green.
+
+---
+
 ### T5 — Dashboard: auto-refresh + animate Edge Score when returning to tab after a call (MEDIUM — 1h)
 
 **Problem:** After a call ends, the user has to manually refresh the dashboard to see their updated Edge Score. There's no automatic refresh and no animation showing the score went up.

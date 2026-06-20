@@ -108,17 +108,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R12 ALL 6 SHIPPED (1998 green); idle, awaiting next dispatch.** T6: voice-speed control (Slow/Default/Fast, `SPEED_MAP`, `users.voice_speed`, Profile UI). Note: touched shared `lib/db.ts` (additive: `is_open_call`, `voice_speed`) + `lib/scheduler.ts` (additive — Vijay FYI).)_ | `lib/vapi.ts`, `lib/db.ts`, `lib/scheduler.ts`, `app/api/profile/**`, `app/dashboard/page.tsx` | 2026-06-20 |
-| 🔒 Security | `security` | _(✅ **R12 T1 SHIPPED (1990 green); idle/polling.** `getRecentEmailSignal` 24h cache gate + empty fetches write no audit entry. Fixes Activity-tab flooding. `fullBodies` (briefing) EXEMPT from cache.)_ | `lib/gmail.ts`, `lib/gmail.test.ts` | 2026-06-20 |
-| 🔧 PM/CoS | `master` | _(✅ **All lanes loaded: Core R12 T1–T6 (incl. voice speed), Security R12 T1, Design R12+R13 (mobile + marketing pages). Viewport meta shipped.)_ | `ROADMAP*.md`, `app/layout.tsx` | 2026-06-20 |
+| 🛠️ Core | `core` | _(📋 **R12 T7 DISPATCHED (2026-06-20) — email feature code removal.** Remove `draftEmail`/`checkReplies` route handlers, `lib/outreach.ts`, `lib/replies.ts` + their tests.)_ | `app/api/vapi/tool-call/route.ts`, `lib/outreach.ts`, `lib/replies.ts` | 2026-06-20 |
+| 🔒 Security | `security` | _(📋 **R12 T2 DISPATCHED (2026-06-20) — email feature code removal.** Remove `createDraft` from `lib/gmail.ts`, Gmail compose scope from `google-auth.ts`, delete `app/api/auth/google/gmail/**` routes, update privacy policy.)_ | `lib/gmail.ts`, `lib/google-auth.ts`, `app/api/auth/google/gmail/**`, `app/privacy/page.tsx` | 2026-06-20 |
+| 🔧 PM/CoS | `master` | _(✅ **Email feature dropped: Vapi tools deleted, `lib/vapi.ts` cleaned (prompt + toolIds). T7 → Core. T2 → Security.)_ | `lib/vapi.ts`, `ROADMAP*.md` | 2026-06-20 |
 | 🎨 Design | `design` | _(✅ **R12 + R13 DONE (1986 green).** Mobile strip + notif overflow + tab labels shipped. /score + /memory + /security pages live. Idle, awaiting next dispatch.)_ | `app/dashboard/page.tsx`, `app/score/page.tsx`, `app/memory/page.tsx`, `app/security/page.tsx` | 2026-06-20 |
-
-> **★ Email feature go-live checklist (code done — these remain):**
-> 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
-> 2. Deploy master to production.
-> 3. Create the `draftEmail` tool in the Vapi dashboard (params below) + add its tool ID in `lib/vapi.ts:188`.
-> 4. User re-consents Google (reconnect account → grants Gmail).
-> 5. `draftEmail` Vapi params: `recipients` (array of {name, email}), `ask` (string), `proposeAvailability` (boolean), `startDate` (string/date), `endDate` (string/date), `subject` (string, optional).
 
 ---
 

@@ -63,6 +63,37 @@ Preflight green. No external steps.
 
 ---
 
+### T2 — Email feature code removal: `createDraft`, Gmail compose scope, auth routes (MEDIUM — 1.5h)
+
+**Context:** Derrick dropped the email drafting feature. PM removed the Vapi tools + `lib/vapi.ts` references. Core (T7 in Core R12) is removing the route handlers and `lib/outreach.ts`/`lib/replies.ts`. Security owns the underlying access primitives: `createDraft`, the Gmail compose OAuth flow, and the auth routes.
+
+**What to remove/update:**
+
+**Part A — `lib/gmail.ts`:**
+Remove the `createDraft` function and its imports/types (`DraftInput`, `DraftResult`, `GMAIL_DRAFTS_PER_HOUR`, the `gmailQueries.logDraft` call, and the anti-spam rate-limit block). Keep `deleteDraft` — `lib/undo.ts` imports it for backward compat with any existing undo records in the DB. Keep `getRecentEmailSignal`, `GmailScopeError` (used elsewhere), everything else.
+
+**Part B — `lib/google-auth.ts`:**
+Remove the Gmail compose scope from all new OAuth grants:
+- Remove `GMAIL_COMPOSE_SCOPE` from the `getGmailAuthUrl` scope array (or from wherever it's concatenated into the OAuth URL). Users who already have the scope can keep their existing tokens — no revocation needed.
+- Remove the `GMAIL_COMPOSE_SCOPE` constant itself if nothing else references it.
+
+**Part C — Remove Gmail-specific auth routes:**
+Delete these files entirely:
+- `app/api/auth/google/gmail/route.ts` (connect entry point)
+- `app/api/auth/google/gmail/callback/route.ts`
+- `app/api/auth/google/gmail/disconnect/route.ts`
+- `app/api/auth/google/gmail/ingest/route.ts`
+- `app/api/auth/google/gmail/gmail-routes.test.ts`
+
+Note: The `gmailTokenQueries` in `lib/db.ts` and the `gmail_tokens` table can stay — no harm in leaving the schema. Removing them risks a schema migration.
+
+**Part D — `app/privacy/page.tsx`:**
+Remove the "Gmail" / "email drafting" section (the one that explains Edge can draft emails). Update to accurately reflect that Edge only reads email for the inbox signal (if `getRecentEmailSignal` is still active) — or remove the Gmail section entirely if the only Gmail use is the readonly signal. Check what the current copy says and adjust to match actual permissions in use.
+
+**Tests:** After deletions, `npm run preflight`. Lower test count expected. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 11 — Gmail scope close-out + rate-limit hardening + key rotation doc)
 
 > `git merge master` first (master is at `9918c01`). Three tickets, no Core coordination needed.
