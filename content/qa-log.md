@@ -11,6 +11,27 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
+## 2026-06-19 — Memory tab UX overhaul QA (Cam)
+
+**Status: GREEN (code review + preflight)** — 1918/1918 green, tsc clean, next build clean.
+
+### Memory tab UX overhaul (Esther dispatch — Derrick live feedback)
+- ✅ "Past commitments" section removed — accountability data retained in DB, not shown
+- ✅ "What Edg3 remembers" episode timeline removed — briefings tab is the right surface for transcripts
+- ✅ Standalone "Patterns Edg3 has noticed" section removed — pattern facts render via structured facts FactRow loop; no duplicate section
+- ✅ "Decisions" + "Commitments & outcomes" placeholder cards removed
+- ✅ Section order reordered: Goals → People → Preferences → Facts → Patterns → Projects
+- ✅ Self-filter on person-category facts: entity matched against user first + last name, hidden when match
+- ✅ Self-filter on M2 People profiles: first-name token of canonical_name matched, filtered before render
+- ⬜ **Live check needed:** open Memory tab with real data — confirm no self in People section, no "Derrick Fung" entity in structured facts
+
+### Pillar sweep update (2026-06-19)
+- ✅ PILLAR-TRUST UX-2/3/4 Design sides marked shipped in PILLAR-TRUST.md
+- ✅ PILLAR-DAILY-CALL: all items shipped or Phase-2-gated — no Design items actionable
+- ✅ PILLAR-MEMORY: all Design items shipped (M4-3b "updated [date]" per-fact) or gated (M4-4 blocked on Core)
+
+---
+
 ## 2026-06-18 — Design session QA (Cam)
 
 **Status: PARTIAL** — automated suite 1703 green; manual items below are UI-observable only.
