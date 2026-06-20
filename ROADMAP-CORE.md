@@ -602,6 +602,20 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-19** — **Gmail-link → immediate fact extraction (Vijay-routed ticket) — SHIPPED (1951 green).**
+  Closes the "no new facts after linking Gmail" report. Root cause: on `?gmail_linked=1` the dashboard
+  only kicked **contact ingestion** (`/api/auth/google/gmail/ingest`), never a **fact** pass; and the
+  on-load `/api/learned` GET only extracts when `totalFacts < 10`, so an active user (Derrick, ≥10 facts)
+  never re-extracted post-connect.
+  - `app/api/learned/route.ts`: `GET(req)` now reads `?source=gmail-connect` → `forceExtraction` bypasses
+    the thin-facts gate (still requires a Google token + non-spam inbound signal; fire-and-forget; rate-limited).
+  - `app/dashboard/page.tsx`: the `gmail_linked` effect now also calls `/api/learned?source=gmail-connect`
+    alongside the contact-ingest call, so durable facts populate immediately on connect.
+  - 6 new route tests (401 / 429 / thin-trigger / above-threshold-no-trigger / forced-trigger / token-required-even-when-forced).
+  - This is the Core-side resolution Vijay routed back (no OAuth-callback / Security change). 1951/1951 green,
+    tsc clean, next build clean. ⚠️ Committed on `core` — ready for PM merge.
+  - NB: Kevin's R8 re-dispatch (empty-focus guard, classifyEvent/needsPrepSuggestion, M4-4 people_models,
+    Briefing V2 free-slot+warmth+recovery-name) was verified **already fully shipped on master** — not rebuilt.
 - **2026-06-19** — **Memory-tab extraction P0 batch (Esther dispatch) — SHIPPED (1945 green).**
   Live Memory-tab review surfaced several extraction/data bugs. Fixes:
   - **[1] Self-entity leak under nickname/STT/initial variants.** New `lib/selfName.ts` (pure):

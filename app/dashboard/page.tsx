@@ -1769,6 +1769,9 @@ export default function Dashboard() {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gmail_linked')) {
       window.history.replaceState({}, '', '/dashboard');
       setGmailLinkedNotice('ingesting');
+      // Force a fact-extraction pass over the freshly-linked inbox (bypasses the thin-facts
+      // gate) so durable facts populate immediately post-connect, not just contact names.
+      fetch('/api/learned?source=gmail-connect').catch(() => {});
       fetch('/api/auth/google/gmail/ingest', { method: 'POST' })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
