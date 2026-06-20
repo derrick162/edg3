@@ -270,6 +270,47 @@ export function truncateAtSentenceBoundary(text: string, cap: number): string {
   return (boundary > 0 ? window.slice(0, boundary + 1) : window).trimEnd();
 }
 
+// R12 — once-per-day cache window. getRecentEmailSignal is called from several dashboard
+// routes on every load; without a gate each call re-scanned the inbox AND wrote an
+// Activity-tab receipt, flooding it with "Reviewed N inbox threads" every ~30 min.
+const EMAIL_SIGNAL_CACHE_MS = 24 * 60 * 60 * 1000;
+
+// Parse a SQLite datetime('now') string ("YYYY-MM-DD HH:MM:SS", UTC, no tz suffix) as UTC.
+function parseSqliteUtcMs(s: string): number {
+  if (typeof s !== 'string') return NaN;
+  const iso = s.includes('T') ? s : s.replace(' ', 'T');
+  const hasTz = iso.endsWith('Z') || /[+-]\d\d:?\d\d$/.test(iso);
+  return Date.parse(hasTz ? iso : iso + 'Z');
+}
+
+// Return a cached EmailSignal reconstructed from the most recent email_signal_fetch audit
+// receipt IF it's < 24h old, else null. The receipt only stores subjects (encrypted), so the
+// cached items carry subject only — enough for the metadata/prioritization callers. The
+// briefing path ({ fullBodies: true }) bypasses this and always fetches fresh bodies.
+function readEmailSignalCache(userId: number): EmailSignal | null {
+  try {
+    const row = getDb().prepare(
+      "SELECT created_at, snapshot_after FROM audit_log WHERE user_id = ? AND action = 'email_signal_fetch' ORDER BY created_at DESC LIMIT 1"
+    ).get(userId) as { created_at: string; snapshot_after: string | null } | undefined;
+    if (!row || !row.snapshot_after) return null; // no prior scan, or it was an empty (un-snapshotted) fetch
+    const createdMs = parseSqliteUtcMs(row.created_at);
+    if (isNaN(createdMs) || Date.now() - createdMs > EMAIL_SIGNAL_CACHE_MS) return null; // stale → refetch
+    const parsed = JSON.parse(decryptField(row.snapshot_after)) as { subjects?: unknown };
+    const subjects = Array.isArray(parsed.subjects)
+      ? (parsed.subjects as unknown[]).filter((s): s is string => typeof s === 'string')
+      : [];
+    return {
+      items: subjects.map(subject => ({
+        threadId: '', sender: '', subject, snippet: '', date: '', isUnread: false, isImportant: false,
+      })),
+      fetchedAt: row.created_at,
+      scopeMissing: false,
+    };
+  } catch {
+    return null; // any cache read failure → fall through to a live fetch (never block the caller)
+  }
+}
+
 /**
  * Return a compact prioritization digest of the user's recent inbox threads.
  *
@@ -293,6 +334,16 @@ export async function getRecentEmailSignal(
   const tokenRow = getCalendarTokens(userId);
   if (!tokenRow || !hasGmailReadScope(tokenRow.scope)) {
     return { items: [], fetchedAt, scopeMissing: true };
+  }
+
+  // R12 — once-per-day cache gate: if we already scanned this inbox within 24h, return the
+  // cached subjects instead of re-hitting Gmail + writing another Activity-tab receipt.
+  // EXEMPTION: the briefing path passes { fullBodies: true } and needs FRESH message bodies
+  // for fact extraction (Round 7) — a subjects-only cache can't serve that, so it always
+  // fetches live. (The dashboard callers that caused the flooding are all metadata-mode.)
+  if (!opts.fullBodies) {
+    const cached = readEmailSignalCache(userId);
+    if (cached) return cached;
   }
 
   const gmail = gmailClientFor(userId, tokenRow);
@@ -373,16 +424,19 @@ export async function getRecentEmailSignal(
   // Audit: thread count in argsJson; subjects encrypted in snapshotAfter so the
   // user can see which threads Edge reviewed in the Activity tab receipt, without
   // subjects ever appearing in plaintext in the log. Bodies/snippets are never stored.
-  auditLogQueries.record({
-    userId,
-    action: 'email_signal_fetch',
-    argsJson: JSON.stringify({ days, threadCount: items.length }),
-    resultText: `${items.length} inbox threads reviewed for prioritization`,
-    ok: true,
-    snapshotAfter: items.length > 0
-      ? encryptField(JSON.stringify({ subjects: items.map(i => i.subject) }))
-      : null,
-  });
+  // R12 Part B — only record when there's something to report: a zero-thread fetch is a
+  // no-op and shouldn't clutter the Activity tab (and writing it would also poison the
+  // 24h cache with an empty receipt).
+  if (items.length > 0) {
+    auditLogQueries.record({
+      userId,
+      action: 'email_signal_fetch',
+      argsJson: JSON.stringify({ days, threadCount: items.length }),
+      resultText: `${items.length} inbox threads reviewed for prioritization`,
+      ok: true,
+      snapshotAfter: encryptField(JSON.stringify({ subjects: items.map(i => i.subject) })),
+    });
+  }
 
   return { items, fetchedAt, scopeMissing: false };
 }
