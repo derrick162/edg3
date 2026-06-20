@@ -1525,6 +1525,7 @@ export default function Dashboard() {
     return false;
   });
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [calendarHasGmailScope, setCalendarHasGmailScope] = useState(false); // R14 T6
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
@@ -1642,6 +1643,7 @@ export default function Dashboard() {
       .then(d => {
         if (!d) { setCalendarConnected(false); return; }
         setCalendarConnected(!!d.calendar?.connected);
+        setCalendarHasGmailScope(!!d.calendar?.hasGmailScope);
       })
       .catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -2376,6 +2378,23 @@ export default function Dashboard() {
                 <p className="pl-3.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
                   Reads your calendar and creates events during calls
                 </p>
+              </div>
+            )}
+
+            {/* ── Gmail reading indicator (R14 T6) — gmail.readonly rides the main Google token ── */}
+            {calendarConnected && (
+              <div className="px-2 pb-2">
+                {calendarHasGmailScope ? (
+                  <div className="flex items-center gap-2">
+                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Reading Gmail</p>
+                  </div>
+                ) : (
+                  <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                    Gmail reading inactive —{' '}
+                    <button onClick={connectCalendar} style={{ color: 'var(--text-accent)' }}>re-authorize →</button>
+                  </p>
+                )}
               </div>
             )}
 
