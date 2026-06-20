@@ -295,10 +295,10 @@ Always end with warmth. This person is building something — remind them of tha
           // '___searchMemory___', // searchMemory — create in Vapi dashboard: param query (string, required)
           // '___confirmFact___', // confirmFact — create in Vapi dashboard: param topic (string, required)
           '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
-          // '___batchReschedule___', // batchReschedule (R13 T1) — params: window {date,startTime?,endTime?}, action ('move'|'delete'), targetDate?, confirmToken?
-          // '___skipRecurringOccurrence___', // skipRecurringOccurrence (R13 T2) — params: title, occurrenceDate
-          // '___endRecurringSeries___', // endRecurringSeries (R13 T2) — params: title, occurrenceDate, endAfterDate
-          // '___blockTravelTime___', // blockTravelTime (R13 T3) — params: date, destination, departureTime?, returnDate?, returnTime?
+          '78c4d5f0-3968-40a6-8822-ea6140f5c3cb', // batchReschedule (R13 T1)
+          'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', // skipRecurringOccurrence (R13 T2)
+          '8de65c6d-513b-4469-ace6-df7cdef165b1', // endRecurringSeries (R13 T2)
+          'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
         ],
       },
       firstMessage: briefingContent,
@@ -361,10 +361,10 @@ Always end with warmth. This person is building something — remind them of tha
           'a9b8eb4e-9431-46bd-a4c6-92dfb6772e10',
           '866ce6ca-5b06-4ea9-9458-2721905ca444',
           '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
-          // '___batchReschedule___', // batchReschedule (R13 T1)
-          // '___skipRecurringOccurrence___', // skipRecurringOccurrence (R13 T2)
-          // '___endRecurringSeries___', // endRecurringSeries (R13 T2)
-          // '___blockTravelTime___', // blockTravelTime (R13 T3)
+          '78c4d5f0-3968-40a6-8822-ea6140f5c3cb', // batchReschedule (R13 T1)
+          'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', // skipRecurringOccurrence (R13 T2)
+          '8de65c6d-513b-4469-ace6-df7cdef165b1', // endRecurringSeries (R13 T2)
+          'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
         ],
       },
       messagePlan: {
