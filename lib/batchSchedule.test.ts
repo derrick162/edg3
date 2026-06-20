@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, type BatchEventLike } from './batchSchedule';
+import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning, type BatchEventLike } from './batchSchedule';
 
 // Toronto = UTC-4 in June. 2pm/3pm/4pm local = 18:00/19:00/20:00Z.
 const ev = (summary: string, dt: string | null, status?: string): BatchEventLike => ({
@@ -66,5 +66,19 @@ describe('nearbyTimedEvents (R13 T3)', () => {
 
   it('ignores all-day events near the anchor', () => {
     expect(nearbyTimedEvents([ev('Holiday', null)], anchor, 90)).toEqual([]);
+  });
+});
+
+describe('buildConflictWarning (R13 T4)', () => {
+  it('names the conflicting event(s) and offers both paths', () => {
+    const msg = buildConflictWarning(['Investor call at 2:00 PM'], 'Dentist');
+    expect(msg).toContain('Investor call at 2:00 PM');
+    expect(msg).toContain('Dentist');
+    expect(msg).toContain('overrideConflicts');
+    expect(msg).toContain('findTime');
+  });
+
+  it('lists multiple conflicts comma-separated', () => {
+    expect(buildConflictWarning(['A at 1:00 PM', 'B at 1:30 PM'], 'C')).toContain('A at 1:00 PM, B at 1:30 PM');
   });
 });

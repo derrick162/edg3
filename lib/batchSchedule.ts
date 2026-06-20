@@ -24,6 +24,14 @@ export function isTimedEventInWindow(ev: BatchEventLike, startMs: number, endMs:
 }
 
 /**
+ * R13 T4 — spoken conflict warning naming the clashing event(s) + offering both paths.
+ * `conflicts` are already-formatted labels like "Investor call at 2:00 PM".
+ */
+export function buildConflictWarning(conflicts: string[], title: string): string {
+  return `⚠️ You already have ${conflicts.join(', ')} then. Want me to book "${title}" over it anyway, or find you a different slot? To book over it, call createEvent again with overrideConflicts set to true. To find another time, call findTime.`;
+}
+
+/**
  * R13 T3 — timed events whose start falls within ±`withinMinutes` of an anchor instant.
  * Used to warn about meetings scheduled close to a travel departure/return.
  */

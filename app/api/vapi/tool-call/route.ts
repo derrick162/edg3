@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
-import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents } from '@/lib/batchSchedule';
+import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -417,10 +417,19 @@ Query: ${query}` }],
       for (const ev of winEvents) {
         // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
         if (ev.start?.date && !ev.start?.dateTime) continue;
-        if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
+        if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) {
+          // R13 T4 — name the conflict WITH its time so Edge can say it out loud.
+          const ct = ev.start?.dateTime
+            ? new Date(ev.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+            : '';
+          const cname = (ev.summary ?? 'Untitled').replace(/^⚡\s*/, '');
+          conflicts.push(ct ? `${cname} at ${ct}` : cname);
+        }
       }
       if (conflicts.length > 0) {
-        return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
+        // R13 T4 — surface the specific clashing event(s) + offer both paths; do NOT set
+        // overrideConflicts here. Only re-call with overrideConflicts:true after the user says book over it.
+        return buildConflictWarning(conflicts, title);
       }
     }
     // Anti-duplication guard (timed): refuse to create an event identical to one already
