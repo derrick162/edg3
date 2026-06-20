@@ -64,6 +64,13 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [savingConsent, setSavingConsent] = useState(false);
   const [voicePref, setVoicePref] = useState<'daniel' | 'aria'>('daniel');
 
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     fetch('/api/profile')
       .then(r => r.json())
@@ -74,6 +81,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         setCurrentTimezone(d.current_timezone || '');
         if (d.data_consent) setDataConsent(d.data_consent as DataConsent);
         if (d.voice_preference === 'aria') setVoicePref('aria');
+        if (d.name) setProfileName(d.name);
+        if (d.email) setProfileEmail(d.email);
+        if (d.phone_number) setProfilePhone(d.phone_number);
         setLoading(false);
       });
   }, []);
@@ -141,14 +151,15 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 max-w-2xl">
+
       {/* Call Settings */}
-      <div>
-        <h2 className="text-lg font-bold mb-4">Call settings</h2>
-        <form onSubmit={handleSaveSettings} className="glass-card p-6 space-y-4">
+      <section>
+        <p className="label-caps mb-3">Call settings</p>
+        <form onSubmit={handleSaveSettings} className="glass-card p-5 space-y-4">
           <div className="flex gap-4 flex-wrap">
-            <div className="flex-1 min-w-[160px]">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Call time</label>
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Call time</label>
               <input
                 type="time"
                 className="input"
@@ -157,7 +168,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
               />
             </div>
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Timezone</label>
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Timezone</label>
               <select
                 className="input"
                 style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}
@@ -177,26 +188,27 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             {settingsSaved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
           </div>
         </form>
-      </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
 
       {/* Traveling this week */}
-      <div>
-        <h2 className="text-lg font-bold mb-1">Traveling this week?</h2>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-          Set the timezone you're currently in. Edg3 uses it for your briefings and bookings until you clear it.
+      <section>
+        <p className="label-caps mb-1">Traveling this week?</p>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          Set the timezone you&apos;re currently in. Edg3 uses it for briefings and bookings until you clear it.
         </p>
-        <div className="glass-card p-6">
-          {currentTimezone ? (
+        <div className="glass-card p-5">
+          {currentTimezone && (
             <div className="flex items-center gap-3 flex-wrap mb-4">
               <span className="badge badge-info">📍 Currently in {TIMEZONES.find(t => t.value === currentTimezone)?.label || currentTimezone}</span>
               <button onClick={() => saveCurrentTimezone('')} disabled={savingTz} className="text-xs" style={{ color: 'var(--edg-danger)' }}>
                 {savingTz ? 'Saving…' : "Clear — I'm home"}
               </button>
             </div>
-          ) : (
-            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Using your home timezone.</p>
           )}
-          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>I'm currently in</label>
+          {!currentTimezone && <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>Using your home timezone.</p>}
+          <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>I&apos;m currently in</label>
           <select
             className="input"
             style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)', maxWidth: 360 }}
@@ -210,18 +222,22 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             ))}
           </select>
         </div>
-      </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
 
       {/* Data & Privacy */}
-      <div>
-        <h2 className="text-lg font-bold mb-4">Data &amp; privacy</h2>
+      <section>
+        <p className="label-caps mb-3">Data &amp; privacy</p>
         <DataConsentToggle value={dataConsent} onChange={handleConsentChange} saving={savingConsent} />
-      </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
 
       {/* Voice preference */}
-      <div>
-        <h2 className="text-lg font-bold mb-1">Edg3&apos;s voice</h2>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edg3 uses on your morning briefings.</p>
+      <section>
+        <p className="label-caps mb-1">Edg3&apos;s voice</p>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Choose the voice Edg3 uses on your morning briefings.</p>
         <div className="flex gap-3">
           {([
             { key: 'daniel', label: 'Daniel', desc: 'Deep, calm' },
@@ -241,6 +257,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
                 }}
                 className="flex-1 rounded-xl px-4 py-3 text-left transition-colors"
                 style={{
+                  minHeight: 48,
                   background: active ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)',
                   border: `1px solid ${active ? 'var(--edg-accent-25, var(--edg-accent-20))' : 'var(--edg-hairline)'}`,
                   cursor: 'pointer',
@@ -254,24 +271,55 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
           })}
         </div>
         <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>Applies to your next call.</p>
-      </div>
+      </section>
 
-      {/* Profile */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">Your profile</h2>
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+
+      {/* Your account */}
+      <section>
+        <p className="label-caps mb-3">Your account</p>
+        <div className="glass-card p-5 space-y-3">
+          {profileName && (
+            <div>
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-faint)' }}>Name</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>{profileName}</p>
+            </div>
+          )}
+          {profileEmail && (
+            <div>
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-faint)' }}>Email</p>
+              <p className="text-sm" style={{ color: 'var(--text-body)' }}>{profileEmail}</p>
+            </div>
+          )}
+          {profilePhone && (
+            <div>
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-faint)' }}>Phone</p>
+              <p className="text-sm" style={{ color: 'var(--text-body)' }}>{profilePhone}</p>
+            </div>
+          )}
+          {!profileName && !profileEmail && !profilePhone && (
+            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Account details will appear here.</p>
+          )}
+        </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+
+      {/* Profile summary */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <p className="label-caps">Your profile</p>
           <div className="flex items-center gap-3">
             {saved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
             {!editing && (
-              <button onClick={() => setEditing(true)} className="btn-secondary text-sm py-2 px-4">
+              <button onClick={() => setEditing(true)} className="btn-secondary text-sm py-1.5 px-4">
                 ✎ Edit
               </button>
             )}
           </div>
         </div>
-
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-          This is the full context EDG3 uses to understand who you are. Keep it current.
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          The full context Edg3 uses to understand who you are. Keep it current.
         </p>
 
         {editing ? (
@@ -292,12 +340,12 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             </div>
           </form>
         ) : (
-          <div className="glass-card p-6">
+          <div className="glass-card p-5">
             {profile ? (
               <>
                 <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)', maxHeight: profileExpanded ? 'none' : '9rem', overflow: 'hidden', maskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)', WebkitMaskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)' }}>
-                {profile}
-              </p>
+                  {profile}
+                </p>
                 {profile.length > 280 && (
                   <button onClick={() => setProfileExpanded(v => !v)} className="text-xs mt-3" style={{ color: 'var(--text-accent)' }}>
                     {profileExpanded ? '▲ Show less' : '▼ Show more'}
@@ -306,12 +354,59 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
               </>
             ) : (
               <p className="text-sm text-center py-4" style={{ color: 'var(--text-faint)' }}>
-                No profile set. Click Edit to add one.
+                No profile set yet. Click Edit to add one.
               </p>
             )}
           </div>
         )}
+      </section>
+
+      {/* Danger zone */}
+      <div style={{ borderTop: '2px solid var(--edg-danger-border)', paddingTop: '1.25rem', marginTop: '2rem' }}>
+        <p className="label-caps mb-1" style={{ color: 'var(--edg-danger)' }}>Danger zone</p>
+        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+          Permanently deletes your account, all call history, facts, and data. This cannot be undone.
+        </p>
+        {!deleteConfirm ? (
+          <button
+            onClick={() => setDeleteConfirm(true)}
+            className="text-sm px-4 py-2 rounded-lg transition-colors"
+            style={{
+              color: 'var(--edg-danger)',
+              background: 'var(--edg-danger-tint)',
+              border: '1px solid var(--edg-danger-border)',
+            }}
+          >
+            Delete my account
+          </button>
+        ) : (
+          <div className="glass-card p-5" style={{ borderColor: 'var(--edg-danger-border)', background: 'var(--edg-danger-tint)' }}>
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Are you sure?</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+              Every call, fact, task, and setting will be permanently deleted.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setDeleting(true);
+                  await fetch('/api/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'delete my account' }) }).catch(() => {});
+                  setDeleting(false);
+                  window.location.href = '/login';
+                }}
+                disabled={deleting}
+                className="text-sm px-4 py-2 rounded-lg font-semibold"
+                style={{ color: '#fff', background: 'var(--edg-danger)', border: 'none' }}
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete everything'}
+              </button>
+              <button onClick={() => setDeleteConfirm(false)} className="btn-secondary text-sm py-2 px-4">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
     </div>
   );
 }
