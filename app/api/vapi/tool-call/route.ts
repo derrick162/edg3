@@ -19,6 +19,7 @@ import { hasGmailReadScope } from '@/lib/google-auth';
 import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { maybeCreateActivityNotif } from '@/lib/notifications';
 import { google, calendar_v3 } from 'googleapis';
 import Anthropic from '@anthropic-ai/sdk';
@@ -1530,6 +1531,22 @@ export async function POST(req: NextRequest) {
         useResultsArray
           ? { results: calls.map(c => ({ toolCallId: c.id, result: errMsg })) }
           : { result: errMsg }
+      );
+    }
+
+    // R11 T2 — per-user tool-call rate limit. Guards against a runaway Vapi tool loop
+    // (a misbehaving model or retry storm that would rack up Google/LLM cost or spam the
+    // calendar). 60/min/user via the shared SQLite limiter. On exceed we answer in the Vapi
+    // response shape with a graceful spoken message — NOT a raw 429, which would surface as a
+    // hard error mid-call. The tools do NOT execute, so the loop is broken.
+    const toolRl = checkRateLimit('vapiToolCall', String(briefing.user_id));
+    if (!toolRl.allowed) {
+      console.warn(`[tool-call] rate limit hit (60/min) for user=${briefing.user_id} — ${calls.length} call(s) refused`);
+      const msg = "I'm getting a burst of requests right now — give me a few seconds and ask me that again.";
+      return NextResponse.json(
+        useResultsArray
+          ? { results: calls.map(c => ({ toolCallId: c.id, result: msg })) }
+          : { result: msg }
       );
     }
 
