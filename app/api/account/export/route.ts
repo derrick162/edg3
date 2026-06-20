@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries, peopleModelQueries } from '@/lib/db';
-import { decryptField } from '@/lib/crypto';
+import { decryptField, safeDecryptField } from '@/lib/crypto';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
 // Returns a full JSON export of everything EDG3 has stored for the authenticated user.
@@ -120,9 +120,62 @@ export async function GET(_req: NextRequest) {
     resolvedAt:  l.resolvedAt,
   }));
 
+  // R10 T1 — four previously-deferred tables, now included (GDPR completeness, Kevin-authorized).
+  // All use safeDecryptField so one undecryptable row degrades to '' rather than 500-ing the export.
+
+  // Episodes — ground-truth records of each call/calendar/email event. content_raw is encrypted;
+  // surfaced as a readable contentSummary (never the raw ciphertext). topics/commitments are JSON.
+  const episodeRows = (db.prepare(
+    'SELECT source, occurred_at, content_raw, topics, commitments FROM episodes WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 10000'
+  ).all(userId) as Array<{ source: string; occurred_at: string; content_raw: string; topics: string; commitments: string }>)
+    .map(e => ({
+      source: e.source,
+      occurredAt: e.occurred_at,
+      contentSummary: safeDecryptField(e.content_raw, 'episodes.content_raw'),
+      topics: (() => { try { return JSON.parse(e.topics) as string[]; } catch { return []; } })(),
+      commitments: (() => { try { return JSON.parse(e.commitments) as string[]; } catch { return []; } })(),
+    }));
+
+  // Fact history — the versioned memory audit trail (every retired/superseded fact). fact_history
+  // carries its own user_id, so no join to facts is needed. statement is encrypted at rest.
+  const factHistoryRows = (db.prepare(
+    'SELECT fact_id, statement, entity, category, retired_at, reason FROM fact_history WHERE user_id = ? ORDER BY retired_at DESC LIMIT 10000'
+  ).all(userId) as Array<{ fact_id: number; statement: string; entity: string | null; category: string; retired_at: string; reason: string | null }>)
+    .map(h => ({
+      factId: h.fact_id,
+      statement: safeDecryptField(h.statement, 'fact_history.statement'),
+      entity: h.entity ?? null,
+      category: h.category,
+      retiredAt: h.retired_at,
+      reason: h.reason ?? null,
+    }));
+
+  // Focus milestones — sub-goals under each priority. title is encrypted; completed_at is the
+  // done timestamp (column is completed_at, surfaced as doneAt).
+  const focusMilestoneRows = (db.prepare(
+    'SELECT title, done, completed_at, priority_id FROM focus_milestones WHERE user_id = ? ORDER BY priority_id, sort_order, id'
+  ).all(userId) as Array<{ title: string; done: number; completed_at: string | null; priority_id: number }>)
+    .map(m => ({
+      title: safeDecryptField(m.title, 'focus_milestones.title'),
+      done: !!m.done,
+      doneAt: m.completed_at ?? null,
+      priorityId: m.priority_id,
+    }));
+
+  // Support messages — the user's own feedback/question/issue submissions. message is encrypted.
+  // (supportMessageQueries.list() is admin-scoped; this is a dedicated user-scoped read.)
+  const supportMessageRows = (db.prepare(
+    'SELECT type, message, created_at FROM support_messages WHERE user_id = ? ORDER BY created_at DESC'
+  ).all(userId) as Array<{ type: string; message: string; created_at: string }>)
+    .map(s => ({
+      type: s.type,
+      message: safeDecryptField(s.message, 'support_messages.message'),
+      createdAt: s.created_at,
+    }));
+
   const payload = {
     exportedAt: new Date().toISOString(),
-    version: '1',
+    version: '3',
     profile: {
       name: profile.name,
       email: profile.email,
@@ -175,6 +228,10 @@ export async function GET(_req: NextRequest) {
     activityLog: activityLogRows,
     people: peopleRows,
     peopleModels: peopleModelRows,
+    episodes: episodeRows,
+    factHistory: factHistoryRows,
+    focusMilestones: focusMilestoneRows,
+    supportMessages: supportMessageRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
