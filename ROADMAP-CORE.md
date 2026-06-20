@@ -1024,6 +1024,13 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R13 — calendar management (4 tools) — SHIPPED (1955 green).** Each verified unbuilt first.
+  - **T1 `batchReschedule`:** move/clear every timed event in a window with ONE confirmToken (skips all-day, read-only, non-organizer); per-event undo. Pure `isTimedEventInWindow`/`formatBatchPreview` in new `lib/batchSchedule.ts`.
+  - **T2 recurring skip + end:** `skipRecurringOccurrence` (cancel one occurrence, no token, recreate-undo) + `endRecurringSeries` (cap master RRULE via new pure `applyRruleUntil` in `lib/time.ts`, patch-undo).
+  - **T3 `blockTravelTime`:** "✈ Travel: <dest>" block (timed via `bookEventTimes` or all-day) for outbound + optional return; warns about events within 90 min of departure/return (`nearbyTimedEvents`); deleteMany-undo.
+  - **T4 conflict surfacing:** `createEvent` conflict warning now NAMES the clashing event + time and offers book-over / findTime, never silently double-books (pure `buildConflictWarning`); BOOKING CONFLICTS prompt updated.
+  - Prompt blocks (BATCH RESCHEDULE / SKIP+END / TRAVEL BLOCKING / BOOKING CONFLICTS) + toolId placeholders in both `lib/vapi.ts` arrays. +16 tests. 1955/1955 green, tsc + next build clean. Committed on `core` — ready for PM merge.
+  - ⚠️ **External (PM):** create 3 new Vapi tools — `batchReschedule` (window{date,startTime?,endTime?}, action, targetDate?, confirmToken?), `skipRecurringOccurrence` (title, occurrenceDate), `endRecurringSeries` (title, occurrenceDate, endAfterDate), `blockTravelTime` (date, destination, departureTime?, returnDate?, returnTime?). Paste UUIDs into both `lib/vapi.ts` toolIds arrays. (T4 needs no tool.)
 - **2026-06-20** — **R12 T7 — email feature code removal — SHIPPED (1958 green).** Derrick dropped email drafting entirely.
   - `tool-call/route.ts`: removed `draftEmail` (~105 lines) + `checkReplies` handlers and their `@/lib/outreach`, `@/lib/replies`, `@/lib/gmail` (createDraft + error types), `@/lib/google-auth` (hasGmailReadScope) imports + the now-unused `watchedThreadQueries` import.
   - Deleted `lib/outreach.ts`, `lib/outreach.test.ts`, `lib/replies.ts`, `lib/replies.test.ts`.

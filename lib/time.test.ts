@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -256,5 +256,32 @@ describe('recurringSeriesTimeShift — move a whole recurring series to a new ti
     );
     expect(r.start.dateTime).toBe('2026-06-08T14:00:00');
     expect(r.end.dateTime).toBe('2026-06-08T15:30:00');
+  });
+});
+
+describe('applyRruleUntil — cap a recurring series (R13 T2)', () => {
+  it('appends UNTIL to a bare weekly RRULE', () => {
+    const until = rruleUntilUtc('2026-06-30', 'America/Toronto');
+    expect(applyRruleUntil(['RRULE:FREQ=WEEKLY;BYDAY=MO'], until)).toEqual([`RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=${until}`]);
+  });
+
+  it('replaces an existing UNTIL rather than duplicating it', () => {
+    const out = applyRruleUntil(['RRULE:FREQ=DAILY;UNTIL=20260101T000000Z'], '20260630T235959Z');
+    expect(out).toEqual(['RRULE:FREQ=DAILY;UNTIL=20260630T235959Z']);
+    expect(out[0].match(/UNTIL=/g)).toHaveLength(1);
+  });
+
+  it('strips a COUNT (mutually exclusive with UNTIL)', () => {
+    expect(applyRruleUntil(['RRULE:FREQ=WEEKLY;COUNT=10'], '20260630T235959Z'))
+      .toEqual(['RRULE:FREQ=WEEKLY;UNTIL=20260630T235959Z']);
+  });
+
+  it('leaves non-RRULE lines (EXDATE/RDATE) untouched', () => {
+    const out = applyRruleUntil(['RRULE:FREQ=WEEKLY', 'EXDATE:20260615T140000Z'], '20260630T235959Z');
+    expect(out[1]).toBe('EXDATE:20260615T140000Z');
+  });
+
+  it('returns [] for empty recurrence', () => {
+    expect(applyRruleUntil([], '20260630T235959Z')).toEqual([]);
   });
 });

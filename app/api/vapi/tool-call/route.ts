@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
+import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -416,10 +417,19 @@ Query: ${query}` }],
       for (const ev of winEvents) {
         // All-day events (date, not dateTime) are context, not a hard time block — never a conflict.
         if (ev.start?.date && !ev.start?.dateTime) continue;
-        if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) conflicts.push(ev.summary ?? 'Untitled');
+        if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) {
+          // R13 T4 — name the conflict WITH its time so Edge can say it out loud.
+          const ct = ev.start?.dateTime
+            ? new Date(ev.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+            : '';
+          const cname = (ev.summary ?? 'Untitled').replace(/^⚡\s*/, '');
+          conflicts.push(ct ? `${cname} at ${ct}` : cname);
+        }
       }
       if (conflicts.length > 0) {
-        return `⚠️ Conflict: "${conflicts.join('", "')}" already at that time. Want me to book "${title}" over it anyway? If they confirm, call createEvent again with overrideConflicts set to true.`;
+        // R13 T4 — surface the specific clashing event(s) + offer both paths; do NOT set
+        // overrideConflicts here. Only re-call with overrideConflicts:true after the user says book over it.
+        return buildConflictWarning(conflicts, title);
       }
     }
     // Anti-duplication guard (timed): refuse to create an event identical to one already
@@ -830,6 +840,180 @@ Query: ${query}` }],
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
       : `Couldn't save the copies from ${sourceDate} — Google didn't confirm them. Want me to try again?`;
+
+  } else if (fn === 'batchReschedule') {
+    // R13 T1 — move or clear every timed event in a window with ONE confirmation, instead of
+    // one-by-one deleteEvent/moveEvent handshakes. Skips all-day events + read-only/non-organizer
+    // events. First call (no token) previews + issues a token; second call (token) executes.
+    const { window, action, targetDate, confirmToken } = args as {
+      window?: { date?: string; startTime?: string; endTime?: string };
+      action?: 'move' | 'delete';
+      targetDate?: string;
+      confirmToken?: string;
+    };
+    if (!window?.date || !/^\d{4}-\d{2}-\d{2}$/.test(window.date)) return "Which day's events should I reschedule? Give me the date.";
+    if (action !== 'move' && action !== 'delete') return 'Should I move those events to another day, or clear them? Say "move" or "delete".';
+    if (action === 'move' && (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate))) return 'What day should I move them to?';
+
+    const startBound = window.startTime ? zonedWallTimeToUtc(`${window.date}T${resolveNaturalTime(window.startTime)}:00`, tz).getTime() : -Infinity;
+    const endBound = window.endTime ? zonedWallTimeToUtc(`${window.date}T${resolveNaturalTime(window.endTime)}:00`, tz).getTime() : Infinity;
+
+    const dayEvents = await eventsOnDay(cal, calIds, window.date, tz);
+    const inWindow = dayEvents.filter(({ event, calId }) => {
+      if (!isTimedEventInWindow(event, startBound, endBound)) return false; // timed, live, in range
+      const meta = calMeta.get(calId);
+      if (meta && !isWritable(meta.accessRole)) return false; // skip read-only calendars
+      if (!canUserReschedule(event)) return false;        // skip events the user can't reschedule
+      return true;
+    });
+
+    if (!inWindow.length) {
+      const range = window.startTime || window.endTime ? ` between ${window.startTime ?? 'the start'} and ${window.endTime ?? 'the end'}` : '';
+      return `I don't see any moveable events on ${window.date}${range}.`;
+    }
+
+    const previewList = formatBatchPreview(inWindow.map(w => w.event), tz);
+    const actionLabel = action === 'move' ? `move them all to ${targetDate}` : 'clear them';
+
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      return `Found ${inWindow.length} event(s): ${previewList} — ${actionLabel}? Ask the user, and ONLY if they say yes, call batchReschedule again with the same window and action plus confirmToken set to "${token}". Token expires in 2 minutes.`;
+    }
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      console.error('[batchReschedule] token mismatch', { userId, providedToken: confirmToken, date: window.date, action });
+      const token = issueDeleteToken(userId);
+      return `That confirmation was invalid or expired. To ${actionLabel}, call batchReschedule again with confirmToken "${token}". Token expires in 2 minutes.`;
+    }
+
+    const doneNames: string[] = [];
+    const failedNames: string[] = [];
+    const undoOps: UndoOp[] = [];
+    for (const { event, calId } of inWindow) {
+      const name = (event.summary ?? 'Untitled').replace(/^⚡\s*/, '');
+      try {
+        if (action === 'delete') {
+          await cal.events.delete({ calendarId: calId, eventId: event.id! });
+          if (!event.recurringEventId) undoOps.push({ type: 'recreate', calId, event: cleanForRecreate(event) });
+          doneNames.push(name);
+        } else {
+          const eventTz = event.start?.timeZone ?? tz;
+          const patch = timedEventDateMove(event.start!.dateTime!, event.end?.dateTime ?? event.start!.dateTime!, targetDate!, eventTz);
+          const origStart = event.start, origEnd = event.end;
+          await cal.events.patch({ calendarId: calId, eventId: event.id!, requestBody: patch });
+          undoOps.push({ type: 'patch', calId, eventId: event.id!, requestBody: { start: origStart, end: origEnd } });
+          doneNames.push(name);
+        }
+      } catch (err) {
+        console.error(`[batchReschedule] ${action} failed for "${name}":`, err instanceof Error ? err.message : err);
+        failedNames.push(name);
+      }
+    }
+    if (undoOps.length) recordUndo(userId, `${action === 'move' ? 'moved' : 'cleared'} ${undoOps.length} event(s)`, undoOps);
+    if (!doneNames.length) return `I couldn't ${action === 'move' ? 'move' : 'clear'} those — Google errored${failedNames.length ? ` for ${failedNames.join(', ')}` : ''}. Want me to try again?`;
+    const head = action === 'move' ? `Moved ${doneNames.length} event(s) to ${targetDate}` : `Cleared ${doneNames.length} event(s) from ${window.date}`;
+    return `${head}: ${doneNames.join(', ')}.${failedNames.length ? ` Couldn't do ${failedNames.join(', ')}.` : ''}`;
+
+  } else if (fn === 'skipRecurringOccurrence') {
+    // R13 T2 — cancel ONE occurrence of a recurring series (low-stakes → no confirm token).
+    const { title: rawTitle, occurrenceDate } = args as { title?: string; occurrenceDate?: string };
+    if (!rawTitle || !occurrenceDate) return 'Which recurring event should I skip, and on what date?';
+    const title = groundTitle(rawTitle);
+    const r = resolveEvent(await eventsOnDay(cal, calIds, occurrenceDate, tz), title, tz);
+    if (r.kind === 'none') return `No "${title}" found on ${occurrenceDate} to skip.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${occurrenceDate}: ${r.message}. Which one should I skip? Re-call with currentTime set to its start time.`;
+    const skipName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+    if (!r.event.recurringEventId) return `"${skipName}" on ${occurrenceDate} isn't part of a recurring series — want me to just delete it instead?`;
+    const skipMeta = calMeta.get(r.calId);
+    if (skipMeta && !isWritable(skipMeta.accessRole)) return `"${skipName}" is on a read-only calendar — I can't change it from here.`;
+    try {
+      await cal.events.delete({ calendarId: r.calId, eventId: r.event.id! });
+    } catch (err) {
+      console.error('[skipRecurringOccurrence] delete failed:', err instanceof Error ? err.message : err);
+      return `I couldn't skip that one just now — want me to try again?`;
+    }
+    recordUndo(userId, `skipped "${skipName}" on ${occurrenceDate}`, [{ type: 'recreate', calId: r.calId, event: cleanForRecreate(r.event) }]);
+    return `Skipped "${skipName}" on ${occurrenceDate} — the series continues as normal.`;
+
+  } else if (fn === 'endRecurringSeries') {
+    // R13 T2 — cap a recurring series by adding UNTIL to the master RRULE (no delete).
+    const { title: rawTitle, occurrenceDate, endAfterDate } = args as { title?: string; occurrenceDate?: string; endAfterDate?: string };
+    if (!rawTitle || !occurrenceDate || !endAfterDate) return 'Tell me which recurring event, an example date it falls on, and the date to end it after.';
+    const title = groundTitle(rawTitle);
+    const r = resolveEvent(await eventsOnDay(cal, calIds, occurrenceDate, tz), title, tz);
+    if (r.kind === 'none') return `No "${title}" found on ${occurrenceDate}.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${occurrenceDate}: ${r.message}. Which series? Re-call with currentTime set to its start time.`;
+    if (!r.event.recurringEventId) return `"${(r.event.summary ?? '').replace(/^⚡\s*/, '')}" isn't a recurring series, so there's nothing to end.`;
+    const endMeta = calMeta.get(r.calId);
+    if (endMeta && !isWritable(endMeta.accessRole)) return `"${(r.event.summary ?? '').replace(/^⚡\s*/, '')}" is on a read-only calendar — I can't change it from here.`;
+    const master = await cal.events.get({ calendarId: r.calId, eventId: r.event.recurringEventId }).then(g => g.data).catch(() => null);
+    if (!master?.recurrence?.length) {
+      console.error(`[endRecurringSeries] no master recurrence calId=${r.calId} eventId=${r.event.recurringEventId}`);
+      return `I couldn't read that series' schedule to cap it — want me to try again?`;
+    }
+    const seriesTz = master.start?.timeZone ?? tz;
+    const newRecurrence = applyRruleUntil(master.recurrence, rruleUntilUtc(endAfterDate, seriesTz));
+    const origRecurrence = master.recurrence;
+    const seriesName = (master.summary ?? '').replace(/^⚡\s*/, '');
+    try {
+      await cal.events.patch({ calendarId: r.calId, eventId: r.event.recurringEventId, requestBody: { recurrence: newRecurrence } });
+    } catch (err) {
+      console.error('[endRecurringSeries] patch failed:', err instanceof Error ? err.message : err);
+      return `I couldn't cap that series just now — want me to try again?`;
+    }
+    recordUndo(userId, `ended "${seriesName}" series after ${endAfterDate}`, [{ type: 'patch', calId: r.calId, eventId: r.event.recurringEventId, requestBody: { recurrence: origRecurrence } }]);
+    return `Got it — "${seriesName}" will end after ${endAfterDate}.`;
+
+  } else if (fn === 'blockTravelTime') {
+    // R13 T3 — block a travel window (timed if a departure/return time is given, else all-day)
+    // and warn about anything scheduled within 90 min of departure/return.
+    const { date, destination, departureTime, returnDate, returnTime } = args as {
+      date?: string; destination?: string; departureTime?: string; returnDate?: string; returnTime?: string;
+    };
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'What day is the travel?';
+    if (!destination?.trim()) return 'Where are you traveling to?';
+    const dest = destination.trim();
+    const travelTitle = `✈ Travel: ${dest}`;
+    const TRAVEL_MINUTES = 180; // default block length when a time is given
+    const createdIds: string[] = [];
+    const warnings: string[] = [];
+
+    // Create one travel block (timed or all-day) for a leg, returning false on failure.
+    const blockLeg = async (legDate: string, time: string | undefined, label: string): Promise<boolean> => {
+      let rb: calendar_v3.Schema$Event;
+      let anchorMs: number | null = null;
+      if (time) {
+        const { start, end } = bookEventTimes(legDate, resolveNaturalTime(time), TRAVEL_MINUTES);
+        rb = { summary: travelTitle, start: { dateTime: start, timeZone: tz }, end: { dateTime: end, timeZone: tz }, colorId: '9' };
+        anchorMs = zonedWallTimeToUtc(start, tz).getTime();
+      } else {
+        rb = { summary: travelTitle, start: { date: legDate }, end: { date: nextDay(legDate) }, colorId: '9' };
+      }
+      const ins = await cal.events.insert({ calendarId: 'primary', requestBody: rb }).catch((e: unknown) => {
+        console.error(`[blockTravelTime] insert failed (${label}):`, e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (!ins?.data.id) return false;
+      createdIds.push(ins.data.id);
+      // Proximity warning: timed legs only (need a clock anchor).
+      if (anchorMs != null) {
+        const dayEvents = (await eventsOnDay(cal, calIds, legDate, tz)).map(x => x.event).filter(e => e.summary !== travelTitle);
+        const near = nearbyTimedEvents(dayEvents, anchorMs, 90);
+        if (near.length) warnings.push(`Around your ${label} you've got ${formatBatchPreview(near, tz)}`);
+      }
+      return true;
+    };
+
+    const outbound = await blockLeg(date, departureTime, 'departure');
+    if (!outbound) return `I couldn't block the travel time just now — want me to try again?`;
+    if (returnDate && /^\d{4}-\d{2}-\d{2}$/.test(returnDate)) {
+      await blockLeg(returnDate, returnTime, 'return');
+    }
+    if (createdIds.length) recordUndo(userId, `blocked travel to ${dest}`, [{ type: 'deleteMany', calId: 'primary', eventIds: createdIds }]);
+
+    const span = returnDate && returnDate !== date ? `${date}${returnDate ? ` and back ${returnDate}` : ''}` : date;
+    let msg = `Blocked travel to ${dest} on ${span}.`;
+    if (warnings.length) msg += ` Heads up — ${warnings.join('; ')}. Want me to move anything?`;
+    return msg;
 
   } else if (fn === 'cleanupEvents') {
     // Batch delete for consolidation cleanup — deletes a list of events by EXACT start time,

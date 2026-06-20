@@ -124,6 +124,22 @@ export function rruleUntilUtc(endDate: string, timeZone: string): string {
 }
 
 /**
+ * R13 T2 — cap a recurrence at `until` (a UTC instant from rruleUntilUtc).
+ * Rewrites each RRULE line: strips any existing UNTIL/COUNT (mutually exclusive
+ * with our new UNTIL) and appends `;UNTIL=<until>`. Non-RRULE lines (EXDATE,
+ * RDATE, EXRULE) pass through untouched. Returns a new array.
+ */
+export function applyRruleUntil(recurrence: string[], until: string): string[] {
+  return (recurrence ?? []).map(line => {
+    if (!line.toUpperCase().startsWith('RRULE:')) return line;
+    const body = line.slice(line.indexOf(':') + 1);
+    const parts = body.split(';').filter(p => p && !/^UNTIL=/i.test(p) && !/^COUNT=/i.test(p));
+    parts.push(`UNTIL=${until}`);
+    return `RRULE:${parts.join(';')}`;
+  });
+}
+
+/**
  * Compute the ISO 8601 local start/end strings for a booked calendar event.
  * `date` is YYYY-MM-DD, `time` is HH:MM (24h), `durationMins` is a positive
  * integer (defaults to 30 if ≤ 0). If the duration crosses midnight, `end`
