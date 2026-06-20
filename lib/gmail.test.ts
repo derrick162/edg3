@@ -59,6 +59,7 @@ const validInput = { to: 'friend@example.com', subject: 'Lunch', body: 'Want to 
 beforeEach(() => {
   vi.clearAllMocks();
   h.countSince.mockReturnValue(0);
+  h.dbGet.mockReturnValue(undefined); // default: no email-signal cache row (clearAllMocks doesn't reset return values)
 });
 
 describe('createDraft guardrails', () => {
@@ -395,13 +396,78 @@ describe('getRecentEmailSignal (email prioritization signal)', () => {
     expect(snap.subjects).toContain('Important update');
   });
 
-  it('sets snapshotAfter to null when no threads are returned', async () => {
+  // R12 Part B — a zero-thread fetch is a no-op; it must NOT write an Activity-tab receipt.
+  it('writes NO audit entry when no threads are returned (R12 case 3)', async () => {
     h.calGet.mockReturnValue(WITH_GMAIL);
+    h.dbGet.mockReturnValue(undefined);                       // no cache → live fetch
     h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
 
-    await getRecentEmailSignal(1, { days: 7 });
-    const entry = h.auditRecord.mock.calls[0][0] as Record<string, unknown>;
-    expect(entry.snapshotAfter).toBeNull();
+    const result = await getRecentEmailSignal(1, { days: 7 });
+    expect(result.items).toEqual([]);
+    expect(h.auditRecord).not.toHaveBeenCalled();
+  });
+
+  // ── R12 — 24h cache gate ──────────────────────────────────────────────────────
+  it('R12 case 1: a second call within 24h returns the cached result — no Gmail call, no new audit', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.dbGet.mockReturnValue({
+      created_at: new Date(Date.now() - 60_000).toISOString(), // 1 min ago
+      snapshot_after: JSON.stringify({ subjects: ['Invoice due', 'Sarah re: deck'] }),
+    });
+
+    const result = await getRecentEmailSignal(1);
+    expect(result.scopeMissing).toBe(false);
+    expect(result.items.map(i => i.subject)).toEqual(['Invoice due', 'Sarah re: deck']);
+    expect(h.threadsList).not.toHaveBeenCalled();  // no Gmail API call
+    expect(h.auditRecord).not.toHaveBeenCalled();  // no duplicate receipt
+  });
+
+  it('R12 case 2: a call after 24h makes a fresh Gmail fetch + writes a new audit entry', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.dbGet.mockReturnValue({
+      created_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(), // 25h ago → stale
+      snapshot_after: JSON.stringify({ subjects: ['old'] }),
+    });
+    h.threadsList.mockResolvedValue({ data: { threads: [{ id: 'th_1', snippet: 's' }] } } as any);
+    h.threadsGet.mockResolvedValue({ data: { messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [
+      { name: 'From', value: 'a@example.com' }, { name: 'Subject', value: 'Fresh thread' }, { name: 'Date', value: 'Mon, 20 Jun 2026' },
+    ] } }] } } as any);
+
+    const result = await getRecentEmailSignal(1);
+    expect(h.threadsList).toHaveBeenCalled();
+    expect(result.items[0].subject).toBe('Fresh thread');
+    expect(h.auditRecord).toHaveBeenCalledOnce();
+  });
+
+  it('R12 case 4: a non-empty live result writes an audit entry as before', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.dbGet.mockReturnValue(undefined); // no cache → live fetch
+    h.threadsList.mockResolvedValue({ data: { threads: [{ id: 'th_1', snippet: 's' }] } } as any);
+    h.threadsGet.mockResolvedValue({ data: { messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [
+      { name: 'From', value: 'a@example.com' }, { name: 'Subject', value: 'Hello' }, { name: 'Date', value: 'Mon' },
+    ] } }] } } as any);
+
+    await getRecentEmailSignal(1);
+    expect(h.auditRecord).toHaveBeenCalledOnce();
+  });
+
+  it('R12: the briefing path ({ fullBodies: true }) bypasses the cache — always fetches fresh', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    // A fresh cache row exists, but fullBodies must ignore it (needs live bodies for extraction).
+    h.dbGet.mockReturnValue({
+      created_at: new Date(Date.now() - 60_000).toISOString(),
+      snapshot_after: JSON.stringify({ subjects: ['cached subject'] }),
+    });
+    h.threadsList.mockResolvedValue({ data: { threads: [{ id: 'th_1', snippet: 's' }] } } as any);
+    h.threadsGet.mockResolvedValue({ data: { messages: [{ id: 'm1', labelIds: ['INBOX'], payload: {
+      mimeType: 'text/plain',
+      headers: [{ name: 'From', value: 'a@example.com' }, { name: 'Subject', value: 'Live thread' }, { name: 'Date', value: 'Mon' }],
+      body: { data: Buffer.from('the full body', 'utf8').toString('base64') },
+    } }] } } as any);
+
+    const result = await getRecentEmailSignal(1, { fullBodies: true });
+    expect(h.threadsList).toHaveBeenCalled();           // did NOT use the cache
+    expect(result.items[0].subject).toBe('Live thread');
   });
 
   it('caps max threads at EMAIL_SIGNAL_CAP (50) regardless of opts.max', async () => {
