@@ -1517,6 +1517,10 @@ export default function Dashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [calendarFit, setCalendarFit] = useState<CalendarFit | null>(null);
   const [calendarFitLoading, setCalendarFitLoading] = useState(false);
+  // R12 T5: keep a live ref to the current score so the visibilitychange handler
+  // (registered once) compares against the latest value, not a stale closure.
+  const calendarFitRef = useRef<CalendarFit | null>(null);
+  useEffect(() => { calendarFitRef.current = calendarFit; }, [calendarFit]);
   const [focusRec, setFocusRec] = useState<FocusRecommendation | null>(null);
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
@@ -1757,6 +1761,25 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // R12 T5: when the user returns to the tab (e.g. after finishing a call), silently
+  // refetch the Edge Score. If it rose, trigger the celebrate animation. Registered once;
+  // reads the live score from calendarFitRef to avoid a stale closure.
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const prevScore = calendarFitRef.current?.edgeScore ?? null;
+      const s = await fetch('/api/scores').then(r => r.ok ? r.json() : null).catch(() => null);
+      if (!s) return;
+      setCalendarFit(s);
+      if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
+        setEdgeScoreCelebrating(true);
+        setTimeout(() => setEdgeScoreCelebrating(false), 1500);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   // Reset memory pagination when switching tabs or when data reloads.
   useEffect(() => { setMemoryPage(1); }, [activeTab, memories]);
