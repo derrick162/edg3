@@ -324,3 +324,102 @@ import { CalendarFitCard } from '@/components/ui';
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).
+
+---
+
+## 11. Upcoming display surfaces — spec ahead of Core (R15)
+
+These two tools are landing in R15 (Core) as voice-only tools — they return spoken text to Edge. Design specs below for when Core wants to add a visual panel in the dashboard (likely the Briefings tab or a new "Week" panel).
+
+---
+
+### 11a. `briefEvent` — "what do I need to know for my 3pm?"
+
+**Voice output:** 3 sentences max — who's attending, agenda/description, one recent email/memory hook. Read aloud by Edge mid-call.
+
+**Future dashboard surface (Briefings tab or expandable event row):**
+
+```
+┌─────────────────────────────────────────────────┐
+│  📋  Investor meeting · 3:00 PM                 │
+│  ─────────────────────────────────────────────  │
+│  Sarah Chen + 2 others · Series A term sheet    │
+│  → Last email: "excited to connect" (2 days ago)│
+│  → Context: prefers async, follow-up expected   │
+│                                [Brief me →]     │
+└─────────────────────────────────────────────────┘
+```
+
+**Component: `EventBriefCard`**
+- Triggered by "Brief me" button on any upcoming event row (Briefings tab or Today tab)
+- Lazy — fires the `briefEvent` API call on tap, shows spinner, renders 3-sentence result in a `glass-card` below the event row
+- Collapsed by default; expand/collapse chevron
+- Tokens: `--surface-card`, `--text-muted`, `--text-accent`, `--edg-accent-15` tint on expanded state
+- Skeleton: 2 pulsing lines while loading
+- Empty: "Nothing to brief on — no attendees or emails found." in `--text-faint`
+
+**Prop contract (Core wires):**
+```tsx
+<EventBriefCard
+  eventTitle={event.summary}
+  eventTime={event.start.dateTime}
+  onBrief={() => fetch('/api/vapi/brief-event', { method: 'POST', body: ... })}
+  briefText={briefText}   // null until fetched
+  loading={briefLoading}
+/>
+```
+
+---
+
+### 11b. `generateWeeklyReview` — "how was my week?"
+
+**Voice output:** 3–4 sentences — key events, tasks completed, one pattern observation, closing question about next week's priority. Read aloud by Edge.
+
+**Future dashboard surface (new "Week" panel or Briefings tab section):**
+
+```
+┌─────────────────────────────────────────────────┐
+│  Week of Jun 16                    [Regenerate] │
+│  ─────────────────────────────────────────────  │
+│  "You had 14 events — heaviest day was          │
+│   Wednesday. 3 tasks completed, 1 missed.       │
+│   Recovery averaged 61% — solid week.           │
+│   What's the priority for next week?"           │
+│                                                 │
+│  ● 14 events  ✓ 3 tasks  ✗ 1 missed  💚 61% avg│
+└─────────────────────────────────────────────────┘
+```
+
+**Component: `WeeklyReviewCard`**
+- Lives in Briefings tab, below weekly briefing history — or a "Week" sub-tab once the volume justifies it
+- Header: "Week of [Mon date]" + optional [Regenerate] button (re-calls `generateWeeklyReview`)
+- Body: italic blockquote styling for the spoken text (`--text-body`, `font-style: italic`)
+- Stat row: event count · tasks done · tasks missed · Whoop avg (omit Whoop if not connected)
+- Stat chips use existing badge tokens: `.badge-success` (tasks done), `.badge-danger` (missed), `--text-muted` (events)
+- Tokens: `--surface-card`, `--card-border`, `--edg-accent-08` left border accent on the quote block
+- Skeleton: 3 pulsing lines + 4 skeleton chips while loading
+
+**Prop contract (Core wires):**
+```tsx
+<WeeklyReviewCard
+  weekOf="2026-06-16"           // Monday of the week
+  reviewText={reviewText}       // spoken summary string, null until fetched
+  stats={{
+    events: 14,
+    tasksCompleted: 3,
+    tasksMissed: 1,
+    whoopAvgRecovery: 61,       // null if not connected
+  }}
+  loading={reviewLoading}
+  onRegenerate={() => { /* re-call tool */ }}
+/>
+```
+
+**When to build:** after Core ships `generateWeeklyReview` (R15 T7) and it's been live-tested on calls. No rush to build UI before the voice tool is stable.
+
+---
+
+## 12. First asks (suggested)
+1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
+2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
+3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).
