@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes, computeFreeSlots } from '@/lib/time';
-import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
+import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups, normalizeTitle } from '@/lib/eventMatch';
+import { getRecentEmailSignal } from '@/lib/gmail';
+import { hasGmailReadScope } from '@/lib/google-auth';
 import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
 import { mergeAttendees } from '@/lib/attendees';
 import { dedupeSortEvents, formatEventForSpeech, findOverlappingEvents } from '@/lib/calendarQuery';
@@ -1057,6 +1059,124 @@ Query: ${query}` }],
     const fmtSlot = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
     const durLabel = duration % 60 === 0 ? `${duration / 60} hour${duration >= 120 ? 's' : ''}` : `${duration} minutes`;
     return `Blocked ${durLabel} for ${label.trim()}: ${dayName} at ${fmtSlot(slot.startMs)}–${fmtSlot(slot.endMs)}. Want me to protect more time this week?`;
+
+  } else if (fn === 'briefEvent') {
+    // R15 T6 — pre-meeting prep: event details + matching email signal + attendee facts → Haiku brief.
+    const { title: rawTitle, currentTime } = args as { title?: string; currentTime?: string };
+    if (!rawTitle) return 'Which event should I brief you on?';
+    const title = groundTitle(rawTitle);
+    const beToday = todayInTz(tz);
+    const beEnd = (() => { const d = new Date(`${beToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 30); return d.toISOString().slice(0, 10); })();
+    const beMatches = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, beToday).start.toISOString(), timeMax: dayRangeUtc(tz, beEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime' })
+        .then(r => (r.data.items ?? []).map(e => ({ event: e, calId }))).catch(() => [] as { event: calendar_v3.Schema$Event; calId: string }[])
+    ))).flat();
+    const r = resolveEvent(beMatches, title, tz, currentTime);
+    if (r.kind === 'none') return `I couldn't find "${title}" on your upcoming calendar to brief you on.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events: ${r.message}. Which one? Re-call with currentTime set to its start time.`;
+    const ev = r.event;
+    const beName = (ev.summary ?? '').replace(/^⚡\s*/, '');
+    const attendeeNames = (ev.attendees ?? []).filter(a => !a.self).map(a => a.displayName || a.email).filter(Boolean) as string[];
+    const nTitle = normalizeTitle(beName);
+    // Email signal matching the event title (best-effort, gmail.readonly only).
+    let emailContext = '';
+    try {
+      const calTok = calendarQueries.get(userId);
+      if (hasGmailReadScope(calTok?.scope)) {
+        const sig = await getRecentEmailSignal(userId, { days: 7, max: 20 });
+        if (sig && !sig.scopeMissing) {
+          const hits = (sig.items ?? []).filter(it => { const ns = normalizeTitle(it.subject || ''); return ns && (ns.includes(nTitle) || nTitle.includes(ns)); }).slice(0, 3);
+          if (hits.length) emailContext = hits.map(h => `- ${h.subject} (from ${h.sender})`).join('\n');
+        }
+      }
+    } catch { /* degrade */ }
+    // Stored facts about attendees or the event topic.
+    let factContext = '';
+    try {
+      const allF = factQueries.getAll(userId);
+      const hits = allF.filter(f => {
+        const ne = normalizeTitle(f.entity ?? ''); const nst = normalizeTitle(f.statement ?? '');
+        if (ne && attendeeNames.some(a => { const na = normalizeTitle(a); return na && (ne.includes(na) || na.includes(ne)); })) return true;
+        return nTitle.length > 2 && (ne.includes(nTitle) || nst.includes(nTitle));
+      }).slice(0, 5);
+      if (hits.length) factContext = hits.map(f => `- ${f.entity ? `${f.entity}: ` : ''}${f.statement}`).join('\n');
+    } catch { /* degrade */ }
+
+    const rawDetails = [
+      attendeeNames.length ? `Attendees: ${attendeeNames.join(', ')}.` : '',
+      ev.location ? `Location: ${ev.location}.` : '',
+      ev.description ? `Notes: ${ev.description.slice(0, 400)}` : '',
+    ].filter(Boolean).join(' ');
+
+    try {
+      const beFirst = (userQueries.findById(userId)?.name ?? '').split(' ')[0] || 'them';
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const res = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 250,
+        messages: [{ role: 'user', content: `In 3 sentences or fewer, brief ${beFirst} on this upcoming event. State who's attending (if known), what the agenda/notes say, and one piece of relevant context from recent emails or memory. Be specific and concise — this is read aloud.
+
+EVENT: ${beName}
+${rawDetails || '(no description or attendees)'}
+${emailContext ? `\nRELATED EMAILS:\n${emailContext}` : ''}
+${factContext ? `\nWHAT I KNOW:\n${factContext}` : ''}` }],
+      }, { signal: AbortSignal.timeout(20000) });
+      const text = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('').trim();
+      if (text) return text;
+    } catch (e) { console.error('[briefEvent] Haiku failed:', e instanceof Error ? e.message : e); }
+    // Degrade: raw details without synthesis.
+    return rawDetails ? `Here's what I have on "${beName}": ${rawDetails}` : `I don't have much detail on "${beName}" beyond it being on your calendar.`;
+
+  } else if (fn === 'generateWeeklyReview') {
+    // R15 T7 — end-of-week wrap-up from real event + task + recovery data → Haiku review.
+    const { weekOf } = args as { weekOf?: string };
+    // Resolve the week's Monday (in user tz) and its Sunday end.
+    const baseDay = weekOf && /^\d{4}-\d{2}-\d{2}$/.test(weekOf) ? weekOf : todayInTz(tz);
+    const monday = (() => {
+      const d = new Date(`${baseDay}T12:00:00Z`);
+      const dow = (d.getUTCDay() + 6) % 7; // 0 = Monday
+      d.setUTCDate(d.getUTCDate() - dow);
+      return d.toISOString().slice(0, 10);
+    })();
+    const sunday = (() => { const d = new Date(`${monday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+    const [weekEventsRaw, recHist] = await Promise.all([
+      (async () => (await Promise.all(calIds.map(calId =>
+        cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, monday).start.toISOString(), timeMax: dayRangeUtc(tz, sunday).end.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 50 })
+          .then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+      ))).flat())(),
+      getRecoveryHistory(userId, 7).catch(() => []),
+    ]);
+    const meetings = dedupeSortEvents(weekEventsRaw.filter(e => e.status !== 'cancelled' && e.start?.dateTime))
+      .map(e => (e.summary ?? '').replace(/^⚡\s*/, '')).filter(Boolean).slice(0, 12);
+    const recentTasks = (() => { try { return taskQueries.getRecent(userId, 10); } catch { return []; } })();
+    const completed = recentTasks.filter(t => t.completed && (t.completed_at ?? '') >= monday).map(t => t.text).slice(0, 12);
+    const openTasks = recentTasks.filter(t => !t.completed).map(t => t.text).slice(0, 12);
+    let whoopNote = '';
+    try {
+      if (recHist.length >= 3) {
+        const { computeWhoopTrends, formatTrendForBriefing } = await import('@/lib/whoopTrends');
+        const trend = computeWhoopTrends(recHist.map(h => ({ date: h.date, value: h.recoveryScore })), [], []);
+        whoopNote = trend ? (formatTrendForBriefing(trend) ?? '') : '';
+      }
+    } catch { /* degrade */ }
+
+    try {
+      const wrFirst = (userQueries.findById(userId)?.name ?? '').split(' ')[0] || 'them';
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const res = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 300,
+        messages: [{ role: 'user', content: `Give ${wrFirst} a brief spoken weekly review (3–4 sentences max). Cover: (1) what happened — key events/meetings, (2) what was completed, (3) one honest observation or pattern. If recovery data is present, weave in one note about energy. End with one question: what's the priority for next week?
+
+WEEK: ${monday} to ${sunday}
+MEETINGS/EVENTS: ${meetings.length ? meetings.join(', ') : '(none logged)'}
+COMPLETED TASKS: ${completed.length ? completed.join(', ') : '(none)'}
+OPEN TASKS: ${openTasks.length ? openTasks.join(', ') : '(none)'}
+${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
+      }, { signal: AbortSignal.timeout(20000) });
+      const text = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('').trim();
+      if (text) return text;
+    } catch (e) { console.error('[generateWeeklyReview] Haiku failed:', e instanceof Error ? e.message : e); }
+    // Degrade: plain list.
+    return `This week (${monday} to ${sunday}): ${meetings.length} event(s)${completed.length ? `, ${completed.length} task(s) done` : ''}${openTasks.length ? `, ${openTasks.length} still open` : ''}. What's the priority for next week?`;
 
   } else if (fn === 'editEventAttendees') {
     // R14 T3 — add/remove guests on an existing event (Google sends invites/cancellations).
