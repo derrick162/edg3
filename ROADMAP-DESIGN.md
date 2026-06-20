@@ -49,6 +49,155 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 13 — Marketing pages: /score, /memory, /security)
+
+> `git merge master` first. Three new static pages. Do R12 mobile tickets first, then these. No auth needed — public-facing routes.
+
+---
+
+### T1 — `/score` page: explain the Edg3 Score (MEDIUM — 1.5h)
+
+**Route:** `app/score/page.tsx` → `edg3.ai/score`
+
+**Layout:** Same pattern as `app/privacy/page.tsx` — dark background + orbs, max-w-3xl centered, EDG3 logo top-left, "Get started" CTA top-right, `glass-card` sections.
+
+**Content sections:**
+
+**Hero:**
+> Title: "The Edg3 Score"
+> Sub: "A single number that tells you if you're spending your time on what actually matters."
+
+**Section 1 — What it is (glass-card):**
+> "Most productivity apps measure output — tasks completed, emails sent. The Edg3 Score measures *alignment*: the gap between what you say your priorities are and how your time is actually spent. It rises every time you engage with Edge and falls when life pulls you off course."
+> Icon + one-line for each input (use inline SVG icons like the landing page):
+> - 📞 **Momentum** — your daily call streak. Consistency compounds.
+> - 🎯 **Focus** — calendar hours invested in your top 3 priorities this week.
+> - 🧠 **Memory depth** — how well Edge knows you. More context = sharper briefings.
+> - 🔒 **Trust** — data freshness. Edge needs live signals to give live advice.
+
+**Section 2 — Why it matters (glass-card):**
+> "High performers don't fail because they're lazy. They fail because their calendar doesn't match their goals. The Edg3 Score makes that gap visible — so you can fix it before it becomes a problem."
+> Use a simple two-column visual: left column "What you said mattered" (3 priority bullets), right column "What your week actually looked like" (calendar bar chart sketch — can be a static SVG or simplified version of the CalendarVisual from the landing page).
+
+**Section 3 — How to improve it (glass-card, 3 bullet points):**
+> 1. Take your morning call every day. Each call improves Momentum and adds memory.
+> 2. Let Edge block time for your top priority this week.
+> 3. Connect your calendar and Gmail so Edge has real data to work with.
+
+**Bottom CTA:** "Start building your score" → `/signup`
+
+---
+
+### T2 — `/memory` page: explain the Memory System (MEDIUM — 1.5h)
+
+**Route:** `app/memory/page.tsx` → `edg3.ai/memory`
+
+**Layout:** Same pattern. Same nav/CTA.
+
+**Content sections:**
+
+**Hero:**
+> Title: "Memory that compounds"
+> Sub: "Edge remembers what you care about — and gets sharper every single call."
+
+**Section 1 — The problem with AI assistants (glass-card):**
+> "Every other AI starts from scratch. You explain yourself again. You re-state your priorities. You correct the same misunderstandings. Edge is different: it builds a persistent memory of who you are, what you're working on, and what matters to you — so every conversation picks up where the last one left off."
+
+**Section 2 — What Edge learns (glass-card with 5 rows, each with an icon):**
+> - 🎯 **Your goals** — what you're trying to achieve this month, quarter, year.
+> - 📂 **Your projects** — active work, key stakeholders, blockers, deadlines.
+> - 👤 **Your people** — relationships, communication styles, history. Edge knows who matters to you.
+> - ⚡ **Your preferences** — peak energy hours, focus style, what drains you.
+> - 📅 **Your patterns** — how your week actually runs vs. how you plan it.
+
+**Section 3 — How it grows (glass-card):**
+> "Memory builds from every call, your calendar, and (with your permission) your inbox signals. It's not a chatbot memory — it's a structured knowledge base you can inspect and edit at any time from your Memory tab. You stay in control."
+
+**Section 4 — Privacy anchor (glass-card, compact):**
+> "Everything Edge learns is yours. View it, correct it, delete it — any time. Edge never sells your data or uses it to train models. [Full privacy policy →](/privacy)"
+
+**Bottom CTA:** "Build your Edge memory" → `/signup`
+
+---
+
+### T3 — `/security` page: data protection overview (MEDIUM — 1h)
+
+**Route:** `app/security/page.tsx` → `edg3.ai/security`
+
+**Layout:** Same pattern. More compact than the other two — this is a trust page, not a sales page.
+
+**Content sections:**
+
+**Hero:**
+> Title: "Your data is protected"
+> Sub: "We built Edge to handle sensitive personal and professional information. Here's exactly how we protect it."
+
+**Section 1 — Encryption (glass-card):**
+> "All sensitive data — email signals, health data, call transcripts — is encrypted at rest using AES-256-GCM before it ever touches disk. Your credentials are never stored: we use short-lived OAuth tokens that you can revoke at any time."
+
+**Section 2 — Gmail (glass-card):**
+> "Edge reads your inbox to identify replies, compute your Focus score, and learn context about your work. Email body text is processed in memory only and **never stored**. We only retain: subject lines (encrypted, deleted after 90 days) and short factual notes Edge extracts (visible and deletable in your Memory tab). We never read personal emails — only recent work/professional threads."
+
+**Section 3 — Health data (glass-card):**
+> "If you connect Whoop, Edge reads your recovery, sleep, and strain. This data is used only to personalize your daily briefing and is never stored beyond the current session, never shared, never sold."
+
+**Section 4 — You control everything (glass-card, 3 bullets):**
+> - Disconnect any integration from your dashboard at any time.
+> - Delete your account and all associated data on request.
+> - View everything Edge knows about you in your Memory tab.
+
+**Bottom CTA row (two buttons):** "Read our full privacy policy →" (`/privacy`) · "Get started" → `/signup`
+
+---
+
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 12 — Mobile web optimization)
+
+> `git merge master` first (master is at latest HEAD — includes viewport meta fix in `app/layout.tsx`). Three tickets. Do in order.
+
+---
+
+### T1 — Show Next Call card on mobile (HIGH — 45 min)
+
+The "Next call" card and all sidebar widgets are `hidden md:flex` — completely invisible on mobile. When a user opens the app on their phone before a morning call, they can't see when the call is scheduled.
+
+**What to do in `app/dashboard/page.tsx`:**
+
+Remove the `hidden md:flex` wrapper that hides sidebar widgets on mobile. Instead, move the key info **inline below the nav tabs** on mobile only. Specifically:
+
+- The "Next call" card (`Next call · {call_time} {timezone}`) should appear as a compact strip directly below the tab nav on mobile: `flex md:hidden items-center justify-between px-4 py-2 border-b text-sm`. Show the call time on the left + the streak badge on the right (🔥 N days) if streak ≥ 2. No glass-card wrapper on mobile — just a thin horizontal bar so it doesn't steal vertical space.
+- The full sidebar widget block (glass-card, Whoop, Google Calendar, etc.) stays `hidden md:flex` — no change there. Only the compact strip is new.
+- On desktop (md+), the strip is hidden (`flex md:hidden`) — desktop already shows the full sidebar card.
+
+**Test:** viewport at 375px → Next Call strip visible below nav, call time readable. At md (768px) → strip hidden, full card in sidebar visible. Preflight green.
+
+---
+
+### T2 — Fix notification panel overflow on mobile (FAST — 20 min)
+
+The notification panel at `app/dashboard/page.tsx:2086` has `style={{ position: 'absolute', top: 48, right: 0, width: 340 }}`. On a 375px screen this can overflow to the left.
+
+**Fix:** Change the inline style to use `maxWidth: 'calc(100vw - 16px)'` alongside the hardcoded width so it never overflows. Also set `left: 'auto', right: 0` and add `overflow-x: hidden`. This is a one-line change:
+
+```tsx
+style={{ position: 'absolute', top: 48, right: 0, width: 340, maxWidth: 'calc(100vw - 16px)', maxHeight: 420, overflowY: 'auto' }}
+```
+
+**Test:** at 375px viewport → notification panel opens without overflowing the screen edge. Preflight green.
+
+---
+
+### T3 — Add tab labels below icons on mobile (FAST — 20 min)
+
+Tab nav on mobile shows emoji icons only (`hidden md:inline` on the label `<span>`). Emoji-only is ambiguous — "⏪" for Activity is particularly unclear.
+
+**Fix:** On mobile, show a tiny label below the icon instead of hiding it. Change `<span className="hidden md:inline">{tab.label}</span>` to `<span className="text-[9px] md:hidden block leading-none mt-0.5 opacity-70">{tab.label}</span><span className="hidden md:inline">{tab.label}</span>`. This gives desktop the existing inline label and mobile a tiny word below the icon.
+
+Also: consider swapping "⏪" for Activity with "📋" (more universally understood as a log/list) if it doesn't conflict with another tab icon. Check the current icon list first.
+
+**Test:** at 375px → each tab shows icon + small label text. At md+ → normal sidebar layout unchanged. Preflight green. Swap Activity icon only if it doesn't create a collision.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 11 — Edge Score UI + weekend card + activity dedup)
 
 > `git merge master` first (master is at `9918c01`). Three tickets. Do in order.
