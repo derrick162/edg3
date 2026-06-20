@@ -913,6 +913,13 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R12 — 5 live-call/dashboard tickets — SHIPPED (1991 green).** From Derrick's afternoon call with Aria; each verified unbuilt first.
+  - **T1 delete-token loop:** prompt — a mid-flow name correction starts a FRESH deleteEvent flow (forget the old token; retry silently); route logs token mismatch in the `consumeDeleteToken` failure branch. +1 regression test.
+  - **T2 token language leak:** NATURAL LANGUAGE rule now bans "token"/"confirmation token"/"trying again" and other backend/retry narration — say "just a moment" or stay silent.
+  - **T3 replace-at-wrong-time:** REPLACE PATTERN rule — "replace X with Y" creates Y at X's startDateTime; times in the phrasing modify the deletion target, not the new event.
+  - **T4 Momentum counts every call:** `briefings.is_open_call` column (shared `db.ts`, additive + migration + `[Open call]` backfill) + `getOpenCallCount`/`markOpenCall`; `scheduleOpenCall` sets the flag (1-line cross-lane in Security's `scheduler.ts`, Vijay FYI). New Momentum weighting: morning 50 (day-bucketed, local-tz) + open-call bonus 20 (2pts each ≤10) + engagement 30. Renamed `completedCallDays*`→`morningCallDays*`, added `openCallCount14d`; scores + both day-plan routes updated. +5 tests, expectations rebased.
+  - **T5 dashboard auto-refresh:** `visibilitychange` listener silently refetches `/api/scores` on tab-return and fires the existing celebrate animation when the score rose; `calendarFitRef` avoids a stale closure.
+  - ⚠️ Cross-lane: `lib/db.ts` (shared additive) + 1 line in Security's `lib/scheduler.ts` (PM-authorized). 1991/1991 green, tsc + next build clean. Committed on `core` — ready for PM merge.
 - **2026-06-20** — **R9 — 7 live-call quality tickets — SHIPPED (1975 green).** All from Derrick's live call + dashboard review; each verified genuinely unbuilt before building.
   - **T1 voice speed:** `speed: 0.9` on both ElevenLabs VOICES in `lib/vapi.ts` (Edge spoke too fast). Test updated.
   - **T2 briefing fallback:** `buildFallbackBriefing` drops the apologetic "trouble loading" opener (delivers essentials silently) + strips `[bracket]` descriptions and truncates each priority to 5 words; logs the non-text-content fallback cause; main prompt now says priority TITLE only. +2 tests.

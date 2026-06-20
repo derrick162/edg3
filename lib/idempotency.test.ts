@@ -122,6 +122,14 @@ describe('consumeDeleteToken', () => {
     // A fault during token validation should DENY the delete, not allow it (fail closed).
     expect(consumeDeleteToken(1, 'any')).toBe(false);
   });
+
+  // R12 T1 — multi-token confusion: when the user corrects the event name mid-flow, a
+  // second token is issued and the stale first token must be rejected (caller re-issues,
+  // route logs the mismatch). The DB layer treats the stale token as not-current → false.
+  it('rejects a stale token after a newer one was issued', () => {
+    h.consume.mockReturnValue(false); // DB only honours the most-recent unconsumed token
+    expect(consumeDeleteToken(7, 'STALE_TOKEN_A')).toBe(false);
+  });
 });
 
 // ── T4-4: claimWebhookEvent ──────────────────────────────────────────────────

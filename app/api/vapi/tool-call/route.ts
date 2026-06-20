@@ -534,6 +534,9 @@ Query: ${query}` }],
     }
     if (!consumeDeleteToken(userId, confirmToken)) {
       // Token invalid, expired, or already used — re-issue so the user can try again.
+      // R12 T1: log the mismatch so production shows exactly which token/event collided
+      // (the multi-token loop happens when the user corrects the event name mid-flow).
+      console.error('[deleteEvent] token mismatch', { userId, providedToken: confirmToken, resolvedTitle: toDelete[0]?.event?.summary });
       const token = issueDeleteToken(userId);
       return `⚠️ That confirmation code was invalid or expired. To delete ${describeDeleteTargets(toDelete, recurringScope, tz)}, call deleteEvent again with the new confirmToken: "${token}". Token expires in 2 minutes.`;
     }

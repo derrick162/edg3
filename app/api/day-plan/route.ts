@@ -90,19 +90,23 @@ export async function GET() {
       const cut7  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000);
       const completedAll = briefings14d.filter(b => b.status === 'completed');
       const c14 = completedAll.filter(b => new Date(b.scheduled_for) >= cut14);
-      const completedCallDays14d = new Set(c14.map(b => b.scheduled_for.slice(0, 10))).size;
-      const completedCallDays7d  = new Set(
-        c14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => b.scheduled_for.slice(0, 10))
+      // R12 T4: morning-call days exclude ad-hoc open calls; open calls counted separately.
+      const localDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: userTz });
+      const morningC14 = c14.filter(b => !b.is_open_call);
+      const morningCallDays14d = new Set(morningC14.map(b => localDay(b.scheduled_for))).size;
+      const morningCallDays7d  = new Set(
+        morningC14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => localDay(b.scheduled_for))
       ).size;
+      const openCallCount14d = c14.filter(b => !!b.is_open_call).length;
       const streakDays = computeCallStreak(briefings14d, userTz);
       const cut14Str = cut14.toISOString().slice(0, 10);
       const confirmedRow = getDb().prepare(
         'SELECT COUNT(DISTINCT date) AS n FROM daily_focus WHERE user_id = ? AND confirmed = 1 AND date >= ?'
       ).get(user.id, cut14Str) as { n: number };
       const dailyFocus = (() => { try { return dailyFocusQueries.getToday(user.id, today); } catch { return null; } })();
-      return { completedCallDays14d, completedCallDays7d, confirmedFocusDays14d: confirmedRow.n, streakDays, confirmedToday: !!dailyFocus?.confirmed };
+      return { morningCallDays14d, morningCallDays7d, openCallCount14d, confirmedFocusDays14d: confirmedRow.n, streakDays, confirmedToday: !!dailyFocus?.confirmed };
     } catch {
-      return { completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: false };
+      return { morningCallDays14d: 0, morningCallDays7d: 0, openCallCount14d: 0, confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: false };
     }
   })();
 

@@ -88,6 +88,7 @@ export function initSchema(db: Database.Database) {
       edge_promises TEXT,
       tool_actions TEXT,
       error_code TEXT,
+      is_open_call INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -665,6 +666,10 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // Multi-account: oauth_state.flow CHECK was ('calendar','whoop') — recreate to allow 'gmail'.
   // Rows are ephemeral CSRF tokens (minutes TTL), so dropping non-matching rows on rebuild is fine.
   "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
+  // R12 T4 — distinguish ad-hoc open calls from scheduled morning briefings for Momentum scoring.
+  "ALTER TABLE briefings ADD COLUMN is_open_call INTEGER DEFAULT 0",
+  // Backfill historical open calls (scheduleOpenCall prefixes their content with '[Open call]').
+  "UPDATE briefings SET is_open_call = 1 WHERE is_open_call = 0 AND content LIKE '[Open call]%'",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -920,6 +925,17 @@ export const briefingQueries = {
       'SELECT * FROM briefings WHERE user_id = ? ORDER BY scheduled_for DESC LIMIT 1'
     ).get(userId) as Briefing | undefined;
     return row ? decryptBriefingRow(row) : undefined;
+  },
+  // R12 T4 — count completed ad-hoc open calls in the last N days (not day-bucketed) for Momentum.
+  getOpenCallCount: (userId: number, days: number): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) as n FROM briefings WHERE user_id = ? AND is_open_call = 1 AND status = 'completed' AND scheduled_for >= datetime('now', ?)`
+    ).get(userId, `-${days} days`) as { n: number };
+    return row?.n ?? 0;
+  },
+  // R12 T4 — set the open-call flag (called by scheduleOpenCall right after insert).
+  markOpenCall: (id: number): void => {
+    getDb().prepare('UPDATE briefings SET is_open_call = 1 WHERE id = ?').run(id);
   },
   // Strictly owner-gated: the AND user_id = ? ensures a user can never read another's transcript.
   getByIdForUser: (id: number, userId: number) => {
@@ -1819,6 +1835,7 @@ export interface Briefing {
   edge_promises: string | null;
   tool_actions: string | null;
   error_code: string | null;
+  is_open_call?: number;
   created_at: string;
 }
 

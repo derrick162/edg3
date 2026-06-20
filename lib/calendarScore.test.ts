@@ -656,8 +656,9 @@ describe('computeClarityScore', () => {
 
 function makeMomentum(overrides: Partial<MomentumInputs> = {}): MomentumInputs {
   return {
-    completedCallDays14d: 10,
-    completedCallDays7d: 5,
+    morningCallDays14d: 10,
+    morningCallDays7d: 5,
+    openCallCount14d: 0,
     confirmedFocusDays14d: 7,
     streakDays: 5,
     ...overrides,
@@ -667,51 +668,79 @@ function makeMomentum(overrides: Partial<MomentumInputs> = {}): MomentumInputs {
 describe('computeMomentumScore', () => {
   it('calibrating when no calls and no confirmed focus', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0,
+      morningCallDays14d: 0, morningCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0,
     }));
     expect(result.calibrating).toBe(true);
     expect(result.score).toBe(0);
   });
 
+  // R12 T4 — every open call moves Momentum (2 pts each, capped at 20).
+  it('open calls add 2 pts each', () => {
+    const base = computeMomentumScore(makeMomentum({ morningCallDays14d: 7, confirmedFocusDays14d: 0, streakDays: 0, openCallCount14d: 0, confirmedToday: false }));
+    const withOpen = computeMomentumScore(makeMomentum({ morningCallDays14d: 7, confirmedFocusDays14d: 0, streakDays: 0, openCallCount14d: 3, confirmedToday: false }));
+    expect(withOpen.score - base.score).toBe(6);
+  });
+
+  it('open-call bonus caps at 20 (10+ calls)', () => {
+    const ten = computeMomentumScore(makeMomentum({ morningCallDays14d: 0, confirmedFocusDays14d: 0, streakDays: 0, openCallCount14d: 10, confirmedToday: false }));
+    const twenty = computeMomentumScore(makeMomentum({ morningCallDays14d: 0, confirmedFocusDays14d: 0, streakDays: 0, openCallCount14d: 20, confirmedToday: false }));
+    expect(ten.score).toBe(20);
+    expect(twenty.score).toBe(20);
+  });
+
+  it('not calibrating when only an open call happened', () => {
+    const r = computeMomentumScore(makeMomentum({ morningCallDays14d: 0, morningCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0, openCallCount14d: 1, confirmedToday: false }));
+    expect(r.calibrating).toBeFalsy();
+    expect(r.score).toBe(2);
+  });
+
   it('not calibrating when at least one completed call', () => {
-    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 1 }));
+    const result = computeMomentumScore(makeMomentum({ morningCallDays14d: 1 }));
     expect(result.calibrating).toBeFalsy();
   });
 
   it('not calibrating when confirmed focus but no calls', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 0, confirmedFocusDays14d: 1,
+      morningCallDays14d: 0, confirmedFocusDays14d: 1,
     }));
     expect(result.calibrating).toBeFalsy();
   });
 
-  it('perfect show-up (14d) + engagement (14d) = 100', () => {
+  // R12 T4 — new weighting: morning 50 + open-call bonus 20 + engagement 30.
+  it('perfect show-up (14d) + engagement (14d), no open calls = 80', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 14, confirmedFocusDays14d: 14,
+      morningCallDays14d: 14, confirmedFocusDays14d: 14, openCallCount14d: 0,
     }));
-    expect(result.score).toBe(100); // 70 + 30
+    expect(result.score).toBe(80); // 50 + 0 + 30 (open-call 20 pts unearned)
   });
 
-  it('show-up only (14/14), no engagement = 70', () => {
+  it('perfect show-up + engagement + 10 open calls = 100', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 14, confirmedFocusDays14d: 0,
+      morningCallDays14d: 14, confirmedFocusDays14d: 14, openCallCount14d: 10,
     }));
-    expect(result.score).toBe(70);
+    expect(result.score).toBe(100); // 50 + 20 + 30
   });
 
-  it('half show-up (7/14) + half engagement (7/14) = 50', () => {
+  it('show-up only (14/14), no engagement, no open calls = 50', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 7, confirmedFocusDays14d: 7,
+      morningCallDays14d: 14, confirmedFocusDays14d: 0, openCallCount14d: 0,
     }));
-    expect(result.score).toBe(50); // round(7/14*70)=35 + round(7/14*30)=15
+    expect(result.score).toBe(50);
+  });
+
+  it('half show-up (7/14) + half engagement (7/14), no open calls = 40', () => {
+    const result = computeMomentumScore(makeMomentum({
+      morningCallDays14d: 7, confirmedFocusDays14d: 7, openCallCount14d: 0,
+    }));
+    expect(result.score).toBe(40); // round(7/14*50)=25 + round(7/14*30)=15
   });
 
   it('confirming today gives an immediate, visible bump (+20)', () => {
     const base = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 4, confirmedFocusDays14d: 1, confirmedToday: false,
+      morningCallDays14d: 4, confirmedFocusDays14d: 1, confirmedToday: false,
     }));
     const confirmed = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 4, confirmedFocusDays14d: 1, confirmedToday: true,
+      morningCallDays14d: 4, confirmedFocusDays14d: 1, confirmedToday: true,
     }));
     expect(confirmed.score).toBe(Math.min(100, base.score + 20));
     expect(confirmed.score - base.score).toBeGreaterThanOrEqual(15); // perceptible after 20% blend
@@ -719,7 +748,7 @@ describe('computeMomentumScore', () => {
 
   it('confirmedToday alone (day 1, no calls) lifts out of calibrating', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0,
+      morningCallDays14d: 0, morningCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0,
       confirmedToday: true,
     }));
     expect(result.calibrating).toBeFalsy();
@@ -729,7 +758,7 @@ describe('computeMomentumScore', () => {
 
   it('confirmedToday bump never exceeds the 100 ceiling', () => {
     const result = computeMomentumScore(makeMomentum({
-      completedCallDays14d: 14, confirmedFocusDays14d: 14, confirmedToday: true,
+      morningCallDays14d: 14, confirmedFocusDays14d: 14, confirmedToday: true,
     }));
     expect(result.score).toBe(100);
   });
@@ -746,14 +775,14 @@ describe('computeMomentumScore', () => {
 
   it('score is always 0-100', () => {
     [0, 5, 7, 14, 20].forEach(n => {
-      const result = computeMomentumScore(makeMomentum({ completedCallDays14d: n }));
+      const result = computeMomentumScore(makeMomentum({ morningCallDays14d: n }));
       expect(result.score).toBeGreaterThanOrEqual(0);
       expect(result.score).toBeLessThanOrEqual(100);
     });
   });
 
   it('topFix nudges call frequency when calls < 5', () => {
-    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 3 }));
+    const result = computeMomentumScore(makeMomentum({ morningCallDays14d: 3 }));
     expect(result.topFix?.description).toMatch(/morning calls/i);
   });
 });
@@ -793,35 +822,35 @@ describe('computeCalendarFit -- clarity blend', () => {
 
   it('4-way 30/30/20/20 blend when both clarity and momentum present', () => {
     const p = [makeP(1, 'Build', 1)];
-    // focus=100, energy=80, clarity=20, momentum≈50 (7/14*70=35 + 7/14*30=15)
+    // focus=100, energy=80, clarity=20, momentum=40 (R12 T4: 7/14*50=25 + 0 open + 7/14*30=15)
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [makeRecovDay('2026-06-14', 80)], makeSleep(80),
       45,
       { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 },
-      { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
+      { morningCallDays14d: 7, morningCallDays7d: 4, openCallCount14d: 0, confirmedFocusDays14d: 7, streakDays: 4 },
     );
     expect(fit.clarityScore).toBeDefined();
     expect(fit.momentumScore).toBeDefined();
-    // 100*0.3 + 80*0.3 + 20*0.2 + 50*0.2 = 30+24+4+10 = 68
-    expect(fit.edgeScore).toBe(68);
+    // 100*0.3 + 80*0.3 + 20*0.2 + 40*0.2 = 30+24+4+8 = 66
+    expect(fit.edgeScore).toBe(66);
   });
 
-  it('energy calibrating + 4-way: renormalises 30/20/20 → focus 100, clarity 20, momentum 50 → edgeScore=63', () => {
+  it('energy calibrating + 4-way: renormalises 30/20/20 → focus 100, clarity 20, momentum 40 → edgeScore=60', () => {
     const p = [makeP(1, 'Build', 1)];
-    // focus=100, no whoop→energy calibrating (excluded), clarity=20, momentum=50
+    // focus=100, no whoop→energy calibrating (excluded), clarity=20, momentum=40 (R12 T4)
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [], null, // no Whoop → energy excluded from blend
       45,
       { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 },
-      { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
+      { morningCallDays14d: 7, morningCallDays7d: 4, openCallCount14d: 0, confirmedFocusDays14d: 7, streakDays: 4 },
     );
     // priorities.length=1 → top-level calibrating=false (per-component energy calibrating stays true in breakdown)
     expect(fit.calibrating).toBe(false);
     expect(fit.energyScore.calibrating).toBe(true); // breakdown still shows calibrating
-    // Weights 30/20/20 renorm to 70 total → (100*30 + 20*20 + 50*20)/70 = 4400/70 ≈ 63
-    expect(fit.edgeScore).toBe(63);
+    // Weights 30/20/20 renorm to 70 total → (100*30 + 20*20 + 40*20)/70 = 4200/70 = 60
+    expect(fit.edgeScore).toBe(60);
   });
 
   it('without any optional inputs -- keeps legacy 50/50 blend', () => {
@@ -899,22 +928,22 @@ describe('computeFocusScore — edge cases', () => {
 // ─── computeMomentumScore — edge cases ───────────────────────────────────────
 
 describe('computeMomentumScore — edge cases', () => {
-  it('completedCallDays14d capped at 14 (over-reporting does not break score)', () => {
-    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 20, confirmedFocusDays14d: 20 }));
+  it('morningCallDays14d capped at 14 (over-reporting does not break score)', () => {
+    const result = computeMomentumScore(makeMomentum({ morningCallDays14d: 20, confirmedFocusDays14d: 20 }));
     expect(result.score).toBeLessThanOrEqual(100);
     expect(result.score).toBeGreaterThanOrEqual(0);
   });
 
-  it('completedCallDays7d > completedCallDays14d is handled without crash', () => {
+  it('morningCallDays7d > morningCallDays14d is handled without crash', () => {
     // Inconsistent data (7d > 14d) should not cause NaN or an exception
-    const result = computeMomentumScore(makeMomentum({ completedCallDays14d: 2, completedCallDays7d: 5 }));
+    const result = computeMomentumScore(makeMomentum({ morningCallDays14d: 2, morningCallDays7d: 5 }));
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(Number.isNaN(result.score)).toBe(false);
   });
 
   it('all zeros except confirmedToday=true gives non-zero score and not calibrating', () => {
     const result = computeMomentumScore({
-      completedCallDays14d: 0, completedCallDays7d: 0,
+      morningCallDays14d: 0, morningCallDays7d: 0, openCallCount14d: 0,
       confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: true,
     });
     expect(result.calibrating).toBeFalsy();
@@ -923,9 +952,9 @@ describe('computeMomentumScore — edge cases', () => {
 
   it('drivers array is always non-empty (calibrating or not)', () => {
     [
-      makeMomentum({ completedCallDays14d: 0, completedCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0 }),
-      makeMomentum({ completedCallDays14d: 7 }),
-      makeMomentum({ completedCallDays14d: 14, confirmedFocusDays14d: 14 }),
+      makeMomentum({ morningCallDays14d: 0, morningCallDays7d: 0, confirmedFocusDays14d: 0, streakDays: 0 }),
+      makeMomentum({ morningCallDays14d: 7 }),
+      makeMomentum({ morningCallDays14d: 14, confirmedFocusDays14d: 14 }),
     ].forEach(inputs => {
       const r = computeMomentumScore(inputs);
       expect(Array.isArray(r.drivers)).toBe(true);
