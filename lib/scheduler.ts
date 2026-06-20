@@ -661,6 +661,9 @@ export async function scheduleOpenCall(userId: number) {
 
   const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
   const briefingId = result.lastInsertRowid;
+  // R12 T4 (Core, cross-lane additive): flag as an open call so Momentum scores it
+  // distinctly from scheduled morning briefings.
+  try { briefingQueries.markOpenCall(briefingId); } catch { /* non-fatal — defaults to 0 */ }
 
   const phoneNumber = user.phone_number;
   if (phoneNumber && process.env.VAPI_API_KEY) {

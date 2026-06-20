@@ -47,8 +47,9 @@ export interface ClarityInputs {
 // Inputs for the Momentum Score — trailing 7–14 day engagement, calendar-derived.
 // Callers compute these from briefing history + daily_focus (synchronous DB reads).
 export interface MomentumInputs {
-  completedCallDays14d: number;  // distinct days with a completed briefing in last 14d
-  completedCallDays7d: number;   // distinct days with completed briefing in last 7d (driver text)
+  morningCallDays14d: number;    // distinct days with a completed MORNING briefing in last 14d
+  morningCallDays7d: number;     // distinct days with a completed morning briefing in last 7d (driver text)
+  openCallCount14d: number;      // R12 T4 — total completed ad-hoc open calls in last 14d (not day-bucketed)
   confirmedFocusDays14d: number; // days with confirmed focus areas in last 14d
   streakDays: number;            // current consecutive-morning briefing streak
   confirmedToday?: boolean;      // today's focus is confirmed → immediate, visible momentum lift
@@ -421,15 +422,16 @@ export function computeClarityScore(inputs: ClarityInputs): ScoreResult {
 
 /**
  * Momentum Score = trailing 7–14 day engagement, hardware-free.
- * Show-up (70 pts): completed morning calls out of last 14 days.
+ * Show-up (50 pts): completed MORNING-briefing days out of last 14 days.
+ * Open-call bonus (20 pts): R12 T4 — every ad-hoc open call moves the score (2 pts each, ≤10 calls).
  * Engagement (30 pts): confirmed focus areas out of last 14 days.
  * Calibrating on day 1 (no completed calls + no confirmed focus yet).
  * Pure — caller provides the counts.
  */
 export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
-  const { completedCallDays14d, completedCallDays7d, confirmedFocusDays14d, streakDays, confirmedToday = false } = inputs;
+  const { morningCallDays14d, morningCallDays7d, openCallCount14d, confirmedFocusDays14d, streakDays, confirmedToday = false } = inputs;
 
-  if (completedCallDays14d === 0 && confirmedFocusDays14d === 0 && !confirmedToday) {
+  if (morningCallDays14d === 0 && openCallCount14d === 0 && confirmedFocusDays14d === 0 && !confirmedToday) {
     return {
       score: 0,
       calibrating: true,
@@ -438,7 +440,8 @@ export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
     };
   }
 
-  const showUpScore    = Math.round(completedCallDays14d / 14 * 70);
+  const showUpScore     = Math.round(morningCallDays14d / 14 * 50);
+  const openCallBonus   = Math.min(openCallCount14d * 2, 20); // R12 T4 — up to 10 open calls × 2 pts
   const engagementScore = Math.round(confirmedFocusDays14d / 14 * 30);
   // Confirming TODAY gives an immediate, visible lift. Without it, confirming adds
   // 1 day to a 14-day window (≈2 momentum pts ≈ 0.4 Edge after the 20% blend) —
@@ -446,10 +449,14 @@ export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
   // committing to your day move the headline number by a few points right away.
   const TODAY_CONFIRM_BONUS = 20;
   const todayBonus = confirmedToday ? TODAY_CONFIRM_BONUS : 0;
-  const score = clamp(0, 100, showUpScore + engagementScore + todayBonus);
+  const score = clamp(0, 100, showUpScore + openCallBonus + engagementScore + todayBonus);
 
   const drivers: string[] = [];
-  drivers.push(`Shown up ${completedCallDays7d} of the last 7 mornings.`);
+  drivers.push(
+    openCallCount14d > 0
+      ? `${morningCallDays7d} morning briefings + ${openCallCount14d} open call${openCallCount14d !== 1 ? 's' : ''} in the last 14 days.`
+      : `Shown up ${morningCallDays7d} of the last 7 mornings.`
+  );
   if (streakDays >= 2) drivers.push(`${streakDays}-morning streak — keep it going.`);
   if (confirmedToday) {
     drivers.push("Today's focus locked in — Momentum boosted. ✦");
@@ -461,8 +468,8 @@ export function computeMomentumScore(inputs: MomentumInputs): ScoreResult {
   }
 
   let topFix: ScoreResult['topFix'] = null;
-  if (completedCallDays14d < 5) {
-    topFix = { description: `${14 - completedCallDays14d} more morning calls this fortnight would push Momentum past 70.`, op: 'create' };
+  if (morningCallDays14d < 5) {
+    topFix = { description: `${14 - morningCallDays14d} more morning calls this fortnight would push Momentum past 70.`, op: 'create' };
   } else if (confirmedFocusDays14d < 3) {
     topFix = { description: 'Confirm your daily focus areas each morning — it directly lifts Momentum.', op: 'create' };
   } else if (streakDays < 5) {
