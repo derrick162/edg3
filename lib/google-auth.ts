@@ -70,20 +70,6 @@ export function getGmailTokens(userId: number): ResolvedGoogleToken | undefined 
   return getCalendarTokens(userId);
 }
 
-/** Upsert the dedicated Gmail account's tokens (account_type='gmail' equivalent). */
-export function saveGmailTokens(
-  userId: number,
-  tokens: { access_token: string; refresh_token?: string | null; expiry?: string | null; scope?: string | null },
-  email?: string | null,
-): void {
-  gmailTokenQueries.upsert(userId, tokens.access_token, tokens.refresh_token ?? null, tokens.expiry ?? null, tokens.scope ?? null, email ?? null);
-}
-
-/** Disconnect ONLY the dedicated Gmail account (leaves the calendar account intact). */
-export function disconnectGmailAccount(userId: number): void {
-  gmailTokenQueries.delete(userId);
-}
-
 /** True if the user has linked a SEPARATE Gmail account (vs. only the calendar grant). */
 export function hasLinkedGmailAccount(userId: number): boolean {
   return gmailTokenQueries.get(userId) !== undefined;
@@ -103,57 +89,6 @@ export function persistRefreshedToken(
     gmailTokenQueries.upsert(userId, t.access_token, t.refresh_token ?? null, t.expiry ?? null, t.scope ?? null);
   } else {
     calendarQueries.upsert(userId, t.access_token, t.refresh_token ?? '', t.expiry ?? '', t.scope);
-  }
-}
-
-// --- Dedicated Gmail account OAuth flow --------------------------------------
-// The primary account's OAuth flow (client + code exchange) lives in lib/calendar.ts and
-// is hardcoded to the calendar redirect URI + scopes. The dedicated Gmail account needs its
-// OWN redirect URI and a compose-only scope set, so its flow lives here (Security-owned).
-// ⚠️ EXTERNAL STEP: GMAIL_REDIRECT_URI must be registered as an authorized redirect URI in
-// the Google Cloud console, and gmail.compose requires OAuth app verification before prod.
-
-function gmailRedirectUri(): string {
-  return process.env.GMAIL_REDIRECT_URI || 'http://localhost:3000/api/auth/google/gmail/callback';
-}
-
-// openid + email capture the linked account's address for the accounts-status UI; compose
-// lets Edge draft emails; readonly lets Edge read emails for reply tracking and context.
-export const GMAIL_ACCOUNT_SCOPES: string[] = ['openid', 'email', GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE];
-
-export async function getGmailAuthUrl(state: string): Promise<string> {
-  const { google } = await import('googleapis');
-  const client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, gmailRedirectUri());
-  return client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: GMAIL_ACCOUNT_SCOPES, state });
-}
-
-export interface GmailTokenExchange {
-  access_token?: string | null;
-  refresh_token?: string | null;
-  expiry_date?: number | null;
-  scope?: string | null;
-  id_token?: string | null;
-}
-
-export async function exchangeGmailCode(code: string): Promise<GmailTokenExchange> {
-  const { google } = await import('googleapis');
-  const client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, gmailRedirectUri());
-  const { tokens } = await client.getToken(code);
-  return tokens as GmailTokenExchange;
-}
-
-// Decode the `email` claim from a Google id_token (JWT). Signature verification is not
-// needed here: the token came directly from Google's token endpoint over TLS during the
-// code exchange. Returns null on any malformed input.
-export function emailFromIdToken(idToken?: string | null): string | null {
-  if (!idToken) return null;
-  try {
-    const payload = idToken.split('.')[1];
-    if (!payload) return null;
-    const json = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { email?: unknown };
-    return typeof json.email === 'string' ? json.email : null;
-  } catch {
-    return null;
   }
 }
 
