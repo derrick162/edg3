@@ -772,6 +772,15 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R9 — 7 live-call quality tickets — SHIPPED (1975 green).** All from Derrick's live call + dashboard review; each verified genuinely unbuilt before building.
+  - **T1 voice speed:** `speed: 0.9` on both ElevenLabs VOICES in `lib/vapi.ts` (Edge spoke too fast). Test updated.
+  - **T2 briefing fallback:** `buildFallbackBriefing` drops the apologetic "trouble loading" opener (delivers essentials silently) + strips `[bracket]` descriptions and truncates each priority to 5 words; logs the non-text-content fallback cause; main prompt now says priority TITLE only. +2 tests.
+  - **T3 spelling override (prompt):** SPELLING OVERRIDE block (spelled-out letters are canonical — fixes "Gym"→"J.I.M.") + CAPTURE LIFESTYLE PREFERENCES note (rememberPreference on massage/cuisine/activity enjoyment).
+  - **T4 getWeather tool:** new `lib/weather.ts` (pure WMO mapping + spoken formatter, tested) + `getWeatherForecast` (Open-Meteo, free/no-key, graceful degrade); `getWeather` case in `tool-call/route.ts`; prompt rule + commented toolId placeholder. 11 tests. ⚠️ External: Derrick creates the `getWeather` Vapi tool (no params) + pastes UUID.
+  - **T5 Focus Score detail:** `computeFocusScore` exposes `alignedHours`/`totalWorkingHours` and leads drivers with "X of Y working hours aligned to your focus areas this week"; scores route gives a SPECIFIC degraded-refresh reason (no priorities / alignment unavailable / no events). +1 test.
+  - **T6 Clarity→Momentum:** removed `briefingCallsCount` from Clarity (engagement is a Momentum signal); 10 pts reallocated to facts (15→22) + memory (10→13) depth; dropped from `ClarityInputs` + all 3 callers. Tests updated.
+  - **T7 call count + weekend brief:** **Audit** — open calls already log (`scheduleOpenCall` writes an `[Open call]` briefing row, marked completed) and already count; the real bug was day-bucketing by UTC slice while `computeCallStreak` is tz-aware → now buckets by the user's LOCAL day. **Weekend Focus Brief** — `FocusRecommendationCard` shows a warm 3-bullet weekend card (movement bullet varies by Whoop tier) instead of the cold placeholder on Sat/Sun; new pure `isWeekend`/`buildWeekendBrief` helpers + 5 tests; dashboard passes `recoveryTier`.
+  - ⚠️ Claimed shared `lib/vapi.ts` (additive prompt/voice-config only) per Kevin's tie-break assigning T1/T3/T4 to Core. 1975/1975 green, tsc + next build clean. Committed on `core` — ready for PM merge.
 - **2026-06-19** — **Memory-guard parity in sleep-time consolidation (UX-4 bug-hunt) — SHIPPED (1960 green).**
   Found during an R10 verification sweep: every R10 ticket (sleep-time consolidation, fact PATCH/DELETE,
   mid-call reconfirmation, day-plan `scoreBefore`/`changeLines`) was **already shipped on master** — but the
