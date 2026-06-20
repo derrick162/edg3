@@ -110,7 +110,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(📋 **R14 DISPATCHED (2026-06-20) — Vapi tool expansion: findFreeTime (T1), createRecurringEvent (T2), attendees + editEventAttendees (T3), addTask/completeTask (T4), forgetFact (T5).**)_ | `app/api/vapi/tool-call/route.ts`, `lib/vapi.ts`, `lib/time.ts` | 2026-06-20 |
 | 🔒 Security | `security` | _(📋 **R12 T1 DISPATCHED (2026-06-20) — `getRecentEmailSignal` 24h cache gate + suppress empty audit entries.**)_ | `lib/gmail.ts` | 2026-06-20 |
 | 🔧 PM/CoS | `master` | _(✅ **R14 dispatched to Core (T1–T5 — Vapi tool expansion). Security R12 T1 re-nudged (email cache gate). Vapi UUIDs wired for R13 tools. ROADMAP.md ownership map cleaned up.)_ | `ROADMAP-CORE.md`, `ROADMAP.md` | 2026-06-20 |
-| 🎨 Design | `design` | _(✅ **R12 email-removal QA pass done (1939 green).** Removed stale Gmail connect/disconnect UI from dashboard (all routes deleted in R12). Fixed security page Gmail section (was "drafts only", now "read-only"). Fixed landing page Gmail feature bullet. All pages confirmed clean.)_ | `app/dashboard/page.tsx`, `app/security/page.tsx`, `app/page.tsx`, `content/qa-log.md` | 2026-06-20 |
+| 🎨 Design | `design` | _(✅ **QA + speculative polish done (1956 green).** R12 email-removal QA: removed stale Gmail UI from dashboard, fixed security/landing page copy. Speculative: filled accent token gaps (--edg-accent-10/50/70), tokenized FocusScoreboard gradient + ENERGY_COLOR. Idle, awaiting R14 dispatch.)_ | `app/dashboard/page.tsx`, `app/security/page.tsx`, `app/page.tsx`, `app/globals.css` | 2026-06-20 |
 
 ---
 
