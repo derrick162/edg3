@@ -49,6 +49,48 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 11 — Edge Score UI + weekend card + activity dedup)
+
+> `git merge master` first (master is at `9918c01`). Three tickets. Do in order.
+
+---
+
+### T1 — Edge Score: Focus Score "hours" label prep (FAST — 30 min)
+
+Core (Darren T5) is adding `alignedHours` and `totalWorkingHours` to the `/api/scores` response so the Focus Score can show "4.5 of 45 working hours focused on priorities." Prep the UI now so when Core ships, it just works.
+
+**What to build:** In the Focus Score card (wherever it renders in the Edge Score breakdown — check `app/dashboard/page.tsx` and any score breakdown modal/panel), add a subtitle slot below the score number. When `alignedHours` and `totalWorkingHours` are present in the API response, render: `"{alignedHours}h of {totalWorkingHours}h focused on your priorities this week"` in the small muted text style (`text-xs text-white/50`). When absent, render nothing (degrades gracefully). Also update the error driver text to render in the same slot — the current bullet point style is too plain; use a small icon (⚠) + amber text when it's an error message vs the normal muted style for normal data.
+
+**Test:** mock the score response with `alignedHours: 4.5, totalWorkingHours: 45` → verify the label appears correctly formatted. Preflight green.
+
+---
+
+### T2 — Weekend Focus Brief card (MEDIUM — 1h)
+
+Core (Darren T7) is adding weekend detection to `FocusRecommendationCard` and will pass a `weekendMode: true` prop + `recoveryTier: 'high' | 'medium' | 'low' | null` when it's Saturday or Sunday. Build the visual for this state now.
+
+**What to build:** In `components/ui/FocusRecommendationCard.tsx`, add a weekend variant. When `weekendMode` is true and no recommendation exists:
+
+- **Header:** "Weekend mode" in a soft indigo pill badge, then `"Good morning — here's how to make the most of today"` as the card title (not the usual "Here's your focus read").
+- **Recovery dot:** A single line showing Whoop recovery tier in its tier color — `"Recovery: 82% · Green"` with the green dot from the existing RecoveryCard styles. If `recoveryTier` is null, omit this line.
+- **Bullets:** 3 soft bullet items in muted text (not the scored priority cards). Hard-code the placeholder content for now — Core will replace with dynamic content: `"High energy day — good time for the gym or a long walk."` / `"Clear out one thing that's been on your mental backlog."` / `"Protect the afternoon for something restorative."` Tier-specific: when `recoveryTier === 'low'`, first bullet changes to `"Recovery is low today — lighter movement (walk, stretch) over hard training."`
+- **No CTA buttons** — remove the "Looks right — set focus" / "Skip today" buttons for the weekend variant. Just the bullets.
+- **Visual feel:** Use the same glass-card style but with softer opacity — `bg-white/3` instead of `bg-white/5`. Slightly different accent color — use `--edg-purple` tint instead of `--edg-indigo`.
+
+**Test:** render with `weekendMode=true, recoveryTier='high'` → correct layout; with `recoveryTier=null` → no recovery line. Preflight green.
+
+---
+
+### T3 — Activity tab: dedup "Reviewed N inbox threads" rows (FAST — 30 min)
+
+Derrick's activity log screenshot shows "Reviewed 20 inbox threads" appearing multiple times in the same session. The existing `dedupeItems()` should handle this but may not be covering `email_signal_fetch` action types. Investigate and fix.
+
+**What to do:** In `app/dashboard/page.tsx` (or wherever `buildActivityItems` / `dedupeItems` lives), verify the dedup logic collapses consecutive rows with the same label. If `email_signal_fetch` actions are not being collapsed (check the `buildLabel` output for this action type in `lib/activityLabels.ts`), add it to the dedup-eligible action list. The rule: if 2+ consecutive activity rows have the same label AND are within 5 minutes of each other, collapse to one with a `×N` badge. Do NOT collapse calendar create/delete events (those are real distinct events even with similar names).
+
+**Test:** mock 3 consecutive `email_signal_fetch` rows → renders as 1 row with `×3`. Two calendar creates with the same name at different times → renders as 2 rows. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 — Focus Scoreboard visual shell + dashboard cleanup)
 
 > Master at current HEAD. `git merge master` first. All three dispatch items are additive Design-owned work — no Core coordination needed for the visual shell.
