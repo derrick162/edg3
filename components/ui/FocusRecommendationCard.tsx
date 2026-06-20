@@ -27,8 +27,6 @@ export interface FocusRecommendationCardProps {
   onDismiss?: () => void;
   /** True on Saturday/Sunday — Core sets this; shows weekend brief instead of focus read */
   weekendMode?: boolean;
-  /** Whoop recovery tier for weekend card recovery dot. null = Whoop not connected */
-  recoveryTier?: 'high' | 'medium' | 'low' | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -181,22 +179,22 @@ function AreaRow({
 
 // ── Tier helpers for weekend card ─────────────────────────────────────────────
 
-function tierDotColor(tier: 'high' | 'medium' | 'low'): string {
-  if (tier === 'high')   return 'var(--whoop-high-border, #22c55e)';
-  if (tier === 'medium') return 'var(--whoop-medium-border, #f59e0b)';
+function tierDotColor(tier: 'green' | 'yellow' | 'red'): string {
+  if (tier === 'green')  return 'var(--whoop-high-border, #22c55e)';
+  if (tier === 'yellow') return 'var(--whoop-medium-border, #f59e0b)';
   return 'var(--whoop-low-border, #ef4444)';
 }
 
-function tierLabel(tier: 'high' | 'medium' | 'low'): string {
-  if (tier === 'high')   return 'Green';
-  if (tier === 'medium') return 'Yellow';
+function tierLabel(tier: 'green' | 'yellow' | 'red'): string {
+  if (tier === 'green')  return 'Green';
+  if (tier === 'yellow') return 'Yellow';
   return 'Red';
 }
 
 // ── Weekend Focus Brief card ───────────────────────────────────────────────────
 
-function WeekendBriefCard({ recoveryTier }: { recoveryTier?: 'high' | 'medium' | 'low' | null }) {
-  const bullets = recoveryTier === 'low'
+function WeekendBriefCard({ recoveryTier }: { recoveryTier?: 'green' | 'yellow' | 'red' | null }) {
+  const bullets = recoveryTier === 'red'
     ? [
         'Recovery is low today — lighter movement (walk, stretch) over hard training.',
         'Clear out one thing that\'s been on your mental backlog.',
@@ -241,7 +239,7 @@ function WeekendBriefCard({ recoveryTier }: { recoveryTier?: 'high' | 'medium' |
             className="w-2 h-2 rounded-full flex-shrink-0"
             style={{ background: tierDotColor(recoveryTier) }}
           />
-          Recovery: {recoveryTier === 'high' ? '82%' : recoveryTier === 'medium' ? '55%' : '28%'} · {tierLabel(recoveryTier)}
+          Recovery: {recoveryTier === 'green' ? '82%' : recoveryTier === 'yellow' ? '55%' : '28%'} · {tierLabel(recoveryTier)}
         </div>
       )}
 
@@ -271,7 +269,6 @@ export function FocusRecommendationCard({
   onConfirm,
   onDismiss,
   weekendMode = false,
-  recoveryTier,
 }: FocusRecommendationCardProps) {
   const [areas, setAreas] = useState<FocusRecommendationArea[]>(
     recommendation?.areas ?? []
