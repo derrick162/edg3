@@ -1169,6 +1169,14 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R14 — Vapi tool expansion (5 tickets) — SHIPPED (1986 green).**
+  - **T1 `findFreeTime`:** freebusy.query across calendars → pure `computeFreeSlots` (lib/time.ts) returns ≤3 duration-sized open slots in a daily window over a date range; spoken list. FINDING FREE TIME prompt.
+  - **T2 createEvent `recurrence`:** optional RRULE string (validated) → `recurrence:[rrule]` on timed + all-day inserts; pure `buildRrule` helper (lib/time.ts). RECURRING prompt.
+  - **T3 attendees:** `attendees` param on createEvent (Google auto-invites) + new `editEventAttendees` handler (resolve over next 30d, pure `mergeAttendees` add/remove/dedup, sendUpdates:'all', undo). ATTENDEES prompt.
+  - **T4 `addTask`/`completeTask`:** create edg3 task; complete via pure `pickTaskToComplete` fuzzy matcher (exact>substring, ties→ask). TASKS prompt.
+  - **T5 `forgetFact`:** retire active facts matching a topic (pure `factsMatchingTopic`); CORRECTING FACTS prompt (forgetFact → rememberPreference).
+  - New pure modules: `lib/attendees.ts`, `lib/taskMatch.ts`, `lib/factForget.ts` + `computeFreeSlots`/`buildRrule` in time.ts. +30 tests. Prompt blocks + toolId placeholders (both arrays). 1986/1986 green, tsc + next build clean. Committed on `core` — ready for PM merge.
+  - ⚠️ **External (PM):** create Vapi tools `findFreeTime` (duration, startDate?, endDate?, windowStart?, windowEnd?), `editEventAttendees` (title, currentTime?, add?[], remove?[]), `addTask` (title, dueDate?), `completeTask` (title), `forgetFact` (topic); add `recurrence` + `attendees` params to the existing `createEvent` tool. Paste UUIDs into both `lib/vapi.ts` toolIds arrays.
 - **2026-06-20** — **R13 — calendar management (4 tools) — SHIPPED (1955 green).** Each verified unbuilt first.
   - **T1 `batchReschedule`:** move/clear every timed event in a window with ONE confirmToken (skips all-day, read-only, non-organizer); per-event undo. Pure `isTimedEventInWindow`/`formatBatchPreview` in new `lib/batchSchedule.ts`.
   - **T2 recurring skip + end:** `skipRecurringOccurrence` (cancel one occurrence, no token, recreate-undo) + `endRecurringSeries` (cap master RRULE via new pure `applyRruleUntil` in `lib/time.ts`, patch-undo).
