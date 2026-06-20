@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   activity: [] as unknown[],
   people: [] as unknown[],
   peopleModels: [] as unknown[],
+  undo: [] as unknown[],
   dbRun: vi.fn(),
   dbGet: vi.fn<() => unknown>(() => undefined),
   dbAll: vi.fn<() => unknown[]>(() => []),
@@ -48,7 +49,7 @@ vi.mock('@/lib/db', () => ({
     getRecent: (_id: number, _lim: number) => h.memories,
   },
   factQueries: {
-    getAll: (_id: number) => h.facts,
+    getAll: (_id: number, _opts?: { includeRetired?: boolean }) => h.facts,
   },
   taskQueries: {
     getRecent: (_id: number, _days: number) => h.tasks,
@@ -71,6 +72,9 @@ vi.mock('@/lib/db', () => ({
   },
   peopleModelQueries: {
     listForUser: (_id: number) => h.peopleModels,
+  },
+  undoQueries: {
+    listRecent: (_id: number, _lim?: number) => h.undo,
   },
 }));
 
@@ -119,6 +123,7 @@ beforeEach(() => {
   h.activity = [];
   h.people = [];
   h.peopleModels = [];
+  h.undo = [];
   h.preparedSqls = [];
   h.deleteUserData.mockReset();
   h.dbAll.mockReturnValue([]);
@@ -166,7 +171,7 @@ describe('GET /api/account/export — response shape', () => {
     const res = await exportGET(makeReq());
     const data = await res.json();
     expect(data).toHaveProperty('exportedAt');
-    expect(data).toHaveProperty('version', '3');
+    expect(data).toHaveProperty('version', '4');
     expect(data).toHaveProperty('profile');
     expect(data).toHaveProperty('priorities');
     expect(data).toHaveProperty('memories');
@@ -187,6 +192,28 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('factHistory');
     expect(data).toHaveProperty('focusMilestones');
     expect(data).toHaveProperty('supportMessages');
+    // T3-3 completion — undo history.
+    expect(data).toHaveProperty('undoHistory');
+  });
+
+  it('T3-3: facts include status + confidence metadata (active + retired); undoHistory exported', async () => {
+    h.facts = [
+      { category: 'goal', entity: 'CIBC', statement: 'Active goal', learned_at: '2026-06-10', valid_until: null, confidence: 'high', confidence_score: 0.9, last_confirmed_at: '2026-06-18' },
+      { category: 'goal', entity: 'CIBC', statement: 'Old retired goal', learned_at: '2026-05-01', valid_until: '2026-06-09', confidence: 'low', confidence_score: 0.2, last_confirmed_at: null },
+    ];
+    h.undo = [
+      { id: 5, label: "edited 'Investor sync'", undone: 0, created_at: '2026-06-18T07:05:00Z' },
+      { id: 4, label: "deleted 'Old block'", undone: 1, created_at: '2026-06-17T09:00:00Z' },
+    ];
+    const res = await exportGET(makeReq());
+    const data = await res.json();
+
+    expect(data.facts[0]).toMatchObject({ status: 'active', retiredAt: null, confidence: 'high', confidenceScore: 0.9, lastConfirmedAt: '2026-06-18' });
+    expect(data.facts[1]).toMatchObject({ status: 'retired', retiredAt: '2026-06-09', confidence: 'low', confidenceScore: 0.2 });
+    expect(data.undoHistory).toEqual([
+      { action: "edited 'Investor sync'", undone: false, at: '2026-06-18T07:05:00Z' },
+      { action: "deleted 'Old block'", undone: true, at: '2026-06-17T09:00:00Z' },
+    ]);
   });
 
   it('includes the four R10 tables with decrypted (readable) content, not ciphertext', async () => {
