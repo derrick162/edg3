@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries, peopleModelQueries } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries, peopleModelQueries, undoQueries } from '@/lib/db';
 import { decryptField, safeDecryptField } from '@/lib/crypto';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -173,9 +173,17 @@ export async function GET(_req: NextRequest) {
       createdAt: s.created_at,
     }));
 
+  // T3-3: undo history — the human-readable label of every action the user could undo, with
+  // whether it was undone. The internal `payload` (restore state) is deliberately NOT exported.
+  const undoHistoryRows = undoQueries.listRecent(userId, 10000).map(u => ({
+    action: u.label,
+    undone: !!u.undone,
+    at: u.created_at,
+  }));
+
   const payload = {
     exportedAt: new Date().toISOString(),
-    version: '3',
+    version: '4',
     profile: {
       name: profile.name,
       email: profile.email,
@@ -196,11 +204,18 @@ export async function GET(_req: NextRequest) {
       content: m.content,
       createdAt: m.created_at,
     })),
-    facts: factQueries.getAll(userId).map(f => ({
+    // T3-3: include RETIRED facts (the bi-temporal history) with status + confidence metadata,
+    // so the export is the user's complete memory record, not just what's currently active.
+    facts: factQueries.getAll(userId, { includeRetired: true }).map(f => ({
       category: f.category,
       entity: f.entity ?? null,
       statement: f.statement,
       learnedAt: f.learned_at,
+      status: f.valid_until == null ? 'active' : 'retired',
+      retiredAt: f.valid_until ?? null,
+      confidence: f.confidence,
+      confidenceScore: f.confidence_score ?? null,
+      lastConfirmedAt: f.last_confirmed_at ?? null,
     })),
     tasks: taskQueries.getRecent(userId, 365).map(t => ({
       text: t.text,
@@ -232,6 +247,7 @@ export async function GET(_req: NextRequest) {
     factHistory: factHistoryRows,
     focusMilestones: focusMilestoneRows,
     supportMessages: supportMessageRows,
+    undoHistory: undoHistoryRows,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
