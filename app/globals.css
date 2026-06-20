@@ -77,6 +77,12 @@
   --edg-warning-border: rgba(245, 158, 11,  0.25);
   --edg-danger-tint:    rgba(239, 68,  68,  0.15);
   --edg-danger-border:  rgba(239, 68,  68,  0.30);
+  --edg-danger-80:      rgba(239, 68,  68,  0.80);
+  /* amber-300 — brighter than --edg-warning; used for high-energy ENERGY_COLOR */
+  --edg-amber-bright:        #fbbf24;
+  --edg-amber-bright-tint:   rgba(251, 191, 36,  0.12);
+  --edg-amber-bright-text:   rgba(251, 191, 36,  0.90);
+  --edg-slate-tint:          rgba(148, 163, 184, 0.10);
 
   /* ── Energy OS — red / yellow / green daily signal ── */
   --energy-green:        #22c55e;

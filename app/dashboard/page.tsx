@@ -1193,9 +1193,9 @@ interface ScoreboardData {
 }
 
 const ENERGY_COLOR: Record<string, { bg: string; text: string; label: string }> = {
-  high:   { bg: 'rgba(251,191,36,0.12)',  text: 'rgba(251,191,36,0.9)',  label: '⚡ High energy' },
-  medium: { bg: 'var(--edg-accent-10)',   text: 'var(--edg-violet)',      label: '~ Medium energy' },
-  low:    { bg: 'rgba(148,163,184,0.10)', text: 'var(--text-faint)',      label: '· Low energy' },
+  high:   { bg: 'var(--edg-amber-bright-tint)', text: 'var(--edg-amber-bright-text)', label: '⚡ High energy' },
+  medium: { bg: 'var(--edg-accent-10)',         text: 'var(--edg-violet)',             label: '~ Medium energy' },
+  low:    { bg: 'var(--edg-slate-tint)',         text: 'var(--text-faint)',             label: '· Low energy' },
 };
 
 function MilestoneDots({ milestones }: { milestones: ScoreboardMilestone[] }) {
@@ -1205,7 +1205,7 @@ function MilestoneDots({ milestones }: { milestones: ScoreboardMilestone[] }) {
       {milestones.map(m => (
         <span key={m.id} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
           style={{
-            background: m.done ? 'rgba(99,102,241,0.12)' : 'var(--edg-accent-08)',
+            background: m.done ? 'var(--edg-accent-10)' : 'var(--edg-accent-08)',
             color: m.done ? 'var(--text-accent)' : 'var(--text-faint)',
             textDecoration: m.done ? 'line-through' : 'none',
           }}>
@@ -1325,7 +1325,7 @@ function FocusScoreboardPanel() {
                     <span
                       className="text-xs font-bold"
                       title={delta.up ? 'Trending up vs last week' : delta.flat ? 'Flat vs last week' : 'Trending down vs last week'}
-                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'rgba(239,68,68,0.8)' }}
+                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'var(--edg-danger-80)' }}
                     >
                       {delta.arrow}
                     </span>
