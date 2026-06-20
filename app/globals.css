@@ -27,6 +27,10 @@
   --edg-violet-tint:   rgba(139, 92, 246, 0.12);
   --edg-violet-border: rgba(139, 92, 246, 0.25);
   --edg-pink:          #ec4899;
+  --edg-teal:          #14b8a6;
+  --edg-rose:          #f43f5e;
+  --edg-amber:         #f59e0b;
+  --edg-slate:         #64748b;
 
   /* Ink */
   --edg-fg:        #e8e8f0;
