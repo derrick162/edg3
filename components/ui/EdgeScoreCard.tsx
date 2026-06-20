@@ -178,7 +178,7 @@ function ArcGauge({ score, color, glow }: { score: number; color: string; glow: 
 // ── Score panel (reused for Focus + Energy) ───────────────────────────────────
 
 function ScorePanel({
-  icon, label, caption, score, drivers, topFix, calibrating, calibratingNote,
+  icon, label, caption, score, drivers, topFix, calibrating, calibratingNote, subtitle, errorMessage,
 }: {
   icon: string;
   label: string;
@@ -188,6 +188,10 @@ function ScorePanel({
   topFix: ScoreTopFix | null;
   calibrating?: boolean;
   calibratingNote?: string;
+  /** Hours-focused label shown below caption — e.g. "4.5h of 45h focused on your priorities" */
+  subtitle?: string;
+  /** Error string rendered with ⚠ + amber instead of a plain driver bullet */
+  errorMessage?: string;
 }) {
   return (
     <div className="rounded-xl p-3" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
@@ -204,7 +208,15 @@ function ScorePanel({
           : <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, background: scoreColor(score) }} />
         }
       </div>
-      <p className="text-xs mb-2 leading-relaxed" style={{ color: 'var(--text-faint)' }}>{caption}</p>
+      <p className="text-xs mb-1.5 leading-relaxed" style={{ color: 'var(--text-faint)' }}>{caption}</p>
+      {/* Subtitle slot: hours label (normal) or error message (amber ⚠) */}
+      {errorMessage ? (
+        <p className="text-xs mb-2 flex items-center gap-1" style={{ color: 'var(--edg-warning, #f59e0b)' }}>
+          <span>⚠</span>{errorMessage}
+        </p>
+      ) : subtitle ? (
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>
+      ) : null}
       {calibrating && calibratingNote
         ? <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{calibratingNote}</p>
         : (
@@ -571,6 +583,12 @@ export function EdgeScoreCard({
                 score={fit.focusScore.score}
                 drivers={fit.focusScore.drivers}
                 topFix={fit.focusScore.topFix}
+                errorMessage={fit.focusScore.errorMessage}
+                subtitle={
+                  typeof fit.alignedHours === 'number' && typeof fit.totalWorkingHours === 'number'
+                    ? `${fit.alignedHours}h of ${fit.totalWorkingHours}h focused on your priorities this week`
+                    : undefined
+                }
               />
 
               {/* ── Energy ── */}

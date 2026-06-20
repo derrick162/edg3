@@ -64,6 +64,13 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   const [savingConsent, setSavingConsent] = useState(false);
   const [voicePref, setVoicePref] = useState<'daniel' | 'aria'>('daniel');
 
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     fetch('/api/profile')
       .then(r => r.json())
@@ -74,6 +81,9 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
         setCurrentTimezone(d.current_timezone || '');
         if (d.data_consent) setDataConsent(d.data_consent as DataConsent);
         if (d.voice_preference === 'aria') setVoicePref('aria');
+        if (d.name) setProfileName(d.name);
+        if (d.email) setProfileEmail(d.email);
+        if (d.phone_number) setProfilePhone(d.phone_number);
         setLoading(false);
       });
   }, []);
@@ -141,14 +151,15 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 max-w-2xl">
+
       {/* Call Settings */}
-      <div>
-        <h2 className="text-lg font-bold mb-4">Call settings</h2>
-        <form onSubmit={handleSaveSettings} className="glass-card p-6 space-y-4">
+      <section>
+        <p className="label-caps mb-3">Call settings</p>
+        <form onSubmit={handleSaveSettings} className="glass-card p-5 space-y-4">
           <div className="flex gap-4 flex-wrap">
-            <div className="flex-1 min-w-[160px]">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Call time</label>
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Call time</label>
               <input
                 type="time"
                 className="input"
@@ -157,7 +168,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
               />
             </div>
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Timezone</label>
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Timezone</label>
               <select
                 className="input"
                 style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)' }}
@@ -177,26 +188,27 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             {settingsSaved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
           </div>
         </form>
-      </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
 
       {/* Traveling this week */}
-      <div>
-        <h2 className="text-lg font-bold mb-1">Traveling this week?</h2>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-          Set the timezone you're currently in. Edg3 uses it for your briefings and bookings until you clear it.
+      <section>
+        <p className="label-caps mb-1">Traveling this week?</p>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          Set the timezone you&apos;re currently in. Edg3 uses it for briefings and bookings until you clear it.
         </p>
-        <div className="glass-card p-6">
-          {currentTimezone ? (
+        <div className="glass-card p-5">
+          {currentTimezone && (
             <div className="flex items-center gap-3 flex-wrap mb-4">
               <span className="badge badge-info">📍 Currently in {TIMEZONES.find(t => t.value === currentTimezone)?.label || currentTimezone}</span>
               <button onClick={() => saveCurrentTimezone('')} disabled={savingTz} className="text-xs" style={{ color: 'var(--edg-danger)' }}>
                 {savingTz ? 'Saving…' : "Clear — I'm home"}
               </button>
             </div>
-          ) : (
-            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Using your home timezone.</p>
           )}
-          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>I'm currently in</label>
+          {!currentTimezone && <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>Using your home timezone.</p>}
+          <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>I&apos;m currently in</label>
           <select
             className="input"
             style={{ background: 'var(--edg-bg-select)', color: 'var(--text-strong)', maxWidth: 360 }}
@@ -210,18 +222,22 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             ))}
           </select>
         </div>
-      </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
 
       {/* Data & Privacy */}
-      <div>
-        <h2 className="text-lg font-bold mb-4">Data &amp; privacy</h2>
+      <section>
+        <p className="label-caps mb-3">Data &amp; privacy</p>
         <DataConsentToggle value={dataConsent} onChange={handleConsentChange} saving={savingConsent} />
-      </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
 
       {/* Voice preference */}
-      <div>
-        <h2 className="text-lg font-bold mb-1">Edg3&apos;s voice</h2>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Choose the voice Edg3 uses on your morning briefings.</p>
+      <section>
+        <p className="label-caps mb-1">Edg3&apos;s voice</p>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Choose the voice Edg3 uses on your morning briefings.</p>
         <div className="flex gap-3">
           {([
             { key: 'daniel', label: 'Daniel', desc: 'Deep, calm' },
@@ -241,6 +257,7 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
                 }}
                 className="flex-1 rounded-xl px-4 py-3 text-left transition-colors"
                 style={{
+                  minHeight: 48,
                   background: active ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)',
                   border: `1px solid ${active ? 'var(--edg-accent-25, var(--edg-accent-20))' : 'var(--edg-hairline)'}`,
                   cursor: 'pointer',
@@ -254,24 +271,55 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
           })}
         </div>
         <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>Applies to your next call.</p>
-      </div>
+      </section>
 
-      {/* Profile */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">Your profile</h2>
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+
+      {/* Your account */}
+      <section>
+        <p className="label-caps mb-3">Your account</p>
+        <div className="glass-card p-5 space-y-3">
+          {profileName && (
+            <div>
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-faint)' }}>Name</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>{profileName}</p>
+            </div>
+          )}
+          {profileEmail && (
+            <div>
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-faint)' }}>Email</p>
+              <p className="text-sm" style={{ color: 'var(--text-body)' }}>{profileEmail}</p>
+            </div>
+          )}
+          {profilePhone && (
+            <div>
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-faint)' }}>Phone</p>
+              <p className="text-sm" style={{ color: 'var(--text-body)' }}>{profilePhone}</p>
+            </div>
+          )}
+          {!profileName && !profileEmail && !profilePhone && (
+            <p className="text-sm" style={{ color: 'var(--text-faint)' }}>Account details will appear here.</p>
+          )}
+        </div>
+      </section>
+
+      <div style={{ borderTop: '1px solid var(--edg-hairline)' }} />
+
+      {/* Profile summary */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <p className="label-caps">Your profile</p>
           <div className="flex items-center gap-3">
             {saved && <span className="text-sm" style={{ color: 'var(--edg-success)' }}>✓ Saved</span>}
             {!editing && (
-              <button onClick={() => setEditing(true)} className="btn-secondary text-sm py-2 px-4">
+              <button onClick={() => setEditing(true)} className="btn-secondary text-sm py-1.5 px-4">
                 ✎ Edit
               </button>
             )}
           </div>
         </div>
-
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-          This is the full context EDG3 uses to understand who you are. Keep it current.
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          The full context Edg3 uses to understand who you are. Keep it current.
         </p>
 
         {editing ? (
@@ -292,12 +340,12 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
             </div>
           </form>
         ) : (
-          <div className="glass-card p-6">
+          <div className="glass-card p-5">
             {profile ? (
               <>
                 <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)', maxHeight: profileExpanded ? 'none' : '9rem', overflow: 'hidden', maskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)', WebkitMaskImage: profileExpanded ? 'none' : 'linear-gradient(to bottom, black 70%, transparent)' }}>
-                {profile}
-              </p>
+                  {profile}
+                </p>
                 {profile.length > 280 && (
                   <button onClick={() => setProfileExpanded(v => !v)} className="text-xs mt-3" style={{ color: 'var(--text-accent)' }}>
                     {profileExpanded ? '▲ Show less' : '▼ Show more'}
@@ -306,12 +354,59 @@ function ProfileTab({ onSettingsSaved }: { onSettingsSaved?: () => void }) {
               </>
             ) : (
               <p className="text-sm text-center py-4" style={{ color: 'var(--text-faint)' }}>
-                No profile set. Click Edit to add one.
+                No profile set yet. Click Edit to add one.
               </p>
             )}
           </div>
         )}
+      </section>
+
+      {/* Danger zone */}
+      <div style={{ borderTop: '2px solid var(--edg-danger-border)', paddingTop: '1.25rem', marginTop: '2rem' }}>
+        <p className="label-caps mb-1" style={{ color: 'var(--edg-danger)' }}>Danger zone</p>
+        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+          Permanently deletes your account, all call history, facts, and data. This cannot be undone.
+        </p>
+        {!deleteConfirm ? (
+          <button
+            onClick={() => setDeleteConfirm(true)}
+            className="text-sm px-4 py-2 rounded-lg transition-colors"
+            style={{
+              color: 'var(--edg-danger)',
+              background: 'var(--edg-danger-tint)',
+              border: '1px solid var(--edg-danger-border)',
+            }}
+          >
+            Delete my account
+          </button>
+        ) : (
+          <div className="glass-card p-5" style={{ borderColor: 'var(--edg-danger-border)', background: 'var(--edg-danger-tint)' }}>
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--edg-danger)' }}>Are you sure?</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+              Every call, fact, task, and setting will be permanently deleted.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setDeleting(true);
+                  await fetch('/api/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'delete my account' }) }).catch(() => {});
+                  setDeleting(false);
+                  window.location.href = '/login';
+                }}
+                disabled={deleting}
+                className="text-sm px-4 py-2 rounded-lg font-semibold"
+                style={{ color: '#fff', background: 'var(--edg-danger)', border: 'none' }}
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete everything'}
+              </button>
+              <button onClick={() => setDeleteConfirm(false)} className="btn-secondary text-sm py-2 px-4">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
     </div>
   );
 }
@@ -717,9 +812,9 @@ function ActivityTab() {
       {items.length === 0 ? (
         <div className="glass-card p-8 text-center">
           <p className="text-3xl mb-3" role="img" aria-label="shield">&#x1F6E1;</p>
-          <p className="font-semibold mb-2">Edg3 hasn&apos;t changed anything yet</p>
+          <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edg3 hasn&apos;t taken any actions yet</p>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            You&apos;ll see every calendar action here — nothing happens without a trace.
+            Once you connect your calendar and complete your first call, everything Edg3 does shows up here — nothing happens without a trace.
           </p>
         </div>
       ) : (
@@ -1096,7 +1191,18 @@ function FocusScoreboardPanel() {
     );
   }
 
-  if (!data || data.perPriority.length === 0) return null;
+  if (!data || data.perPriority.length === 0) {
+    return (
+      <div className="glass-card p-8 text-center mb-6">
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+          Set your priorities to start tracking your focus
+        </p>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Once you&apos;ve set your top 3 priorities, Edg3 tracks how much time you&apos;re actually spending on each — every week.
+        </p>
+      </div>
+    );
+  }
 
   const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
   const trendWeeks = data.weeklyTrend.slice(-4);
@@ -1411,7 +1517,10 @@ export default function Dashboard() {
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
+  const [dayPlanChangeLines, setDayPlanChangeLines] = useState<string[]>([]);
+  const [dayPlanUndoing, setDayPlanUndoing] = useState(false);
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [openLoopsLoaded, setOpenLoopsLoaded] = useState(false);
   const [activationFacts, setActivationFacts] = useState<string[]>([]);
   const [activationDismissed, setActivationDismissed] = useState(false);
 
@@ -1470,7 +1579,7 @@ export default function Dashboard() {
     }).catch(() => {});
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
-    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
+    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {}).finally(() => setOpenLoopsLoaded(true));
     fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.isFresh && d.recentFacts?.length > 0) {
         setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
@@ -1600,9 +1709,28 @@ export default function Dashboard() {
     const d = await res.json().catch(() => ({}));
     setDayPlanApplied(true);
     if (d.newScore != null) setDayPlanAppliedScore(d.newScore);
+    if (Array.isArray(d.changeLines) && d.changeLines.length > 0) setDayPlanChangeLines(d.changeLines);
     // ALWAYS refetch the canonical Edge Score so the HEADLINE moves to the real new
     // value — otherwise the headline stayed stale (e.g. 63) while the plan card showed
     // its projected number (67). One Edge Score, and it's the headline.
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    // Auto-dismiss toast after 30 s
+    setTimeout(() => { setDayPlanApplied(false); setDayPlan(null); }, 30_000);
+  }
+
+  async function handleUndoDayPlan() {
+    if (!dayPlan) return;
+    setDayPlanUndoing(true);
+    try {
+      await fetch(`/api/undo/plan?planId=${dayPlan.planId}`, { method: 'POST' });
+    } catch {
+      // best-effort
+    }
+    setDayPlanUndoing(false);
+    setDayPlanApplied(false);
+    setDayPlan(null);
+    setDayPlanChangeLines([]);
+    // Refetch scores after undo
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
   }
 
@@ -2475,7 +2603,25 @@ export default function Dashboard() {
                 />
               )}
               {/* Day plan — reshape CTA / "Your day looks good" */}
-              {calendarConnected !== false && (
+              {calendarConnected === false ? (
+                <div className="glass-card p-5" style={{ borderColor: 'var(--edg-hairline)' }}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)' }}>◆</span>
+                    <div>
+                      <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Connect your calendar to unlock your day plan</p>
+                      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                        Edg3 reads your week, finds what&apos;s misaligned, and proposes fixes — once your calendar is connected.
+                      </p>
+                      <button
+                        className="btn-primary text-xs mt-3 py-2 px-4"
+                        onClick={() => setActiveTab('profile')}
+                      >
+                        Connect Google Calendar →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
                 <DayPlanCard
                   plan={dayPlan}
                   loading={dayPlanLoading}
@@ -2483,10 +2629,13 @@ export default function Dashboard() {
                   onDismiss={() => setDayPlan(null)}
                   applied={dayPlanApplied}
                   appliedScore={dayPlanAppliedScore}
+                  changeLines={dayPlanChangeLines}
+                  onUndo={handleUndoDayPlan}
+                  undoing={dayPlanUndoing}
                 />
               )}
-              {/* Open loops — commitments Edge is tracking */}
-              {openLoops.length > 0 && (
+              {/* Open loops — commitments Edge is tracking (show AllClear when loaded+empty) */}
+              {openLoopsLoaded && (
                 <OpenLoopsSection
                   loops={openLoops}
                   onResolve={async (id) => {
@@ -3324,6 +3473,16 @@ export default function Dashboard() {
 
 
               {/* People profiles (M2) */}
+              {people.length === 0 && (
+                <div className="mb-6">
+                  <p className="text-sm font-semibold mb-1 flex items-center gap-1.5" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">🤝</span> People you meet with
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                    People from your calendar will appear here after your first call.
+                  </p>
+                </div>
+              )}
               {people.length > 0 && (() => {
                 const PEOPLE_LIMIT = 15;
                 const _selfFirst = ((user?.name || '').split(' ')[0] || '').toLowerCase();
@@ -3478,9 +3637,9 @@ export default function Dashboard() {
               {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
                   <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
-                  <p className="font-semibold mb-2">Nothing stored yet</p>
+                  <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edg3 hasn&apos;t learned anything yet</p>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    After your first call, Edg3 will start building a picture of you here — goals, projects, preferences, and more.
+                    Your first call changes that — goals, projects, preferences, and the context behind your calendar will start appearing here.
                   </p>
                 </div>
               )}

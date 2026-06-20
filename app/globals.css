@@ -414,6 +414,14 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   60%       { opacity: 1; filter: brightness(1.2); }
 }
 
+@keyframes toast-countdown {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-countdown-bar { animation: none !important; width: 100%; }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
