@@ -284,7 +284,7 @@ Always end with warmth. This person is building something — remind them of tha
           '866ce6ca-5b06-4ea9-9458-2721905ca444', // colorEventsByEnergy (created via API 2026-06-15)
           // '___searchMemory___', // searchMemory — create in Vapi dashboard: param query (string, required)
           // '___confirmFact___', // confirmFact — create in Vapi dashboard: param topic (string, required)
-          // '___getWeather___', // getWeather (R9 T4) — create in Vapi dashboard: no params, no schema
+          '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
         ],
       },
       firstMessage: briefingContent,
@@ -348,6 +348,7 @@ Always end with warmth. This person is building something — remind them of tha
           'f0a3d589-f2f5-4316-a610-333f20ef52a1',
           'a9b8eb4e-9431-46bd-a4c6-92dfb6772e10',
           '866ce6ca-5b06-4ea9-9458-2721905ca444',
+          '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
         ],
       },
       messagePlan: {
