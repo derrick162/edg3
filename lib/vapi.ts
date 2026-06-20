@@ -243,6 +243,10 @@ ACT ONLY ON THIS CALL — NO FUTURE PROMISES: You can only do things during this
 REMOVING MULTIPLE EVENTS: To delete several events at once (e.g. cleaning up duplicates), use cleanupEvents — it removes the whole batch with ONE confirmation. Do NOT delete them one-by-one with separate confirm tokens; that stalls and frustrates the user.
 CLEAN UP DUPLICATES: When the user says "delete the duplicates", "clean up duplicates", "remove the extras", or similar → call cleanupDuplicates (NOT one-by-one deleteEvent). It scans the next 14 days, groups by title + time, keeps the earliest copy, and removes the rest with a single confirmation. Pass startDate/endDate only if the user names a specific window.
 FINDING FREE TIME: When ${firstName} asks "when am I free for X?", "find me a slot for Y", "when could we meet?", "block 2 hours for deep work this week" → call findFreeTime with duration (minutes) + optional startDate/endDate (and windowStart/windowEnd if they specify hours like "mornings only"). Read back the open windows it returns. If they pick one, immediately call createEvent to block it — don't re-ask.
+SEARCHING EVENTS: When ${firstName} asks "when did I last meet X", "find my [appointment]", "when is the [event]", "do I have anything about [topic]" → call searchEvents with the query (set startDate to cover the likely range for past events). Don't call readCalendar and scan manually.
+CHECK CONFLICT: When ${firstName} asks "am I free at X?", "is [time] open?", "do I have anything at 3pm?" → call checkConflict first with date + startTime (+ endTime if a span). If free, offer to create the event. Never assume they're free without checking.
+GET NEXT EVENTS: When ${firstName} asks "what's next?", "what do I have today?", "what's coming up?", "what's on my calendar?" without a specific date → call getNextEvents. For a specific date, use readCalendar instead.
+FOCUS BLOCKING: When ${firstName} says "block time for X", "protect 2 hours for Y", "find me time to work on Z this week" → call blockFocusTime with the label + duration (minutes). It finds the slot AND books it in one step — don't call findFreeTime + createEvent separately. If they say yes to a briefing offer to block time for a priority, call blockFocusTime immediately.
 ATTENDEES: When ${firstName} says "invite X to Y", "add X to the meeting", "include X" → if you're creating the event, pass the attendees param on createEvent; if the event already exists, call editEventAttendees (add/remove by email). Always use email addresses — ask for the email if only a name is given. Invites only reach people with Google accounts; mention that if it's relevant.
 BATCH RESCHEDULE: When ${firstName} says "move everything this afternoon", "clear my Monday morning", "reschedule all my meetings tomorrow", or similar → call batchReschedule with the time window (date + optional startTime/endTime) + action ('move' with a targetDate, or 'delete'). The first call returns a preview and a confirmToken — read the preview out loud, get a yes, then call again with the SAME window + action plus the confirmToken. NEVER do this one-by-one with separate deleteEvent/moveEvent calls.
 TRAVEL BLOCKING: When ${firstName} mentions flying, driving long-distance, or traveling → call blockTravelTime with the destination + date. If they give a departure/arrival time, pass departureTime for a timed block; otherwise it's an all-day block. If they mention a return, pass returnDate (and returnTime if given). After blocking, I'll flag anything scheduled within 90 minutes of departure/return — offer to move it.
@@ -305,6 +309,9 @@ Always end with warmth. This person is building something — remind them of tha
           '8de65c6d-513b-4469-ace6-df7cdef165b1', // endRecurringSeries (R13 T2)
           'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
           // '___findFreeTime___', // findFreeTime (R14 T1) — params: duration (number), startDate?, endDate?, windowStart?, windowEnd?
+          // '___searchEvents___', // searchEvents (R15 T1) — params: query, startDate?, endDate?
+          // '___checkConflict___', // checkConflict (R15 T2) — params: date, startTime, endTime?
+          // '___getNextEvents___', // getNextEvents (R15 T5) — params: count?
           // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
           // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
           // '___completeTask___', // completeTask (R14 T4) — params: title
@@ -376,6 +383,9 @@ Always end with warmth. This person is building something — remind them of tha
           '8de65c6d-513b-4469-ace6-df7cdef165b1', // endRecurringSeries (R13 T2)
           'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
           // '___findFreeTime___', // findFreeTime (R14 T1) — params: duration (number), startDate?, endDate?, windowStart?, windowEnd?
+          // '___searchEvents___', // searchEvents (R15 T1) — params: query, startDate?, endDate?
+          // '___checkConflict___', // checkConflict (R15 T2) — params: date, startTime, endTime?
+          // '___getNextEvents___', // getNextEvents (R15 T5) — params: count?
           // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
           // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
           // '___completeTask___', // completeTask (R14 T4) — params: title

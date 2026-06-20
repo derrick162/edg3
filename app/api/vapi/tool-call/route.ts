@@ -5,6 +5,7 @@ import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTim
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
 import { mergeAttendees } from '@/lib/attendees';
+import { dedupeSortEvents, formatEventForSpeech, findOverlappingEvents } from '@/lib/calendarQuery';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -956,6 +957,49 @@ Query: ${query}` }],
     const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long' });
     const list = slots.map(s => `${fmtDay(s.date)} at ${fmtT(s.startMs)}–${fmtT(s.endMs)}`).join(', ');
     return `Here are some open windows: ${list}. Want me to block one?`;
+
+  } else if (fn === 'searchEvents') {
+    // R15 T1 — Google calendar text search across all calendars.
+    const { query, startDate, endDate } = args as { query?: string; startDate?: string; endDate?: string };
+    if (!query?.trim()) return 'What should I search your calendar for?';
+    const seToday = todayInTz(tz);
+    const offsetDate = (days: number) => { const d = new Date(`${seToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+    const seStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : offsetDate(-30);
+    const seEnd = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : offsetDate(60);
+    const found = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, q: query, timeMin: dayRangeUtc(tz, seStart).start.toISOString(), timeMax: dayRangeUtc(tz, seEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 10 })
+        .then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
+    const results = dedupeSortEvents(found.filter(e => e.status !== 'cancelled')).slice(0, 5);
+    if (!results.length) return `Nothing on your calendar matches "${query}".`;
+    return `Found ${results.length} event${results.length !== 1 ? 's' : ''} matching "${query}": ${results.map(e => formatEventForSpeech(e, tz, { withDate: true })).join(', ')}.`;
+
+  } else if (fn === 'checkConflict') {
+    // R15 T2 — point-in-time availability check.
+    const { date, startTime, endTime } = args as { date?: string; startTime?: string; endTime?: string };
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'What day should I check?';
+    if (!startTime) return 'What time should I check?';
+    const ccStartMs = zonedWallTimeToUtc(`${date}T${resolveNaturalTime(startTime)}:00`, tz).getTime();
+    let ccEndMs = endTime ? zonedWallTimeToUtc(`${date}T${resolveNaturalTime(endTime)}:00`, tz).getTime() : ccStartMs + 60 * 60000;
+    if (ccEndMs <= ccStartMs) ccEndMs = ccStartMs + 60 * 60000;
+    const ccEvents = (await eventsOnDay(cal, calIds, date, tz)).map(x => x.event).filter(e => e.status !== 'cancelled');
+    const conflicts = findOverlappingEvents(ccEvents, ccStartMs, ccEndMs);
+    const whenLabel = new Date(ccStartMs).toLocaleString('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' });
+    if (!conflicts.length) return `You're free ${whenLabel} — nothing on your calendar then.`;
+    return `You've got ${conflicts.map(e => formatEventForSpeech(e, tz)).join(', ')} then. Want me to find another slot?`;
+
+  } else if (fn === 'getNextEvents') {
+    // R15 T5 — the next N timed events from now.
+    const { count } = args as { count?: number };
+    const n = Math.min(Math.max(typeof count === 'number' && count > 0 ? Math.floor(count) : 3, 1), 5);
+    const nowIso = new Date().toISOString();
+    const nextRaw = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: nowIso, singleEvents: true, orderBy: 'startTime', maxResults: n + 5 })
+        .then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
+    const timed = dedupeSortEvents(nextRaw.filter(e => e.status !== 'cancelled' && e.start?.dateTime)).slice(0, n);
+    if (!timed.length) return `Nothing else on your calendar coming up.`;
+    return `Your next ${timed.length === 1 ? 'event' : `${timed.length} events`}: ${timed.map(e => formatEventForSpeech(e, tz)).join(', ')}.`;
 
   } else if (fn === 'editEventAttendees') {
     // R14 T3 — add/remove guests on an existing event (Google sends invites/cancellations).
