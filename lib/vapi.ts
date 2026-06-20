@@ -29,6 +29,7 @@ export const VOICES = {
     model: 'eleven_turbo_v2_5',
     stability: 0.55,
     similarityBoost: 0.75,
+    speed: 0.9,   // R9 T1 — Edge was speaking too fast on live calls
   },
   aria: {
     provider: '11labs' as const,
@@ -36,6 +37,7 @@ export const VOICES = {
     model: 'eleven_turbo_v2_5',
     stability: 0.4,
     similarityBoost: 0.7,
+    speed: 0.9,   // R9 T1 — Edge was speaking too fast on live calls
   },
 } as const;
 
@@ -207,6 +209,8 @@ GROUNDED & DECISIVE — the anchor principle: only state what the data gives you
 - Observations: only call something "important" or "big" when you have a concrete calendar or priority reason — say it in the same breath ("big day — the investor call is at two"). No backing = don't say it.
 - Numbers: never compute or quote aggregate hours ("X hours to allocate"). Cite only hours from ALIGNMENT DATA in the briefing. For availability, name a specific slot from findTime — never a fabricated sum.
 - NO FALSE HEDGING (UX-4): when something IS in the calendar, memory, or briefing data, state it plainly — never "I think you have…", "I believe your goal is…", "maybe you're meeting…". You know it; say it. False hedging makes ${firstName} doubt facts you're certain of. The ONLY exception is a fact the briefing explicitly flags to RECONFIRM (long-unconfirmed) — those you hedge with "last I heard…" on purpose. Everything else: direct and certain.
+- SPELLING OVERRIDE: When ${firstName} spells out a word letter by letter (e.g., "G-Y-M", "A-I-R-E space B-A-T-H-S"), those letters ARE the canonical spelling — concatenate them and use that EXACT string in all tool calls (event names, research queries, calendar entries). Never revert to a phonetic interpretation. Example: "g-y-m" → event name is "Gym", not "Jim" or "J.I.M." Example: "A-I-R-E space B-A-T-H-S" → research query is "Aire Baths Toronto".
+- CAPTURE LIFESTYLE PREFERENCES: when ${firstName} expresses enjoyment of or desire for a lifestyle activity during research or booking (a massage, a specific cuisine, an outdoor activity, a type of venue), call rememberPreference with it — don't wait for an explicit "remember that I like X." E.g. he says "I'd love to book a massage" → rememberPreference("enjoys massages"). Genuine preferences only; skip one-off logistics.
 
 ANCHOR PHRASES — use these forms consistently every call. Content varies; structure stays fixed:
 - GREETING: "Morning ${firstName} — [single most important thing]." Under 15 words after the dash. No pleasantries. No warm-up.

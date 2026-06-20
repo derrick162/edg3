@@ -200,12 +200,22 @@ export function buildFallbackBriefing(greeting: string, userName: string, calend
     : "Nothing else scheduled for today.";
 
   // Top 2 priorities only — listing all of them creates a wall of text for TTS.
+  // R9 T2: strip [bracket descriptions] and truncate each to 5 words so TTS says
+  // "Improve Runway" not "Improve Runway, sell unused items, rent the parking spot…".
   const topPrios = prioritiesText.trim() && prioritiesText !== 'No priorities set for this week.'
-    ? prioritiesText.replace(/^\d+\.\s*/gm, '').trim().split('\n').slice(0, 2).filter(Boolean)
+    ? prioritiesText
+        .replace(/^\d+\.\s*/gm, '')
+        .trim()
+        .split('\n')
+        .slice(0, 2)
+        .map(p => p.replace(/\[.*?\]/g, '').trim().split(/\s+/).slice(0, 5).join(' '))
+        .filter(Boolean)
     : [];
   const prioSection = topPrios.length > 0 ? `Top priorities this week: ${topPrios.join(', ')}.` : '';
 
-  return `${greeting}, ${firstName}. I had a little trouble loading your full briefing today — let me give you the essentials. ${calSection}${prioSection ? ' ' + prioSection : ''} What's most on your mind right now?`;
+  // R9 T2: no apologetic preamble — deliver the essentials silently. Announcing a
+  // failure makes Edge sound broken; the fallback content is still complete.
+  return `${greeting}, ${firstName}. ${calSection}${prioSection ? ' ' + prioSection : ''} What's most on your mind right now?`;
 }
 
 /**
@@ -1191,7 +1201,7 @@ ${edg3Commitment ? `FIRST — accountability (DC2-3): Before the Edge Score, ope
 PAST EVENTS RULE: NEVER mention any calendar event that has already happened today. Only surface events that are STILL TO COME. If it is late evening (after 6 PM), focus on TOMORROW's events, not today's. Do not recap what already passed.
 
 PART 2 — FOCUS + ACTION (3–4 sentences MAX):
-ALWAYS open Part 2 with the user's top priorities as a simple statement: "Your three priorities today are: [P1], [P2], [P3]." If there are fewer than 3, just list what exists. Then name ONE concrete action to take RIGHT NOW anchored to the top priority. PROACTIVE BLOCK (Round 8 win 1): if FREE TIME SLOTS shows an open block of 60+ minutes within the next ~4 hours, NAME that exact slot and offer to lock it in for the top priority ("There's a clear two-hour block at ten — want me to lock that in for [P1]?"). On yes, Edge calls createEvent immediately (don't re-ask). Only one such offer; pick the nearest qualifying slot. ${focusRec && focusRec.areas.length > 0 ? `If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?").` : ``}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
+ALWAYS open Part 2 with the user's top priorities as a simple statement: "Your three priorities today are: [P1], [P2], [P3]." Use ONLY the priority TITLE — strip any bracket content or description (say "Improve Runway", never "Improve Runway, sell unused items, rent the parking spot…"). If there are fewer than 3, just list what exists. Then name ONE concrete action to take RIGHT NOW anchored to the top priority. PROACTIVE BLOCK (Round 8 win 1): if FREE TIME SLOTS shows an open block of 60+ minutes within the next ~4 hours, NAME that exact slot and offer to lock it in for the top priority ("There's a clear two-hour block at ten — want me to lock that in for [P1]?"). On yes, Edge calls createEvent immediately (don't re-ask). Only one such offer; pick the nearest qualifying slot. ${focusRec && focusRec.areas.length > 0 ? `If ALIGNMENT DATA shows a gap, include one sentence: the biggest mismatch + a specific blocking offer using a slot from FREE TIME SLOTS (e.g. "Want me to block Tuesday at two PM for fundraising?").` : ``}${hygieneFlag ? ` Surface the CALENDAR HYGIENE FLAG in one punchy sentence with offer to fix.` : ''}${energyMatchingBlock ? ' ENERGY MATCHING: use the ENERGY PROFILE above — place highest-priority deep/creative work in the stated peak window; batch admin in the trough. Scale to today\'s recovery tier. Direct offer.' : ''}
 
 PART 3 — CLOSING (2–3 sentences MAX):
 ${buildPersonalizationPromptBlock(salientFacts.length) ?? `ONE specific, focus-driven question tied to TODAY's top focus area or a meaningful upcoming event. NEVER ask "what's the most important thing before tomorrow's briefing" — banned. Example: "One question before I let you go — on [focus area], [specific actionable question]?" Then: "I'll capture your answer in the calendar." Then add ONE brief forward-looking line about tomorrow (Round 8 win 2): if today looks heavy OR a priority has nothing scheduled tomorrow, point ahead — "Tomorrow's lighter — good day to push forward on [P2] if today stays packed." If tomorrow already has dense focus work, do NOT add this. Skip the forward-look entirely if tomorrow is empty or nothing stands out.`}${prioritiesStaleAge > 7 && personalizationSignal === null ? ` Add ONE gentle nudge at the very end: "By the way — your priorities were last refreshed ${prioritiesStaleAge >= 14 ? `${Math.round(prioritiesStaleAge / 7)} weeks ago` : 'a week ago'} — worth a quick update on our next call?"` : ''}
@@ -1212,6 +1222,9 @@ Write as flowing spoken language.`;
       messages: [{ role: 'user', content: userPrompt }],
     }, { signal: AbortSignal.timeout(45_000) });
     const content = message.content[0];
+    if (content.type !== 'text') {
+      console.error(`[briefing] generateDailyBriefing got non-text content block (type=${content.type}) — falling back to basics`);
+    }
     briefingText = content.type === 'text' ? content.text : buildFallbackBriefing(greeting, user.name, calendarText, prioritiesText);
     const wordCount = briefingText.split(/\s+/).length;
     if (wordCount > 250) console.warn(`[DC2-4] briefing ${userId}: ${wordCount} words (target ≤220)`);
