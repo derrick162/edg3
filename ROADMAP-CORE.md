@@ -31,6 +31,151 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Vapi tool expansion: free-time finder, recurring events, attendees, task voice tools, forgetFact)
+
+> `git merge master` first. Five tickets extending Edge's voice capabilities. **Do all before R13 or pillar work.**
+
+---
+
+### T1 — `findFreeTime` tool: "when am I free for 2 hours this week?" (HIGH — 2h)
+
+**Problem:** The #1 scheduling question Edge can't answer today. "When could we meet?" / "Find me a 2-hour block for deep work" forces Derrick to look at the calendar himself.
+
+**Fix — three parts:**
+
+**Part A — new `findFreeTime` handler (`app/api/vapi/tool-call/route.ts`):**
+Add `} else if (fn === 'findFreeTime') {` handler. Params:
+- `duration: number` — required, minutes (e.g. 90)
+- `startDate?: string` — YYYY-MM-DD, defaults to today
+- `endDate?: string` — YYYY-MM-DD, defaults to startDate + 6 days
+- `windowStart?: string` — wall-clock start of each day's search window (default "9:00 AM")
+- `windowEnd?: string` — wall-clock end (default "6:00 PM")
+
+Implementation:
+1. Resolve `startDate`/`endDate` against user timezone; apply `resolveNaturalTime` to `windowStart`/`windowEnd`.
+2. Call `cal.freebusy.query({ requestBody: { timeMin, timeMax, items: calIds.map(id => ({ id })) } })` to get all busy intervals across all calendars.
+3. Pure helper `findFreeSlots(busyMs: {start:number,end:number}[], durationMs: number, windowStartMs: number, windowEndMs: number, dates: string[], tz: string): { date: string, startWall: string, endWall: string }[]` — for each date, clip busy intervals to the window, sort, scan gaps, collect slots ≥ duration. Add to `lib/time.ts`.
+4. Return up to 3 slots as a spoken list: `"Here are some open windows: Tuesday at 10–11:30 AM, Wednesday at 2–3:30 PM, Thursday at 9–10:30 AM. Want me to block one?"`. If none found: `"Your calendar looks pretty packed in that window — want me to look at next week?"`.
+
+**Part B — prompt (`lib/vapi.ts`):**
+Add `FINDING FREE TIME` block:
+> "FINDING FREE TIME — when ${firstName} asks 'when am I free for X?', 'find me a slot for Y', 'when could we meet?', 'block 2 hours for deep work this week' → call findFreeTime with duration (minutes) + optional startDate/endDate. If they say yes to a slot, immediately call createEvent to block it — do not re-ask."
+
+**Part C — Vapi tool (external — PM handles):**
+⚠️ External: PM creates `findFreeTime` Vapi tool. Params: `duration` (number, required), `startDate` (string, optional), `endDate` (string, optional), `windowStart` (string, optional), `windowEnd` (string, optional).
+
+**Tests:** `findFreeSlots` in `lib/time.test.ts` — no gaps, gaps shorter than duration, gaps exactly duration, busy spanning midnight, multi-day range, windowStart/End clipping (≥6 cases).
+
+---
+
+### T2 — Recurrence param on `createEvent`: "add daily meditation at 7am Monday–Friday" (HIGH — 1.5h)
+
+**Problem:** Zero way to create recurring events by voice. Habits and recurring blocks are the core of Edg3's scheduling value — currently impossible.
+
+**Fix — three parts:**
+
+**Part A — extend `createEvent` handler:**
+Add optional `recurrence?: string` param. When present, include it in the Google Calendar event body as `recurrence: [recurrence]` (Google expects an array of RRULE strings, e.g. `["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]`).
+
+**Part B — pure helper `buildRrule` in `lib/time.ts`:**
+```ts
+buildRrule(opts: { freq: 'daily'|'weekly'|'monthly', days?: string[], until?: string, count?: number }): string
+```
+Converts structured intent to a valid RRULE string. `days` uses Google's two-letter codes (MO, TU, WE, TH, FR, SA, SU). `until` is YYYY-MM-DD → converted to `YYYYMMDD`. Returns e.g. `"RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=20261231"`. The model can pass the raw RRULE string directly (simpler), but this helper is exposed if the route needs to normalize.
+
+**Part C — prompt (`lib/vapi.ts`):**
+Add to `CALENDAR TOOLS` → `createEvent` section:
+> "RECURRING: when ${firstName} says 'every day', 'every Monday', 'daily for a month', 'every weekday', 'weekly on Tuesdays' — include `recurrence` as an RRULE string. Examples: daily = 'RRULE:FREQ=DAILY', weekdays = 'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', weekly Monday = 'RRULE:FREQ=WEEKLY;BYDAY=MO', until a date = add ';UNTIL=YYYYMMDD'. Do NOT set recurrence for one-off events."
+
+⚠️ External: PM adds `recurrence` (string, optional) to the existing `createEvent` Vapi dashboard tool.
+
+**Tests:** `buildRrule` in `lib/time.test.ts` — daily, weekdays, weekly single day, weekly multiple days, with UNTIL, with COUNT, monthly (≥6 cases).
+
+---
+
+### T3 — `attendees` on `createEvent` + `editEventAttendees` tool (MEDIUM — 1.5h)
+
+**Problem:** "Schedule a call with Faiza" creates an event only Derrick sees. No invite is sent.
+
+**Fix — three parts:**
+
+**Part A — `attendees` param on `createEvent`:**
+Add optional `attendees?: { email: string; name?: string }[]` to the createEvent handler. Map to Google Calendar's `attendees` field in the requestBody. No additional logic needed — Google sends invites automatically.
+
+**Part B — new `editEventAttendees` handler:**
+Add `} else if (fn === 'editEventAttendees') {` handler. Params:
+- `title: string` — event to edit
+- `currentTime?: string` — disambiguation
+- `add?: { email: string; name?: string }[]` — attendees to add
+- `remove?: string[]` — email addresses to remove
+
+Resolve the event with `resolveEvent`. Fetch current `event.attendees`. Merge: add new entries (dedup by email), filter out removed. PATCH with updated attendees array. `recordUndo` with the original attendees. Return: `"Added Faiza to 'Product Sync' — she'll get an invite."` / `"Removed Faiza from 'Product Sync'."`.
+
+**Part C — prompt (`lib/vapi.ts`):**
+Add `ATTENDEES` block:
+> "ATTENDEES — when ${firstName} says 'invite X to Y', 'add X to the meeting', 'include X' → use `attendees` param on createEvent (if creating) or call editEventAttendees (if event exists). Always use email addresses; ask if only a name is given. Note: invites only reach people with Google accounts — mention this if relevant."
+
+⚠️ External: PM adds `attendees` (array of objects with `email` string required, `name` string optional) to existing `createEvent` Vapi tool. PM creates `editEventAttendees` Vapi tool: params `title` (string), `currentTime` (string optional), `add` (array optional), `remove` (array of strings optional).
+
+**Tests:** attendees param passthrough in createEvent (mocked Google), editEventAttendees add, remove, add+remove, disambiguation, read-only calendar guard (≥5 cases).
+
+---
+
+### T4 — `addTask` + `completeTask` voice tools (MEDIUM — 1h)
+
+**Problem:** Tasks are surfaced in briefings and the dashboard but can't be created or ticked off by voice mid-call. "Remind me to follow up with David" just creates noise.
+
+**Fix — two parts:**
+
+**Part A — handlers in `app/api/vapi/tool-call/route.ts`:**
+
+`addTask`:
+- Params: `title: string`, `dueDate?: string` (YYYY-MM-DD)
+- Inserts into `tasks` table: `{ user_id, title, source: 'edg3', due_date: dueDate ?? null, week_of: currentWeekOf() }`
+- Returns: `"Added to your tasks: 'Follow up with David'${dueDate ? ` — due ${dueDate}` : ''}."`
+
+`completeTask`:
+- Params: `title: string`
+- Fuzzy-match against open tasks: `SELECT * FROM tasks WHERE user_id = ? AND completed_at IS NULL ORDER BY created_at DESC`
+- Use `normalizeTitle(title)` to match — pick the closest open task (exact first, then substring). If ambiguous (2+ equal-confidence matches), return the titles and ask which.
+- Sets `completed_at = now()` on the match.
+- Returns: `"Done — marked '${task.title}' as complete."`
+
+**Part B — prompt (`lib/vapi.ts`):**
+Add `TASKS` block:
+> "TASKS — when ${firstName} says 'add a task', 'remind me to X', 'put X on my list', 'I need to X' (action item, not calendar event) → call addTask. When they say 'I finished X', 'mark X done', 'check off X', 'I did X' → call completeTask. Use addTask for action items, createEvent for time-anchored commitments — don't conflate them."
+
+⚠️ External: PM creates `addTask` Vapi tool (params: `title` string required, `dueDate` string optional) and `completeTask` Vapi tool (params: `title` string required).
+
+**Tests:** addTask inserts row, completeTask exact match, completeTask fuzzy match, completeTask ambiguous returns list, completeTask no match returns message (≥5 cases).
+
+---
+
+### T5 — `forgetFact` tool: "forget that I live at X" (MEDIUM — 45min)
+
+**Problem:** If Edge learns the wrong address, or preferences change, there's no voice path to correct a specific stored fact. "That's no longer true" has no handler — Edge says "I'll note that" but the old fact persists and conflicts.
+
+**Fix — two parts:**
+
+**Part A — `forgetFact` handler (`app/api/vapi/tool-call/route.ts`):**
+Params: `topic: string` — natural language topic to forget (e.g. "home address", "wake-up time", "gym preference", "partner's name").
+
+Query: `SELECT * FROM facts WHERE user_id = ? AND retired = 0` (or equivalent active-facts query). Fuzzy-match `topic` against each fact's `topic` field using `normalizeTitle`. Retire all matches: `UPDATE facts SET retired = 1 WHERE id IN (...)` (or soft-delete pattern matching what Security's fact system uses — check `lib/db.ts`).
+
+Return: `"Got it — I've cleared everything I knew about ${topic}."` If no matches: `"I don't have anything stored about ${topic} — nothing to forget."`.
+
+If clearing an address/key preference, add: `"If the new one is different, just tell me and I'll remember the updated version."`
+
+**Part B — prompt (`lib/vapi.ts`):**
+Add to `PREFERENCES` section:
+> "CORRECTING FACTS — when ${firstName} says 'that's wrong', 'forget that', 'that's changed', 'I don't X anymore', or gives a correction that fully replaces an old fact → call forgetFact(topic) first to clear the old value, then rememberPreference/rememberFact with the new correct value. Never layer a correction on top of a conflicting old fact."
+
+⚠️ External: PM creates `forgetFact` Vapi tool (params: `topic` string required).
+
+**Tests:** forgetFact retires matching facts, forgetFact no match returns graceful message, forgetFact fuzzy match, forgetFact with subsequent rememberFact stores cleanly (≥4 cases).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 13 — Calendar management: batch operations + recurring skip/end + travel blocking + conflict surfacing)
 
 > `git merge master` first. Four tickets to improve calendar management on live calls. **Do all before any R12 or pillar work.**
