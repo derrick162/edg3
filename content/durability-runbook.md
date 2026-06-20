@@ -73,6 +73,58 @@ These require the Railway dashboard / shell — flagged for Kevin/Derrick:
 
 ---
 
+## Key Rotation (DATA_ENCRYPTION_KEY)
+
+`DATA_ENCRYPTION_KEY` encrypts every sensitive field at rest (AES-256-GCM). If it must change
+(suspected leak, audit requirement, or routine rotation), follow this procedure. **The re-encrypt
+runs BEFORE the key swap, so there is zero downtime and no window where data is unreadable.**
+
+> ⚠️ **Take a backup snapshot first** (Litestream snapshot or `verifyBackup`). Rotation rewrites
+> every encrypted cell; a verified restore point is the safety net.
+
+**The tool:** `reEncryptAllUserData(oldKey, newKey, { dryRun? })` in `lib/crypto.ts`. It walks the
+authoritative `ENCRYPTED_COLUMNS` inventory (`lib/db.ts`), decrypts each cell with the old key and
+re-encrypts with the new key, in **one transaction per user**. It is **resumable** (a cell already
+on the new key is detected and skipped) and **fail-loud** (a cell that decrypts with neither key
+aborts the run — nothing is silently dropped).
+
+**Steps:**
+
+1. **Generate the new key** (32 bytes, hex):
+   ```sh
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+2. **Set it as a SECOND env var** on Railway — `DATA_ENCRYPTION_KEY_NEXT` — leaving the live
+   `DATA_ENCRYPTION_KEY` unchanged for now.
+3. **Dry-run first** (reads + verifies decryptability, writes nothing) from a one-off Railway job /
+   `node` REPL with both env vars present:
+   ```js
+   const { reEncryptAllUserData } = require('./lib/crypto');
+   await reEncryptAllUserData(process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_KEY_NEXT, { dryRun: true });
+   // Review the logged summary: cellsReKeyed / cellsAlreadyRotated / cellsSkipped per column.
+   ```
+4. **Run it for real** (per-user transactions; safe to re-run if interrupted):
+   ```js
+   await reEncryptAllUserData(process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_KEY_NEXT);
+   ```
+5. **Swap the key:** set `DATA_ENCRYPTION_KEY` to the new value and **remove** `DATA_ENCRYPTION_KEY_NEXT`.
+   Redeploy (clears the in-process key cache).
+6. **Verify** a decrypt round-trip after deploy — open the dashboard Memory tab (reads decrypt facts)
+   or check logs for any `[crypto] DECRYPT_FAILURE`. None = success.
+
+**If interrupted** (deploy died mid-run): just re-run step 4 — already-rotated cells are detected and
+skipped, only the remainder is processed.
+
+> **Never** change `DATA_ENCRYPTION_KEY` without running the re-encrypt first — doing so makes every
+> encrypted field permanently unreadable. (`safeDecryptField` would degrade content reads to empty,
+> and OAuth-token reads would throw.)
+
+> **Inventory drift:** if a new encrypted column is added anywhere, it MUST be added to
+> `ENCRYPTED_COLUMNS` in `lib/db.ts` or rotation will skip it (→ unreadable after a swap). The
+> cross-reference test in `lib/key-rotation.test.ts` guards table/column existence.
+
+---
+
 ## Status
 
 | Item | State |
@@ -81,6 +133,7 @@ These require the Railway dashboard / shell — flagged for Kevin/Derrick:
 | Daily snapshot push code | ✅ Shipped |
 | Boot-time durability self-check | ✅ Shipped (this session) |
 | Daily digest durability check | ✅ Shipped (this session) |
+| Key-rotation utility + runbook (`reEncryptAllUserData`) | ✅ Shipped (R11 T3) |
 | Volume confirmed persistent | ⏳ **External — Kevin** |
 | `LITESTREAM_S3_*` env vars set | ⏳ **External — Kevin** |
 | Restore drill performed | ⏳ **External — Kevin** |
