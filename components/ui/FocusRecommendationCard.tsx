@@ -23,6 +23,10 @@ export interface FocusRecommendationCardProps {
   callsCompleted?: number;
   onConfirm: (areas: FocusRecommendationArea[]) => Promise<void>;
   onDismiss?: () => void;
+  /** True on Saturday/Sunday — Core sets this; shows weekend brief instead of focus read */
+  weekendMode?: boolean;
+  /** Whoop recovery tier for weekend card recovery dot. null = Whoop not connected */
+  recoveryTier?: 'high' | 'medium' | 'low' | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -150,12 +154,98 @@ function AreaRow({
 
 // ── FocusRecommendationCard ───────────────────────────────────────────────────
 
+// ── Tier helpers for weekend card ─────────────────────────────────────────────
+
+function tierDotColor(tier: 'high' | 'medium' | 'low'): string {
+  if (tier === 'high')   return 'var(--whoop-high-border, #22c55e)';
+  if (tier === 'medium') return 'var(--whoop-medium-border, #f59e0b)';
+  return 'var(--whoop-low-border, #ef4444)';
+}
+
+function tierLabel(tier: 'high' | 'medium' | 'low'): string {
+  if (tier === 'high')   return 'Green';
+  if (tier === 'medium') return 'Yellow';
+  return 'Red';
+}
+
+// ── Weekend Focus Brief card ───────────────────────────────────────────────────
+
+function WeekendBriefCard({ recoveryTier }: { recoveryTier?: 'high' | 'medium' | 'low' | null }) {
+  const bullets = recoveryTier === 'low'
+    ? [
+        'Recovery is low today — lighter movement (walk, stretch) over hard training.',
+        'Clear out one thing that\'s been on your mental backlog.',
+        'Protect the afternoon for something restorative.',
+      ]
+    : [
+        'High energy day — good time for the gym or a long walk.',
+        'Clear out one thing that\'s been on your mental backlog.',
+        'Protect the afternoon for something restorative.',
+      ];
+
+  return (
+    <div
+      className="glass-card p-5"
+      style={{
+        background: 'var(--edg-fill-03, rgba(255,255,255,0.03))',
+        borderColor: 'var(--edg-violet-border, rgba(139,92,246,0.25))',
+        animation: 'score-rise 0.45s ease both',
+      }}
+    >
+      {/* Weekend mode pill + title */}
+      <div className="flex items-center gap-2.5 mb-3">
+        <span
+          className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold"
+          style={{
+            background: 'var(--edg-violet-tint, rgba(139,92,246,0.12))',
+            border: '1px solid var(--edg-violet-border, rgba(139,92,246,0.25))',
+            color: 'var(--edg-violet)',
+          }}
+        >
+          Weekend mode
+        </span>
+      </div>
+      <p className="text-sm font-bold mb-3 leading-snug" style={{ color: 'var(--text-strong)' }}>
+        Good morning — here&apos;s how to make the most of today
+      </p>
+
+      {/* Recovery dot */}
+      {recoveryTier && (
+        <div className="flex items-center gap-2 mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ background: tierDotColor(recoveryTier) }}
+          />
+          Recovery: {recoveryTier === 'high' ? '82%' : recoveryTier === 'medium' ? '55%' : '28%'} · {tierLabel(recoveryTier)}
+        </div>
+      )}
+
+      {/* Lifestyle bullets */}
+      <ul className="space-y-2">
+        {bullets.map((b, i) => (
+          <li key={i} className="flex items-start gap-2.5 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            <span
+              className="flex-shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full"
+              style={{ background: 'var(--edg-violet)', opacity: 0.6 }}
+            />
+            {b}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ── FocusRecommendationCard ───────────────────────────────────────────────────
+
 export function FocusRecommendationCard({
   recommendation,
   loading = false,
   callsCompleted = 0,
   onConfirm,
   onDismiss,
+  weekendMode = false,
+  recoveryTier,
 }: FocusRecommendationCardProps) {
   const [areas, setAreas] = useState<FocusRecommendationArea[]>(
     recommendation?.areas ?? []
@@ -200,6 +290,11 @@ export function FocusRecommendationCard({
         </div>
       </div>
     );
+  }
+
+  // ── Weekend mode — soft brief, no focus CTAs
+  if (weekendMode && (!recommendation || recommendation.areas.length === 0)) {
+    return <WeekendBriefCard recoveryTier={recoveryTier} />;
   }
 
   // ── No recommendation yet — OR a recommendation with no focus items to show (Bug 1, P0):
