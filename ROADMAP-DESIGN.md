@@ -49,6 +49,54 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 12 — Mobile web optimization)
+
+> `git merge master` first (master is at latest HEAD — includes viewport meta fix in `app/layout.tsx`). Three tickets. Do in order.
+
+---
+
+### T1 — Show Next Call card on mobile (HIGH — 45 min)
+
+The "Next call" card and all sidebar widgets are `hidden md:flex` — completely invisible on mobile. When a user opens the app on their phone before a morning call, they can't see when the call is scheduled.
+
+**What to do in `app/dashboard/page.tsx`:**
+
+Remove the `hidden md:flex` wrapper that hides sidebar widgets on mobile. Instead, move the key info **inline below the nav tabs** on mobile only. Specifically:
+
+- The "Next call" card (`Next call · {call_time} {timezone}`) should appear as a compact strip directly below the tab nav on mobile: `flex md:hidden items-center justify-between px-4 py-2 border-b text-sm`. Show the call time on the left + the streak badge on the right (🔥 N days) if streak ≥ 2. No glass-card wrapper on mobile — just a thin horizontal bar so it doesn't steal vertical space.
+- The full sidebar widget block (glass-card, Whoop, Google Calendar, etc.) stays `hidden md:flex` — no change there. Only the compact strip is new.
+- On desktop (md+), the strip is hidden (`flex md:hidden`) — desktop already shows the full sidebar card.
+
+**Test:** viewport at 375px → Next Call strip visible below nav, call time readable. At md (768px) → strip hidden, full card in sidebar visible. Preflight green.
+
+---
+
+### T2 — Fix notification panel overflow on mobile (FAST — 20 min)
+
+The notification panel at `app/dashboard/page.tsx:2086` has `style={{ position: 'absolute', top: 48, right: 0, width: 340 }}`. On a 375px screen this can overflow to the left.
+
+**Fix:** Change the inline style to use `maxWidth: 'calc(100vw - 16px)'` alongside the hardcoded width so it never overflows. Also set `left: 'auto', right: 0` and add `overflow-x: hidden`. This is a one-line change:
+
+```tsx
+style={{ position: 'absolute', top: 48, right: 0, width: 340, maxWidth: 'calc(100vw - 16px)', maxHeight: 420, overflowY: 'auto' }}
+```
+
+**Test:** at 375px viewport → notification panel opens without overflowing the screen edge. Preflight green.
+
+---
+
+### T3 — Add tab labels below icons on mobile (FAST — 20 min)
+
+Tab nav on mobile shows emoji icons only (`hidden md:inline` on the label `<span>`). Emoji-only is ambiguous — "⏪" for Activity is particularly unclear.
+
+**Fix:** On mobile, show a tiny label below the icon instead of hiding it. Change `<span className="hidden md:inline">{tab.label}</span>` to `<span className="text-[9px] md:hidden block leading-none mt-0.5 opacity-70">{tab.label}</span><span className="hidden md:inline">{tab.label}</span>`. This gives desktop the existing inline label and mobile a tiny word below the icon.
+
+Also: consider swapping "⏪" for Activity with "📋" (more universally understood as a log/list) if it doesn't conflict with another tab icon. Check the current icon list first.
+
+**Test:** at 375px → each tab shows icon + small label text. At md+ → normal sidebar layout unchanged. Preflight green. Swap Activity icon only if it doesn't create a collision.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 11 — Edge Score UI + weekend card + activity dedup)
 
 > `git merge master` first (master is at `9918c01`). Three tickets. Do in order.

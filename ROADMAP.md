@@ -110,8 +110,8 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(📋 **R12 DISPATCHED (2026-06-20) — 5 tickets.** T1–T3: Aria call bugs (token loop, token leakage, wrong replace time). T4: Momentum counts open calls (+ schema `is_open_call`). T5: dashboard auto-refresh + animation on tab-return after call. See `ROADMAP-CORE.md` R12.)_ | `lib/vapi.ts`, `lib/calendarScore.ts`, `lib/db.ts`, `app/api/scores/route.ts`, `lib/scheduler.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
 | 🔒 Security | `security` | _(📋 **R12 DISPATCHED (2026-06-20) — T1: `getRecentEmailSignal` 24h cache gate + suppress empty audit entries.** Fixes Activity tab flooding with repeated "Reviewed inbox" entries. See `ROADMAP-SECURITY.md` R12 section.)_ | `lib/gmail.ts` | 2026-06-20 |
-| 🔧 PM/CoS | `master` | _(✅ **R12 dispatched to Core (3 Aria call bugs) + Security (email signal cache gate). All lanes working.)_ | `ROADMAP*.md` | 2026-06-20 |
-| 🎨 Design | `design` | _(✅ **R11 T1+T2+T3 SHIPPED (1958 green).** Focus Score hours subtitle, Weekend Brief card, Activity dedup ×N. Idle, awaiting next dispatch.)_ | `components/ui/FocusRecommendationCard.tsx`, `lib/activityLabels.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
+| 🔧 PM/CoS | `master` | _(✅ **R12 dispatched to Core + Security + Design (mobile web). Viewport meta fix shipped to master. All lanes working.)_ | `ROADMAP*.md`, `app/layout.tsx` | 2026-06-20 |
+| 🎨 Design | `design` | _(✅ **R11 SHIPPED. R12 dispatched: mobile web (T1 Next Call strip, T2 notif panel overflow fix, T3 tab labels). Working.)_ | `app/dashboard/page.tsx` | 2026-06-20 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
