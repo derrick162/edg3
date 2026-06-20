@@ -434,6 +434,12 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-20** — **R12 Ticket 2 FOLLOW-UP — `createDraft` + `gmail.compose` scope removed (Core R12 T7 unblocked it) (1939 green).** _(synced master first)_
+  - `lib/gmail.ts`: removed `createDraft`, `DraftInput`/`DraftResult`, `GMAIL_DRAFTS_PER_HOUR`, the anti-spam rate-limit block, `buildRawMessage`, the `gmailQueries.logDraft` audit, and `userHasGmailScope`. Dropped the now-unused `gmailQueries`/`hasGmailScope` imports. **`deleteDraft` retained** (`lib/undo.ts` backward-compat). `GmailScopeError` kept for read-path scope errors (message genericized — no longer compose-specific). File header rewritten: read-only inbox signal + draft-delete only.
+  - `lib/google-auth.ts`: **deleted `GMAIL_COMPOSE_SCOPE`**, removed it from `GOOGLE_SCOPES`, and removed `hasGmailScope` (its consumers — createDraft guard, userHasGmailScope, accounts-status field — are all gone). `missingRequiredScopes` now returns just `[GMAIL_READONLY_SCOPE]` for calendar-only users.
+  - `app/api/auth/accounts/route.ts`: dropped the `hasGmailScope` response field (drafting status is meaningless now).
+  - Tests: removed `createDraft guardrails` + `userHasGmailScope` describes from `gmail.test.ts`; updated `google-auth.test.ts` (asserts compose is **no longer** requested; `missingRequiredScopes` → readonly only). `security-audit.md` R12 T2 note marked done.
+  - **Net result: `gmail.readonly` is now the ONLY Gmail scope EDG3 requests** — no compose, no send. 105 files / 1939 green (lower count expected — draft tests removed). Clean `.next` rebuild.
 - **2026-06-20** — **R12 Ticket 2 — email-drafting feature removal: dedicated-Gmail flow + contact ingest gone; createDraft DEFERRED on Core (1993 green).** _(synced master first)_
   - **Shipped (Parts C + D + the cleanly-orphaned removals):**
     - Deleted `app/api/auth/google/gmail/{route,callback,disconnect,ingest}.ts` + `gmail-routes.test.ts` (Part C).

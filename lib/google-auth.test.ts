@@ -1,21 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import {
   GOOGLE_SCOPES,
-  GMAIL_COMPOSE_SCOPE,
   GMAIL_READONLY_SCOPE,
   CALENDAR_SCOPES,
   parseScopes,
-  hasGmailScope,
   hasGmailReadScope,
   missingRequiredScopes,
 } from './google-auth';
 
 const CAL_ONLY = CALENDAR_SCOPES.join(' ');
 const CAL_PLUS_GMAIL = GOOGLE_SCOPES.join(' ');
+// R12 T2: gmail.compose was removed; keep a literal here only to assert it's NOT requested anymore.
+const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose';
 
 describe('google-auth scope helpers', () => {
-  it('includes gmail.compose in the requested scope set', () => {
-    expect(GOOGLE_SCOPES).toContain(GMAIL_COMPOSE_SCOPE);
+  it('no longer requests gmail.compose (R12 T2 — drafting removed)', () => {
+    expect(GOOGLE_SCOPES).not.toContain(GMAIL_COMPOSE_SCOPE);
   });
 
   it('parseScopes splits on whitespace and drops empties', () => {
@@ -25,17 +25,8 @@ describe('google-auth scope helpers', () => {
     expect(parseScopes(undefined)).toEqual([]);
   });
 
-  it('hasGmailScope is false for a calendar-only grant (existing users)', () => {
-    expect(hasGmailScope(CAL_ONLY)).toBe(false);
-    expect(hasGmailScope(null)).toBe(false);
-  });
-
-  it('hasGmailScope is true once gmail.compose is granted', () => {
-    expect(hasGmailScope(CAL_PLUS_GMAIL)).toBe(true);
-  });
-
-  it('missingRequiredScopes flags both Gmail scopes for a calendar-only user', () => {
-    expect(missingRequiredScopes(CAL_ONLY)).toEqual([GMAIL_COMPOSE_SCOPE, GMAIL_READONLY_SCOPE]);
+  it('missingRequiredScopes flags gmail.readonly for a calendar-only user', () => {
+    expect(missingRequiredScopes(CAL_ONLY)).toEqual([GMAIL_READONLY_SCOPE]);
     expect(missingRequiredScopes(CAL_PLUS_GMAIL)).toEqual([]);
     expect(missingRequiredScopes(null)).toEqual(GOOGLE_SCOPES);
   });
