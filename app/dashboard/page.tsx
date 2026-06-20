@@ -669,6 +669,7 @@ interface ActivityItem {
   undoLabel: string | null;
   undone: number | null;
   emailReceiptId?: number | null;
+  count?: number;
 }
 
 function ActivityTab() {
@@ -870,10 +871,18 @@ function ActivityTab() {
                         {/* Label + time */}
                         <div className="flex-1 min-w-0">
                           <p
-                            className="text-sm leading-snug"
+                            className="text-sm leading-snug flex items-center gap-1.5 flex-wrap"
                             style={{ color: isUndone ? 'var(--text-faint)' : 'var(--text-body)' }}
                           >
                             {item.label}
+                            {item.count && item.count > 1 && (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded font-semibold flex-shrink-0"
+                                style={{ background: 'var(--edg-fill-04)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}
+                              >
+                                ×{item.count}
+                              </span>
+                            )}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs" style={{ color: 'var(--text-faint)' }}>

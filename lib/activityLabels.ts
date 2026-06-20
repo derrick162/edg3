@@ -62,6 +62,8 @@ export type ActivityItem = {
   undoLabel: string | null;
   undone: number | null; // null = no undo entry; 0 = available; 1 = already undone
   emailReceiptId?: number | null; // set for email_signal_fetch items; used to load subjects
+  /** Set when consecutive same-label rows were collapsed into this one */
+  count?: number;
 };
 
 // ── Label ────────────────────────────────────────────────────────────────────
@@ -419,49 +421,54 @@ export function buildActivityItems(
   limit = 50,
 ): ActivityItem[] {
   const usedUndoIds = new Set<number>();
-  // Collapse repeated same-action entries to one per UTC day.
-  const seenEmailFetchDays = new Set<string>();
-  const seenConfirmFocusDays = new Set<string>();
 
-  const filtered = auditRows.filter(ar => {
-    if (!ar.ok || READ_ONLY_ACTIONS.has(ar.action)) return false;
-    if (ar.action === 'email_signal_fetch') {
-      const day = ar.created_at.slice(0, 10); // UTC date YYYY-MM-DD
-      if (seenEmailFetchDays.has(day)) return false;
-      seenEmailFetchDays.add(day);
+  // Actions that should never be collapsed even if label + time match
+  const NO_COLLAPSE_ACTIONS = new Set(['createEvent', 'deleteEvent', 'moveEvent', 'editEvent']);
+  const FIVE_MIN_MS = 5 * 60 * 1000;
+
+  const filtered = auditRows.filter(ar => !(!ar.ok || READ_ONLY_ACTIONS.has(ar.action)));
+
+  const mapped: ActivityItem[] = filtered.map(ar => {
+    const arMs = new Date(ar.created_at).getTime();
+    let matched: UndoInput | null = null;
+    let bestDelta = Infinity;
+    for (const ur of undoRows) {
+      if (usedUndoIds.has(ur.id)) continue;
+      const delta = Math.abs(new Date(ur.created_at).getTime() - arMs);
+      if (delta <= 2000 && delta < bestDelta) { matched = ur; bestDelta = delta; }
     }
-    if (ar.action === 'confirmFocusAreas') {
-      const day = ar.created_at.slice(0, 10);
-      if (seenConfirmFocusDays.has(day)) return false;
-      seenConfirmFocusDays.add(day);
-    }
-    return true;
+    if (matched) usedUndoIds.add(matched.id);
+
+    return {
+      id: ar.id,
+      action: ar.action,
+      label: buildLabel(ar.action, ar.args_json, ar.result_text),
+      detail: buildDetail(ar.action, ar.args_json, ar.result_text, ar.snapshot_before, ar.snapshot_after),
+      ok: true,
+      created_at: ar.created_at,
+      undoId: matched?.id ?? null,
+      undoLabel: matched?.label ?? null,
+      undone: matched ? matched.undone : null,
+      emailReceiptId: ar.action === 'email_signal_fetch' ? ar.id : null,
+    };
   });
 
-  return filtered
-    .map(ar => {
-      const arMs = new Date(ar.created_at).getTime();
-      let matched: UndoInput | null = null;
-      let bestDelta = Infinity;
-      for (const ur of undoRows) {
-        if (usedUndoIds.has(ur.id)) continue;
-        const delta = Math.abs(new Date(ur.created_at).getTime() - arMs);
-        if (delta <= 2000 && delta < bestDelta) { matched = ur; bestDelta = delta; }
-      }
-      if (matched) usedUndoIds.add(matched.id);
+  // Collapse consecutive same-label rows within 5 minutes into one ×N entry.
+  // Calendar mutations (create/delete/move/edit) are never collapsed — each is a distinct action.
+  const collapsed: ActivityItem[] = [];
+  for (const item of mapped) {
+    const prev = collapsed[collapsed.length - 1];
+    if (
+      prev &&
+      !NO_COLLAPSE_ACTIONS.has(item.action) &&
+      item.label === prev.label &&
+      Math.abs(new Date(item.created_at).getTime() - new Date(prev.created_at).getTime()) <= FIVE_MIN_MS
+    ) {
+      prev.count = (prev.count ?? 1) + 1;
+    } else {
+      collapsed.push(item);
+    }
+  }
 
-      return {
-        id: ar.id,
-        action: ar.action,
-        label: buildLabel(ar.action, ar.args_json, ar.result_text),
-        detail: buildDetail(ar.action, ar.args_json, ar.result_text, ar.snapshot_before, ar.snapshot_after),
-        ok: true,
-        created_at: ar.created_at,
-        undoId: matched?.id ?? null,
-        undoLabel: matched?.label ?? null,
-        undone: matched ? matched.undone : null,
-        emailReceiptId: ar.action === 'email_signal_fetch' ? ar.id : null,
-      };
-    })
-    .slice(0, limit);
+  return collapsed.slice(0, limit);
 }
