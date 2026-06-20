@@ -31,6 +31,61 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 12 — Live call bugs: deletion token loop + token leakage + replace-at-wrong-time)
+
+> From Derrick's live call with Aria (2026-06-20 afternoon). Three bugs from the transcript. **Do all 3 before any R9 work.**
+
+---
+
+### T1 — deleteEvent confirm-token retry confusion when event name is corrected mid-flow (HIGH — 1.5h)
+
+**What happened:** Derrick said "delete gym" → Edge found Gym at 3 PM → got confirmToken A → Derrick said yes → Edge tried to use token A, but simultaneously searched for "Jim" (after correction) → got confirmToken B → tried to pass token A for event "Jim" → server said invalid/expired → issued token C → Edge got stuck in a multi-token loop and gave up.
+
+**Root cause in `app/api/vapi/tool-call/route.ts`:** When `consumeDeleteToken` fails (line 535), the handler issues a fresh token and returns a new confirmation message. This is correct for genuine expiry but creates a loop when the model is confused about which token belongs to which event name.
+
+**Fix — two parts:**
+
+**Part A — prompt (`lib/vapi.ts`):** Add to the CONFIRM BEFORE DELETING block:
+> "When the user corrects the event name mid-flow (e.g. 'it's Jim not Gym'), call `deleteEvent` fresh with the corrected title — forget the old confirmToken entirely. The new call will return a new question + new token. Read the new question back, get a yes, call again with the new token. Never mix tokens across event names. Each resolution is a clean fresh flow."
+
+**Part B — route hardening:** In the `consumeDeleteToken` failure branch (line 535–538), add a log: `console.error('[deleteEvent] token mismatch', { userId, providedToken: confirmToken, resolvedTitle: toDelete[0]?.summary })` so Railway logs show exactly which token/event caused the mismatch in production.
+
+**Test:** Unit test `consumeDeleteToken` returning false → handler logs the mismatch + returns the new token message (not a crash). Preflight green.
+
+---
+
+### T2 — Token language leaking into voice (HIGH — 30 min, prompt only)
+
+**What happened:** Edge said aloud:
+- *"I need to confirm the gym deletion first with the token it gave me."*
+- *"I need to pass the exact confirmation token. Let me try again."*
+
+The NATURAL LANGUAGE rule (`lib/vapi.ts:175`) bans "the system", tool names, etc. but doesn't explicitly name "token", "confirmation token", "trying again" — so the model narrated its internal retry state.
+
+**Fix (`lib/vapi.ts`):** Update the NATURAL LANGUAGE block to explicitly add:
+> "Never say: 'token', 'confirmation token', 'the code it gave me', 'let me try again', 'trying again', 'checking the token', 'I need to confirm with', or any other description of what you're doing in the backend. When retrying a tool call internally, stay silent or say only 'Give me one second' or 'Just a moment.' The user never needs to know about retries, tokens, or tool mechanics."
+
+Also update the CONFIRM BEFORE DELETING block to reinforce: after the user says yes, just call `deleteEvent` again silently with the token — do not narrate the retry.
+
+No test needed (prompt-only). Preflight green.
+
+---
+
+### T3 — Replace event creates at wrong time (HIGH — 45 min, prompt only)
+
+**What happened:** Derrick said "Remove my gym from 2 to 5 and replace it with a focus block." Gym was at 3 PM. Edge created the focus block at 2 PM. The model latched onto "from 2 to 5" as the start time for the new event.
+
+**Fix (`lib/vapi.ts`):** Add to the BE DECISIVE / CALENDAR section:
+> "REPLACE PATTERN — when the user says 'replace [event] with [new event]' or 'swap [event] for [new thing]':
+> 1. Note the deleted event's exact `startDateTime` before deleting it.
+> 2. Create the replacement at the SAME `startDateTime` and duration unless the user explicitly states a different time for the new event.
+> 3. If the user's phrasing is ambiguous ('remove gym from 2 to 5 and replace with a focus block') — the times modify the deletion target, not the new event. Ask once to clarify the replacement time only if truly ambiguous.
+> Example: 'Remove gym at 3 PM and replace with a focus block' → delete 3 PM gym → create focus block at 3 PM."
+
+No test needed (prompt-only). Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 9 — Live call feedback: voice speed + briefing + spelling + weather + Edge Score)
 
 > From Derrick's call + dashboard review this morning. **Do T1–T7 before any R8 work.** T1–T4 are live call quality issues; T5–T7 are dashboard fixes visible to Derrick right now.

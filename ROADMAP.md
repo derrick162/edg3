@@ -108,9 +108,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R9 ALL 7 SHIPPED (1975 green).** T1 voice speed 0.9; T2 silent fallback + priority truncation; T3 spelling override + lifestyle pref; T4 `getWeather` (`lib/weather.ts`); T5 Focus "X of Y hrs"; T6 briefing calls Clarity→Momentum; T7 local-day call count + weekend Focus Brief card. **⚠️ External (Derrick): create `getWeather` Vapi tool (no params) → paste UUID into `lib/vapi.ts`.** Idle.)_ | `lib/vapi.ts`, `lib/weather.ts`, `lib/briefing.ts`, `lib/calendarScore.ts`, `components/ui/FocusRecommendationCard.tsx` | 2026-06-20 |
+| 🛠️ Core | `core` | _(📋 **R12 DISPATCHED (2026-06-20) — 3 live call bugs from Aria call.** T1: deleteEvent confirm-token retry loop when name corrected mid-flow. T2: token language leaking into voice. T3: replace event creates at wrong time. See `ROADMAP-CORE.md` R12 section.)_ | `lib/vapi.ts`, `app/api/vapi/tool-call/route.ts` | 2026-06-20 |
 | 🔒 Security | `security` | _(📋 **R12 DISPATCHED (2026-06-20) — T1: `getRecentEmailSignal` 24h cache gate + suppress empty audit entries.** Fixes Activity tab flooding with repeated "Reviewed inbox" entries. See `ROADMAP-SECURITY.md` R12 section.)_ | `lib/gmail.ts` | 2026-06-20 |
-| 🔧 PM/CoS | `master` | _(✅ **All R9–R11 merged + deployed. R12 dispatched to Security. `getWeather` tool wired. 🚨 DERRICK:** Railway volume + Litestream env vars.)_ | `ROADMAP*.md` | 2026-06-20 |
+| 🔧 PM/CoS | `master` | _(✅ **R12 dispatched to Core (3 Aria call bugs) + Security (email signal cache gate). All lanes working.)_ | `ROADMAP*.md` | 2026-06-20 |
 | 🎨 Design | `design` | _(✅ **R11 T1+T2+T3 SHIPPED (1958 green).** Focus Score hours subtitle, Weekend Brief card, Activity dedup ×N. Idle, awaiting next dispatch.)_ | `components/ui/FocusRecommendationCard.tsx`, `lib/activityLabels.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
