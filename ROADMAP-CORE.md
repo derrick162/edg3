@@ -207,9 +207,9 @@ Add `WEEKLY REVIEW` block:
 
 ---
 
-## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Vapi tool expansion: free-time finder, recurring events, attendees, task voice tools, forgetFact + Gmail reading indicator)
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Vapi tool expansion: free-time finder, recurring events, attendees, task voice tools, forgetFact)
 
-> `git merge master` first. Six tickets. **Do all before R13 or pillar work.**
+> `git merge master` first (master at `2ca869f`). Five tickets. ~~T6 (Gmail indicator) reassigned to Security~~ — they own `/api/auth/accounts`. **Do all before R13 or pillar work.**
 
 ---
 
