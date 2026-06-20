@@ -46,12 +46,8 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Google Gmail Data</p>
-                <p>If you grant Gmail access, we use it in two ways:</p>
-                <ul className="mt-2 space-y-2 pl-1">
-                  <li><strong style={{ color: 'var(--text-strong)' }}>Draft creation:</strong> Edg3 creates email drafts on your behalf for outreach you asked for. <strong style={{ color: 'var(--text-strong)' }}>Edg3 never sends email</strong> — it only creates drafts for you to review and send yourself.</li>
-                  <li><strong style={{ color: 'var(--text-strong)' }}>Inbox reading:</strong> Edg3 reads recent inbox threads — sender name, subject line, the auto-generated snippet Google provides, and, for a small number of recent non-promotional threads, the message body text. It uses this to compute your daily Focus score, recognize replies to outreach Edg3 drafted, and learn durable facts about your work and relationships for your briefings. <strong style={{ color: 'var(--text-strong)' }}>Email body text is read in memory only and is never stored, shared, or sold</strong> — it is discarded immediately after Edg3 derives its summary. Edg3 may save short factual notes it learns from your email (for example, a project or person you mentioned), which you can view and delete anytime in your Memory tab. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edg3 reviewed — visible only to you, retained for 90 days, then automatically deleted.</li>
-                </ul>
-                <p className="mt-2">You can disconnect Gmail at any time from your dashboard, which immediately revokes both draft and read access.</p>
+                <p>If you grant Gmail read access (<code>gmail.readonly</code>), Edg3 reads recent inbox threads — sender name, subject line, the auto-generated snippet Google provides, and, for a small number of recent non-promotional threads, the message body text. It uses this to compute your daily Focus score and to learn durable facts about your work and relationships for your briefings. <strong style={{ color: 'var(--text-strong)' }}>Edg3 never sends, drafts, modifies, or deletes any email</strong> — access is read-only. <strong style={{ color: 'var(--text-strong)' }}>Email body text is read in memory only and is never stored, shared, or sold</strong> — it is discarded immediately after Edg3 derives its summary. Edg3 may save short factual notes it learns from your email (for example, a project or person you mentioned), which you can view and delete anytime in your Memory tab. Thread subject lines are stored <strong style={{ color: 'var(--text-strong)' }}>encrypted at rest</strong> (AES-256-GCM) in your activity log so you can see exactly which emails Edg3 reviewed — visible only to you, retained for 90 days, then automatically deleted.</p>
+                <p className="mt-2">You can disconnect Gmail at any time from your dashboard, which immediately revokes read access.</p>
               </div>
               <div>
                 <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Whoop Health Data</p>
@@ -102,12 +98,12 @@ export default function PrivacyPage() {
             </p>
             <ul className="space-y-2 text-sm" style={{ color: 'var(--text-body)' }}>
               {[
-                'We only access your Google Calendar and Gmail data to provide the features you requested (your briefings, calendar changes you ask for, drafting outreach emails, and recognizing replies to those emails)',
+                'We only access your Google Calendar and Gmail data to provide the features you requested (your briefings, calendar changes you ask for, and reading your inbox to compute your Focus score and learn facts for your briefings)',
                 'We do not use Google user data for advertising',
                 'We do not allow humans to read your Google Calendar or Gmail data except for security, to comply with the law, or with your explicit consent',
                 'We do not transfer Google user data to third parties except as necessary to provide the service or as required by law',
                 'We do not use Google user data for any purpose unrelated to the features you requested',
-                'For Gmail specifically: Edg3 creates drafts only (it never sends email); it reads inbox threads — sender, subject, Google’s auto-snippet, and, for a small number of recent non-promotional threads, the message body text — to compute your Focus score, recognize replies, and learn durable facts for your briefings. Message body text is read in memory only and is discarded immediately after Edg3 derives its summary. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and message bodies are never stored.',
+                'For Gmail specifically: access is read-only (gmail.readonly) — Edg3 never sends, drafts, modifies, or deletes email. It reads inbox threads — sender, subject, Google’s auto-snippet, and, for a small number of recent non-promotional threads, the message body text — to compute your Focus score and learn durable facts for your briefings. Message body text is read in memory only and is discarded immediately after Edg3 derives its summary. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and message bodies are never stored.',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>

@@ -616,3 +616,26 @@ returns `[]` with no fallback, since a token row exists).
 
 **Result:** CSRF, rate-limit, and audit protections on the Gmail flow are equivalent to the calendar
 flow. The one scope finding is now **accepted/closed** — surfaced, decided, documented.
+
+---
+
+## R12 T2 — Email-drafting feature REMOVED (2026-06-20, Vijay) — supersedes the Gmail sections above
+
+Derrick dropped the email-drafting feature; the Gmail multi-account flow, contact ingest, and the
+`gmail.readonly` decision above describe code that has now been **removed** (kept here for history):
+
+- **Deleted routes:** `app/api/auth/google/gmail/{route,callback,disconnect,ingest}.ts` + `gmail-routes.test.ts`.
+- **Removed from `lib/google-auth.ts`:** the dedicated-Gmail-account OAuth flow — `getGmailAuthUrl`,
+  `exchangeGmailCode`, `emailFromIdToken`, `saveGmailTokens`, `disconnectGmailAccount`,
+  `GMAIL_ACCOUNT_SCOPES`, `GmailTokenExchange`. (`getGmailTokens` retained — still reads existing rows.)
+- **Removed from `lib/gmail.ts`:** `extractGmailAccountContacts` + `EmailContact` + `parseFromHeader`
+  and the **`gmail_contacts_fetch`** audit receipt (the contact-ingest feature is gone).
+- **Privacy page:** Gmail section rewritten to read-only only (no drafting/compose language).
+- **`gmail_tokens` table + `gmailTokenQueries` retained** (existing rows readable; no schema change).
+
+**Still inbound (separate ticket, build-blocked):** `createDraft` (`lib/gmail.ts`) + the
+`gmail.compose` scope (`GMAIL_COMPOSE_SCOPE` in `GOOGLE_SCOPES` + `hasGmailScope`/`missingRequiredScopes`)
+are still present because `app/api/vapi/tool-call/route.ts` (Core-owned `draftEmail` handler) still
+imports `createDraft`. They land once Core's R12 T7 removes that handler. `deleteDraft` is retained
+permanently (`lib/undo.ts` backward-compat for existing undo records). **Net effect once both land:**
+`gmail.readonly` (inbox signal for briefings/Focus score) is the only remaining Gmail scope.

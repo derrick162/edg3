@@ -1,7 +1,10 @@
 /**
- * Multi-account Google linking — token routing tests (real in-memory better-sqlite3).
- * Verifies getCalendarTokens / getGmailTokens (incl. fallback) / saveGmailTokens /
- * disconnectGmailAccount / persistRefreshedToken target the correct account.
+ * Multi-account Google token routing tests (real in-memory better-sqlite3).
+ * Verifies getCalendarTokens / getGmailTokens (incl. fallback) / hasLinkedGmailAccount /
+ * persistRefreshedToken target the correct account.
+ * (R12 T2: the dedicated-Gmail OAuth flow — saveGmailTokens / disconnectGmailAccount /
+ * emailFromIdToken — was removed with the email-drafting feature; gmail_tokens rows are
+ * seeded here via gmailTokenQueries.upsert directly.)
  */
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 
@@ -10,12 +13,8 @@ process.env.DB_PATH = ':memory:';
 
 const { getDb, calendarQueries, gmailTokenQueries } = await import('./db');
 const {
-  getCalendarTokens, getGmailTokens, saveGmailTokens,
-  disconnectGmailAccount, hasLinkedGmailAccount, persistRefreshedToken,
-  emailFromIdToken,
+  getCalendarTokens, getGmailTokens, hasLinkedGmailAccount, persistRefreshedToken,
 } = await import('./google-auth');
-
-const makeIdToken = (payload: object) => `hdr.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
 
 afterAll(() => {
   if (ORIGINAL_DB_PATH === undefined) delete process.env.DB_PATH;
@@ -32,7 +31,7 @@ beforeEach(() => {
 
 describe('getCalendarTokens', () => {
   it('returns the calendar account with source=calendar', () => {
-    calendarQueries.upsert(1, 'cal-access', 'cal-refresh', '100', 'calendar gmail.compose');
+    calendarQueries.upsert(1, 'cal-access', 'cal-refresh', '100', 'calendar');
     const t = getCalendarTokens(1);
     expect(t).toBeDefined();
     expect(t!.access_token).toBe('cal-access');
@@ -45,17 +44,17 @@ describe('getCalendarTokens', () => {
 });
 
 describe('getGmailTokens', () => {
-  it('returns the dedicated Gmail account when linked (source=gmail)', () => {
+  it('returns the dedicated Gmail account when present (source=gmail)', () => {
     calendarQueries.upsert(1, 'cal-access', 'cal-refresh', '100', 'calendar');
-    saveGmailTokens(1, { access_token: 'gmail-access', refresh_token: 'gmail-refresh', expiry: '200', scope: 'gmail.compose' }, 'me@gmail.com');
+    gmailTokenQueries.upsert(1, 'gmail-access', 'gmail-refresh', '200', 'gmail.readonly', 'me@gmail.com');
     const t = getGmailTokens(1);
     expect(t!.access_token).toBe('gmail-access');
     expect(t!.email).toBe('me@gmail.com');
     expect(t!.source).toBe('gmail');
   });
 
-  it('falls back to the calendar account when no Gmail account linked', () => {
-    calendarQueries.upsert(1, 'cal-access', 'cal-refresh', '100', 'calendar gmail.compose');
+  it('falls back to the calendar account when no Gmail account row exists', () => {
+    calendarQueries.upsert(1, 'cal-access', 'cal-refresh', '100', 'calendar');
     const t = getGmailTokens(1);
     expect(t!.access_token).toBe('cal-access');
     expect(t!.source).toBe('calendar');
@@ -67,42 +66,17 @@ describe('getGmailTokens', () => {
 });
 
 describe('hasLinkedGmailAccount', () => {
-  it('is false with only a calendar account, true once a Gmail account is saved', () => {
+  it('is false with only a calendar account, true once a Gmail account row exists', () => {
     calendarQueries.upsert(1, 'a', 'r', '1', 's');
     expect(hasLinkedGmailAccount(1)).toBe(false);
-    saveGmailTokens(1, { access_token: 'g', refresh_token: 'gr', expiry: '1', scope: 'gmail.compose' }, 'me@gmail.com');
+    gmailTokenQueries.upsert(1, 'g', 'gr', '1', 'gmail.readonly', 'me@gmail.com');
     expect(hasLinkedGmailAccount(1)).toBe(true);
-  });
-});
-
-describe('disconnectGmailAccount', () => {
-  it('removes only the Gmail account, leaving the calendar account intact', () => {
-    calendarQueries.upsert(1, 'cal-access', 'cal-refresh', '100', 'calendar');
-    saveGmailTokens(1, { access_token: 'g', refresh_token: 'gr', expiry: '1', scope: 'gmail.compose' }, 'me@gmail.com');
-    disconnectGmailAccount(1);
-    expect(getGmailTokens(1)!.source).toBe('calendar'); // falls back now
-    expect(getCalendarTokens(1)!.access_token).toBe('cal-access'); // untouched
-  });
-});
-
-describe('emailFromIdToken', () => {
-  it('extracts the email claim from a Google id_token', () => {
-    expect(emailFromIdToken(makeIdToken({ email: 'me@gmail.com', sub: '123' }))).toBe('me@gmail.com');
-  });
-  it('returns null when there is no email claim', () => {
-    expect(emailFromIdToken(makeIdToken({ sub: '123' }))).toBeNull();
-  });
-  it('returns null for null/undefined/malformed input', () => {
-    expect(emailFromIdToken(null)).toBeNull();
-    expect(emailFromIdToken(undefined)).toBeNull();
-    expect(emailFromIdToken('not-a-jwt')).toBeNull();
-    expect(emailFromIdToken('a.@@@.c')).toBeNull();
   });
 });
 
 describe('persistRefreshedToken', () => {
   it('writes a refresh back to the gmail account when source=gmail', () => {
-    saveGmailTokens(1, { access_token: 'old', refresh_token: 'gr', expiry: '1', scope: 'gmail.compose' }, 'me@gmail.com');
+    gmailTokenQueries.upsert(1, 'old', 'gr', '1', 'gmail.readonly', 'me@gmail.com');
     persistRefreshedToken(1, 'gmail', { access_token: 'new-gmail', refresh_token: 'gr', expiry: '2' });
     expect(gmailTokenQueries.get(1)!.access_token).toBe('new-gmail');
     expect(gmailTokenQueries.get(1)!.email).toBe('me@gmail.com'); // COALESCE preserved
