@@ -50,7 +50,7 @@ vi.mock('googleapis', () => ({
   },
 }));
 
-import { createDraft, deleteDraft, userHasGmailScope, readThread, getRecentEmailSignal, getEmailSignalSubjects, GmailScopeError, GmailRateLimitError } from './gmail';
+import { createDraft, deleteDraft, userHasGmailScope, readThread, getRecentEmailSignal, getEmailSignalSubjects, truncateAtSentenceBoundary, GmailScopeError, GmailRateLimitError } from './gmail';
 
 const WITH_GMAIL = { access_token: 'a', refresh_token: 'r', expiry: null, scope: GOOGLE_SCOPES.join(' ') };
 const CAL_ONLY = { access_token: 'a', refresh_token: 'r', expiry: null, scope: CALENDAR_SCOPES.join(' ') };
@@ -467,6 +467,101 @@ describe('getRecentEmailSignal (email prioritization signal)', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].threadId).toBe('primary_thread');
     expect(result.items[0].subject).toBe('Meeting tomorrow');
+  });
+
+  // ── fullBodies (R9 — full inbound body for fact extraction) ───────────────────
+  it('fullBodies:true attaches the inbound body text via readThread', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: { threads: [{ id: 'th_body', snippet: 'snippet only' }] },
+    } as any);
+    h.threadsGet
+      // call 1 — metadata for the signal item
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [
+          { name: 'From', value: 'colleague@example.com' },
+          { name: 'Subject', value: 'Project update' },
+          { name: 'Date', value: 'Mon, 14 Jun 2026' },
+        ] } }] },
+      } as any)
+      // call 2 — readThread full-format fetch for the body
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: 'm1', snippet: 's', labelIds: ['INBOX'], payload: {
+          mimeType: 'text/plain',
+          headers: [{ name: 'From', value: 'colleague@example.com' }, { name: 'Date', value: 'Mon, 14 Jun 2026' }],
+          body: { data: Buffer.from('The launch slipped to Friday.', 'utf8').toString('base64') },
+        } }] },
+      } as any);
+
+    const result = await getRecentEmailSignal(1, { fullBodies: true });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].body).toBe('The launch slipped to Friday.');
+    expect(h.threadsGet).toHaveBeenCalledWith({ userId: 'me', id: 'th_body', format: 'full' });
+  });
+
+  it('default (no fullBodies) leaves body undefined and issues no full-body fetch', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: { threads: [{ id: 'th_nb', snippet: 's' }] },
+    } as any);
+    h.threadsGet.mockResolvedValue({
+      data: { messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [
+        { name: 'From', value: 'a@example.com' },
+        { name: 'Subject', value: 'Hi' },
+        { name: 'Date', value: 'Mon, 14 Jun 2026' },
+      ] } }] },
+    } as any);
+
+    const result = await getRecentEmailSignal(1);
+    expect(result.items[0].body).toBeUndefined();
+    expect(h.threadsGet).toHaveBeenCalledTimes(1); // metadata only, no readThread
+    expect(h.threadsGet).toHaveBeenCalledWith(expect.objectContaining({ format: 'metadata' }));
+  });
+
+  it('fullBodies:true skips likely-spam threads — no readThread/body fetch for them', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({
+      data: { threads: [{ id: 'th_spam', snippet: 'deal' }] },
+    } as any);
+    h.threadsGet.mockResolvedValueOnce({
+      data: { messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [
+        { name: 'From', value: 'noreply@marketing.example.com' },
+        { name: 'Subject', value: 'Weekly update' },
+        { name: 'Date', value: 'Mon, 14 Jun 2026' },
+      ] } }] },
+    } as any);
+
+    const result = await getRecentEmailSignal(1, { fullBodies: true });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].body).toBeUndefined();        // spam never gets a body
+    expect(h.threadsGet).toHaveBeenCalledTimes(1);        // metadata only — readThread skipped
+  });
+});
+
+// ── truncateAtSentenceBoundary (R9 — clean body truncation) ───────────────────
+
+describe('truncateAtSentenceBoundary', () => {
+  it('returns text unchanged when under the cap', () => {
+    expect(truncateAtSentenceBoundary('Short body.', 2000)).toBe('Short body.');
+  });
+
+  it('cuts at the last period before the cap (no mid-sentence fragment)', () => {
+    const text = 'First sentence. Second sentence. ' + 'x'.repeat(50);
+    const out = truncateAtSentenceBoundary(text, 33); // cap lands inside the trailing run
+    expect(out).toBe('First sentence. Second sentence.');
+  });
+
+  it('cuts at the last newline when that is the closest boundary', () => {
+    const text = 'Line one\nLine two\n' + 'y'.repeat(50);
+    const out = truncateAtSentenceBoundary(text, 18);
+    expect(out).toBe('Line one\nLine two');
+  });
+
+  it('falls back to a hard cut when no boundary exists in the window', () => {
+    const text = 'z'.repeat(100); // no period or newline at all
+    const out = truncateAtSentenceBoundary(text, 40);
+    expect(out).toHaveLength(40);
+    expect(out).toBe('z'.repeat(40));
   });
 });
 
