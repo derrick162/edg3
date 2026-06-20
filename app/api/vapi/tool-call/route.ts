@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
-import { isTimedEventInWindow, formatBatchPreview } from '@/lib/batchSchedule';
+import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents } from '@/lib/batchSchedule';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -953,6 +953,58 @@ Query: ${query}` }],
     }
     recordUndo(userId, `ended "${seriesName}" series after ${endAfterDate}`, [{ type: 'patch', calId: r.calId, eventId: r.event.recurringEventId, requestBody: { recurrence: origRecurrence } }]);
     return `Got it — "${seriesName}" will end after ${endAfterDate}.`;
+
+  } else if (fn === 'blockTravelTime') {
+    // R13 T3 — block a travel window (timed if a departure/return time is given, else all-day)
+    // and warn about anything scheduled within 90 min of departure/return.
+    const { date, destination, departureTime, returnDate, returnTime } = args as {
+      date?: string; destination?: string; departureTime?: string; returnDate?: string; returnTime?: string;
+    };
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'What day is the travel?';
+    if (!destination?.trim()) return 'Where are you traveling to?';
+    const dest = destination.trim();
+    const travelTitle = `✈ Travel: ${dest}`;
+    const TRAVEL_MINUTES = 180; // default block length when a time is given
+    const createdIds: string[] = [];
+    const warnings: string[] = [];
+
+    // Create one travel block (timed or all-day) for a leg, returning false on failure.
+    const blockLeg = async (legDate: string, time: string | undefined, label: string): Promise<boolean> => {
+      let rb: calendar_v3.Schema$Event;
+      let anchorMs: number | null = null;
+      if (time) {
+        const { start, end } = bookEventTimes(legDate, resolveNaturalTime(time), TRAVEL_MINUTES);
+        rb = { summary: travelTitle, start: { dateTime: start, timeZone: tz }, end: { dateTime: end, timeZone: tz }, colorId: '9' };
+        anchorMs = zonedWallTimeToUtc(start, tz).getTime();
+      } else {
+        rb = { summary: travelTitle, start: { date: legDate }, end: { date: nextDay(legDate) }, colorId: '9' };
+      }
+      const ins = await cal.events.insert({ calendarId: 'primary', requestBody: rb }).catch((e: unknown) => {
+        console.error(`[blockTravelTime] insert failed (${label}):`, e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (!ins?.data.id) return false;
+      createdIds.push(ins.data.id);
+      // Proximity warning: timed legs only (need a clock anchor).
+      if (anchorMs != null) {
+        const dayEvents = (await eventsOnDay(cal, calIds, legDate, tz)).map(x => x.event).filter(e => e.summary !== travelTitle);
+        const near = nearbyTimedEvents(dayEvents, anchorMs, 90);
+        if (near.length) warnings.push(`Around your ${label} you've got ${formatBatchPreview(near, tz)}`);
+      }
+      return true;
+    };
+
+    const outbound = await blockLeg(date, departureTime, 'departure');
+    if (!outbound) return `I couldn't block the travel time just now — want me to try again?`;
+    if (returnDate && /^\d{4}-\d{2}-\d{2}$/.test(returnDate)) {
+      await blockLeg(returnDate, returnTime, 'return');
+    }
+    if (createdIds.length) recordUndo(userId, `blocked travel to ${dest}`, [{ type: 'deleteMany', calId: 'primary', eventIds: createdIds }]);
+
+    const span = returnDate && returnDate !== date ? `${date}${returnDate ? ` and back ${returnDate}` : ''}` : date;
+    let msg = `Blocked travel to ${dest} on ${span}.`;
+    if (warnings.length) msg += ` Heads up — ${warnings.join('; ')}. Want me to move anything?`;
+    return msg;
 
   } else if (fn === 'cleanupEvents') {
     // Batch delete for consolidation cleanup — deletes a list of events by EXACT start time,

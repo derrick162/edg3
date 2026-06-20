@@ -241,6 +241,7 @@ ACT ONLY ON THIS CALL — NO FUTURE PROMISES: You can only do things during this
 REMOVING MULTIPLE EVENTS: To delete several events at once (e.g. cleaning up duplicates), use cleanupEvents — it removes the whole batch with ONE confirmation. Do NOT delete them one-by-one with separate confirm tokens; that stalls and frustrates the user.
 CLEAN UP DUPLICATES: When the user says "delete the duplicates", "clean up duplicates", "remove the extras", or similar → call cleanupDuplicates (NOT one-by-one deleteEvent). It scans the next 14 days, groups by title + time, keeps the earliest copy, and removes the rest with a single confirmation. Pass startDate/endDate only if the user names a specific window.
 BATCH RESCHEDULE: When ${firstName} says "move everything this afternoon", "clear my Monday morning", "reschedule all my meetings tomorrow", or similar → call batchReschedule with the time window (date + optional startTime/endTime) + action ('move' with a targetDate, or 'delete'). The first call returns a preview and a confirmToken — read the preview out loud, get a yes, then call again with the SAME window + action plus the confirmToken. NEVER do this one-by-one with separate deleteEvent/moveEvent calls.
+TRAVEL BLOCKING: When ${firstName} mentions flying, driving long-distance, or traveling → call blockTravelTime with the destination + date. If they give a departure/arrival time, pass departureTime for a timed block; otherwise it's an all-day block. If they mention a return, pass returnDate (and returnTime if given). After blocking, I'll flag anything scheduled within 90 minutes of departure/return — offer to move it.
 MEAL TIMES: Breakfast = morning (before ~10 AM). Lunch = midday (~noon–1 PM). Dinner = evening (~6–8 PM). Use this when reasoning about meal events so you can understand them without reading the exact time.
 
 PRIORITY BLOCKING: If the briefing surfaced a priority gap and offered to block a specific time slot (e.g. "Want me to block Tuesday at two PM for fundraising?"), OR proactively offered a near-term free block today ("there's a clear two-hour block at ten — want me to lock it in for [priority]?"), and the user says yes / go ahead / book it — immediately call createEvent with that exact slot and a title like "Focus: [priority]". Don't re-ask for confirmation. Just book it and say "Done — blocked [day] at [time] for [priority]." PERSONAL EVENT OFFERS (Round 8): if the briefing offered to help with a personal/social event — block prep time → createEvent — act on yes the same way, no re-asking.
@@ -297,6 +298,7 @@ Always end with warmth. This person is building something — remind them of tha
           // '___batchReschedule___', // batchReschedule (R13 T1) — params: window {date,startTime?,endTime?}, action ('move'|'delete'), targetDate?, confirmToken?
           // '___skipRecurringOccurrence___', // skipRecurringOccurrence (R13 T2) — params: title, occurrenceDate
           // '___endRecurringSeries___', // endRecurringSeries (R13 T2) — params: title, occurrenceDate, endAfterDate
+          // '___blockTravelTime___', // blockTravelTime (R13 T3) — params: date, destination, departureTime?, returnDate?, returnTime?
         ],
       },
       firstMessage: briefingContent,
@@ -362,6 +364,7 @@ Always end with warmth. This person is building something — remind them of tha
           // '___batchReschedule___', // batchReschedule (R13 T1)
           // '___skipRecurringOccurrence___', // skipRecurringOccurrence (R13 T2)
           // '___endRecurringSeries___', // endRecurringSeries (R13 T2)
+          // '___blockTravelTime___', // blockTravelTime (R13 T3)
         ],
       },
       messagePlan: {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isTimedEventInWindow, formatBatchPreview, type BatchEventLike } from './batchSchedule';
+import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, type BatchEventLike } from './batchSchedule';
 
 // Toronto = UTC-4 in June. 2pm/3pm/4pm local = 18:00/19:00/20:00Z.
 const ev = (summary: string, dt: string | null, status?: string): BatchEventLike => ({
@@ -48,5 +48,23 @@ describe('formatBatchPreview', () => {
 
   it('falls back to Untitled / all day', () => {
     expect(formatBatchPreview([ev('', null)], 'America/Toronto')).toBe('Untitled at all day');
+  });
+});
+
+describe('nearbyTimedEvents (R13 T3)', () => {
+  const anchor = Date.parse('2026-06-20T13:00:00Z'); // departure anchor
+
+  it('returns events within ±90 min of the anchor', () => {
+    const events = [
+      ev('Call', '2026-06-20T12:15:00Z'),  // 45 min before → in
+      ev('Standup', '2026-06-20T14:20:00Z'), // 80 min after → in
+      ev('Lunch', '2026-06-20T11:00:00Z'),  // 120 min before → out
+    ];
+    const near = nearbyTimedEvents(events, anchor, 90);
+    expect(near.map(e => e.summary)).toEqual(['Call', 'Standup']);
+  });
+
+  it('ignores all-day events near the anchor', () => {
+    expect(nearbyTimedEvents([ev('Holiday', null)], anchor, 90)).toEqual([]);
   });
 });

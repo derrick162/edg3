@@ -24,6 +24,15 @@ export function isTimedEventInWindow(ev: BatchEventLike, startMs: number, endMs:
 }
 
 /**
+ * R13 T3 — timed events whose start falls within ±`withinMinutes` of an anchor instant.
+ * Used to warn about meetings scheduled close to a travel departure/return.
+ */
+export function nearbyTimedEvents<T extends BatchEventLike>(events: T[], anchorMs: number, withinMinutes: number): T[] {
+  const w = withinMinutes * 60_000;
+  return events.filter(e => isTimedEventInWindow(e, anchorMs - w, anchorMs + w));
+}
+
+/**
  * Spoken-friendly preview of the events a batch op will touch, e.g.
  * "Gym at 2:00 PM, Focus block at 3:00 PM, Call at 4:00 PM".
  * Strips the ⚡ marker Edge prefixes onto events it created.
