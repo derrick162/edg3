@@ -50,7 +50,7 @@ vi.mock('googleapis', () => ({
   },
 }));
 
-import { deleteDraft, readThread, getRecentEmailSignal, getEmailSignalSubjects, truncateAtSentenceBoundary, GmailScopeError } from './gmail';
+import { deleteDraft, readThread, getRecentEmailSignal, getEmailSignalSubjects, searchEmailsBySubject, truncateAtSentenceBoundary, GmailScopeError } from './gmail';
 
 const WITH_GMAIL = { access_token: 'a', refresh_token: 'r', expiry: null, scope: GOOGLE_SCOPES.join(' ') };
 const CAL_ONLY = { access_token: 'a', refresh_token: 'r', expiry: null, scope: CALENDAR_SCOPES.join(' ') };
@@ -597,5 +597,56 @@ describe('getEmailSignalSubjects', () => {
     getEmailSignalSubjects(7, 123);
     // h.dbGet is called by prepare(...).get(id, userId)
     expect(h.dbGet).toHaveBeenCalledWith(123, 7);
+  });
+});
+
+// ── searchEmailsBySubject (R13 T3 — targeted subject search for briefEvent) ────
+describe('searchEmailsBySubject', () => {
+  it('returns scopeMissing when no Google account / no gmail.readonly', async () => {
+    h.calGet.mockReturnValue(undefined);
+    expect((await searchEmailsBySubject(1, 'investor')).scopeMissing).toBe(true);
+    h.calGet.mockReturnValue(CAL_ONLY); // calendar grant without gmail.readonly
+    expect((await searchEmailsBySubject(1, 'investor')).scopeMissing).toBe(true);
+    expect(h.threadsList).not.toHaveBeenCalled();
+  });
+
+  it('returns matching items (snippet only) and writes NO audit entry', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [{ id: 'th_1', snippet: 'Re: the investor meeting' }] } } as any);
+    h.threadsGet.mockResolvedValue({ data: { messages: [{ id: 'm1', labelIds: ['INBOX', 'UNREAD'], payload: { headers: [
+      { name: 'From', value: 'vc@example.com' }, { name: 'Subject', value: 'Investor meeting Tues' }, { name: 'Date', value: 'Mon, 20 Jun 2026' },
+    ] } }] } } as any);
+
+    const result = await searchEmailsBySubject(1, 'investor');
+    expect(result.scopeMissing).toBe(false);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ subject: 'Investor meeting Tues', sender: 'vc@example.com', snippet: 'Re: the investor meeting', isUnread: true });
+    expect(result.items[0].body).toBeUndefined();      // snippet-only, no body fetch
+    expect(h.auditRecord).not.toHaveBeenCalled();      // targeted search → no Activity receipt
+  });
+
+  it('returns empty items when the search matches nothing', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    const result = await searchEmailsBySubject(1, 'nonexistent');
+    expect(result.items).toEqual([]);
+    expect(result.scopeMissing).toBe(false);
+  });
+
+  it('builds a subject: query with the days window and caps maxResults', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    await searchEmailsBySubject(1, 'quarterly review', { days: 7, max: 5 });
+    const call = (h.threadsList.mock.calls as any[][])[0]?.[0];
+    expect(call.q).toBe('subject:(quarterly review) newer_than:7d');
+    expect(call.maxResults).toBe(5);
+  });
+
+  it('sanitizes query metacharacters so an event title cannot break the Gmail query', async () => {
+    h.calGet.mockReturnValue(WITH_GMAIL);
+    h.threadsList.mockResolvedValue({ data: { threads: [] } } as any);
+    await searchEmailsBySubject(1, 'Sync (Q3) "kickoff"');
+    const call = (h.threadsList.mock.calls as any[][])[0]?.[0];
+    expect(call.q).toBe('subject:(Sync Q3 kickoff) newer_than:30d');
   });
 });

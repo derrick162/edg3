@@ -364,3 +364,78 @@ export function getEmailSignalSubjects(userId: number, auditId: number): string[
     return null;
   }
 }
+
+/**
+ * R13 T3 — targeted SUBJECT search. Finds recent threads whose subject matches `query`.
+ * Used by Core's `briefEvent` tool (meeting prep): "brief me on the investor meeting" →
+ * pull emails with "investor" in the subject. Returns the same `EmailSignal` shape as
+ * `getRecentEmailSignal` (snippet only — no body fetch).
+ *
+ * Deliberately **no audit-log entry and no 24h cache** — this is an on-demand, query-specific
+ * search (called only from briefEvent), not the daily inbox scan that the Activity-tab receipt
+ * + cache gate are for.
+ *
+ * @throws Never — missing scope returns scopeMissing:true; per-thread failures are swallowed.
+ */
+export async function searchEmailsBySubject(
+  userId: number,
+  query: string,
+  opts: { days?: number; max?: number } = {},
+): Promise<EmailSignal> {
+  const fetchedAt = new Date().toISOString();
+  const days = Math.max(1, opts.days ?? 30);
+  const max = Math.min(opts.max ?? 10, EMAIL_SIGNAL_CAP);
+
+  // gmail.readonly lives on the calendar account (same as getRecentEmailSignal).
+  const tokenRow = getCalendarTokens(userId);
+  if (!tokenRow || !hasGmailReadScope(tokenRow.scope)) {
+    return { items: [], fetchedAt, scopeMissing: true };
+  }
+
+  // Sanitize the term so an event title can't break the Gmail query grammar
+  // (strip parens/quotes/braces that have meaning inside `subject:(...)`).
+  const term = query.replace(/[()"{}]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!term) return { items: [], fetchedAt, scopeMissing: false };
+
+  const gmail = gmailClientFor(userId, tokenRow);
+  const listRes = await gmail.users.threads.list({
+    userId: 'me',
+    q: `subject:(${term}) newer_than:${days}d`,
+    maxResults: max,
+  });
+  const threads = listRes.data.threads ?? [];
+
+  // Metadata-only per thread (headers + Gmail's list snippet) — no message bodies fetched.
+  const settled = await Promise.allSettled(
+    threads.map(async (t) => {
+      const detail = await gmail.users.threads.get({
+        userId: 'me',
+        id: t.id!,
+        format: 'metadata',
+        metadataHeaders: ['From', 'Subject', 'Date'],
+      });
+      const messages = detail.data.messages ?? [];
+      const firstMsg = messages[0];
+      const lastMsg = messages[messages.length - 1] ?? firstMsg;
+      const hdr = (msg: typeof firstMsg, name: string): string =>
+        (msg?.payload?.headers ?? []).find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? '';
+      const allLabels = messages.flatMap((m) => m.labelIds ?? []);
+      return {
+        threadId: t.id!,
+        sender: hdr(firstMsg, 'From'),
+        subject: hdr(firstMsg, 'Subject'),
+        snippet: t.snippet ?? '',
+        date: hdr(lastMsg, 'Date'),
+        isUnread: allLabels.includes('UNREAD'),
+        isImportant: allLabels.includes('IMPORTANT'),
+      } satisfies EmailSignalItem;
+    }),
+  );
+
+  const items = settled
+    .filter((r): r is PromiseFulfilledResult<EmailSignalItem> => r.status === 'fulfilled' && r.value !== null)
+    .map((r) => r.value);
+
+  // No audit entry, no cache — see doc comment.
+  return { items, fetchedAt, scopeMissing: false };
+}
