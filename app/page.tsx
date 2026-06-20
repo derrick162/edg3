@@ -596,7 +596,7 @@ export default function LandingPage() {
               { label: 'Edg3 Score', desc: 'One number — Focus, Energy, Clarity, Momentum — that tells you exactly how well your day is set up before it starts.' },
               { label: 'Open Loops', desc: 'Said "I\'ll follow up on that"? Edg3 heard it. Every commitment you\'ve made is tracked and surfaced before it slips.' },
               { label: 'Whoop integration', desc: 'Recovery at 34%? Edg3 automatically protects your morning and shifts the heavy cognitive work. No manual entry ever.' },
-              { label: 'Gmail integration', desc: 'Edg3 flags threads that need a reply today — without reading your emails. Subject lines only. Signal without surveillance.' },
+              { label: 'Gmail integration', desc: 'Edg3 reads your inbox to sharpen your Focus score and learn durable context about your work — who you\'re talking to, what projects are live. Read-only. Never stored.' },
               { label: 'Activity log with undo', desc: 'Every calendar change Edg3 makes is logged. Didn\'t like it? One tap to undo, no questions asked.' },
             ].map((feat, i) => (
               <div key={i} className="flex items-start gap-3.5 px-4 py-4 rounded-xl" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>

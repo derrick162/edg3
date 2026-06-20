@@ -1526,10 +1526,6 @@ export default function Dashboard() {
   });
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
-  // Multi-account Google linking: a second, Gmail-only account (separate from the calendar account).
-  const [gmailAccount, setGmailAccount] = useState<{ connected: boolean; email: string | null } | null>(null);
-  const [calendarHasGmailScope, setCalendarHasGmailScope] = useState(false);
-  const [disconnectingGmail, setDisconnectingGmail] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
   const [whoopData, setWhoopData] = useState<{
@@ -1543,8 +1539,6 @@ export default function Dashboard() {
   const [reminderInCalendar, setReminderInCalendar] = useState<boolean | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [linkedNotice, setLinkedNotice] = useState(false);
-  const [gmailLinkedNotice, setGmailLinkedNotice] = useState<'idle' | 'ingesting' | 'done'>('idle');
-  const [gmailIngestStats, setGmailIngestStats] = useState<{ contactsFound: number } | null>(null);
   const [notifs, setNotifs] = useState<{ id: number; title: string | null; body: string | null; read: number; created_at: number }[]>([]);
   const [notifUnread, setNotifUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -1643,14 +1637,11 @@ export default function Dashboard() {
       }
     }).catch(() => {});
     retryFetch('/api/milestones', d => setMilestones(d.milestones || []));
-    // Multi-account: one call returns both the calendar account and the optional Gmail account.
     fetch('/api/auth/accounts')
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) { setCalendarConnected(false); return; }
         setCalendarConnected(!!d.calendar?.connected);
-        setCalendarHasGmailScope(!!d.calendar?.hasGmailScope);
-        setGmailAccount({ connected: !!d.gmail?.connected, email: d.gmail?.email ?? null });
       })
       .catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -1967,28 +1958,6 @@ export default function Dashboard() {
     }
   }, []);
 
-  // After linking a Gmail account, kick off background contact ingestion and show
-  // a persistent progress notification pointing to the Memory tab.
-  useEffect(() => {
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('gmail_linked')) {
-      window.history.replaceState({}, '', '/dashboard');
-      setGmailLinkedNotice('ingesting');
-      // Force a fact-extraction pass over the freshly-linked inbox (bypasses the thin-facts
-      // gate) so durable facts populate immediately post-connect, not just contact names.
-      fetch('/api/learned?source=gmail-connect').catch(() => {});
-      fetch('/api/auth/google/gmail/ingest', { method: 'POST' })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d?.contactsFound != null) setGmailIngestStats({ contactsFound: d.contactsFound });
-          setGmailLinkedNotice('done');
-          setTimeout(() => setGmailLinkedNotice('idle'), 10000);
-        })
-        .catch(() => {
-          setGmailLinkedNotice('done');
-          setTimeout(() => setGmailLinkedNotice('idle'), 6000);
-        });
-    }
-  }, []);
 
 
   async function callIntro() {
@@ -2053,27 +2022,6 @@ export default function Dashboard() {
     }
   }
 
-  // Multi-account Google: connect/disconnect a dedicated Gmail account (separate from calendar).
-  async function connectGmail() {
-    const res = await fetch('/api/auth/google/gmail');
-    const data = await res.json().catch(() => ({}));
-    if (data.url) window.location.href = data.url;
-    else alert(data.error || 'Could not start Gmail connection — please try again.');
-  }
-
-  async function disconnectGmail() {
-    if (!confirm('Disconnect your Gmail account? Edg3 will no longer be able to draft emails on your behalf until you reconnect.')) return;
-    setDisconnectingGmail(true);
-    const res = await fetch('/api/auth/google/gmail/disconnect', { method: 'POST' });
-    setDisconnectingGmail(false);
-    if (res.ok) {
-      setGmailAccount({ connected: false, email: null });
-    } else {
-      const data = await res.json().catch(() => ({}));
-      alert(data.error || 'Failed to disconnect Gmail');
-    }
-  }
-
   async function connectWhoop() {
     const res = await fetch('/api/whoop/connect');
     if (!res.ok) { alert('Whoop is not configured yet — contact support.'); return; }
@@ -2117,27 +2065,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {gmailLinkedNotice !== 'idle' && (
-        <div style={{ position: 'fixed', top: linkedNotice ? 56 : 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'var(--surface-elevated)', border: '1px solid var(--edg-accent-20)', color: 'var(--text-primary)', padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 500, maxWidth: 440, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }}>
-          {gmailLinkedNotice === 'ingesting' ? (
-            <>
-              <span className="animate-spin" style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--edg-indigo)', borderTopColor: 'transparent', borderRadius: '50%', marginRight: 8, verticalAlign: 'middle' }} />
-              Gmail connected — reading your recent emails to learn more about you...
-            </>
-          ) : gmailIngestStats ? (
-            <>
-              <span style={{ color: 'var(--edg-success)', marginRight: 6 }}>✓</span>
-              Found {gmailIngestStats.contactsFound} contacts in your email history.{' '}
-              <button onClick={() => setActiveTab('memory')} style={{ color: 'var(--edg-indigo)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, padding: 0, textDecoration: 'underline' }}>
-                Check your Memory tab
-              </button>{' '}
-              to see what Edge learned.
-            </>
-          ) : (
-            <><span style={{ color: 'var(--edg-success)', marginRight: 6 }}>✓</span> Gmail account connected</>
-          )}
-        </div>
-      )}
 
       {/* Notification center */}
       <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 60 }}>
@@ -2452,52 +2379,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── Gmail account slot (multi-account: a separate account dedicated to drafting) ── */}
-            {gmailAccount?.connected ? (
-              <div className="px-2 py-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                    {gmailAccount.email ? `Gmail · ${gmailAccount.email}` : 'Gmail connected'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 pl-3.5 mb-1">
-                  <button
-                    onClick={connectGmail}
-                    className="text-xs"
-                    style={{ color: 'var(--text-faint)' }}
-                  >
-                    Reconnect
-                  </button>
-                  <button
-                    onClick={disconnectGmail}
-                    disabled={disconnectingGmail}
-                    className="text-xs"
-                    style={{ color: 'var(--edg-danger)' }}
-                  >
-                    {disconnectingGmail ? 'Disconnecting…' : 'Disconnect'}
-                  </button>
-                </div>
-                <p className="pl-3.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                  Drafts emails · reads contacts into Memory
-                </p>
-              </div>
-            ) : (
-              <div className="px-2 py-2">
-                <button
-                  onClick={connectGmail}
-                  className="w-full text-xs py-1 text-left"
-                  style={{ color: 'var(--text-faint)' }}
-                >
-                  ✉️ Connect Gmail account
-                </button>
-                <p className="pl-0 mt-0.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                  {calendarHasGmailScope
-                    ? 'Drafts emails · reads contacts into Memory. (Currently drafting via your calendar account.)'
-                    : 'Connect to unlock email drafting and contact sync.'}
-                </p>
-              </div>
-            )}
             {whoopConnected === false ? (
               <button
                 onClick={connectWhoop}

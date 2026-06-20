@@ -11,6 +11,23 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
+## 2026-06-20 — R12 email-removal QA pass (Cam)
+
+**Status: GREEN** — 1939/1939 green (counts reflect test files deleted in R12 email removal), tsc clean, next build clean.
+
+### Stale email-feature UI removed
+- ✅ `app/dashboard/page.tsx`: removed entire Gmail connect/disconnect section — called now-deleted `/api/auth/google/gmail/**` routes. Removed `gmailAccount`, `calendarHasGmailScope`, `disconnectingGmail`, `gmailLinkedNotice`, `gmailIngestStats` state; `connectGmail`/`disconnectGmail` handlers; `gmail_linked` useEffect; post-link ingest toast. `gmail.readonly` is bundled with the main Google Calendar OAuth — no separate UI needed.
+- ✅ `app/security/page.tsx`: updated Gmail section — heading was "drafts only" (removed feature); copy described email drafting/reply-tracking. Now accurately describes `gmail.readonly` usage (Focus score + fact learning, never stored, read-only).
+- ✅ `app/page.tsx`: feature grid Gmail bullet was "flags threads that need a reply" (reply-tracking removed). Updated to describe accurate `gmail.readonly` benefit (Focus score + durable context).
+
+### Pages confirmed clean (no stale email references)
+- ✅ `app/privacy/page.tsx` — already accurately describes `gmail.readonly` (read-only, never stored)
+- ✅ `app/onboarding/page.tsx` — no email drafting references
+- ✅ `app/memory/page.tsx`, `app/score/page.tsx` — clean
+- ✅ `app/login/page.tsx`, `app/signup/page.tsx`, `app/terms/page.tsx` — clean
+
+---
+
 ## 2026-06-20 — R11 ship + pillar sweep (Cam)
 
 **Status: GREEN** — 1958/1958 green, tsc clean, next build clean.

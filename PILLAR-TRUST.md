@@ -163,9 +163,17 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - Add logging to any missing route
 - Document full coverage in `content/security-audit.md`
 
-### T3-3 — Data export accuracy (Security) — 📥 **DISPATCHED 2026-06-18**
-**Audit written:** `content/export-audit.md` — full gap analysis of `app/api/account/export/route.ts`. Route to Vijay (Security).
-**Missing from current export (v1):** `episodes` (call ground-truth records — HIGH), `audit_log` (every action Edge took — HIGH), `fact_history` (versioned memory audit trail — MEDIUM), `undo_history` (LOW). Also: facts export should include retired facts with status + retiredAt; confidence_score + last_confirmed_at should be included per fact; version bump to '2'.
+### T3-3 — Data export accuracy (Security) — ✅ **FIXED (R10 T1 + T3-3 completion 2026-06-20)**
+**Shipped:** `GET /api/account/export` now exports the **complete** record. R10 T1 added `episodes`,
+`fact_history`, `focus_milestones`, `support_messages` (+ earlier `activityLog`/audit_log, `people`,
+`peopleModels`), all decrypted via `safeDecryptField`. T3-3 completion (2026-06-20): **facts** now use
+`includeRetired:true` and carry `status` (active/retired) + `retiredAt` + `confidence` + `confidenceScore`
++ `lastConfirmedAt`; added **`undoHistory`** (action label + undone flag + timestamp; internal restore
+payload deliberately excluded). Export `version` bumped to **'4'**. Tests in `app/api/account/account.test.ts`
+(all sections present + decrypted; facts active+retired metadata; undoHistory). Secrets (password_hash,
+OAuth tokens) remain omitted.
+~~**Missing from current export (v1):** `episodes` (HIGH), `audit_log` (HIGH), `fact_history` (MEDIUM),
+`undo_history` (LOW); facts should include retired + confidence_score + last_confirmed_at; version bump.~~
 **The risk:** The data export (Settings → Account → Export) may not include everything Edge stores, or may include it in an unreadable format.
 - Audit the export endpoint: does it include facts, memories, episodes, call transcripts, priorities, tasks, activity log, and the user's current privacy setting?
 - If anything is missing: add it
