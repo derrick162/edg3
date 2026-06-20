@@ -1525,6 +1525,7 @@ export default function Dashboard() {
     return false;
   });
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [calendarHasGmailScope, setCalendarHasGmailScope] = useState(false); // R13 T2 — gmail.readonly granted on the Google grant
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
@@ -1640,8 +1641,9 @@ export default function Dashboard() {
     fetch('/api/auth/accounts')
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        if (!d) { setCalendarConnected(false); return; }
+        if (!d) { setCalendarConnected(false); setCalendarHasGmailScope(false); return; }
         setCalendarConnected(!!d.calendar?.connected);
+        setCalendarHasGmailScope(!!d.calendar?.hasGmailScope);
       })
       .catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -2356,6 +2358,17 @@ export default function Dashboard() {
                   <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{calendarConnected ? 'Calendar connected' : 'Google connection'}</p>
                 </div>
+                {/* R13 T2 — Gmail reading indicator (gmail.readonly powers the Focus score + fact learning) */}
+                {calendarConnected && (calendarHasGmailScope ? (
+                  <div className="flex items-center gap-2 mb-1 pl-3.5">
+                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Reading Gmail</p>
+                  </div>
+                ) : (
+                  <p className="text-xs mb-1 pl-3.5" style={{ color: 'var(--text-faint)' }}>
+                    Gmail reading inactive — <a href="/api/auth/google" style={{ color: 'var(--text-accent)' }}>re-authorize →</a>
+                  </p>
+                ))}
                 <div className="flex items-center gap-3 pl-3.5 mb-1">
                   <button
                     onClick={connectCalendar}

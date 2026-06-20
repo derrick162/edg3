@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { calendarQueries, gmailTokenQueries } from '@/lib/db';
+import { hasGmailReadScope } from '@/lib/google-auth';
 
 // GET /api/auth/accounts — Google account linking status for the dashboard UI.
-//   - calendar: the primary account (calendar + gmail.readonly scopes)
+//   - calendar: the primary account (calendar + gmail.readonly scopes). `hasGmailScope` reports
+//               whether the grant carries gmail.READONLY (inbox signal for briefings/Focus score) —
+//               R13 T2 powers the "● Reading Gmail" sidebar indicator.
 //   - gmail:    a vestigial dedicated-Gmail row (R12 T2 removed the link/draft flow; existing
 //               rows remain readable, but there's no longer a way to connect a new one)
 // `email` is null for calendar (we don't store the calendar account's email today).
@@ -17,6 +20,7 @@ export async function GET() {
   return NextResponse.json({
     calendar: {
       connected: !!cal,
+      hasGmailScope: hasGmailReadScope(cal?.scope ?? null),
       email: null,
     },
     gmail: {
