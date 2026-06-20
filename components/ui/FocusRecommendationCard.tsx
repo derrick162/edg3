@@ -21,11 +21,36 @@ export interface FocusRecommendationCardProps {
   loading?: boolean;
   /** How many briefing calls the user has completed — informs empty-state copy */
   callsCompleted?: number;
+  /** Latest Whoop recovery tier — varies the weekend brief's movement suggestion */
+  recoveryTier?: 'green' | 'yellow' | 'red' | null;
   onConfirm: (areas: FocusRecommendationArea[]) => Promise<void>;
   onDismiss?: () => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** R9 T7 — true on Saturday (6) or Sunday (0). Injectable date for testing. */
+export function isWeekend(d: Date = new Date()): boolean {
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
+
+/**
+ * R9 T7 — three short bullets for the weekend Focus Brief. The first varies with
+ * the user's most recent Whoop recovery tier; the rest are fixed restorative nudges.
+ */
+export function buildWeekendBrief(recoveryTier?: 'green' | 'yellow' | 'red' | null): string[] {
+  const move =
+    recoveryTier === 'green' ? 'Great recovery today — good day to move: gym, a walk, or a hike.'
+    : recoveryTier === 'yellow' ? 'Moderate recovery — move gently: a walk or light session, nothing draining.'
+    : recoveryTier === 'red' ? "Recovery's low — keep it restful today; prioritize sleep and downtime."
+    : 'Make time to move in a way that feels good — a walk, the gym, or a hike.';
+  return [
+    move,
+    'Do a quick 30-minute sweep of anything pulling at you mentally — errands, admin, loose ends.',
+    'Protect part of the afternoon for something restorative.',
+  ];
+}
 
 function confidenceColor(c: 'high' | 'medium' | 'low') {
   if (c === 'high')   return 'var(--rec-high)';
@@ -154,6 +179,7 @@ export function FocusRecommendationCard({
   recommendation,
   loading = false,
   callsCompleted = 0,
+  recoveryTier = null,
   onConfirm,
   onDismiss,
 }: FocusRecommendationCardProps) {
@@ -206,6 +232,40 @@ export function FocusRecommendationCard({
   // the "Looks right — set focus" CTA must never render on a blank card. An empty areas[]
   // falls through to the same learning/empty state, not the confirm UI.
   if (!recommendation || recommendation.areas.length === 0) {
+    // R9 T7 — weekend/day-off state: an established user shouldn't see the cold
+    // "after your first briefing" placeholder on a Saturday/Sunday with no briefing.
+    if (isWeekend()) {
+      const bullets = buildWeekendBrief(recoveryTier);
+      return (
+        <div
+          className="glass-card p-5"
+          style={{ background: 'var(--rec-card-bg)', borderColor: 'var(--rec-card-border)' }}
+        >
+          <div className="flex items-start gap-3">
+            <span
+              className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base"
+              style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}
+            >
+              ☀️
+            </span>
+            <div>
+              <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>
+                It&apos;s the weekend — here&apos;s how to make the most of it
+              </p>
+              <ul className="text-xs leading-relaxed mt-1 space-y-1" style={{ color: 'var(--text-muted)' }}>
+                {bullets.map((b, i) => (
+                  <li key={i} className="flex gap-1.5">
+                    <span style={{ color: 'var(--edg-indigo)' }}>•</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const hasStarted = callsCompleted > 0;
     return (
       <div

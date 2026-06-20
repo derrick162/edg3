@@ -85,9 +85,13 @@ export async function GET() {
       const cut7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
       const completedAll = briefings14d.filter(b => b.status === 'completed');
       const c14 = completedAll.filter(b => new Date(b.scheduled_for) >= cut14);
-      const completedCallDays14d = new Set(c14.map(b => b.scheduled_for.slice(0, 10))).size;
+      // R9 T7: bucket by the user's LOCAL day, not the UTC slice. A 9pm Toronto call is
+      // next-day UTC — slicing the raw ISO miscounted "mornings" and disagreed with
+      // computeCallStreak (which is tz-aware). Open calls already count (same 'completed' status).
+      const localDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: userTimezone });
+      const completedCallDays14d = new Set(c14.map(b => localDay(b.scheduled_for))).size;
       const completedCallDays7d  = new Set(
-        c14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => b.scheduled_for.slice(0, 10))
+        c14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => localDay(b.scheduled_for))
       ).size;
       const streakDays = computeCallStreak(briefings14d, userTimezone);
       const cut14Str = cut14.toISOString().slice(0, 10);
