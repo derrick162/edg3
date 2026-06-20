@@ -1194,7 +1194,7 @@ interface ScoreboardData {
 
 const ENERGY_COLOR: Record<string, { bg: string; text: string; label: string }> = {
   high:   { bg: 'rgba(251,191,36,0.12)',  text: 'rgba(251,191,36,0.9)',  label: '⚡ High energy' },
-  medium: { bg: 'rgba(99,102,241,0.10)',  text: 'rgba(139,92,246,0.85)', label: '~ Medium energy' },
+  medium: { bg: 'var(--edg-accent-10)',   text: 'var(--edg-violet)',      label: '~ Medium energy' },
   low:    { bg: 'rgba(148,163,184,0.10)', text: 'var(--text-faint)',      label: '· Low energy' },
 };
 
@@ -1341,10 +1341,10 @@ function FocusScoreboardPanel() {
                     style={{
                       width: `${barPct}%`,
                       background: barPct > 60
-                        ? 'linear-gradient(90deg, var(--edg-indigo), rgba(139,92,246,0.9))'
+                        ? 'linear-gradient(90deg, var(--edg-indigo), var(--edg-violet))'
                         : barPct > 25
-                        ? 'linear-gradient(90deg, rgba(99,102,241,0.7), var(--edg-indigo))'
-                        : 'rgba(99,102,241,0.5)',
+                        ? 'linear-gradient(90deg, var(--edg-accent-70), var(--edg-indigo))'
+                        : 'var(--edg-accent-50)',
                     }} />
                 </div>
               </div>

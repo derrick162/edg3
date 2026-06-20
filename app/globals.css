@@ -44,11 +44,14 @@
   --edg-accent-04:    rgba(99, 102, 241, 0.04);
   --edg-accent-06:    rgba(99, 102, 241, 0.06);
   --edg-accent-08:    rgba(99, 102, 241, 0.08);
+  --edg-accent-10:    rgba(99, 102, 241, 0.10);
   --edg-accent-15:    rgba(99, 102, 241, 0.15);
   --edg-accent-20:    rgba(99, 102, 241, 0.20);
   --edg-accent-25:    rgba(99, 102, 241, 0.25);
   --edg-accent-30:    rgba(99, 102, 241, 0.30);
+  --edg-accent-50:    rgba(99, 102, 241, 0.50);
   --edg-accent-60:    rgba(99, 102, 241, 0.60);
+  --edg-accent-70:    rgba(99, 102, 241, 0.70);
 
   --edg-hairline:      rgba(255, 255, 255, 0.06);
   --edg-fill-03:       rgba(255, 255, 255, 0.03);
