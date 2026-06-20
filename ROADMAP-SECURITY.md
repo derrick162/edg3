@@ -30,6 +30,39 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 12 — Email signal fetch: once-per-day cache gate)
+
+> `git merge master` first. One ticket. **Do before any R11 or pillar work.**
+
+---
+
+### T1 — `getRecentEmailSignal`: 24h cache gate + suppress empty audit entries (MEDIUM — 1.5h)
+
+**Problem (user-visible):** The Activity tab shows "Reviewed 30 inbox threads" / "Reviewed 20 inbox threads" repeating every 30 minutes all day. Root cause: `getRecentEmailSignal` in `lib/gmail.ts` is called from 4 different API routes (`/api/focus/recommend`, `/api/learned`, `/api/meeting-context`, `/api/priorities/derive`) — every dashboard load hits one or more of them, and each call writes a new `email_signal_fetch` audit entry regardless of whether anything changed.
+
+**Fix — two parts:**
+
+**Part A — 24h cache gate (in `lib/gmail.ts`):**
+At the top of `getRecentEmailSignal`, before making any Gmail API call:
+1. Query `audit_log` for the most recent `email_signal_fetch` entry for this user: `SELECT id, created_at, snapshot_after FROM audit_log WHERE user_id = ? AND action = 'email_signal_fetch' ORDER BY created_at DESC LIMIT 1`
+2. If that entry exists AND `created_at` is within the last 24 hours: return the cached result parsed from `snapshot_after.subjects` (reconstruct as `{ items: subjects.map(s => ({ subject: s })), fetchedAt: created_at, scopeMissing: false }`) — **do NOT make a Gmail API call and do NOT write a new audit entry**.
+3. If no recent entry (or it's older than 24h): proceed with the existing Gmail fetch as normal.
+
+This means each user's inbox is scanned at most once every 24 hours, regardless of how many times the dashboard loads.
+
+**Part B — suppress empty audit entries:**
+In the `auditLogQueries.record(...)` call at the bottom of `getRecentEmailSignal` (around line 376): wrap it in `if (items.length > 0)` — only log when there are actual threads to report. A fetch that returns zero threads is a no-op and shouldn't appear in the Activity tab at all.
+
+**Test cases (add to `lib/gmail.test.ts`):**
+1. Second call within 24h → returns cached result, no new audit entry written, no Gmail API call made
+2. Call after 24h → makes fresh Gmail API call, writes new audit entry
+3. Empty result (0 threads) → no audit entry written
+4. Non-empty result → audit entry written as before
+
+Preflight green. No external steps.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 11 — Gmail scope close-out + rate-limit hardening + key rotation doc)
 
 > `git merge master` first (master is at `9918c01`). Three tickets, no Core coordination needed.
