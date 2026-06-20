@@ -24,7 +24,7 @@ const BUCKET_COLORS = [
   'var(--edg-success)',
   'var(--edg-warning)',
   'var(--edg-violet)',
-  '#ec4899',
+  'var(--edg-pink)',
 ];
 
 const SYSTEM_BUCKETS = new Set(['meetings', 'routine', 'other']);

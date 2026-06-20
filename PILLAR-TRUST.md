@@ -19,21 +19,21 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - ~~Landing page "Edge" → "Edg3"~~ — **FIXED Darren**
 - **Process:** when Derrick flags a copy bug, fix it same-session. No ticket needed. Copy bugs are trust destroyers.
 
-### UX-2 — No duplicate contacts, facts, or events (Core ✅ + Design 📥) — 📥 **DISPATCHED 2026-06-18**
+### UX-2 — No duplicate contacts, facts, or events (Core ✅ + Design ✅) — ✅ **SHIPPED (Design: edc52d7 + 195d849)**
 **Core side DONE:** `isSelfEntity()` + `isAssistantEntity()` guards in `lib/facts.ts` block user's own name + "edge"/"edg3"/etc. from person facts; 80-char prefix dedup in `factQueries.upsertFact`; 4 verification tests added to `lib/facts.test.ts` (2026-06-18 session).
-**Design side still dispatched:** `content/cam-dispatch-ux-trust.md` UX-2 — filter self/Edge/Edg3 entities in "What Edge knows" display, collapse near-identical facts, isSelf guard on People render. Routes to Cam.
+**Design side SHIPPED (2026-06-19):** Self-filter applied at two display layers — (1) person-category structured facts: entity field matched against user first/last name (case-insensitive), hidden when match found; (2) M2 People profiles: first-name token of `canonical_name` matched against user first/last name, filtered before render. Near-identical facts (first 80 chars) deduped per entity with "N duplicate entries merged" affordance. Logged in `content/qa-log.md`.
 **The trust issue:** Derrick sees "Jim (gym)" appear twice in "What Edge knows." He sees the same event on his calendar twice. He sees himself listed as a contact. Each one signals Edge doesn't have it together.
 - Duplicate contacts: people-extraction must check for existing people facts before inserting (fuzzy name match, case-insensitive). Entity grounding filter: block user's own name, "Edge", "Edg3", generic nouns.
 - Duplicate facts: before inserting any fact, check if an identical or near-identical (80-char prefix match) active fact exists — skip if yes, update `last_seen_at` only.
 - Duplicate events: `cleanupDuplicates` tool is live. Verify it runs correctly and that the morning briefing flags duplicate-heavy weeks proactively.
 - Test: run extraction on a transcript that mentions the user, Edge, and a repeated fact — verify none produce duplicates.
 
-### UX-3 — Name spelled correctly everywhere (Core ✅ + Design 📥) — 📥 **DISPATCHED 2026-06-18**
+### UX-3 — Name spelled correctly everywhere (Core ✅ + Design ✅) — ✅ **SHIPPED (Design: edc52d7)**
 **Core side DONE:** `groundProperNouns` + STT correction wired in `lib/facts.ts`; `firstName` from profile drives all Edge addressing in `lib/vapi.ts`; 3 name-spelling tests added to `lib/facts.test.ts`. `correctRecipientNames()` in `lib/outreach.ts` handles email.
-**Design side still dispatched:** `content/cam-dispatch-ux-trust.md` UX-3 — cursor: pointer global CSS, isSelf guard on People render, profile.firstName for display name. Routes to Cam.
+**Design side SHIPPED (2026-06-18):** `cursor: pointer` global CSS rule added to `app/globals.css` covering `button:not(:disabled)`, `[role="button"]:not([aria-disabled="true"])`, `a[href]`, `label[for]`, `summary`, `select`, `.clickable`; `cursor: not-allowed` on disabled states. Self/Edge/Edg3 entity filter applied in People section render. Profile `user.name` drives display-name references in dashboard copy.
 
-### UX-4 — No bugs that make users uncertain (Core + Design — ongoing) — 📥 **DISPATCHED 2026-06-18**
-**Dispatch:** `content/cam-dispatch-ux-trust.md` UX-4 — collapsible memory category sections (count + chevron, first 3 expanded). Routes to Cam (Design). Core side (honest failure messages) tracked separately as T2-3.
+### UX-4 — No bugs that make users uncertain (Core + Design — ongoing) — ✅ **SHIPPED (Design: edc52d7)**
+**Shipped (Design 2026-06-18):** `content/cam-dispatch-ux-trust.md` UX-4 — collapsible memory category sections shipped: all section headers are `<button>` with `aria-expanded` + count badge + ▸/▾ chevron. `collapsedMemorySections` Set state + data-driven init: `useEffect` on first facts load collapses all but first 3 populated categories when ≥4 categories have data. Routes to Cam (Design) — Core side (honest failure messages) tracked separately as T2-3.
 **The standard:** If Derrick has to wonder "did that work?" — it's a bug. Every mutation should produce a clear, honest confirmation. Every failure should produce a clear, honest explanation. No silent successes. No misleading errors.
 - Audit every tool-call response in `app/api/vapi/tool-call/route.ts` — does every success say what happened? Does every failure say why?
 - Audit the dashboard: any loading state that never resolves? Any button that does nothing? Any section that shows stale data?
