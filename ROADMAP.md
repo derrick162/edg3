@@ -108,7 +108,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(📋 **R15 DISPATCHED (2026-06-20) — Calendar intelligence: searchEvents, checkConflict, setEventReminder, blockFocusTime, getNextEvents, briefEvent, generateWeeklyReview (T1–T7). R14 T1–T6 also active.**)_ | `app/api/vapi/tool-call/route.ts`, `lib/vapi.ts`, `lib/time.ts` | 2026-06-20 |
-| 🔒 Security | `security` | _(📋 **R12 T1 DISPATCHED (2026-06-20) — `getRecentEmailSignal` 24h cache gate + suppress empty audit entries.**)_ | `lib/gmail.ts` | 2026-06-20 |
+| 🔒 Security | `security` | _(📋 **R13 DISPATCHED (2026-06-20) — T1: email cache gate, T2: Gmail reading indicator (reassigned from Core), T3: `searchEmailsBySubject` helper for briefEvent.**)_ | `lib/gmail.ts`, `app/api/auth/accounts/route.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
 | 🔧 PM/CoS | `master` | _(✅ **R15 dispatched to Core (T1–T7 — calendar intelligence). R14 T6 Gmail indicator added. All lanes active.)_ | `ROADMAP-CORE.md`, `ROADMAP.md` | 2026-06-20 |
 | 🎨 Design | `design` | _(✅ **R14 T6 shipped (1958 green).** Gmail reading indicator in dashboard sidebar — accounts route gets `hasGmailScope`, sidebar shows `● Reading Gmail` or re-authorize link. Idle, awaiting next dispatch.)_ | `app/api/auth/accounts/route.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
 
