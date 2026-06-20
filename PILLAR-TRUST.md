@@ -43,8 +43,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## 🚨 Tier 0 — Critical (do before anything else tonight)
 
-### T0-1 — DB durability: off-box backup replication (Security — URGENT)
-**The risk:** `lib/backup.ts` stores backups on the SAME Railway volume as the database. Volume loss = database AND backups gone simultaneously. The entire memory moat — every fact, episode, pattern ever learned — lives in one SQLite file with no off-box copy. We also don't know if the Railway volume is persistent or ephemeral. If ephemeral, data may already be resetting on redeploys.
+### T0-1 — DB durability: off-box backup replication (Security — URGENT) — ✅ **CODE-COMPLETE (2026-06-18); ⚠️ external Railway steps remain**
+**Shipped:** Off-box replication is coded and env-gated — Litestream (`litestream.yml` + `scripts/start.sh`, ~1s RPO, auto-restores on a fresh volume) + daily snapshot push (`lib/backup.ts`); automated restore drill (`lib/backup.test.ts` / `verifyBackup`); boot-time data-durability self-check + 6am digest goes **DEGRADED** if `LITESTREAM_S3_*`/`BACKUP_S3_BUCKET` unset in prod, so the silent-loss risk surfaces every morning. Runbook: `content/durability-runbook.md`. **⚠️ External (Derrick/Kevin — cannot be done from code):** confirm `/data` is a *persistent* Railway volume + set `LITESTREAM_S3_BUCKET`/`ACCESS_KEY_ID`/`SECRET_ACCESS_KEY` to activate replication. Until then the code no-ops and the digest screams DEGRADED.
+~~**The risk:** `lib/backup.ts` stores backups on the SAME Railway volume as the database.~~ Volume loss = database AND backups gone simultaneously. The entire memory moat — every fact, episode, pattern ever learned — lives in one SQLite file with no off-box copy. We also don't know if the Railway volume is persistent or ephemeral. If ephemeral, data may already be resetting on redeploys.
 - **Step 1:** Verify Railway volume type — persistent or ephemeral? Check Railway dashboard → Volume settings. If ephemeral, this is a production data-loss incident happening right now.
 - **Step 2:** Stand up Litestream → object storage replication (Railway's object storage or R2/S3). Litestream streams WAL pages continuously so RPO is seconds, not hours. The backup must live in a different failure domain than the DB.
 - **Step 3:** Move the backup trigger OFF the webhook handler — backups must run as a scheduled cron (e.g., every 15 minutes), not triggered by an incoming call. A backup firing inside a webhook is fragile and blocks the response path.
@@ -72,8 +73,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 - This test runs as part of preflight. If the 7am path breaks, this catches it before deploy.
 - Note: this is an integration test, not a unit test — it hits the real database layer
 
-### T0-4 — In-process scheduler resilience (Security)
-**The risk:** The morning call scheduler runs as an in-process `setTimeout`. If Railway restarts the app (redeploy, crash, memory limit), the scheduled call drops silently. The user wakes up, no call, no explanation.
+### T0-4 — In-process scheduler resilience (Security) — ✅ **FIXED (2026-06-18)**
+**Shipped:** Scheduler reads `call_time` live from the DB each tick (survives restart). Cold-start / missed-tick **catch-up** fires a call up to a grace window late when the exact-minute tick was missed during a restart (`lib/scheduler.ts:437` + late-fire note `:466`); DB-flagged missed calls are retried when `retry_after` passes (`:478`). Single-instance `scheduler_lock` prevents double-dial across replicas (also T4-3). 1693 green.
+~~**The risk:** The morning call scheduler runs as an in-process `setTimeout`.~~ If Railway restarts the app (redeploy, crash, memory limit), the scheduled call drops silently. The user wakes up, no call, no explanation.
 - Move scheduled jobs to a persistent queue rather than in-memory setTimeout — at minimum, write the next scheduled call time to the database on startup and restore it on restart
 - On app startup: check if any scheduled calls were missed in the last 2 hours (comparing `call_time` to `now()`). If yes, trigger immediately rather than waiting until tomorrow.
 - Test: restart the app 10 minutes before a scheduled call, verify the call still fires
@@ -82,8 +84,9 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ## Tier 1 — Foundation (hardening the path data travels)
 
-### T1-1 — Webhook reliability: retry + dead-letter queue (Security)
-**The risk:** If the Vapi → webhook → memory pipeline fails silently, a call happens and nothing is learned. The user doesn't know. Edge doesn't know. The moat leaks.
+### T1-1 — Webhook reliability: retry + dead-letter queue (Security) — ✅ **FIXED (1809 green)**
+**Shipped:** `lib/retry.ts` `withRetry` (3 attempts, exponential backoff, injectable sleep) wraps the Vapi transcript fetch so a transient 5xx/blip no longer drops straight to the partial transcript. The critical call-ended path is armed with a `dlq` context — if it throws, the outer catch writes `failedWebhookQueries.record(userId, callId, briefingId, error)` so "call happened but nothing was learned" is dead-lettered, never silent. `failed_webhooks` table + index. Daily check: 3am cron logs `[health] WARN: N webhook(s) in dead-letter queue` and the 6am digest goes DEGRADED on any last-24h entries.
+~~**The risk:** If the Vapi → webhook → memory pipeline fails silently, a call happens and nothing is learned. The user doesn't know. Edge doesn't know. The moat leaks.~~
 - Add retry logic (3 attempts, exponential backoff) to the webhook handler in `app/api/vapi/webhook/route.ts`
 - If all retries fail: write a `failed_webhooks` record (userId, callId, failedAt, error) for diagnosis
 - Add a daily check: any failed webhooks in the last 24h? Log a warning to Railway so it's visible
@@ -91,6 +94,7 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 
 ### T1-2 — End-to-end call health check (Security + Core) — ✅ **CORE SIDE LIVE (DC0-1)**
 **Core side shipped:** Webhook handler tracks `{facts_ok, facts_extracted, episode_ok, flagged_for_review}` via `briefingQueries.updateLearningStatus` — covers all three DC0-1 checks (transcript stored on call-end, facts extracted, episode created). Zero-facts calls set `flagged_for_review: true`. **Security side** (`call_health_events` table + weekly summary) owned by Vijay.
+**Security side — ✅ SATISFIED by existing infra (2026-06-19, Vijay):** Per-call health is already persisted on the `briefings` row (`updateLearningStatus`), and the shipped **6am daily health digest** (T1-3) already checks "any calls failed yesterday / extraction failures" and emits HEALTH: OK/DEGRADED. A separate `call_health_events` table + weekly rollup would duplicate both. **Decision: not building the redundant table** — the daily digest is the stronger signal (catches failures the morning after, not a week later). If the PM specifically wants a dedicated weekly call-health email/rollup beyond the daily digest, flag it and I'll add a thin reader over `briefings.learning_status` rather than a new table.
 ~~**The risk:** A call can "succeed" in Vapi but fail to produce a briefing, a transcript, or a memory update.~~
 
 ### T1-3 — Observability: single alert path + daily admin health digest (Security) — ✅ **FIXED 29373e1**
