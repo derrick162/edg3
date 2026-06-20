@@ -183,6 +183,7 @@ function MilestoneRow({
           background: optimistic ? 'var(--edg-success)' : 'transparent',
         }}
         aria-label={optimistic ? 'Mark incomplete' : 'Mark done'}
+        aria-pressed={optimistic}
       >
         {optimistic && (
           <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
