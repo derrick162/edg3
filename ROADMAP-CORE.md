@@ -936,6 +936,12 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R12 T7 — email feature code removal — SHIPPED (1958 green).** Derrick dropped email drafting entirely.
+  - `tool-call/route.ts`: removed `draftEmail` (~105 lines) + `checkReplies` handlers and their `@/lib/outreach`, `@/lib/replies`, `@/lib/gmail` (createDraft + error types), `@/lib/google-auth` (hasGmailReadScope) imports + the now-unused `watchedThreadQueries` import.
+  - Deleted `lib/outreach.ts`, `lib/outreach.test.ts`, `lib/replies.ts`, `lib/replies.test.ts`.
+  - ⚠️ **Scope extension (dispatch file list missed these):** `checkOutreachReplies` was also consumed by `lib/briefing.ts` (REPLIES-to-outreach prompt block + fetch) and `app/api/notifications/route.ts` ('check' action). Deleting `replies.ts` would have broken the build, so removed both: briefing drops the REPLIES section; notifications 'check' is now a no-op (kept so the dashboard button still 200s). Removed stale `./replies` mock from `briefing.consent.test.ts`.
+  - Kept `deleteDraft` in `lib/gmail.ts` (undo.ts compat — Security's T2). Left display-only `draftEmail`/`checkReplies` labels in `actionSummary.ts`/`activityLabels.ts` so historical activity rows still render.
+  - 1958/1958 green (lower = deleted tests), tsc + next build clean. Committed on `core` — ready for PM merge.
 - **2026-06-20** — **R12 — 5 live-call/dashboard tickets — SHIPPED (1991 green).** From Derrick's afternoon call with Aria; each verified unbuilt first.
   - **T1 delete-token loop:** prompt — a mid-flow name correction starts a FRESH deleteEvent flow (forget the old token; retry silently); route logs token mismatch in the `consumeDeleteToken` failure branch. +1 regression test.
   - **T2 token language leak:** NATURAL LANGUAGE rule now bans "token"/"confirmation token"/"trying again" and other backend/retry narration — say "just a moment" or stay silent.
