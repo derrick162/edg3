@@ -14,6 +14,7 @@ export interface ScoreResult {
   calibrating?: boolean; // true = not enough signal to score yet
   drivers: string[];     // 2–4 plain-English reasons
   topFix: ScoreTopFix | null;
+  errorMessage?: string; // when set, renders as ⚠ amber error in the subtitle slot
 }
 
 export interface CalendarFit {
@@ -27,6 +28,10 @@ export interface CalendarFit {
   momentumScore?: ScoreResult;
   /** Trailing Edge Score history (oldest→newest) for the 7-day trend sparkline. */
   history?: { date: string; score: number }[];
+  /** Hours focused on priorities this week — drives the Focus Score subtitle. */
+  alignedHours?: number;
+  /** Total working hours this week — denominator for the Focus Score subtitle. */
+  totalWorkingHours?: number;
   computedAt: string;
 }
 
