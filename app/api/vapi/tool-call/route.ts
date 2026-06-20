@@ -1001,6 +1001,63 @@ Query: ${query}` }],
     if (!timed.length) return `Nothing else on your calendar coming up.`;
     return `Your next ${timed.length === 1 ? 'event' : `${timed.length} events`}: ${timed.map(e => formatEventForSpeech(e, tz)).join(', ')}.`;
 
+  } else if (fn === 'setEventReminder') {
+    // R15 T3 — set a popup reminder N minutes before an event.
+    const { title: rawTitle, minutesBefore, currentTime } = args as { title?: string; minutesBefore?: number; currentTime?: string };
+    if (!rawTitle) return 'Which event should I set a reminder on?';
+    if (typeof minutesBefore !== 'number' || minutesBefore < 0) return 'How many minutes before should I remind you?';
+    const title = groundTitle(rawTitle);
+    const srToday = todayInTz(tz);
+    const srEnd = (() => { const d = new Date(`${srToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 30); return d.toISOString().slice(0, 10); })();
+    const srMatches = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, srToday).start.toISOString(), timeMax: dayRangeUtc(tz, srEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime' })
+        .then(r => (r.data.items ?? []).map(e => ({ event: e, calId }))).catch(() => [] as { event: calendar_v3.Schema$Event; calId: string }[])
+    ))).flat();
+    const r = resolveEvent(srMatches, title, tz, currentTime);
+    if (r.kind === 'none') return `I couldn't find "${title}" on your upcoming calendar.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events: ${r.message}. Which one? Re-call with currentTime set to its start time.`;
+    const srName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+    const srMeta = calMeta.get(r.calId);
+    if (srMeta && !isWritable(srMeta.accessRole)) return `"${srName}" is on a read-only calendar — I can't change its reminders from here.`;
+    const origReminders = r.event.reminders ?? { useDefault: true };
+    const srPatched = await cal.events.patch({ calendarId: r.calId, eventId: r.event.id!, requestBody: { reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: minutesBefore }] } } })
+      .catch((e: unknown) => { console.error('[setEventReminder] patch failed:', e instanceof Error ? e.message : e); return null; });
+    if (!srPatched) return `I couldn't set that reminder just now — want me to try again?`;
+    recordUndo(userId, `set reminder on "${srName}"`, [{ type: 'patch', calId: r.calId, eventId: r.event.id!, requestBody: { reminders: origReminders } }]);
+    return `Set a ${minutesBefore}-minute reminder for "${srName}".`;
+
+  } else if (fn === 'blockFocusTime') {
+    // R15 T4 — find the earliest open slot of `duration` and book a focus block in one shot.
+    const { label, duration, startDate, endDate, windowStart, windowEnd } = args as {
+      label?: string; duration?: number; startDate?: string; endDate?: string; windowStart?: string; windowEnd?: string;
+    };
+    if (!label?.trim()) return 'What should I block the time for?';
+    if (!duration || duration <= 0) return 'How long should I block?';
+    const bfStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : todayInTz(tz);
+    let bfEnd = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : '';
+    if (!bfEnd || bfEnd < bfStart) { const d = new Date(`${bfStart}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 6); bfEnd = d.toISOString().slice(0, 10); }
+    const [bwsH, bwsM] = resolveNaturalTime(windowStart || '9:00 AM').split(':').map(Number);
+    const [bweH, bweM] = resolveNaturalTime(windowEnd || '6:00 PM').split(':').map(Number);
+    const bfDates: string[] = [];
+    for (let c = bfStart; c <= bfEnd; c = nextDay(c)) { bfDates.push(c); if (bfDates.length > 31) break; }
+    const bfFb = await cal.freebusy.query({ requestBody: { timeMin: dayRangeUtc(tz, bfStart).start.toISOString(), timeMax: dayRangeUtc(tz, bfEnd).end.toISOString(), items: calIds.map(id => ({ id })) } })
+      .then(r => r.data).catch((e: unknown) => { console.error('[blockFocusTime] freebusy failed:', e instanceof Error ? e.message : e); return null; });
+    if (!bfFb) return `I couldn't check your availability just now — want me to try again?`;
+    const bfBusy: { start: number; end: number }[] = [];
+    for (const c of Object.values(bfFb.calendars ?? {})) for (const b of (c.busy ?? [])) if (b.start && b.end) bfBusy.push({ start: Date.parse(b.start), end: Date.parse(b.end) });
+    const bfSlots = computeFreeSlots({ busy: bfBusy, durationMs: duration * 60000, windowStartMin: bwsH * 60 + bwsM, windowEndMin: bweH * 60 + bweM, dates: bfDates, tz, maxResults: 1 });
+    if (!bfSlots.length) return `Your week looks packed in that window — want me to look at next week instead?`;
+    const slot = bfSlots[0];
+    const focusTitle = `Focus: ${label.trim()}`;
+    const bfIns = await cal.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${focusTitle}`, start: { dateTime: new Date(slot.startMs).toISOString(), timeZone: tz }, end: { dateTime: new Date(slot.endMs).toISOString(), timeZone: tz }, colorId: '2' } })
+      .catch((e: unknown) => { console.error('[blockFocusTime] insert failed:', e instanceof Error ? e.message : e); return null; });
+    if (!bfIns?.data.id) return `I found a slot but couldn't book it just now — want me to try again?`;
+    recordUndo(userId, `blocked focus time for ${label.trim()}`, [{ type: 'delete', calId: 'primary', eventId: bfIns.data.id }]);
+    const dayName = new Date(`${slot.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long' });
+    const fmtSlot = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+    const durLabel = duration % 60 === 0 ? `${duration / 60} hour${duration >= 120 ? 's' : ''}` : `${duration} minutes`;
+    return `Blocked ${durLabel} for ${label.trim()}: ${dayName} at ${fmtSlot(slot.startMs)}–${fmtSlot(slot.endMs)}. Want me to protect more time this week?`;
+
   } else if (fn === 'editEventAttendees') {
     // R14 T3 — add/remove guests on an existing event (Google sends invites/cancellations).
     const { title: rawTitle, currentTime, add, remove } = args as {

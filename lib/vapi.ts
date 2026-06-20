@@ -247,6 +247,7 @@ SEARCHING EVENTS: When ${firstName} asks "when did I last meet X", "find my [app
 CHECK CONFLICT: When ${firstName} asks "am I free at X?", "is [time] open?", "do I have anything at 3pm?" → call checkConflict first with date + startTime (+ endTime if a span). If free, offer to create the event. Never assume they're free without checking.
 GET NEXT EVENTS: When ${firstName} asks "what's next?", "what do I have today?", "what's coming up?", "what's on my calendar?" without a specific date → call getNextEvents. For a specific date, use readCalendar instead.
 FOCUS BLOCKING: When ${firstName} says "block time for X", "protect 2 hours for Y", "find me time to work on Z this week" → call blockFocusTime with the label + duration (minutes). It finds the slot AND books it in one step — don't call findFreeTime + createEvent separately. If they say yes to a briefing offer to block time for a priority, call blockFocusTime immediately.
+REMINDERS: When ${firstName} says "remind me X before [event]", "set a reminder for [event]", "alert me an hour before [meeting]" → call setEventReminder with the event title and minutesBefore. Convert natural language: "an hour" = 60, "half an hour" = 30, "fifteen minutes" = 15.
 ATTENDEES: When ${firstName} says "invite X to Y", "add X to the meeting", "include X" → if you're creating the event, pass the attendees param on createEvent; if the event already exists, call editEventAttendees (add/remove by email). Always use email addresses — ask for the email if only a name is given. Invites only reach people with Google accounts; mention that if it's relevant.
 BATCH RESCHEDULE: When ${firstName} says "move everything this afternoon", "clear my Monday morning", "reschedule all my meetings tomorrow", or similar → call batchReschedule with the time window (date + optional startTime/endTime) + action ('move' with a targetDate, or 'delete'). The first call returns a preview and a confirmToken — read the preview out loud, get a yes, then call again with the SAME window + action plus the confirmToken. NEVER do this one-by-one with separate deleteEvent/moveEvent calls.
 TRAVEL BLOCKING: When ${firstName} mentions flying, driving long-distance, or traveling → call blockTravelTime with the destination + date. If they give a departure/arrival time, pass departureTime for a timed block; otherwise it's an all-day block. If they mention a return, pass returnDate (and returnTime if given). After blocking, I'll flag anything scheduled within 90 minutes of departure/return — offer to move it.
@@ -312,6 +313,8 @@ Always end with warmth. This person is building something — remind them of tha
           // '___searchEvents___', // searchEvents (R15 T1) — params: query, startDate?, endDate?
           // '___checkConflict___', // checkConflict (R15 T2) — params: date, startTime, endTime?
           // '___getNextEvents___', // getNextEvents (R15 T5) — params: count?
+          // '___setEventReminder___', // setEventReminder (R15 T3) — params: title, minutesBefore, currentTime?
+          // '___blockFocusTime___', // blockFocusTime (R15 T4) — params: label, duration, startDate?, endDate?, windowStart?, windowEnd?
           // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
           // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
           // '___completeTask___', // completeTask (R14 T4) — params: title
@@ -386,6 +389,8 @@ Always end with warmth. This person is building something — remind them of tha
           // '___searchEvents___', // searchEvents (R15 T1) — params: query, startDate?, endDate?
           // '___checkConflict___', // checkConflict (R15 T2) — params: date, startTime, endTime?
           // '___getNextEvents___', // getNextEvents (R15 T5) — params: count?
+          // '___setEventReminder___', // setEventReminder (R15 T3) — params: title, minutesBefore, currentTime?
+          // '___blockFocusTime___', // blockFocusTime (R15 T4) — params: label, duration, startDate?, endDate?, windowStart?, windowEnd?
           // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
           // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
           // '___completeTask___', // completeTask (R14 T4) — params: title
