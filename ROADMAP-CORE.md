@@ -1207,6 +1207,7 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R14 T6 — Gmail reading indicator (dashboard) — SHIPPED (1986 green).** `/api/auth/accounts` returns `calendar.hasGmailScope` (via `hasGmailReadScope` on the primary token scope); sidebar shows "● Reading Gmail" when active or "Gmail reading inactive — re-authorize →" (re-runs Google consent via `connectCalendar`, requesting gmail.readonly) otherwise; nothing when calendar disconnected. No new routes/OAuth. Note: spec's `/api/auth/google` re-auth path doesn't exist — used the real `/api/calendar/connect` flow via `connectCalendar`.
 - **2026-06-20** — **R14 — Vapi tool expansion (5 tickets) — SHIPPED (1986 green).**
   - **T1 `findFreeTime`:** freebusy.query across calendars → pure `computeFreeSlots` (lib/time.ts) returns ≤3 duration-sized open slots in a daily window over a date range; spoken list. FINDING FREE TIME prompt.
   - **T2 createEvent `recurrence`:** optional RRULE string (validated) → `recurrence:[rrule]` on timed + all-day inserts; pure `buildRrule` helper (lib/time.ts). RECURRING prompt.
