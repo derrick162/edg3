@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { isTimedEventInWindow, formatBatchPreview } from '@/lib/batchSchedule';
 import { groundProperNouns } from '@/lib/grounding';
@@ -903,6 +903,56 @@ Query: ${query}` }],
     if (!doneNames.length) return `I couldn't ${action === 'move' ? 'move' : 'clear'} those — Google errored${failedNames.length ? ` for ${failedNames.join(', ')}` : ''}. Want me to try again?`;
     const head = action === 'move' ? `Moved ${doneNames.length} event(s) to ${targetDate}` : `Cleared ${doneNames.length} event(s) from ${window.date}`;
     return `${head}: ${doneNames.join(', ')}.${failedNames.length ? ` Couldn't do ${failedNames.join(', ')}.` : ''}`;
+
+  } else if (fn === 'skipRecurringOccurrence') {
+    // R13 T2 — cancel ONE occurrence of a recurring series (low-stakes → no confirm token).
+    const { title: rawTitle, occurrenceDate } = args as { title?: string; occurrenceDate?: string };
+    if (!rawTitle || !occurrenceDate) return 'Which recurring event should I skip, and on what date?';
+    const title = groundTitle(rawTitle);
+    const r = resolveEvent(await eventsOnDay(cal, calIds, occurrenceDate, tz), title, tz);
+    if (r.kind === 'none') return `No "${title}" found on ${occurrenceDate} to skip.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${occurrenceDate}: ${r.message}. Which one should I skip? Re-call with currentTime set to its start time.`;
+    const skipName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+    if (!r.event.recurringEventId) return `"${skipName}" on ${occurrenceDate} isn't part of a recurring series — want me to just delete it instead?`;
+    const skipMeta = calMeta.get(r.calId);
+    if (skipMeta && !isWritable(skipMeta.accessRole)) return `"${skipName}" is on a read-only calendar — I can't change it from here.`;
+    try {
+      await cal.events.delete({ calendarId: r.calId, eventId: r.event.id! });
+    } catch (err) {
+      console.error('[skipRecurringOccurrence] delete failed:', err instanceof Error ? err.message : err);
+      return `I couldn't skip that one just now — want me to try again?`;
+    }
+    recordUndo(userId, `skipped "${skipName}" on ${occurrenceDate}`, [{ type: 'recreate', calId: r.calId, event: cleanForRecreate(r.event) }]);
+    return `Skipped "${skipName}" on ${occurrenceDate} — the series continues as normal.`;
+
+  } else if (fn === 'endRecurringSeries') {
+    // R13 T2 — cap a recurring series by adding UNTIL to the master RRULE (no delete).
+    const { title: rawTitle, occurrenceDate, endAfterDate } = args as { title?: string; occurrenceDate?: string; endAfterDate?: string };
+    if (!rawTitle || !occurrenceDate || !endAfterDate) return 'Tell me which recurring event, an example date it falls on, and the date to end it after.';
+    const title = groundTitle(rawTitle);
+    const r = resolveEvent(await eventsOnDay(cal, calIds, occurrenceDate, tz), title, tz);
+    if (r.kind === 'none') return `No "${title}" found on ${occurrenceDate}.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events on ${occurrenceDate}: ${r.message}. Which series? Re-call with currentTime set to its start time.`;
+    if (!r.event.recurringEventId) return `"${(r.event.summary ?? '').replace(/^⚡\s*/, '')}" isn't a recurring series, so there's nothing to end.`;
+    const endMeta = calMeta.get(r.calId);
+    if (endMeta && !isWritable(endMeta.accessRole)) return `"${(r.event.summary ?? '').replace(/^⚡\s*/, '')}" is on a read-only calendar — I can't change it from here.`;
+    const master = await cal.events.get({ calendarId: r.calId, eventId: r.event.recurringEventId }).then(g => g.data).catch(() => null);
+    if (!master?.recurrence?.length) {
+      console.error(`[endRecurringSeries] no master recurrence calId=${r.calId} eventId=${r.event.recurringEventId}`);
+      return `I couldn't read that series' schedule to cap it — want me to try again?`;
+    }
+    const seriesTz = master.start?.timeZone ?? tz;
+    const newRecurrence = applyRruleUntil(master.recurrence, rruleUntilUtc(endAfterDate, seriesTz));
+    const origRecurrence = master.recurrence;
+    const seriesName = (master.summary ?? '').replace(/^⚡\s*/, '');
+    try {
+      await cal.events.patch({ calendarId: r.calId, eventId: r.event.recurringEventId, requestBody: { recurrence: newRecurrence } });
+    } catch (err) {
+      console.error('[endRecurringSeries] patch failed:', err instanceof Error ? err.message : err);
+      return `I couldn't cap that series just now — want me to try again?`;
+    }
+    recordUndo(userId, `ended "${seriesName}" series after ${endAfterDate}`, [{ type: 'patch', calId: r.calId, eventId: r.event.recurringEventId, requestBody: { recurrence: origRecurrence } }]);
+    return `Got it — "${seriesName}" will end after ${endAfterDate}.`;
 
   } else if (fn === 'cleanupEvents') {
     // Batch delete for consolidation cleanup — deletes a list of events by EXACT start time,

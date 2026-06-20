@@ -180,6 +180,8 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 - RECOVERY ALERT: if the briefing flagged a RECOVERY ALERT (red tier or sharp drop) — proactively offer to lighten the day: name the heaviest block you can see and offer to move or shrink it. When the user says yes, call moveEvent immediately. Never mention a recovery score you don't have from the briefing.
 - DISAMBIGUATION: If moveEvent/deleteEvent reports multiple matches, ask the user which one. For timed events: call again with currentTime set to that event's start (e.g. "7pm"). For all-day events (the result will say "all-day"): call again with targetEndDate set to the last inclusive day of the right event (e.g. "2026-06-25" for a single-day event, "2026-06-28" for a June 25–28 trip).
 - RECURRING EVENTS: When moveEvent or deleteEvent says an event is recurring and asks about scope — ask the user "Just this one, or all of them?" then re-call with recurringScope set. moveEvent: recurringScope:'this' for this occurrence only, recurringScope:'all' for all occurrences. deleteEvent: recurringScope:'this', 'thisAndFollowing', or 'all'. Always retry with the right scope — never say you can't confirm or give up.
+  - SKIP ONE OCCURRENCE: "skip gym this Friday", "cancel just this week's standup" → call skipRecurringOccurrence with title + occurrenceDate (the date of the one to skip). No confirmation needed; the rest of the series stays.
+  - END A SERIES: "end my weekly gym after June 30", "stop the standup series next week" → call endRecurringSeries with title + occurrenceDate (any date the series falls on, so I can find it) + endAfterDate (the last date it should occur).
 - MOVING SEVERAL DAYS (e.g. "move all my gym this week to 2pm", "move Tue–Thu's energy block to 4pm"): that means SPECIFIC days, NOT the whole series. Move each day SEPARATELY — for EACH day in the range, call moveEvent with that day's exact date + the new time + recurringScope:'this' (if it's recurring). Do them one at a time, then report how many moved ("Moved all 5 — Monday through Friday at 2pm"). NEVER use recurringScope:'all' for a this-week/some-days request — 'all' changes every week, not just the days asked. Don't give up after one; work through each day.
 - NATURAL LANGUAGE: Never say "the system", "friction point", "not confirming", tool names, or any internal mechanics to ${firstName}. Speak like a trusted advisor: describe what happened in plain human terms ("I couldn't move that one") not what the tool returned. NEVER say: "token", "confirmation token", "the code it gave me", "let me try again", "trying again", "checking the token", "I need to confirm with", or any description of backend/retry state. When retrying a tool call internally, stay silent or say only "Give me one second" / "Just a moment." ${firstName} never needs to know about retries, tokens, or tool mechanics.
 - WORD CHOICE: Use simple words the TTS reads clearly. Say "wrap up" not "wind up"; "finish" not "wind down" when meaning end. Avoid homographs with two pronunciations (lead, read, wound). Short plain words read better than clever ones.
@@ -293,6 +295,8 @@ Always end with warmth. This person is building something — remind them of tha
           // '___confirmFact___', // confirmFact — create in Vapi dashboard: param topic (string, required)
           '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
           // '___batchReschedule___', // batchReschedule (R13 T1) — params: window {date,startTime?,endTime?}, action ('move'|'delete'), targetDate?, confirmToken?
+          // '___skipRecurringOccurrence___', // skipRecurringOccurrence (R13 T2) — params: title, occurrenceDate
+          // '___endRecurringSeries___', // endRecurringSeries (R13 T2) — params: title, occurrenceDate, endAfterDate
         ],
       },
       firstMessage: briefingContent,
@@ -356,6 +360,8 @@ Always end with warmth. This person is building something — remind them of tha
           '866ce6ca-5b06-4ea9-9458-2721905ca444',
           '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
           // '___batchReschedule___', // batchReschedule (R13 T1)
+          // '___skipRecurringOccurrence___', // skipRecurringOccurrence (R13 T2)
+          // '___endRecurringSeries___', // endRecurringSeries (R13 T2)
         ],
       },
       messagePlan: {
