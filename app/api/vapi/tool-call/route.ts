@@ -15,6 +15,7 @@ import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries } from '@/lib/db';
 import { pickTaskToComplete } from '@/lib/taskMatch';
+import { factsMatchingTopic } from '@/lib/factForget';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -1371,6 +1372,19 @@ Query: ${query}` }],
       return `I couldn't mark that done just now — want me to try again?`;
     }
     return `Done — marked "${match.text}" as complete.`;
+
+  } else if (fn === 'forgetFact') {
+    // R14 T5 — retire stored facts matching a topic so a correction doesn't conflict with stale data.
+    const { topic } = args as { topic?: string };
+    if (!topic?.trim()) return 'What should I forget?';
+    const activeFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+    const matches = factsMatchingTopic(activeFacts.map(f => ({ id: f.id, entity: f.entity, statement: f.statement })), topic);
+    if (!matches.length) return `I don't have anything stored about ${topic.trim()} — nothing to forget.`;
+    let removed = 0;
+    for (const m of matches) { try { factQueries.retire(userId, m.id); removed++; } catch (e) { console.error('[forgetFact] retire failed:', e instanceof Error ? e.message : e); } }
+    if (!removed) return `I ran into trouble clearing that — want me to try again?`;
+    const sensitive = /address|live|home|wake|name|partner|spouse/i.test(topic);
+    return `Got it — I've cleared everything I knew about ${topic.trim()}.${sensitive ? " If the new one is different, just tell me and I'll remember the updated version." : ''}`;
 
   } else if (fn === 'searchMemory') {
     // M3-2: on-demand memory retrieval — searches facts + episodes + memories for the query.
