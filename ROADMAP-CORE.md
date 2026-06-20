@@ -1383,6 +1383,12 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R15 — calendar intelligence (7 tools) — SHIPPED (1993 green).**
+  - **T1 searchEvents** (Google q-search → ≤5 spoken w/ dates), **T2 checkConflict** (point-in-time overlap, endTime +1h default), **T5 getNextEvents** (next N timed from now) — share new pure `lib/calendarQuery.ts` (`dedupeSortEvents`/`formatEventForSpeech`/`findOverlappingEvents`, +9 tests).
+  - **T3 setEventReminder** (PATCH popup override, undo original reminders, read-only guard), **T4 blockFocusTime** (computeFreeSlots earliest slot + book `⚡ Focus: <label>` colorId 2 in one shot, delete-undo).
+  - **T6 briefEvent** (event details + title-matched email signal + attendee/topic facts → Haiku 3-sentence brief; degrades to raw details), **T7 generateWeeklyReview** (week events + completed/open tasks + Whoop trend → Haiku review ending with next-week priority; degrades to list).
+  - Prompts SEARCHING EVENTS / CHECK CONFLICT / GET NEXT EVENTS / REMINDERS / FOCUS BLOCKING / MEETING PREP / WEEKLY REVIEW + toolId placeholders (both arrays). 1993/1993 green, tsc + next build clean. Committed on `core` — ready for PM merge.
+  - ⚠️ **External (PM):** create 7 Vapi tools — searchEvents (query, startDate?, endDate?), checkConflict (date, startTime, endTime?), getNextEvents (count?), setEventReminder (title, minutesBefore, currentTime?), blockFocusTime (label, duration, startDate?, endDate?, windowStart?, windowEnd?), briefEvent (title, currentTime?), generateWeeklyReview (weekOf?). Paste UUIDs into both `lib/vapi.ts` toolIds arrays.
 - **2026-06-20** — **R14 T6 — Gmail reading indicator (dashboard) — SHIPPED (1986 green).** `/api/auth/accounts` returns `calendar.hasGmailScope` (via `hasGmailReadScope` on the primary token scope); sidebar shows "● Reading Gmail" when active or "Gmail reading inactive — re-authorize →" (re-runs Google consent via `connectCalendar`, requesting gmail.readonly) otherwise; nothing when calendar disconnected. No new routes/OAuth. Note: spec's `/api/auth/google` re-auth path doesn't exist — used the real `/api/calendar/connect` flow via `connectCalendar`.
 - **2026-06-20** — **R14 — Vapi tool expansion (5 tickets) — SHIPPED (1986 green).**
   - **T1 `findFreeTime`:** freebusy.query across calendars → pure `computeFreeSlots` (lib/time.ts) returns ≤3 duration-sized open slots in a daily window over a date range; spoken list. FINDING FREE TIME prompt.
