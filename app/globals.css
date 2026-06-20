@@ -51,6 +51,7 @@
   --edg-accent-60:    rgba(99, 102, 241, 0.60);
 
   --edg-hairline:      rgba(255, 255, 255, 0.06);
+  --edg-fill-03:       rgba(255, 255, 255, 0.03);
   --edg-fill-04:       rgba(255, 255, 255, 0.04);
   --edg-fill-subtle:   rgba(255, 255, 255, 0.07); /* raised from 0.04 for form legibility */
   --edg-fill-hover:    rgba(255, 255, 255, 0.06);
