@@ -405,7 +405,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">What matters most right now?</h2>
+      <h2 className="text-2xl font-bold mb-1">Adjust your priorities.</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
         Edg3 checks every briefing to make sure your calendar actually reflects these — not just your intentions.
       </p>
@@ -466,7 +466,7 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
           className="btn-primary w-full mt-4"
           disabled={loading || !priorities.some(p => p.trim())}
         >
-          {loading ? 'Saving…' : 'Set my focus & continue →'}
+          {loading ? 'Saving…' : 'Save and continue →'}
         </button>
       </form>
     </StepFade>
@@ -635,7 +635,7 @@ function HeroStep({ onContinue }: { onContinue: () => void }) {
 // ── Step 4: Call time ─────────────────────────────────────────────────────────
 
 function CallTimeStep({ onNext }: { onNext: () => void }) {
-  const [callTime, setCallTime] = useState('07:00');
+  const [callTime, setCallTime] = useState('07:30');
   const [timezone, setTimezone] = useState('America/New_York');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);

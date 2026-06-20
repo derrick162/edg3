@@ -2339,35 +2339,43 @@ export default function Dashboard() {
         {/* Main content */}
         <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
           {/* Screen 7 — activation arrival banner (dismissible, non-gating) */}
-          {showActivatedBanner && (
-            <div
-              className="flex items-start gap-3 rounded-xl px-4 py-3 mb-5"
-              style={{
-                background: 'var(--edg-accent-08)',
-                border: '1px solid var(--edg-accent-20)',
-                animation: 'score-rise 0.4s ease both',
-              }}
-            >
-              <span style={{ color: 'var(--text-accent)', fontSize: 13, flexShrink: 0, marginTop: 2 }}>✦</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-                  Edg3 has everything it needs.{' '}
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Until your first call — everything Edg3 knows about you is in the
-                    &ldquo;What Edg3 knows&rdquo; tab. You can edit or delete anything there.
-                  </span>
-                </p>
-              </div>
-              <button
-                onClick={() => setShowActivatedBanner(false)}
-                className="flex-shrink-0 text-xs p-1 transition-opacity hover:opacity-80"
-                style={{ color: 'var(--text-faint)' }}
-                aria-label="Dismiss"
+          {showActivatedBanner && (() => {
+            const day = new Date().getDay();
+            const nextDay = (day === 0 || day === 6 || day === 5) ? 'Monday' : 'tomorrow';
+            const [h, m] = (user.call_time ?? '07:30').split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const hr = h % 12 || 12;
+            const callLabel = `${hr}:${String(m).padStart(2, '0')} ${ampm}`;
+            return (
+              <div
+                className="flex items-start gap-3 rounded-xl px-4 py-3 mb-5"
+                style={{
+                  background: 'var(--edg-accent-08)',
+                  border: '1px solid var(--edg-accent-20)',
+                  animation: 'score-rise 0.4s ease both',
+                }}
               >
-                ✕
-              </button>
-            </div>
-          )}
+                <span style={{ color: 'var(--text-accent)', fontSize: 13, flexShrink: 0, marginTop: 2 }}>✦</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                    Edg3 has everything it needs.{' '}
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      Your first call is {nextDay} at {callLabel}. Until then — everything Edg3 knows
+                      about you is in the &ldquo;What Edg3 knows&rdquo; tab.
+                    </span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowActivatedBanner(false)}
+                  className="flex-shrink-0 text-xs p-1 transition-opacity hover:opacity-80"
+                  style={{ color: 'var(--text-faint)' }}
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })()}
           {/* Header */}
           <div className="flex items-center justify-between mb-4 md:mb-8">
             <div>
