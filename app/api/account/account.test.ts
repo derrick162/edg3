@@ -76,6 +76,7 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/lib/crypto', () => ({
   decryptField: (v: string) => `decrypted:${v}`,
+  safeDecryptField: (v: string | null | undefined) => (v == null ? '' : `safe:${v}`),
 }));
 
 vi.mock('@/lib/rateLimit', () => ({
@@ -165,7 +166,7 @@ describe('GET /api/account/export — response shape', () => {
     const res = await exportGET(makeReq());
     const data = await res.json();
     expect(data).toHaveProperty('exportedAt');
-    expect(data).toHaveProperty('version', '1');
+    expect(data).toHaveProperty('version', '3');
     expect(data).toHaveProperty('profile');
     expect(data).toHaveProperty('priorities');
     expect(data).toHaveProperty('memories');
@@ -181,6 +182,46 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('activityLog');
     expect(data).toHaveProperty('people');
     expect(data).toHaveProperty('peopleModels');
+    // R10 T1 — four previously-deferred tables, now included.
+    expect(data).toHaveProperty('episodes');
+    expect(data).toHaveProperty('factHistory');
+    expect(data).toHaveProperty('focusMilestones');
+    expect(data).toHaveProperty('supportMessages');
+  });
+
+  it('includes the four R10 tables with decrypted (readable) content, not ciphertext', async () => {
+    // The shared dbAll mock returns this row for every direct query; each new section maps the
+    // columns it needs. We assert the encrypted fields come back decrypted via safeDecryptField.
+    h.dbAll.mockReturnValue([{
+      // episodes
+      source: 'call', occurred_at: '2026-06-18T07:00:00Z',
+      content_raw: 'enc:1:we discussed the raise', topics: '["fundraising"]', commitments: '["email Sarah"]',
+      // fact_history
+      fact_id: 7, statement: 'enc:1:old goal text', entity: 'CIBC', category: 'goal',
+      retired_at: '2026-06-17T00:00:00Z', reason: 'superseded',
+      // focus_milestones
+      title: 'enc:1:draft the deck', done: 1, completed_at: '2026-06-18T00:00:00Z', priority_id: 3,
+      // support_messages
+      type: 'feedback', message: 'enc:1:love the product', created_at: '2026-06-16T00:00:00Z',
+    }]);
+
+    const res = await exportGET(makeReq());
+    const data = await res.json();
+
+    expect(data.episodes[0]).toMatchObject({
+      source: 'call', occurredAt: '2026-06-18T07:00:00Z',
+      contentSummary: 'safe:enc:1:we discussed the raise',
+      topics: ['fundraising'], commitments: ['email Sarah'],
+    });
+    expect(data.factHistory[0]).toMatchObject({
+      factId: 7, statement: 'safe:enc:1:old goal text', category: 'goal', retiredAt: '2026-06-17T00:00:00Z', reason: 'superseded',
+    });
+    expect(data.focusMilestones[0]).toMatchObject({
+      title: 'safe:enc:1:draft the deck', done: true, doneAt: '2026-06-18T00:00:00Z', priorityId: 3,
+    });
+    expect(data.supportMessages[0]).toMatchObject({
+      type: 'feedback', message: 'safe:enc:1:love the product', createdAt: '2026-06-16T00:00:00Z',
+    });
   });
 
   it('includes social mental models (people_models), decrypted', async () => {

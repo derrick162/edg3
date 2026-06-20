@@ -579,3 +579,39 @@ reading path for rate-limit + audit coverage.
 
 **No open gaps** on the Gmail ingest/body-reading surface. Rate limits cost-commensurate; every
 Gmail read path now writes an encrypted, user-visible audit receipt; bodies are never persisted.
+
+---
+
+## Gmail multi-account flow — second-flow security review (2026-06-19, Vijay, R10 T2)
+
+The dedicated Gmail OAuth flow (`gmail_tokens` + `/api/auth/google/gmail{,/callback,/disconnect}`)
+reviewed against the primary calendar flow's protections.
+
+| Check | Status | Evidence |
+|---|---|---|
+| **CSRF state** — initiate generates + stores a nonce; callback verifies before accepting code | ✅ equivalent to calendar flow | Initiate: `randomBytes(20)` → `oauthStateQueries.create(state, userId, 'gmail')` (`app/api/auth/google/gmail/route.ts`). Callback: `oauthStateQueries.consume(state)` + rejects unless `flow === 'gmail'` (`/callback/route.ts`); state is REQUIRED (no session fallback). |
+| **Rate limits** | ✅ both present | `gmailConnect` 10/hr on initiate, `gmailDisconnect` 5/hr on disconnect (`lib/rateLimit.ts:67-68`); `gmailIngest` 6/hr on `/ingest`. |
+| **Audit entries** | ✅ both written | `gmailAccountConnect` on `/callback`, `gmailAccountDisconnect` on `/disconnect`. Added to the coverage map. |
+| **Scope minimization** | ⚠️ **NOT a regression — readonly is intentional + required; decision flagged for PM** | See below. |
+
+**Scope finding (Kevin's #3 — corrects the dispatch premise).** The dispatch asked to confirm the
+Gmail flow requests **no** read scopes (readonly "calendar-token only"). In fact
+`GMAIL_ACCOUNT_SCOPES = ['openid','email', gmail.compose, gmail.readonly]` — the dedicated flow
+**does** request `gmail.readonly`, and this is **required, not a regression**: `extractGmailAccountContacts`
+(the post-link contact ingest behind `POST /api/auth/google/gmail/ingest`) reads the **dedicated**
+account's `From` headers via `getGmailTokens` and gates on `hasGmailReadScope`. Removing readonly
+would silently break contact ingest for any user who links a dedicated Gmail account (the scope check
+returns `[]` with no fallback, since a token row exists).
+
+- **Action taken:** corrected the misleading "(compose-only)" comment on the initiate route (the scope
+  set was already accurately documented in `google-auth.ts:120-122`). **Did NOT remove readonly** —
+  that would break a shipped feature.
+- **Decision for PM (Kevin):** keep `gmail.readonly` on the dedicated account (contact ingest needs it;
+  current state) **vs.** drop dedicated-account contact ingest and tighten the dedicated flow to
+  compose-only. Recommendation: **keep** — the scope is disclosed (privacy page + verification doc),
+  audited (`gmail_contacts_fetch` receipt), and the ingest is a real onboarding value-add. If strict
+  compose-only on the dedicated account is desired for CASA, route contact ingest through the calendar
+  account (which already holds readonly) and drop readonly from `GMAIL_ACCOUNT_SCOPES`.
+
+**Result:** CSRF, rate-limit, and audit protections on the Gmail flow are equivalent to the calendar
+flow. The only finding is the scope decision above — surfaced, not silently changed.

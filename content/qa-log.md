@@ -300,6 +300,14 @@ the Railway shell. Logged so they are not mistaken for "covered":
   - **Unchanged external items** (still ⚠️ — see Morning action list above): Railway persistent-volume
     confirmation + `LITESTREAM_S3_*` activation, `DATA_ENCRYPTION_KEY` backup, live restore drill, and all
     live-call/Vapi/Whoop QA items. Code is shipped and waiting on these human/infra steps.
+- **2026-06-19 (Vijay) — R10 dispatch QA sweep (Tickets 1–4). Preflight green: 104 files / 1959 tests, exit 0; e2e `lib/call-to-briefing.test.ts` 19/19.**
+  Ran the mechanical pillar QA items; live items remain ⚠️ external. R10 directly advanced these checklist items:
+  - **PILLAR-TRUST → Transparency → "Export contains all your data":** ✅ **materially closed.** Export now includes the 4 previously-deferred tables (`episodes`, `factHistory`, `focusMilestones`, `supportMessages`) + the prior `peopleModels`/`activityLog`/`people` — decrypted via `safeDecryptField` (no 500 on a corrupt row), `version:'3'`. Automated test asserts all sections present + decrypted-to-readable (`app/api/account/account.test.ts`, 19 green).
+  - **PILLAR-TRUST → Transparency → "Privacy/consent setting accurate":** ✅ fixed — calendar write-scope already accurate; corrected the contradictory Gmail "never message bodies" claim on the privacy page (`:110`) + 4 stale claims in `specs/google-verification.md`. No remaining contradictory body-reading statements (CASA-relevant).
+  - **PILLAR-TRUST → Data protection → "Disconnect Google removes tokens" / "audit logs userId":** Gmail second-flow reviewed — CSRF state, `gmailConnect`/`gmailDisconnect`/`gmailIngest` rate limits, and `gmailAccountConnect`/`Disconnect` audit all confirmed (`content/security-audit.md` "Gmail multi-account flow"). Live OAuth-grant revocation still ⚠️ external.
+  - **★ E2E smoke test (T0-3):** ✅ `lib/call-to-briefing.test.ts` 19/19 green (run this turn).
+  - **Scope decision flagged to PM:** dedicated Gmail flow's `gmail.readonly` is required by contact ingest (not a regression) — keep-vs-tighten decision is in the audit doc for Kevin.
+  - **No regressions.** Still ⚠️ external (unchanged): live 7am call path, Vapi/Whoop live checks, Railway volume + `LITESTREAM_S3_*`, `DATA_ENCRYPTION_KEY` backup, restore drill.
 ---
 
 # EDG3 — QA Log (Core lane)

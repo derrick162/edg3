@@ -179,7 +179,7 @@ timestamp, user_id). Used for activity feed + incident diagnosis.
 ### Principle of least privilege
 
 - `gmail.compose` scope only creates drafts — `messages.send` is never called.
-- `gmail.readonly` reads (1) specific `watched_threads` for reply tracking, and (2) recent INBOX thread metadata (headers + snippet only, via `format:'metadata'`) for AI focus prioritization. Bodies are never fetched. Inbox access is capped at 50 threads per call.
+- `gmail.readonly` reads (1) specific `watched_threads` for reply tracking, (2) recent INBOX thread metadata (headers + snippet, via `format:'metadata'`) for AI focus prioritization, and (3) for up to 10 recent non-promotional threads, the message body text (`format:'full'`, ~2000-char cap) — read in memory for fact extraction and immediately discarded. **Raw message bodies are never stored.** Inbox access is capped at 50 threads per call.
 - Calendar event content is not stored — only processed in memory for briefings.
 
 ---
@@ -264,11 +264,13 @@ never call `messages.send`.
 users ask "did Sarah reply?" We read only the specific Gmail threads we originated.
 (2) Focus prioritization: our AI analyzes the user's recent inbox metadata to
 identify priority areas (financial, legal, life-admin threads). We use Gmail's
-`format:'metadata'` API parameter, which returns only email headers (From, Subject,
-Date) and Gmail's own auto-generated snippet — no message bodies are fetched or
-stored. Only INBOX threads from the past N days (≤50) are accessed. The derived
-signal is used in-memory for AI analysis and immediately discarded. We record the
-fetch action (thread count only) in our audit log for user transparency.
+`format:'metadata'` API parameter, which returns email headers (From, Subject,
+Date) and Gmail's own auto-generated snippet. Additionally, for up to 10 recent
+non-promotional threads, the message body text is read in memory (`format:'full'`,
+~2000-char cap) for fact extraction and immediately discarded — **raw message bodies
+are never stored.** Only INBOX threads from the past N days (≤50) are accessed. The
+derived signal is used in-memory for AI analysis and immediately discarded. We record
+the fetch action (thread count only) in our audit log for user transparency.
 
 ---
 
@@ -304,9 +306,10 @@ It is not shared with, sold to, or accessible by any third parties.
   require a separate credential. Vapi webhook endpoints are HMAC-verified.
 - **Least privilege:** We only call the Google APIs and endpoints necessary for the
   described features. We never call `messages.send`. Inbox access is limited to
-  INBOX-label metadata only (`format:'metadata'` — headers + snippet, no bodies),
-  capped at 50 threads per call. No other mailbox labels, attachments, or message
-  bodies are ever requested.
+  INBOX-label threads — headers + snippet via `format:'metadata'`, plus (for ≤10 recent
+  non-promotional threads) body text via `format:'full'` read in memory and discarded —
+  capped at 50 threads per call. No other mailbox labels or attachments are ever requested,
+  and raw message bodies are never stored.
 
 ---
 
@@ -340,7 +343,7 @@ Google requires a video demonstrating how the restricted scopes are used.
 | 4 | User says "move my 3pm to 4pm". Edge confirms and calendar updates. | `calendar.events` |
 | 5 | User says "draft an email to Sarah about the project". Edge creates a draft — show it in Gmail Drafts, not Sent. | `gmail.compose` |
 | 6 | User says "did Sarah reply?". Edge answers based on thread content. | `gmail.readonly` |
-| 7 | Focus Score shown on dashboard — show that Edge reads inbox metadata (no bodies) to compute it. Narrate: "only From/Subject/snippet, never body content." | `gmail.readonly` |
+| 7 | Focus Score shown on dashboard — show that Edge reads inbox headers/snippet (and, for a few recent threads, body text in memory) to compute it. Narrate: "From/Subject/snippet for every thread, plus body text for a few recent threads — read in memory for fact extraction and never stored." | `gmail.readonly` |
 | 8 | Dashboard → Disconnect Google → account settings. Show Google's own revoke page. | (data deletion) |
 
 Video should be < 5 minutes, narrated, showing the actual app (not a mock).
