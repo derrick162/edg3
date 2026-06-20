@@ -634,11 +634,33 @@ function HeroStep({ onContinue }: { onContinue: () => void }) {
 
 // ── Step 4: Call time ─────────────────────────────────────────────────────────
 
+function nextWeekday(tz: string): string {
+  try {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' });
+    // find next Mon-Fri from tomorrow
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(now.getTime() + i * 86_400_000);
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(d);
+      if (!['Sat', 'Sun'].includes(parts)) return fmt.format(d);
+    }
+    return fmt.format(new Date(now.getTime() + 86_400_000));
+  } catch { return 'tomorrow'; }
+}
+
+function fmt12(time24: string): string {
+  const [h, m] = time24.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 function CallTimeStep({ onNext }: { onNext: () => void }) {
   const [callTime, setCallTime] = useState('07:30');
   const [timezone, setTimezone] = useState('America/New_York');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
 
   const timezones = [
     { label: 'Vancouver / Los Angeles (PT)', value: 'America/Vancouver' },
@@ -667,7 +689,41 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
       body: JSON.stringify({ call_time: callTime, timezone, phone_number: `+1${phone}` }),
     });
     setLoading(false);
-    onNext();
+    setDone(true);
+  }
+
+  if (done) {
+    return (
+      <StepFade>
+        <div className="text-center py-6">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl mx-auto mb-5"
+            style={{
+              background: 'var(--edg-success-tint)',
+              border: '2px solid var(--edg-success-border)',
+              animation: 'pop-in 0.4s ease both',
+            }}
+          >
+            ✓
+          </div>
+          <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-strong)' }}>
+            You&apos;re all set.
+          </h3>
+          <p className="text-sm mb-1" style={{ color: 'var(--text-body)' }}>
+            Your first call is
+          </p>
+          <p className="text-lg font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+            {nextWeekday(timezone)}
+          </p>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+            at <span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{fmt12(callTime)}</span>
+          </p>
+          <button className="btn-primary px-8 py-2.5" onClick={onNext}>
+            Go to your dashboard →
+          </button>
+        </div>
+      </StepFade>
+    );
   }
 
   return (

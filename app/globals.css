@@ -164,7 +164,13 @@
   --text-faint:   var(--edg-fg-faint);
   --text-accent:  var(--edg-indigo-bright);
 
+  --surface-elevated: var(--edg-bg-elevated);
+
+  --text-primary:   var(--edg-fg);
+  --text-secondary: var(--edg-fg-muted);
+
   --border-card:   var(--edg-hairline);
+  --border-subtle: var(--edg-hairline);
   --border-accent: var(--edg-accent-30);
 
   /* Typography */

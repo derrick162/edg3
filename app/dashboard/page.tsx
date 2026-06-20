@@ -3215,7 +3215,7 @@ export default function Dashboard() {
                             <button
                               onClick={() => deleteFact(f.id)}
                               className="text-xs px-2.5 py-1 rounded-md font-medium"
-                              style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}
+                              style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--edg-danger-border)' }}
                             >
                               Remove
                             </button>
@@ -3375,7 +3375,7 @@ export default function Dashboard() {
                                       <div className="flex items-center justify-between gap-3">
                                         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Remove this goal?</p>
                                         <div className="flex items-center gap-2 flex-shrink-0">
-                                          <button onClick={() => deleteFact(f.id)} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--whoop-low-border)' }}>Remove</button>
+                                          <button onClick={() => deleteFact(f.id)} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: 'var(--edg-danger-tint)', color: 'var(--edg-danger)', border: '1px solid var(--edg-danger-border)' }}>Remove</button>
                                           <button onClick={() => setDeletingFactId(null)} className="text-xs px-2.5 py-1 rounded-md" style={{ color: 'var(--text-faint)' }}>Keep</button>
                                         </div>
                                       </div>
@@ -3768,7 +3768,7 @@ export default function Dashboard() {
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--edg-indigo)' }}>EDG3 WILL HELP YOU:</p>
               {['Align your calendar with your actual priorities', 'Track patterns in your life you\'re too close to see', 'Hold you accountable — honestly, like a great advisor'].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <span className="text-indigo-400 font-bold text-sm">{i + 1}.</span>
+                  <span className="font-bold text-sm" style={{ color: 'var(--text-accent)' }}>{i + 1}.</span>
                   <p className="text-sm" style={{ color: 'var(--text-body)' }}>{item}</p>
                 </div>
               ))}

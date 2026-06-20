@@ -111,7 +111,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(✅ **R12 ALL DONE (T1–T7, 1958 green). Idle, awaiting next dispatch.** T7: email feature removed — handlers, outreach/replies libs deleted. FYI: `checkOutreachReplies` also consumed by `lib/briefing.ts` + notifications route — both cleaned up.)_ | `app/api/vapi/tool-call/route.ts`, `lib/briefing.ts`, `app/api/notifications/route.ts` | 2026-06-20 |
 | 🔒 Security | `security` | _(📋 **R12 T2 FOLLOW-UP NEEDED — remove `createDraft` + `gmail.compose` scope.** Core T7 now merged → blocker cleared. Gmail auth routes + dedicated OAuth flow already removed (1993 green). Vijay: remove `createDraft` from `lib/gmail.ts` + `GMAIL_COMPOSE_SCOPE` from `google-auth.ts` now that Core's import is gone. Then preflight + merge.)_ | `lib/gmail.ts`, `lib/google-auth.ts` | 2026-06-20 |
 | 🔧 PM/CoS | `master` | _(✅ **Email feature dropped: Vapi tools deleted, `lib/vapi.ts` cleaned (prompt + toolIds). T7 → Core. T2 → Security.)_ | `lib/vapi.ts`, `ROADMAP*.md` | 2026-06-20 |
-| 🎨 Design | `design` | _(✅ **R12 + R13 DONE (1986 green).** Mobile strip + notif overflow + tab labels shipped. /score + /memory + /security pages live. Idle, awaiting next dispatch.)_ | `app/dashboard/page.tsx`, `app/score/page.tsx`, `app/memory/page.tsx`, `app/security/page.tsx` | 2026-06-20 |
+| 🎨 Design | `design` | _(✅ **Pillar + launch-readiness pass done (2002 green).** Memory tab danger-border fix, onboarding arrival screen, 4 missing CSS token aliases resolved. Idle, awaiting next dispatch.)_ | `app/dashboard/page.tsx`, `app/onboarding/page.tsx`, `app/globals.css` | 2026-06-20 |
 
 ---
 
