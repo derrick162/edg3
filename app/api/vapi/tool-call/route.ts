@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
 import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
+import { isTimedEventInWindow, formatBatchPreview } from '@/lib/batchSchedule';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -830,6 +831,78 @@ Query: ${query}` }],
     return created
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
       : `Couldn't save the copies from ${sourceDate} — Google didn't confirm them. Want me to try again?`;
+
+  } else if (fn === 'batchReschedule') {
+    // R13 T1 — move or clear every timed event in a window with ONE confirmation, instead of
+    // one-by-one deleteEvent/moveEvent handshakes. Skips all-day events + read-only/non-organizer
+    // events. First call (no token) previews + issues a token; second call (token) executes.
+    const { window, action, targetDate, confirmToken } = args as {
+      window?: { date?: string; startTime?: string; endTime?: string };
+      action?: 'move' | 'delete';
+      targetDate?: string;
+      confirmToken?: string;
+    };
+    if (!window?.date || !/^\d{4}-\d{2}-\d{2}$/.test(window.date)) return "Which day's events should I reschedule? Give me the date.";
+    if (action !== 'move' && action !== 'delete') return 'Should I move those events to another day, or clear them? Say "move" or "delete".';
+    if (action === 'move' && (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate))) return 'What day should I move them to?';
+
+    const startBound = window.startTime ? zonedWallTimeToUtc(`${window.date}T${resolveNaturalTime(window.startTime)}:00`, tz).getTime() : -Infinity;
+    const endBound = window.endTime ? zonedWallTimeToUtc(`${window.date}T${resolveNaturalTime(window.endTime)}:00`, tz).getTime() : Infinity;
+
+    const dayEvents = await eventsOnDay(cal, calIds, window.date, tz);
+    const inWindow = dayEvents.filter(({ event, calId }) => {
+      if (!isTimedEventInWindow(event, startBound, endBound)) return false; // timed, live, in range
+      const meta = calMeta.get(calId);
+      if (meta && !isWritable(meta.accessRole)) return false; // skip read-only calendars
+      if (!canUserReschedule(event)) return false;        // skip events the user can't reschedule
+      return true;
+    });
+
+    if (!inWindow.length) {
+      const range = window.startTime || window.endTime ? ` between ${window.startTime ?? 'the start'} and ${window.endTime ?? 'the end'}` : '';
+      return `I don't see any moveable events on ${window.date}${range}.`;
+    }
+
+    const previewList = formatBatchPreview(inWindow.map(w => w.event), tz);
+    const actionLabel = action === 'move' ? `move them all to ${targetDate}` : 'clear them';
+
+    if (!confirmToken) {
+      const token = issueDeleteToken(userId);
+      return `Found ${inWindow.length} event(s): ${previewList} — ${actionLabel}? Ask the user, and ONLY if they say yes, call batchReschedule again with the same window and action plus confirmToken set to "${token}". Token expires in 2 minutes.`;
+    }
+    if (!consumeDeleteToken(userId, confirmToken)) {
+      console.error('[batchReschedule] token mismatch', { userId, providedToken: confirmToken, date: window.date, action });
+      const token = issueDeleteToken(userId);
+      return `That confirmation was invalid or expired. To ${actionLabel}, call batchReschedule again with confirmToken "${token}". Token expires in 2 minutes.`;
+    }
+
+    const doneNames: string[] = [];
+    const failedNames: string[] = [];
+    const undoOps: UndoOp[] = [];
+    for (const { event, calId } of inWindow) {
+      const name = (event.summary ?? 'Untitled').replace(/^⚡\s*/, '');
+      try {
+        if (action === 'delete') {
+          await cal.events.delete({ calendarId: calId, eventId: event.id! });
+          if (!event.recurringEventId) undoOps.push({ type: 'recreate', calId, event: cleanForRecreate(event) });
+          doneNames.push(name);
+        } else {
+          const eventTz = event.start?.timeZone ?? tz;
+          const patch = timedEventDateMove(event.start!.dateTime!, event.end?.dateTime ?? event.start!.dateTime!, targetDate!, eventTz);
+          const origStart = event.start, origEnd = event.end;
+          await cal.events.patch({ calendarId: calId, eventId: event.id!, requestBody: patch });
+          undoOps.push({ type: 'patch', calId, eventId: event.id!, requestBody: { start: origStart, end: origEnd } });
+          doneNames.push(name);
+        }
+      } catch (err) {
+        console.error(`[batchReschedule] ${action} failed for "${name}":`, err instanceof Error ? err.message : err);
+        failedNames.push(name);
+      }
+    }
+    if (undoOps.length) recordUndo(userId, `${action === 'move' ? 'moved' : 'cleared'} ${undoOps.length} event(s)`, undoOps);
+    if (!doneNames.length) return `I couldn't ${action === 'move' ? 'move' : 'clear'} those — Google errored${failedNames.length ? ` for ${failedNames.join(', ')}` : ''}. Want me to try again?`;
+    const head = action === 'move' ? `Moved ${doneNames.length} event(s) to ${targetDate}` : `Cleared ${doneNames.length} event(s) from ${window.date}`;
+    return `${head}: ${doneNames.join(', ')}.${failedNames.length ? ` Couldn't do ${failedNames.join(', ')}.` : ''}`;
 
   } else if (fn === 'cleanupEvents') {
     // Batch delete for consolidation cleanup — deletes a list of events by EXACT start time,
