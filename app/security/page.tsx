@@ -48,17 +48,17 @@ export default function SecurityPage() {
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                 <polyline points="22,6 12,13 2,6" />
               </svg>
-              <h2 className="text-lg font-bold" style={{ color: 'var(--text-accent)' }}>Gmail access — drafts only</h2>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--text-accent)' }}>Gmail access — read-only</h2>
             </div>
             <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
-              When you connect Gmail, Edge can check whether key contacts have replied to your outreach — and draft follow-up emails on your behalf. That&apos;s the full scope.
+              When you connect Gmail, Edge reads recent inbox threads to compute your daily Focus score and learn durable context about your work and relationships. Access is strictly read-only — Edge never sends, drafts, or modifies any email.
             </p>
             <ul className="space-y-2">
               {[
-                'Edge reads subject lines only to detect replies. Email body content is never read or stored.',
-                'Emails Edge drafts go to your Gmail Drafts — you review and send them yourself.',
-                'Edge never sends email autonomously.',
-                'You can disconnect Gmail at any time from the dashboard.',
+                'Edge reads sender names, subject lines, and for a small number of recent non-promotional threads, message body text — to compute your Focus score and learn facts for briefings.',
+                'Email body text is read in memory only and is never stored, shared, or sold — discarded immediately after Edge derives its summary.',
+                'Thread subject lines are stored encrypted at rest in your activity log for 90 days so you can review what Edge read, then deleted automatically.',
+                'Edge never sends, drafts, or modifies email. You can disconnect Gmail from the dashboard at any time.',
               ].map((point) => (
                 <li key={point} className="flex items-start gap-2.5">
                   <span className="flex-shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ background: 'var(--text-accent)' }} />
@@ -101,7 +101,7 @@ export default function SecurityPage() {
               {[
                 { label: 'View what Edge knows', desc: 'The Memory tab in your dashboard shows every preference, goal, and fact Edge has stored about you.' },
                 { label: 'Correct or delete it', desc: 'Tell Edge anything is wrong mid-call and it updates immediately. Account deletion removes all data permanently.' },
-                { label: 'Disconnect any integration', desc: 'Google Calendar, Gmail, and Whoop can each be disconnected from the dashboard in one click, revoking access immediately.' },
+                { label: 'Disconnect any integration', desc: 'Google (Calendar + Gmail) and Whoop can each be disconnected from the dashboard in one click, revoking access immediately.' },
               ].map(({ label, desc }) => (
                 <div key={label} className="flex items-start gap-3">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
