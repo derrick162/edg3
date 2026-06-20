@@ -111,7 +111,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(✅ **R12 ALL 6 SHIPPED (1998 green); idle, awaiting next dispatch.** T6: voice-speed control (Slow/Default/Fast, `SPEED_MAP`, `users.voice_speed`, Profile UI). Note: touched shared `lib/db.ts` (additive: `is_open_call`, `voice_speed`) + `lib/scheduler.ts` (additive — Vijay FYI).)_ | `lib/vapi.ts`, `lib/db.ts`, `lib/scheduler.ts`, `app/api/profile/**`, `app/dashboard/page.tsx` | 2026-06-20 |
 | 🔒 Security | `security` | _(✅ **R12 T1 SHIPPED (1990 green); idle/polling.** `getRecentEmailSignal` 24h cache gate + empty fetches write no audit entry. Fixes Activity-tab flooding. `fullBodies` (briefing) EXEMPT from cache.)_ | `lib/gmail.ts`, `lib/gmail.test.ts` | 2026-06-20 |
 | 🔧 PM/CoS | `master` | _(✅ **All lanes loaded: Core R12 T1–T6 (incl. voice speed), Security R12 T1, Design R12+R13 (mobile + marketing pages). Viewport meta shipped.)_ | `ROADMAP*.md`, `app/layout.tsx` | 2026-06-20 |
-| 🎨 Design | `design` | _(📋 **R12 dispatched: mobile web (T1 Next Call strip, T2 notif panel, T3 tab labels). R13 dispatched: marketing pages (/score, /memory, /security). Working.)_ | `app/dashboard/page.tsx`, `app/score/page.tsx`, `app/memory/page.tsx`, `app/security/page.tsx` | 2026-06-20 |
+| 🎨 Design | `design` | _(✅ **R12 + R13 DONE (1986 green).** Mobile strip + notif overflow + tab labels shipped. /score + /memory + /security pages live. Idle, awaiting next dispatch.)_ | `app/dashboard/page.tsx`, `app/score/page.tsx`, `app/memory/page.tsx`, `app/security/page.tsx` | 2026-06-20 |
 
 > **★ Email feature go-live checklist (code done — these remain):**
 > 1. Set `DATA_ENCRYPTION_KEY` on Railway (activates at-rest encryption; no-op until set).
