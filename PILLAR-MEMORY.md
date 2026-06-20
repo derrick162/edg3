@@ -124,7 +124,8 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 ~~**The gap (Kevin):** Letta uses git-backed memory — every write is a commit, every bad extraction is a revert.~~
 
 ### M4-4 — Social mental models: per-person context (Core)
-**BLOCKED:** Gated on People-extraction cleanup merge (hallucinated contacts must be fixed first).
+**Security schema contribution ✅ SHIPPED + on master (2026-06-19, Vijay):** `people_models` table (`lib/db.ts:527`) + `peopleModelQueries` (`upsert`/`getForUser`/`listForUser`/`deleteForUser`) — all four TEXT fields (`goals`/`communication_style`/`relationship_state`/`last_interaction`) encrypted at rest (`encryptNullable`/`safeDecryptNullable`); partial-COALESCE upsert preserves prior knowledge; in `USER_SCOPED_DELETE_ORDER` + account export; 8 tests in `lib/people-models.test.ts`. **Core (Darren) unblocked** — People-extraction cleanup (self/Edge/duplicate guards) also shipped. Remaining is Core-owned: sleep-time agent updates models per call + briefing injection when a person is on tomorrow's calendar.
+**BLOCKED (Core feature build only — schema is ready):** ~~Gated on People-extraction cleanup merge~~ — cleanup is merged; Darren can build.
 - When unblocked: `people_models` table stores relationship state per person (goals, communication style, health score, last interaction, what they likely need from Derrick now)
 - Sleep-time agent updates models after every call where a person is mentioned
 - Briefing builder: when a person appears on tomorrow's calendar, inject their model into context

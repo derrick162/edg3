@@ -259,6 +259,26 @@ the Railway shell. Logged so they are not mistaken for "covered":
   cascade + drift-guard test (`lib/db-account-deletion.test.ts`) so this class of gap can't recur.
   Scheduler dispatch lock now logs a warning naming the holder on a refused acquire. M2-4 context
   packs skip caching empty results. 1705 green.
+- **2026-06-19 (Vijay) — Pillar exhaustion sweep + QA refresh (preflight green, exit 0; 1945 suite unchanged — docs-only).**
+  PM (Kevin) confirmed R8 done; worked the three pillar backlogs in order. **Result: all Security-owned
+  surfaces are SHIPPED — no open code items.** Reconciled stale pillar markers that were causing
+  re-dispatch churn:
+  - **PILLAR-TRUST:** marked T0-1 (durability/Litestream/restore-drill — ⚠️ Railway env activation still
+    external), T0-4 (missed-call catch-up + scheduler lock), T1-1 (webhook retry + DLQ) as shipped with
+    refs. Resolved **T1-2 Security side** as satisfied by the existing 6am daily digest + `briefings.learning_status`
+    — **declined** a redundant `call_health_events` table (daily digest is the stronger signal; would
+    duplicate). Tier 4 already all ✅.
+  - **PILLAR-DAILY-CALL:** all Security items (DC1-1/2/3 connection reliability, DC3-2 silence handling)
+    already ✅; DC4-x is Phase-2-gated (50-user gate) + Core/Design-led. Security surface exhausted.
+  - **PILLAR-MEMORY:** all Security/schema/encryption contributions ✅. **M4-4 `people_models` schema
+    shipped + on master** (8 tests `lib/people-models.test.ts`, encryption round-trip, deletion drift-guard,
+    export) — Core (Darren) unblocked for the feature build.
+  - **New QA coverage this cycle:** `people_models` — encrypted-field round-trip (`upsert`→`getForUser`
+    decrypt) + account-deletion cascade via `USER_SCOPED_DELETE_ORDER` drift guard. Data-export includes
+    `peopleModels` (decrypted). Privacy page email-body disclosure live.
+  - **Unchanged external items** (still ⚠️ — see Morning action list above): Railway persistent-volume
+    confirmation + `LITESTREAM_S3_*` activation, `DATA_ENCRYPTION_KEY` backup, live restore drill, and all
+    live-call/Vapi/Whoop QA items. Code is shipped and waiting on these human/infra steps.
 ---
 
 # EDG3 — QA Log (Core lane)
