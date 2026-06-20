@@ -31,6 +31,119 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 9 — Live call feedback: voice speed + briefing + spelling + weather)
+
+> From Derrick's call this morning. **Do all 4 tickets before any R8 work.** These are live call quality issues.
+
+---
+
+### T1 — Voice speed -10% (FAST — 15 min)
+
+**Problem:** Edge speaks too fast. Derrick hears him rushing on every call.
+
+**Fix:** ElevenLabs supports a `speed` parameter (range 0.25–4.0, default 1.0). Add `speed: 0.9` to both voice configs in `lib/vapi.ts`:
+
+```typescript
+daniel: {
+  provider: '11labs',
+  voiceId: '3WqHLnw80rOZqJzW9YRB',
+  model: 'eleven_turbo_v2_5',
+  stability: 0.55,
+  similarityBoost: 0.75,
+  speed: 0.9,   // ← add this
+},
+aria: {
+  provider: '11labs',
+  voiceId: 'cgSgspJ2msm6clMCkdW9',
+  model: 'eleven_turbo_v2_5',
+  stability: 0.4,
+  similarityBoost: 0.7,
+  speed: 0.9,   // ← add this
+},
+```
+
+No external step. Preflight green.
+
+---
+
+### T2 — Briefing fallback fix: silent message + priority description truncation (MEDIUM — 1h)
+
+**Problem A — "Trouble loading" shown on call:** Edge opened with *"I had a little trouble loading your full briefing today. Let me give you the essentials."* This is the `buildFallbackBriefing` path firing (in `lib/briefing.ts:208`). It fires when the Haiku API call times out or returns a non-text content block. Derrick hears it as "Edge is broken."
+
+**Fix A:** Remove the apologetic preamble from `buildFallbackBriefing`. Change the opening from `"I had a little trouble loading your full briefing today — let me give you the essentials."` to just `""` — jump straight to the content. The essentials are still delivered; it just doesn't announce a failure. Also add a `console.error` immediately before calling `buildFallbackBriefing` so Railway logs show the exact cause (`err.message`).
+
+**Problem B — Full priority descriptions read aloud:** In the fallback, `prioritiesText` contains items like `"1. Improve Runway [sell unused items, rent the parking spot, cut subscriptions, lower travel spend, make Blue Mountain cash flow positive, keep mortgage cash untouched]"`. The `split('\n').slice(0, 2)` correctly limits to 2 items but item 1 contains the entire description in brackets. TTS reads the whole thing.
+
+**Fix B:** In `buildFallbackBriefing`, strip bracket content from each priority and truncate to 5 words:
+```typescript
+const topPrios = prioritiesText.trim() && prioritiesText !== 'No priorities set for this week.'
+  ? prioritiesText
+      .replace(/^\d+\.\s*/gm, '')
+      .trim()
+      .split('\n')
+      .slice(0, 2)
+      .map(p => {
+        const stripped = p.replace(/\[.*?\]/g, '').trim();  // remove [bracket content]
+        const words = stripped.split(/\s+/).slice(0, 5).join(' ');
+        return words;
+      })
+      .filter(Boolean)
+  : [];
+```
+
+**Problem C — Same issue in main briefing (prompt):** Add a rule to the briefing system prompt (the section where priorities are injected into the LLM): "When naming priorities in the spoken briefing, use ONLY the priority title — strip any bracket content or description. E.g., say 'Improve Runway' not 'Improve Runway, sell unused items, rent the parking spot...'"
+
+**Test:** mock a long priority text → verify `buildFallbackBriefing` returns clean names ≤5 words each. Preflight green.
+
+---
+
+### T3 — Spelling override prompt rule (FAST — 20 min, prompt only)
+
+**Problem:** User spelled "G-Y-M" on the call. Edge acknowledged it correctly ("Got it — Gym session") but then created the calendar event as "J.I.M." (STT phonetics overrode the user's spelling). Same issue with "A-I-R-E B-A-T-H-S" — Edge couldn't look up the spa because the research query used the phonetic mishear.
+
+**Root cause:** After the user spells something out, Edge reverts to STT's phonetic interpretation in the next tool call.
+
+**Fix:** Add a `SPELLING OVERRIDE` block to the system prompt in `lib/vapi.ts` (place it near the top of the GROUNDED & DECISIVE section):
+
+```
+SPELLING OVERRIDE: When the user spells out a word letter by letter (e.g., "G-Y-M", "A-I-R-E space B-A-T-H-S"), those letters ARE the canonical spelling — concatenate them and use that EXACT string in all tool calls (event names, research queries, calendar entries). Never revert to a phonetic interpretation. Example: user says "g-y-m" → event name is "Gym", not "Jim" or "J.I.M." Example: user says "A-I-R-E space B-A-T-H-S" → research query is "Aire Baths Toronto".
+```
+
+Prompt-only change. No tests needed. Preflight green.
+
+---
+
+### T4 — Weather search tool (MEDIUM — 1.5h)
+
+**Problem:** User asked "what's the weather like in Toronto tomorrow?" Edge replied "I don't have live weather data on this call." This is a solvable capability gap — the Open-Meteo API is free, no API key needed.
+
+**What to build:**
+
+1. **Handler** in `app/api/vapi/tool-call/route.ts` — case `'getWeather'`:
+   - Use Open-Meteo REST API (no API key):
+     ```
+     GET https://api.open-meteo.com/v1/forecast
+       ?latitude=43.65&longitude=-79.38
+       &daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode
+       &timezone=America/Toronto
+       &forecast_days=2
+     ```
+   - Start with hardcoded Toronto coords (Derrick's city). Later: derive from `user.timezone` — "America/Toronto" → Toronto.
+   - Map `weathercode` to plain English (WMO codes: 0=Clear, 1-3=Partly cloudy, 45-48=Fog, 51-67=Drizzle/Rain, 71-77=Snow, 80-82=Showers, 95=Thunderstorm).
+   - Return spoken-friendly string: `"Toronto today: high 24°C, partly cloudy, 20% chance of rain. Tomorrow: high 22°C, mostly sunny."` (Use °C for Toronto / Canadian users.)
+   - Degrade gracefully: if fetch fails, return `"I'm having trouble pulling weather right now — check your weather app for the latest."` (never say "I don't have weather data").
+
+2. **Prompt rule** in `lib/vapi.ts` — add to the tools section:
+   ```
+   - getWeather: call when the user asks about the weather, forecast, temperature, rain, or conditions for today or tomorrow. Do NOT say you lack weather data — call the tool instead.
+   ```
+
+3. ⚠️ **External step (Derrick/Kevin):** Create `getWeather` Vapi tool in the dashboard (no required params, no schema needed). Paste the UUID into `lib/vapi.ts` toolIds and uncomment.
+
+**Test:** mock the Open-Meteo response → verify the handler returns a clean spoken string. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-19 (ROUND 8 BUG FIXES — do before R8 feature work)
 
 > **P0 bugs from Derrick's live dashboard review — fix these first.**
