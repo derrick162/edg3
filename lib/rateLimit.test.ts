@@ -90,6 +90,27 @@ describe('checkRateLimit', () => {
     const result = checkRateLimit('signup', '1.2.3.4');
     expect(result.allowed).toBe(true); // never lock out a real user on DB fault
   });
+
+  // R11 T2 — runaway Vapi tool-loop guard
+  it('vapiToolCall is configured at 60 per 60s (per-user runaway-loop guard)', () => {
+    expect(LIMITS.vapiToolCall.limit).toBe(60);
+    expect(LIMITS.vapiToolCall.windowMs).toBe(60 * 1000);
+  });
+
+  it('passes the vapiToolCall limit + window and a user-scoped key to the DB', () => {
+    h.check.mockReturnValue({ allowed: true, count: 1, remaining: 59, resetAt: 0 });
+    checkRateLimit('vapiToolCall', '42');
+    const [key, limit, windowMs] = (h.check.mock.calls as any[])[0] as [string, number, number, number];
+    expect(key).toBe('vapiToolCall:42');
+    expect(limit).toBe(60);
+    expect(windowMs).toBe(60 * 1000);
+  });
+
+  it('refuses the 61st tool call in the window (allowed:false)', () => {
+    // The SQLite limiter counts; here we assert checkRateLimit surfaces a blocked verdict.
+    h.check.mockReturnValue({ allowed: false, count: 61, remaining: 0, resetAt: Date.now() + 1_000 });
+    expect(checkRateLimit('vapiToolCall', '42').allowed).toBe(false);
+  });
 });
 
 // ── rateLimitResponse ─────────────────────────────────────────────────────────

@@ -1381,6 +1381,36 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'call_attempts',
 ];
 
+// ── Encrypted-column inventory (R11 T3 — key rotation authority) ─────────────────
+// Every column that stores `enc:`-prefixed ciphertext at rest, with its primary-key
+// column. `reEncryptAllUserData` (lib/crypto.ts) iterates this to re-key all data when
+// DATA_ENCRYPTION_KEY rotates. ⚠️ MUST stay in sync with the schema: if you add an
+// `encryptField`/`encryptNullable` write to a NEW column, ADD IT HERE — a missed column
+// becomes permanently unreadable after a key swap. `idColumn` is the row PK used for the
+// UPDATE … WHERE. Guarded by a cross-reference test in lib/key-rotation.test.ts.
+export interface EncryptedColumnSpec { table: string; idColumn: string; columns: readonly string[]; }
+export const ENCRYPTED_COLUMNS: readonly EncryptedColumnSpec[] = [
+  { table: 'memories',               idColumn: 'id', columns: ['content'] },
+  { table: 'briefings',              idColumn: 'id', columns: ['transcript', 'user_response'] },
+  { table: 'calendar_tokens',        idColumn: 'user_id', columns: ['access_token', 'refresh_token'] },
+  { table: 'gmail_tokens',           idColumn: 'user_id', columns: ['access_token', 'refresh_token'] },
+  { table: 'whoop_tokens',           idColumn: 'user_id', columns: ['access_token', 'refresh_token'] },
+  { table: 'gmail_drafts_log',       idColumn: 'id', columns: ['recipient', 'subject'] },
+  { table: 'watched_threads',        idColumn: 'id', columns: ['recipient', 'context'] },
+  { table: 'notifications',          idColumn: 'id', columns: ['title', 'body'] },
+  { table: 'facts',                  idColumn: 'id', columns: ['statement'] },
+  { table: 'fact_history',           idColumn: 'id', columns: ['statement'] },
+  { table: 'focus_milestones',       idColumn: 'id', columns: ['title'] },
+  { table: 'briefing_context_packs', idColumn: 'id', columns: ['context_pack'] },
+  { table: 'people_models',          idColumn: 'id', columns: ['goals', 'communication_style', 'relationship_state', 'last_interaction'] },
+  { table: 'pattern_cache',          idColumn: 'user_id', columns: ['patterns'] }, // PK is user_id (no id col)
+  { table: 'daily_focus',            idColumn: 'id', columns: ['focus_areas'] },
+  { table: 'open_loops',             idColumn: 'id', columns: ['description'] },
+  { table: 'support_messages',       idColumn: 'id', columns: ['message'] },
+  { table: 'episodes',               idColumn: 'id', columns: ['content_raw'] },
+  { table: 'audit_log',              idColumn: 'id', columns: ['snapshot_after'] },
+];
+
 // T3-4 — Permanently delete all of a user's data, then the user row. Wrapped in a
 // transaction so a missing-table FK error rolls the whole thing back (no half-deleted
 // account) instead of leaving orphaned rows. Throws on failure — caller returns 500.

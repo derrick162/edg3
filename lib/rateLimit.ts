@@ -71,6 +71,7 @@ export const LIMITS = {
   profileTimezone:      { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user (travel timezone override)
   priorityEnergy:       { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (priority energy-cost tag)
   milestoneWrite:       { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (milestone create/complete/delete)
+  vapiToolCall:         { limit: 60, windowMs: 60 * 1000 },        // 60 / MIN per user (R11 T2 — runaway Vapi tool-loop guard: cost + calendar-spam protection)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
