@@ -391,7 +391,7 @@ function SparkBurst() {
       {Array.from({ length: 8 }, (_, i) => {
         const angle = i * 45;
         const delay = i * 60;
-        const color = i % 3 === 0 ? 'var(--gauge-peak)' : i % 3 === 1 ? 'var(--edg-indigo)' : 'rgba(251,191,36,0.9)';
+        const color = i % 3 === 0 ? 'var(--gauge-peak)' : i % 3 === 1 ? 'var(--edg-indigo)' : 'var(--edg-warning)';
         return (
           <span
             key={i}

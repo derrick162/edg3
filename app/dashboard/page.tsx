@@ -2106,7 +2106,7 @@ export default function Dashboard() {
           }}
         />
         {notifOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 420, overflowY: 'auto' }}>
+          <div className="glass-card" style={{ position: 'absolute', top: 48, right: 0, width: 340, maxWidth: 'calc(100vw - 16px)', maxHeight: 420, overflowY: 'auto', overflowX: 'hidden' }}>
             <NotificationCenter
               notifications={notifs.map(n => ({
                 id: n.id,
@@ -2177,7 +2177,7 @@ export default function Dashboard() {
               { id: 'home', label: 'Today', icon: '✦' },
               { id: 'priorities', label: 'Focus', icon: '🎯' },
               { id: 'memory', label: 'Memory', icon: '🧠' },
-              { id: 'activity', label: 'Activity', icon: '⏪' },
+              { id: 'activity', label: 'Activity', icon: '📊' },
               { id: 'briefings', label: 'Briefings', icon: '📋' },
               { id: 'profile', label: 'Profile', icon: '👤' },
               { id: 'help', label: 'Help', icon: '?' },
@@ -2187,7 +2187,7 @@ export default function Dashboard() {
                 onClick={() => setActiveTab(tab.id as any)}
                 aria-label={tab.label}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
-                className="flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
+                className="flex-shrink-0 md:w-full flex flex-col md:flex-row items-center md:items-center gap-0 md:gap-3 px-2 md:px-3 py-1.5 md:py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
                   background: activeTab === tab.id ? 'var(--edg-accent-15)' : 'transparent',
                   color: activeTab === tab.id ? 'var(--text-accent)' : 'var(--text-muted)',
@@ -2195,10 +2195,27 @@ export default function Dashboard() {
                 }}
               >
                 <span aria-hidden="true">{tab.icon}</span>
+                <span className="text-[9px] md:hidden block leading-none mt-0.5 opacity-70">{tab.label}</span>
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
             ))}
           </nav>
+
+          {/* Mobile-only: compact Next Call strip below nav */}
+          {user && (
+            <div className="flex md:hidden items-center justify-between px-1 py-2 mt-1 border-b" style={{ borderColor: 'var(--edg-hairline)' }}>
+              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Next call · <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>
+                  {user.call_time} {user.timezone.split('/').pop()?.replace('_', ' ')}
+                </span>
+              </span>
+              {callStreak >= 2 && (
+                <span className="text-xs font-semibold" style={{ color: 'var(--edg-warning)' }}>
+                  🔥 {callStreak}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="hidden md:flex md:flex-col mt-6 space-y-3">
             <div

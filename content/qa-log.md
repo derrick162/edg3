@@ -11,6 +11,23 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
+## 2026-06-20 — R11 ship + pillar sweep (Cam)
+
+**Status: GREEN** — 1958/1958 green, tsc clean, next build clean.
+
+### R11 T1+T2+T3 shipped
+- ✅ T1: Focus Score subtitle slot — `alignedHours`/`totalWorkingHours` → `"{X}h of {Y}h focused on priorities"` muted text; `errorMessage` → ⚠ amber slot; degrades gracefully when absent
+- ✅ T2: `WeekendBriefCard` in `FocusRecommendationCard.tsx` — "Weekend mode" violet pill, recovery dot + tier label, 3 lifestyle bullets (low-tier swaps first bullet to lighter movement), no CTAs, softer glass + `--edg-violet` accent; `--edg-violet-tint/border` tokens added to `globals.css`
+- ✅ T3: Activity dedup rewritten — per-day `email_signal_fetch` filter → generic consecutive-within-5min label collapse; calendar mutations exempt; `ActivityItem.count`; `×N` badge renders inline
+
+### Pillar sweep (2026-06-20)
+- ✅ PILLAR-DAILY-CALL: DC0–DC3 all ✅ LIVE; DC4-1/2/3 Phase-2-gated (50-user gate) — no Design items actionable
+- ✅ PILLAR-TRUST: all UX items ✅ shipped; T3-1 `pattern` category DB gap flagged to Core/Security (not Design); no remaining Design items
+- ✅ PILLAR-MEMORY: all items ✅ LIVE or Core-gated (M4-3 needs 30+ calls; M4-4 pending Darren build) — no Design items actionable
+- ⬜ **Live checks (unchanged):** self-reference in "What Edge knows", collapse/expand in Memory tab, fact history panel expand, all from 2026-06-19 entry
+
+---
+
 ## 2026-06-19 — Memory tab UX overhaul QA (Cam)
 
 **Status: GREEN (code review + preflight)** — 1918/1918 green, tsc clean, next build clean.

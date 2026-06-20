@@ -47,9 +47,11 @@
   --edg-accent-15:    rgba(99, 102, 241, 0.15);
   --edg-accent-20:    rgba(99, 102, 241, 0.20);
   --edg-accent-25:    rgba(99, 102, 241, 0.25);
+  --edg-accent-30:    rgba(99, 102, 241, 0.30);
   --edg-accent-60:    rgba(99, 102, 241, 0.60);
 
   --edg-hairline:      rgba(255, 255, 255, 0.06);
+  --edg-fill-03:       rgba(255, 255, 255, 0.03);
   --edg-fill-04:       rgba(255, 255, 255, 0.04);
   --edg-fill-subtle:   rgba(255, 255, 255, 0.07); /* raised from 0.04 for form legibility */
   --edg-fill-hover:    rgba(255, 255, 255, 0.06);
@@ -148,6 +150,9 @@
   --edg-gradient-accent: linear-gradient(135deg, #6366f1, #8b5cf6);
   --edg-gradient-logo:   linear-gradient(135deg, #e8e8f0 0%, #8b5cf6 50%, #6366f1 100%);
 
+  /* Glass surface — semi-transparent dark for .glass-card-accent */
+  --glass-bg: rgba(17, 17, 24, 0.80);
+
   /* Semantic surface / text / border aliases */
   --surface-page:  var(--edg-bg);
   --surface-card:  var(--edg-bg-elevated);
@@ -160,7 +165,7 @@
   --text-accent:  var(--edg-indigo-bright);
 
   --border-card:   var(--edg-hairline);
-  --border-accent: rgba(99, 102, 241, 0.30);
+  --border-accent: var(--edg-accent-30);
 
   /* Typography */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -275,16 +280,6 @@ body {
   border-radius: 16px;
   backdrop-filter: blur(10px);
 }
-
-/* UX-3 — global cursor affordances */
-button:not(:disabled),
-[role="button"]:not([aria-disabled="true"]),
-a[href],
-label[for],
-summary,
-select { cursor: pointer; }
-button:disabled,
-[aria-disabled="true"] { cursor: not-allowed; }
 
 .glass-card-hover {
   transition: border-color 0.2s, box-shadow 0.2s;
