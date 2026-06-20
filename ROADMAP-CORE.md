@@ -86,6 +86,64 @@ No test needed (prompt-only). Preflight green.
 
 ---
 
+### T4 — Momentum: every call increases score (morning calls more than open calls) (MEDIUM — 2h)
+
+**Problem:** Momentum currently counts DAYS with a completed call, not individual calls. If you do an open call at 2 PM on a day you already had a morning briefing, the score doesn't move. Open calls aren't rewarded at all beyond the day bucket.
+
+**Fix — three parts:**
+
+**Part A — Schema (`lib/db.ts`, shared — claim in Status Board):**
+Add `is_open_call INTEGER DEFAULT 0` to the `briefings` table in the schema block. Add a `briefingQueries.getOpenCallCount(userId, days)` query: `SELECT COUNT(*) as n FROM briefings WHERE user_id = ? AND is_open_call = 1 AND status = 'completed' AND scheduled_for >= datetime('now', '-N days')`. No migration needed — existing rows default to 0 (i.e. morning briefings).
+
+**Part B — Set the flag (`lib/scheduler.ts`):**
+In `scheduleOpenCall`, after inserting into `briefings`, run `UPDATE briefings SET is_open_call = 1 WHERE id = ?` with the new briefing id.
+
+**Part C — Score formula (`lib/calendarScore.ts` + `app/api/scores/route.ts`):**
+Add `openCallCount14d: number` to `MomentumInputs`. Update `computeMomentumScore`:
+```
+showUpScore    = morningCallDays14d / 14 * 50   // 50 pts: days with a morning briefing
+openCallBonus  = Math.min(openCallCount14d * 2, 20) // 20 pts: up to 10 open calls × 2pts
+engagementScore = confirmedFocusDays14d / 14 * 30 // 30 pts: focus confirmed days
+score = showUpScore + openCallBonus + engagementScore + todayBonus (clamped 0–100)
+```
+Rename `completedCallDays14d` → `morningCallDays14d` in MomentumInputs (update callers).
+In `app/api/scores/route.ts`, add the open call count query: filter `briefings14d` by `is_open_call = 1 AND status = 'completed'`, count total (not day-bucketed). Pass as `openCallCount14d`.
+
+Update `drivers` to reflect both: `"${morningCallDays7d} morning briefings + ${openCallCount14d} open calls in the last 14 days."`
+
+**Tests:** Add cases: open call adds 2 pts; 10 open calls cap at 20; morning call day adds ~3.6 pts; combined formula sums correctly. Preflight green.
+
+---
+
+### T5 — Dashboard: auto-refresh + animate Edge Score when returning to tab after a call (MEDIUM — 1h)
+
+**Problem:** After a call ends, the user has to manually refresh the dashboard to see their updated Edge Score. There's no automatic refresh and no animation showing the score went up.
+
+**Fix (`app/dashboard/page.tsx`):**
+Add a `visibilitychange` event listener in the main dashboard `useEffect`:
+```typescript
+const handleVisibilityChange = async () => {
+  if (document.visibilityState !== 'visible') return;
+  const prevScore = calendarFit?.edgeScore ?? null;
+  const s = await fetch('/api/scores').then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!s) return;
+  setCalendarFit(s);
+  if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
+    setEdgeScoreCelebrating(true);
+    setTimeout(() => setEdgeScoreCelebrating(false), 1500);
+  }
+};
+document.addEventListener('visibilitychange', handleVisibilityChange);
+return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+```
+This uses the existing `edgeScoreCelebrating` animation (already wired to `EdgeScoreCard`) — no new animation needed. The score refetches silently every time the user switches back to the tab; if it went up (e.g. after a call), the card animates. If unchanged, nothing happens.
+
+**Note:** `calendarFit` needs to be in the closure — use a ref (`calendarFitRef`) that stays current, or read from a `useRef` rather than stale closure. Check how `handleConfirmFocus` does it (line 1693 uses `calendarFit?.edgeScore ?? null` directly — same pattern is fine here with a `useRef` to avoid stale closure).
+
+**Tests:** Not unit-testable (DOM event), but verify manually: open a call from the dashboard → end the call → switch back to the tab → Edge Score should refresh and animate if it changed. Preflight green.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 9 — Live call feedback: voice speed + briefing + spelling + weather + Edge Score)
 
 > From Derrick's call + dashboard review this morning. **Do T1–T7 before any R8 work.** T1–T4 are live call quality issues; T5–T7 are dashboard fixes visible to Derrick right now.
