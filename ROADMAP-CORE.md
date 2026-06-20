@@ -115,6 +115,34 @@ Update `drivers` to reflect both: `"${morningCallDays7d} morning briefings + ${o
 
 ---
 
+### T6 — Voice speed control: Slow / Default / Fast presets (MEDIUM — 2h)
+
+**What Derrick wants:** users should be able to control how fast Edge speaks. Three presets: Slow, Default, Fast. Stored per-user, applied on every call.
+
+**Fix — four parts:**
+
+**Part A — Schema (`lib/db.ts`, shared — claim Status Board):**
+Add `voice_speed TEXT DEFAULT 'default'` to the `users` table. Valid values: `'slow' | 'default' | 'fast'`. Add `userQueries.setVoiceSpeed(userId, speed)` (UPDATE) and expose it via `getUserById` (already returned in the user object).
+
+**Part B — API (`app/api/profile/route.ts` or new `app/api/profile/voice-speed/route.ts`):**
+`POST` endpoint accepting `{ speed: 'slow' | 'default' | 'fast' }`. Validates enum, calls `userQueries.setVoiceSpeed`, returns `{ ok: true }`. Auth-guarded (existing session pattern).
+
+**Part C — UI in Profile tab (`app/dashboard/page.tsx`):**
+In the Profile tab (where Daniel/Aria voice toggle already lives), add a "Speaking speed" row with three buttons: **Slow** · **Default** · **Fast**. Active preset uses the accent-filled button style (same as the active voice toggle button). On click, POST to the API + update local `user.voice_speed` state optimistically. Copy: "Slow 0.75×", "Default 0.9×", "Fast 1.1×" as small labels under each button.
+
+**Part D — Wire into call (`lib/vapi.ts`):**
+In `initiateCall`, the `VOICES` config already has `speed: 0.9` hardcoded for both Daniel and Aria. Replace with a lookup:
+```typescript
+const SPEED_MAP = { slow: 0.75, default: 0.9, fast: 1.1 } as const;
+const speed = SPEED_MAP[voiceSpeedPref ?? 'default'] ?? 0.9;
+// then use `speed` in both VOICES entries instead of hardcoded 0.9
+```
+Add `voiceSpeedPref: 'slow' | 'default' | 'fast' = 'default'` parameter to `initiateCall`. Dashboard passes `user.voice_speed` when calling `initiateCall`.
+
+**Tests:** `SPEED_MAP` lookup for all three values; POST to API with invalid enum → 400; valid POST → DB updated. Preflight green.
+
+---
+
 ### T5 — Dashboard: auto-refresh + animate Edge Score when returning to tab after a call (MEDIUM — 1h)
 
 **Problem:** After a call ends, the user has to manually refresh the dashboard to see their updated Edge Score. There's no automatic refresh and no animation showing the score went up.
