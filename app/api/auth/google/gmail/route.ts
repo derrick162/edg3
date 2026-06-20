@@ -5,7 +5,11 @@ import { oauthStateQueries } from '@/lib/db';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import { randomBytes } from 'crypto';
 
-// GET /api/auth/google/gmail — start OAuth for the DEDICATED Gmail account (compose-only).
+// GET /api/auth/google/gmail — start OAuth for the DEDICATED Gmail account.
+// Scopes (GMAIL_ACCOUNT_SCOPES): openid + email (capture the address for the accounts-status UI),
+// gmail.compose (draft emails), and gmail.readonly — readonly is REQUIRED because the post-link
+// contact ingest (extractGmailAccountContacts → /ingest) reads this account's From headers to learn
+// the user's contacts. (Earlier comments called this flow "compose-only"; that was inaccurate.)
 // Returns { url } for the client to open; the callback saves tokens as the gmail account.
 export async function GET() {
   const user = await getSession();
