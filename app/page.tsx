@@ -108,7 +108,7 @@ function CalendarVisual() {
               { label: '↓ Syncs batched', w: '65%', c: 'rgba(99,102,241,0.10)', strong: false },
               { label: '⚡ Focus block', w: '70%', c: accentFade, strong: true },
               { label: 'Budget review', w: '55%', c: 'rgba(99,102,241,0.10)', strong: false },
-              { label: '✓ Evening clear', w: '50%', c: 'rgba(34,197,94,0.12)', strong: false },
+              { label: '✓ Evening clear', w: '50%', c: 'var(--edg-success-ring)', strong: false },
             ].map((b, i) => (
               <div key={i} className="flex items-center gap-2">
                 <div
@@ -154,7 +154,7 @@ function WaveformVisual() {
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Mon–Fri · 3–5 min · your time</p>
         </div>
         <div className="ml-auto">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.12)', color: 'rgba(134,239,172,0.9)' }}>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'var(--edg-success-ring)', color: 'rgba(134,239,172,0.9)' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(134,239,172,0.9)', display: 'inline-block' }} className="animate-pulse" />
             Live
           </span>
@@ -306,7 +306,7 @@ export default function LandingPage() {
                   </button>
                 </div>
                 {waitlistError && (
-                  <p className="text-sm text-center" style={{ color: 'var(--color-error, #ef4444)' }}>{waitlistError}</p>
+                  <p className="text-sm text-center" style={{ color: 'var(--edg-danger)' }}>{waitlistError}</p>
                 )}
               </form>
             )}
@@ -639,7 +639,7 @@ export default function LandingPage() {
                     </button>
                   </div>
                   {waitlistError && (
-                    <p className="text-sm" style={{ color: 'var(--color-error, #ef4444)' }}>{waitlistError}</p>
+                    <p className="text-sm" style={{ color: 'var(--edg-danger)' }}>{waitlistError}</p>
                   )}
                 </form>
                 <p className="text-xs mt-4" style={{ color: 'var(--text-faint)' }}>
