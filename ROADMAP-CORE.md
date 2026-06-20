@@ -602,6 +602,22 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-19** — **Memory-guard parity in sleep-time consolidation (UX-4 bug-hunt) — SHIPPED (1960 green).**
+  Found during an R10 verification sweep: every R10 ticket (sleep-time consolidation, fact PATCH/DELETE,
+  mid-call reconfirmation, day-plan `scoreBefore`/`changeLines`) was **already shipped on master** — but the
+  audit surfaced a real bug. `runSleepTimeConsolidation` (`lib/facts.ts`) is a SECOND write door into the
+  fact store, and its `add`/`update` actions called `upsertFact` directly — bypassing the guards the primary
+  `extractAndUpsertFacts` path enforces. So the consolidation agent could silently re-introduce the exact
+  Memory-tab bugs just fixed: an ungrounded health metric ("weighs 122 lbs") or a self/assistant/activity
+  person fact ("derek" = Derrick).
+  - Fix: consolidation `add`/`update` now applies `isUngroundedHealthFact(u.new, transcript)` + the
+    person-entity guards (`isSelfEntity`/`isAssistantEntity`/`isActivityEntity`) before `upsertFact`.
+  - 2 new tests (drops ungrounded health add; blocks self-entity person add). 1960/1960 green, tsc clean,
+    next build clean. ⚠️ Committed on `core` — ready for PM merge.
+  - **R10 verification result (no rebuild):** T1 `runSleepTimeConsolidation` `facts.ts:638`+webhook`:179`;
+    T2 PATCH/DELETE `app/api/memory/facts/[id]/route.ts` (priority-block + audit present; returns 409/200
+    vs spec's 403/204 — left as-is since Cam's UI already consumes it); T3 reconfirmation `briefing.ts:883`
+    + `confirmFact` `tool-call:1160` + `vapi.ts:196`; T4 `scoreBefore`/`changeLines` `day-plan/confirm:101/171/218`.
 - **2026-06-19** — **Gmail-link → immediate fact extraction (Vijay-routed ticket) — SHIPPED (1951 green).**
   Closes the "no new facts after linking Gmail" report. Root cause: on `?gmail_linked=1` the dashboard
   only kicked **contact ingestion** (`/api/auth/google/gmail/ingest`), never a **fact** pass; and the

@@ -715,6 +715,18 @@ Only return HIGH-CONFIDENCE changes where the user explicitly stated the change.
       if (!VALID_CATEGORIES.has(u.category as ExtractedFact['category'])) continue;
 
       if ((u.action === 'update' || u.action === 'add') && u.new) {
+        // Apply the SAME guards as the primary extraction path — this is a second write
+        // door into the fact store, so without these it could silently re-introduce the
+        // exact bugs the extraction guards block (ungrounded health metrics, self/assistant/
+        // activity person facts).
+        if (isUngroundedHealthFact(u.new, transcript)) {
+          console.warn(`[facts] consolidation dropped ungrounded health fact for user ${userId}: "${u.new.slice(0, 60)}"`);
+          continue;
+        }
+        if (u.category === 'person' &&
+            (isSelfEntity(u.entity, userName) || isAssistantEntity(u.entity) || isActivityEntity(u.entity))) {
+          continue;
+        }
         factQueries.upsertFact(userId, u.category, u.new.slice(0, 500), u.entity ?? null, 'high');
         applied++;
       } else if (u.action === 'retire' && u.entity) {
