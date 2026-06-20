@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes } from '@/lib/time';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes, computeFreeSlots } from '@/lib/time';
 import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
 import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
 import { groundProperNouns } from '@/lib/grounding';
@@ -912,6 +912,38 @@ Query: ${query}` }],
     if (!doneNames.length) return `I couldn't ${action === 'move' ? 'move' : 'clear'} those — Google errored${failedNames.length ? ` for ${failedNames.join(', ')}` : ''}. Want me to try again?`;
     const head = action === 'move' ? `Moved ${doneNames.length} event(s) to ${targetDate}` : `Cleared ${doneNames.length} event(s) from ${window.date}`;
     return `${head}: ${doneNames.join(', ')}.${failedNames.length ? ` Couldn't do ${failedNames.join(', ')}.` : ''}`;
+
+  } else if (fn === 'findFreeTime') {
+    // R14 T1 — find open slots of a given duration across a date range, honoring a daily
+    // wall-clock window. Uses freebusy across all calendars + pure computeFreeSlots.
+    const { duration, startDate, endDate, windowStart, windowEnd } = args as {
+      duration?: number; startDate?: string; endDate?: string; windowStart?: string; windowEnd?: string;
+    };
+    if (!duration || duration <= 0) return 'How long a block are you looking for?';
+    const fStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : todayInTz(tz);
+    let fEnd = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : '';
+    if (!fEnd || fEnd < fStart) {
+      const d = new Date(`${fStart}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 6); fEnd = d.toISOString().slice(0, 10);
+    }
+    const [wsH, wsM] = resolveNaturalTime(windowStart || '9:00 AM').split(':').map(Number);
+    const [weH, weM] = resolveNaturalTime(windowEnd || '6:00 PM').split(':').map(Number);
+    const fDates: string[] = [];
+    for (let c = fStart; c <= fEnd; c = nextDay(c)) { fDates.push(c); if (fDates.length > 31) break; }
+    const fbMin = dayRangeUtc(tz, fStart).start.toISOString();
+    const fbMax = dayRangeUtc(tz, fEnd).end.toISOString();
+    const fb = await cal.freebusy.query({ requestBody: { timeMin: fbMin, timeMax: fbMax, items: calIds.map(id => ({ id })) } })
+      .then(r => r.data).catch((e: unknown) => { console.error('[findFreeTime] freebusy failed:', e instanceof Error ? e.message : e); return null; });
+    if (!fb) return `I couldn't pull your availability just now — want me to try again?`;
+    const busy: { start: number; end: number }[] = [];
+    for (const c of Object.values(fb.calendars ?? {})) {
+      for (const b of (c.busy ?? [])) if (b.start && b.end) busy.push({ start: Date.parse(b.start), end: Date.parse(b.end) });
+    }
+    const slots = computeFreeSlots({ busy, durationMs: duration * 60000, windowStartMin: wsH * 60 + wsM, windowEndMin: weH * 60 + weM, dates: fDates, tz, maxResults: 3 });
+    if (!slots.length) return `Your calendar looks pretty packed in that window — want me to look at next week?`;
+    const fmtT = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+    const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long' });
+    const list = slots.map(s => `${fmtDay(s.date)} at ${fmtT(s.startMs)}–${fmtT(s.endMs)}`).join(', ');
+    return `Here are some open windows: ${list}. Want me to block one?`;
 
   } else if (fn === 'skipRecurringOccurrence') {
     // R13 T2 — cancel ONE occurrence of a recurring series (low-stakes → no confirm token).
