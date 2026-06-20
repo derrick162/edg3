@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { calendarQueries, gmailTokenQueries } from '@/lib/db';
+import { hasGmailReadScope } from '@/lib/google-auth';
 
 // GET /api/auth/accounts — Google account linking status for the dashboard UI.
 //   - calendar: the primary account (calendar + gmail.readonly scopes)
@@ -17,6 +18,7 @@ export async function GET() {
   return NextResponse.json({
     calendar: {
       connected: !!cal,
+      hasGmailScope: hasGmailReadScope(cal?.scope),
       email: null,
     },
     gmail: {
