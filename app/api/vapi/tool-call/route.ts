@@ -359,8 +359,10 @@ Query: ${query}` }],
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string };
+    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location, recurrence } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string; recurrence?: string };
     if (!rawCreateTitle) return "I didn't catch what to call that event — what's the title?";
+    // R14 T2 — only accept a well-formed RRULE string (the model passes it directly).
+    const recur = typeof recurrence === 'string' && /^RRULE:/i.test(recurrence.trim()) ? recurrence.trim() : undefined;
     const title = groundTitle(rawCreateTitle);
 
     // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
@@ -389,6 +391,7 @@ Query: ${query}` }],
         summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
         ...(description ? { description } : {}),
         ...(location ? { location } : {}),
+        ...(recur ? { recurrence: [recur] } : {}),
       } });
       if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
@@ -449,11 +452,11 @@ Query: ${query}` }],
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}) };
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}) };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
-    return `Created and confirmed "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
+    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
