@@ -717,9 +717,9 @@ function ActivityTab() {
       {items.length === 0 ? (
         <div className="glass-card p-8 text-center">
           <p className="text-3xl mb-3" role="img" aria-label="shield">&#x1F6E1;</p>
-          <p className="font-semibold mb-2">Edg3 hasn&apos;t changed anything yet</p>
+          <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edg3 hasn&apos;t taken any actions yet</p>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            You&apos;ll see every calendar action here — nothing happens without a trace.
+            Once you connect your calendar and complete your first call, everything Edg3 does shows up here — nothing happens without a trace.
           </p>
         </div>
       ) : (
@@ -1096,7 +1096,18 @@ function FocusScoreboardPanel() {
     );
   }
 
-  if (!data || data.perPriority.length === 0) return null;
+  if (!data || data.perPriority.length === 0) {
+    return (
+      <div className="glass-card p-8 text-center mb-6">
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
+          Set your priorities to start tracking your focus
+        </p>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Once you&apos;ve set your top 3 priorities, Edg3 tracks how much time you&apos;re actually spending on each — every week.
+        </p>
+      </div>
+    );
+  }
 
   const maxHours = Math.max(...data.perPriority.map(p => Math.max(p.hoursThisWeek, p.weeklyAvgHours, 0.5)));
   const trendWeeks = data.weeklyTrend.slice(-4);
@@ -1414,6 +1425,7 @@ export default function Dashboard() {
   const [dayPlanChangeLines, setDayPlanChangeLines] = useState<string[]>([]);
   const [dayPlanUndoing, setDayPlanUndoing] = useState(false);
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
+  const [openLoopsLoaded, setOpenLoopsLoaded] = useState(false);
   const [activationFacts, setActivationFacts] = useState<string[]>([]);
   const [activationDismissed, setActivationDismissed] = useState(false);
 
@@ -1472,7 +1484,7 @@ export default function Dashboard() {
     }).catch(() => {});
     setDayPlanLoading(true);
     fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
-    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {});
+    fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {}).finally(() => setOpenLoopsLoaded(true));
     fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.isFresh && d.recentFacts?.length > 0) {
         setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
@@ -2496,7 +2508,25 @@ export default function Dashboard() {
                 />
               )}
               {/* Day plan — reshape CTA / "Your day looks good" */}
-              {calendarConnected !== false && (
+              {calendarConnected === false ? (
+                <div className="glass-card p-5" style={{ borderColor: 'var(--edg-hairline)' }}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)', color: 'var(--text-accent)' }}>◆</span>
+                    <div>
+                      <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-strong)' }}>Connect your calendar to unlock your day plan</p>
+                      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                        Edg3 reads your week, finds what&apos;s misaligned, and proposes fixes — once your calendar is connected.
+                      </p>
+                      <button
+                        className="btn-primary text-xs mt-3 py-2 px-4"
+                        onClick={() => setActiveTab('profile')}
+                      >
+                        Connect Google Calendar →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
                 <DayPlanCard
                   plan={dayPlan}
                   loading={dayPlanLoading}
@@ -2509,8 +2539,8 @@ export default function Dashboard() {
                   undoing={dayPlanUndoing}
                 />
               )}
-              {/* Open loops — commitments Edge is tracking */}
-              {openLoops.length > 0 && (
+              {/* Open loops — commitments Edge is tracking (show AllClear when loaded+empty) */}
+              {openLoopsLoaded && (
                 <OpenLoopsSection
                   loops={openLoops}
                   onResolve={async (id) => {
@@ -3348,6 +3378,16 @@ export default function Dashboard() {
 
 
               {/* People profiles (M2) */}
+              {people.length === 0 && (
+                <div className="mb-6">
+                  <p className="text-sm font-semibold mb-1 flex items-center gap-1.5" style={{ color: 'var(--text-body)' }}>
+                    <span aria-hidden="true">🤝</span> People you meet with
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                    People from your calendar will appear here after your first call.
+                  </p>
+                </div>
+              )}
               {people.length > 0 && (() => {
                 const PEOPLE_LIMIT = 15;
                 const _selfFirst = ((user?.name || '').split(' ')[0] || '').toLowerCase();
@@ -3502,9 +3542,9 @@ export default function Dashboard() {
               {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
                   <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
-                  <p className="font-semibold mb-2">Nothing stored yet</p>
+                  <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edg3 hasn&apos;t learned anything yet</p>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    After your first call, Edg3 will start building a picture of you here — goals, projects, preferences, and more.
+                    Your first call changes that — goals, projects, preferences, and the context behind your calendar will start appearing here.
                   </p>
                 </div>
               )}
