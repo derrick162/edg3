@@ -31,9 +31,47 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Vapi tool expansion: free-time finder, recurring events, attendees, task voice tools, forgetFact)
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Vapi tool expansion: free-time finder, recurring events, attendees, task voice tools, forgetFact + Gmail reading indicator)
 
-> `git merge master` first. Five tickets extending Edge's voice capabilities. **Do all before R13 or pillar work.**
+> `git merge master` first. Six tickets. **Do all before R13 or pillar work.**
+
+---
+
+### T6 — Gmail reading indicator in dashboard sidebar (LOW — 30min)
+
+**Problem:** The "Connect Gmail" UI was removed during R12 cleanup along with email drafting. But `gmail.readonly` inbox reading (for briefing signals, focus score, etc.) still works through the main Google token — it just has no visible status in the UI. Users can't tell if Gmail reading is active, and there's no nudge if their token predates the scope.
+
+**Fix — two parts:**
+
+**Part A — update `/api/auth/accounts` route:**
+Add `hasGmailScope: boolean` to the `calendar` object in the response. Use the existing `hasGmailReadScope` helper from `lib/google-auth.ts`:
+```ts
+import { hasGmailReadScope } from '@/lib/google-auth';
+// in the GET handler:
+const cal = calendarQueries.get(user.id);
+const tokenScope = cal?.scope ?? null; // or however the scope is stored — check calendarQueries schema
+return NextResponse.json({
+  calendar: {
+    connected: !!cal,
+    hasGmailScope: hasGmailReadScope(tokenScope),
+    email: null,
+  },
+  ...
+});
+```
+Check `lib/db.ts` for what `calendarQueries.get` returns — the scope field may be named differently.
+
+**Part B — restore Gmail status in dashboard sidebar (`app/dashboard/page.tsx`):**
+Add back `calendarHasGmailScope` state (boolean, default false). In `loadData`, read `d.calendar?.hasGmailScope` from `/api/auth/accounts` and set it.
+
+In the sidebar, below the Google Calendar connected section, add a Gmail reading status row:
+- **If `calendarConnected && calendarHasGmailScope`:** show `● Reading Gmail` in the same muted style as the calendar connected indicator.
+- **If `calendarConnected && !calendarHasGmailScope`:** show a small inline nudge: `Gmail reading inactive — [re-authorize →]` where the link is `href="/api/auth/google"` (the standard Google OAuth entry point — it will request the full `GOOGLE_SCOPES` including `gmail.readonly` and update the stored token). Open in the same tab.
+- **If `!calendarConnected`:** show nothing (the calendar connect flow will grant gmail.readonly automatically).
+
+No new routes, no OAuth changes — just surfacing what's already there. No Vapi tool, no external steps.
+
+**Tests:** update `app/api/auth/accounts/route.ts` test (if one exists) to assert `calendar.hasGmailScope` is present and reflects the scope. Otherwise a manual smoke-test note in the PR is fine.
 
 ---
 
