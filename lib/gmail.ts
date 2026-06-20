@@ -258,6 +258,19 @@ export interface EmailSignal {
 }
 
 /**
+ * Truncate body text to `cap` chars at the last clean sentence boundary (a `.` or
+ * newline) before the limit — so the LLM extractor never receives a mid-word/mid-sentence
+ * fragment. Falls back to a hard cut only when no boundary exists in the window.
+ * Pure + exported for direct unit testing.
+ */
+export function truncateAtSentenceBoundary(text: string, cap: number): string {
+  if (text.length <= cap) return text;
+  const window = text.slice(0, cap);
+  const boundary = Math.max(window.lastIndexOf('.'), window.lastIndexOf('\n'));
+  return (boundary > 0 ? window.slice(0, boundary + 1) : window).trimEnd();
+}
+
+/**
  * Return a compact prioritization digest of the user's recent inbox threads.
  *
  * Only header metadata + Gmail's own snippet are read — NO message bodies.
@@ -349,7 +362,7 @@ export async function getRecentEmailSignal(
           const msgs = await readThread(userId, item.threadId);
           // Only the inbound side — exclude the user's own sent replies (fromMe).
           const inbound = msgs.filter((m) => !m.fromMe).map((m) => m.text).join('\n---\n').trim();
-          if (inbound) item.body = inbound.slice(0, BODY_CHAR_CAP);
+          if (inbound) item.body = truncateAtSentenceBoundary(inbound, BODY_CHAR_CAP);
         } catch {
           /* leave body undefined — extraction falls back to the snippet */
         }
@@ -445,7 +458,24 @@ export async function extractGmailAccountContacts(
     }
   }
 
-  return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+  const contacts = Array.from(counts.values()).sort((a, b) => b.count - a.count);
+
+  // Audit (T3-2 transparency): record that Edge scanned the dedicated Gmail account's
+  // sender headers, mirroring getRecentEmailSignal's receipt. Contact emails are stored
+  // ENCRYPTED in snapshotAfter so the user can see in the Activity tab which contacts Edge
+  // learned, without addresses ever appearing in plaintext in the log. No bodies are read.
+  auditLogQueries.record({
+    userId,
+    action: 'gmail_contacts_fetch',
+    argsJson: JSON.stringify({ days, threadCount: threads.length, contactCount: contacts.length }),
+    resultText: `${contacts.length} unique email contacts scanned from inbox headers`,
+    ok: true,
+    snapshotAfter: contacts.length > 0
+      ? encryptField(JSON.stringify({ contacts: contacts.map(c => c.email) }))
+      : null,
+  });
+
+  return contacts;
 }
 
 function parseFromHeader(from: string): { name: string; email: string } | null {

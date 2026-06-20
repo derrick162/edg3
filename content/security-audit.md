@@ -557,3 +557,25 @@ All other LLM call sites (`lib/alignment.ts`, `lib/calendar.ts`, `lib/calendarSc
 | Data exportable | ✅ `GET /api/account/export` includes `dataConsent` field |
 | Data deletable | ✅ `DELETE /api/account` |
 | Privacy policy accurate | ✅ `app/privacy/page.tsx` describes read-write calendar, Gmail draft, Whoop health data |
+
+---
+
+## R9 follow-up audit — Gmail body-reading + ingest path (2026-06-19, Vijay)
+
+Triggered by R9 dispatch: audit `app/api/auth/google/gmail/ingest` and the Round-7 full-body
+reading path for rate-limit + audit coverage.
+
+| Surface | Authn | Rate limit | Audit | Notes |
+|---|---|---|---|---|
+| `POST /api/auth/google/gmail/ingest` | ✅ `getSession()` | ✅ `gmailIngest` (6/hr — configured in `lib/rateLimit.ts:69`) | ✅ **gap closed this pass** | Fans out to many Gmail header reads → cost-commensurate 6/hr cap was already present. Reads only `From` headers (no bodies). |
+| `getRecentEmailSignal` `{ fullBodies }` read path (`lib/gmail.ts`) | ✅ scope-gated (`hasGmailReadScope`) | n/a (internal; callers `/api/learned` @30/hr + 11pm cron are limited) | ✅ `email_signal_fetch` (subjects encrypted in `snapshotAfter`) | Bodies read **in-memory only**, capped 10 threads × 2000 chars, spam-gated before fetch, **never stored**. |
+| `extractGmailAccountContacts` (ingest read primitive, `lib/gmail.ts`) | ✅ scope-gated | n/a (internal; gated by the ingest route's 6/hr) | ✅ **added `gmail_contacts_fetch`** | Previously had **no audit receipt** despite creating person facts downstream — gap closed: now records contact count + encrypted contact-email snapshot so the Activity tab shows what Edge scanned. |
+
+**Changes shipped this pass:**
+- `extractGmailAccountContacts` now emits a `gmail_contacts_fetch` audit entry (encrypted contact
+  snapshot) — mirrors `getRecentEmailSignal`'s receipt; closes the only audit gap on the Gmail read paths.
+- `truncateAtSentenceBoundary` (`lib/gmail.ts`) replaces the hard `slice(0,2000)` on full bodies so
+  extraction never receives a mid-sentence fragment. 7 new tests in `lib/gmail.test.ts` (43 total green).
+
+**No open gaps** on the Gmail ingest/body-reading surface. Rate limits cost-commensurate; every
+Gmail read path now writes an encrypted, user-visible audit receipt; bodies are never persisted.
