@@ -31,7 +31,9 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-20 (ROUND 9 — Live call feedback: voice speed + briefing + spelling + weather)
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 9 — Live call feedback: voice speed + briefing + spelling + weather + Edge Score)
+
+> From Derrick's call + dashboard review this morning. **Do T1–T7 before any R8 work.** T1–T4 are live call quality issues; T5–T7 are dashboard fixes visible to Derrick right now.
 
 > From Derrick's call this morning. **Do all 4 tickets before any R8 work.** These are live call quality issues.
 
@@ -141,6 +143,61 @@ Prompt-only change. No tests needed. Preflight green.
 3. ⚠️ **External step (Derrick/Kevin):** Create `getWeather` Vapi tool in the dashboard (no required params, no schema needed). Paste the UUID into `lib/vapi.ts` toolIds and uncomment.
 
 **Test:** mock the Open-Meteo response → verify the handler returns a clean spoken string. Preflight green.
+
+---
+
+### T5 — Edge Score: Focus Score detail + fix "couldn't refresh" message (MEDIUM — 1h)
+
+**Problem A — Vague error state:** Focus Score shows *"Edge couldn't refresh it this moment; it'll update on the next successful load."* This fires when `computeAlignment()` fails (in `app/api/scores/route.ts` around line 106-146). Derrick has no idea what's wrong or what the score actually means.
+
+**Problem B — No detail:** The Focus Score shows "5" with a red bar and "% of your working hours booked toward your focus areas." Derrick needs to know HOW MANY hours — not just a percentage.
+
+**Fix A:** In `app/api/scores/route.ts`, when `focusReliable = false`, set the driver text to a plain explanation of WHY it couldn't refresh, not just that it couldn't. If the alignment call failed, log the error and set: `"Calendar alignment unavailable — check Google Calendar connection."` If no priorities set: `"Set your priorities to activate Focus Score."` If calendar is empty: `"No calendar events found for this week."` Pick the right message based on which step actually failed.
+
+**Fix B:** In `computeFocusScore` (`lib/calendarScore.ts` lines 231-297), expose `alignedHours` and `totalWorkingHours` in the returned object. In the score driver text, show: `"X of Y working hours aligned to your focus areas this week."` E.g., `"4.5 of 45 working hours aligned to your focus areas this week."` This gives Derrick a concrete number he can act on.
+
+**Files:** `lib/calendarScore.ts`, `app/api/scores/route.ts`, and wherever the driver text is rendered on the dashboard.
+
+**Test:** mock alignment with known aligned hours → verify driver text shows `"Xh of Yh"` format. Preflight green.
+
+---
+
+### T6 — Edge Score: Move "briefing calls" from Clarity → Momentum (FAST — 30 min)
+
+**Problem:** Clarity Score drivers show `"3 completed briefing calls."` Briefing calls measure ENGAGEMENT/CONSISTENCY — that's a Momentum signal, not a Clarity signal. Clarity should only reflect how well Edge knows you (connected sources + accumulated context). Derrick was right to call this out.
+
+**Fix:**
+1. In `computeClarityScore` (`lib/calendarScore.ts` lines 361-416): remove `briefingCallsCount` from the scoring inputs and driver text. The 10 points it contributed to Clarity (`ctx +=` line ~397) should be removed OR reallocated — best option: add those 10 pts to memories/facts depth instead.
+2. In `computeMomentumScore` (`lib/calendarScore.ts` lines 418-471): `completedCallDays7d` is already used for the "X of last 7 mornings" driver. Make sure the driver text is clear: `"Showed up ${completedCallDays7d} of the last 7 mornings."` (already exists, just confirm it's prominent).
+3. In `ClarityInputs` type: remove `briefingCallsCount` field. Update callers.
+
+**Test:** mock clarity inputs without briefingCallsCount → score and drivers are correct. Preflight green.
+
+---
+
+### T7 — Momentum: Verify call count accuracy + weekend Focus Brief state (MEDIUM — 1.5h)
+
+**Problem A — "2 of last 7 mornings" may be wrong:** Derrick believes he's done more calls. The count in `app/api/scores/route.ts` lines 84-92 queries the `briefings` table filtered by `status='completed'`. Issue: **are ad-hoc "Open Call" calls recorded in the `briefings` table?** Or only scheduled morning calls? If the dashboard "Call me now" / "Open call" button creates a call that isn't logged as a briefing, those days won't count. Investigate:
+  - Read `app/api/vapi/webhook/route.ts` — when a call ends, where does it write to the `briefings` table?
+  - Check if there's a difference between briefing calls (scheduled) and open calls (ad-hoc) in how they get recorded.
+  - If open calls aren't being logged: add a `briefings` row on call completion in the webhook handler, or query `calls` table separately and take the union.
+
+**Problem B — Weekend Focus Brief shows empty placeholder:** On Saturdays and Sundays (and any non-briefing morning), the dashboard Home tab shows *"After your first morning briefing, Edg3 will tell you exactly what to focus on today — based on your calendar, goals, and energy."* This is wrong UX for someone who's been using the app for weeks.
+
+**Fix B:** In `components/ui/FocusRecommendationCard.tsx`, add a **weekend/day-off state**. If today is Saturday or Sunday AND no briefing has been completed today, show a warm weekend card instead of the empty placeholder:
+
+```
+Good morning. It's the weekend — here's how to make the most of it:
+• [If recovery ≥ 67%]: Great recovery today. Good day to move — gym, walk, or a hike.
+• Review anything that's been pulling at you mentally (parking spot rental, storage locker, etc.) — quick 30-min sweep.
+• Protect the afternoon for something restorative.
+```
+
+The content should use the user's most recent Whoop recovery tier (already available from `whoopSummary` state in the dashboard) to vary the energy recommendation. If Whoop is not connected, default to a generic weekend message. Keep it short — 3 bullets max, no calendar parsing needed.
+
+**Implementation:** Add `isWeekend(): boolean` helper (check `getDay() === 0 || 6`). In `FocusRecommendationCard`, when `!recommendation && isWeekend()`, render the weekend variant instead of the standard placeholder.
+
+**Test:** mock `getDay()` to return 6 → card shows weekend variant, not placeholder. Preflight green.
 
 ---
 
