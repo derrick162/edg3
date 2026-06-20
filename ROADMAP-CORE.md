@@ -602,6 +602,37 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-19** — **Memory-tab extraction P0 batch (Esther dispatch) — SHIPPED (1945 green).**
+  Live Memory-tab review surfaced several extraction/data bugs. Fixes:
+  - **[1] Self-entity leak under nickname/STT/initial variants.** New `lib/selfName.ts` (pure):
+    `soundex()` + `matchesSelfName(entity, userName)`. Matches full name, first name, last name,
+    "initial last" / "D. Fung" forms, AND phonetic first-name variants (Soundex) so `"derek"`→
+    `"Derrick"` is caught (old guard was exact-match only, leaking "derek: Derrick works with
+    Derrick Fung"). `isSelfEntity` in `lib/facts.ts` now delegates to it — so both live extraction
+    AND the retroactive `cleanupPeopleFacts` pass now drop these (existing bad rows clean up on next run).
+  - **[2] Hallucinated health metric ("weighs 122 lbs" never stated).** New `lib/factGuards.ts` (pure):
+    `isUngroundedHealthFact(statement, source)` — a weight/body-measurement fact is DROPPED unless its
+    number actually appears in the source text the user produced (transcript / inbox digest). Wired into
+    both the transcript and email extraction loops. Prompt also hardened: "NEVER infer health metrics…
+    only record if the user explicitly states the number." (Root-cause audit: LLM was inferring the
+    number from ambient context; the "from your morning call" label was the generic source stamp — the
+    guard prevents the bad write at the source.)
+  - **[4] Preference recall gap.** Added an explicit "DO capture preferences" instruction to the
+    extraction prompt (how the user likes to work/communicate/schedule) — these were being under-captured.
+  - **[5] "Meetings with self" in People.** `extractAttendeesFromEvent` now also filters the user by
+    NAME (`matchesSelfName`), not just the `self` flag + email — solo/personal events that list the user
+    as a plain attendee (no self flag, secondary email) no longer leak the user into "people you meet
+    with." `selfName` threaded through `computePersonInteractions`/`syncPeopleProfiles`/
+    `buildRelationshipContextBlock`; briefing passes `user.name`.
+  - **[3] No facts after linking a 2nd Gmail — ROUTED TO SECURITY/PM.** Finding: email-derived fact
+    extraction is **briefing-triggered** (needs the inbox digest fetched at call time), not OAuth-callback
+    triggered — so "nothing new immediately after linking" is expected until the next call. The OAuth
+    callback (`app/api/auth/**`) is Security-owned; did not edit. Recommend Security decide whether
+    connecting an account should kick a one-off extraction. Deliberately did NOT manufacture a
+    "connected a 2nd Gmail account" fact (ephemeral system state, not durable user memory).
+  - New: `lib/selfName.ts`, `lib/factGuards.ts` (+ tests). Modified: `lib/facts.ts`, `lib/relationships.ts`,
+    `lib/briefing.ts`, `lib/facts.test.ts`, `lib/relationships.test.ts`. +27 tests. 1945/1945 green, tsc
+    clean, next build clean. ⚠️ Committed on `core` — ready for PM merge to master.
 - **2026-06-19** — **T3-1-B — pattern facts now use `category='pattern'` (Patterns tab fix). SHIPPED.**
   - `lib/factPatterns.ts`: `upsertFact` now stores `category='pattern'` (was `'fact'`), so detected patterns land in the dashboard Patterns section instead of Facts. **Deeper fix:** the `facts` table has no `source` column, so the four `f.source === 'historical-pattern'` read/throttle/retire filters never matched — patterns were write-only (never surfaced in briefing, never deduped on re-run). All four now key on `f.category === 'pattern'`, so patterns surface AND dedup correctly. Removed the dead `HISTORICAL_SOURCE` constant. `lib/briefing.ts` needed no change (reads via `getHistoricalPatterns`). Tests updated. Gated on Vijay's T3-1-A (`'pattern'` in CHECK + type), confirmed in master. 1918/1918 green, tsc clean, next build clean.
 - **2026-06-19** — **Round 8 P0 bug fixes — SHIPPED.**

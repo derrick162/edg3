@@ -610,7 +610,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     extractAndUpsertOpenLoops(userId, { emailSignal, today }).catch(() => {});
   }
   // Refresh people profiles from calendar history (fire-and-forget — never blocks the briefing).
-  syncPeopleProfiles(userId, pastCalendarHistory, calendarEvents, user.email).catch(() => {});
+  syncPeopleProfiles(userId, pastCalendarHistory, calendarEvents, user.email, user.name).catch(() => {});
   // Priority history grouped into weeks (newest first) for priority-drift detection (M2-3 #5).
   const priorityWeeks: PriorityWeek[] = (() => {
     try {
@@ -784,7 +784,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const relationshipContextBlock = (() => {
     try {
       const profiles = peopleProfileQueries.listForUser(userId);
-      return buildRelationshipContextBlock(calendarEvents, profiles, user.email);
+      return buildRelationshipContextBlock(calendarEvents, profiles, user.email, user.name);
     } catch { return ''; }
   })();
   // M4-4: social mental models — when someone on today's calendar has a stored model, inject a

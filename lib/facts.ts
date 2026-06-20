@@ -10,6 +10,8 @@
 import { factQueries, peopleProfileQueries, peopleModelQueries, type Fact, type PeopleModelFields } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
+import { matchesSelfName } from './selfName';
+import { isUngroundedHealthFact } from './factGuards';
 import type { calendar_v3 } from 'googleapis';
 import type { EmailSignal } from './gmail';
 import { isLikelySpam } from './emailActivityFilter';
@@ -78,6 +80,8 @@ Rules:
 - Skip ephemeral items: task completions, calendar changes, weather, today's schedule.
 - Only facts that would still be true and useful in 2 weeks.
 - Prefer CONCRETE details: "Derrick's dad's birthday is June 15" NOT "Derrick's father has a birthday." Include dates, roles, companies, or amounts when they appear.
+- NEVER infer health metrics, weight, or body measurements. Only record a weight/measurement if the user EXPLICITLY states the number in the transcript (e.g. "I weigh 122"). Do not carry these over from prior context.
+- DO capture preferences when the user expresses how they like to work, communicate, schedule, or decide ("I prefer mornings", "keep meetings short", "text me, don't call") — these are easy to miss but valuable.
 - Return [] if nothing durable found.
 
 Transcript (first 2000 chars):
@@ -114,13 +118,13 @@ ${transcript.slice(0, 2000)}`,
   }
 }
 
-/** Returns true if entityName is close enough to the user's own name that we should skip the fact. */
+/**
+ * Returns true if entityName is close enough to the user's own name that we should skip the fact.
+ * Delegates to the shared self-name matcher, which catches nickname/STT/initial variants
+ * ("derek" for "Derrick", "Fung", "D. Fung") that the old exact-match guard missed.
+ */
 function isSelfEntity(entity: string | null | undefined, userName?: string): boolean {
-  if (!entity || !userName) return false;
-  const e = entity.trim().toLowerCase();
-  const u = userName.trim().toLowerCase();
-  const firstName = u.split(' ')[0];
-  return e === u || e === firstName;
+  return matchesSelfName(entity, userName);
 }
 
 /** Returns true if entityName refers to the AI assistant — should never be stored as a person contact. */
@@ -200,6 +204,12 @@ export async function extractAndUpsertFacts(
     const facts = await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts);
     let stored = 0;
     for (const f of facts) {
+      // Anti-hallucination: never store a health/body measurement whose number the
+      // user didn't actually say. Catches inferred facts like "weighs 122 lbs".
+      if (isUngroundedHealthFact(f.statement, transcript)) {
+        console.warn(`[facts] dropped ungrounded health fact for user ${userId}: "${f.statement.slice(0, 60)}"`);
+        continue;
+      }
       if (f.category === 'person') {
         // Never file a "person" fact about the user themselves.
         if (isSelfEntity(f.entity, userName)) continue;
@@ -506,6 +516,12 @@ ${digest}`,
       ) continue;
 
       const fact = f as ExtractedFact;
+
+      // Anti-hallucination: drop ungrounded health/body metrics (number must appear in the digest).
+      if (isUngroundedHealthFact(fact.statement, digest)) {
+        console.warn(`[facts] dropped ungrounded health fact (email) for user ${userId}: "${fact.statement.slice(0, 60)}"`);
+        continue;
+      }
 
       // Apply the same person-entity guards as the transcript path.
       if (fact.category === 'person') {

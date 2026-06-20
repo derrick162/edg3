@@ -632,6 +632,22 @@ describe('UX-3 name spelling and self-entity filtering', () => {
     expect(factQueries.upsertFact).not.toHaveBeenCalled();
   });
 
+  it('blocks a nickname/STT self reference (derek → Derrick Fung, filtered)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Derrick works with Derrick Fung', entity: 'derek', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks a last-name-only self reference (Fung → filtered)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'person', statement: 'Fung is the founder', entity: 'Fung', confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'transcript', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
   it('passes user name to extractFactsFromTranscript so STT misspellings use correct name', async () => {
     // Verify the Anthropic API receives the prompt containing the userName hint
     h.create.mockResolvedValue(textResponse(JSON.stringify([])));
@@ -640,6 +656,25 @@ describe('UX-3 name spelling and self-entity filtering', () => {
     const callArgs = (h.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
     const promptText = JSON.stringify(callArgs);
     expect(promptText).toContain('Derrick Fung');
+  });
+});
+
+// ── Ungrounded health-fact guard (Memory tab P0) ──────────────────────────────
+describe('health-fact anti-hallucination guard', () => {
+  it('drops a weight fact whose number is not in the transcript', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'fact', statement: 'Derrick weighs 122 lbs', entity: null, confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'We talked about fundraising and the calendar.', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('keeps a weight fact the user explicitly stated', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'fact', statement: 'Derrick weighs 122 lbs', entity: null, confidence: 'high' },
+    ])));
+    await extractAndUpsertFacts(1, 'I weigh 122 right now and want to get to 135.', 'Derrick Fung');
+    expect(factQueries.upsertFact).toHaveBeenCalledTimes(1);
   });
 });
 

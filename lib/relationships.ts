@@ -10,6 +10,7 @@
 
 import type { calendar_v3 } from 'googleapis';
 import { peopleProfileQueries } from './db';
+import { matchesSelfName } from './selfName';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -32,12 +33,17 @@ function normalizeKey(name: string): string {
 }
 
 /**
- * Extract attendees from a single event, excluding the user (self=true).
+ * Extract attendees from a single event, excluding the user.
+ * The user is filtered three ways — the `self` flag, an email match, and a
+ * NAME match (selfName) — because solo/personal events often list the user as
+ * an ordinary attendee with no `self` flag, which previously leaked the user
+ * into their own "people you meet with" list.
  * Returns [{name, email}] or [] when the event has no external attendees.
  */
 export function extractAttendeesFromEvent(
   event: calendar_v3.Schema$Event,
   selfEmail?: string | null,
+  selfName?: string | null,
 ): { name: string; email: string | null }[] {
   const attendees = event.attendees ?? [];
   return attendees
@@ -47,7 +53,8 @@ export function extractAttendeesFromEvent(
       name: (a.displayName ?? a.email?.split('@')[0]?.replace(/[._-]/g, ' ') ?? '').trim(),
       email: a.email ?? null,
     }))
-    .filter(a => a.name.length >= 2);
+    .filter(a => a.name.length >= 2)
+    .filter(a => !matchesSelfName(a.name, selfName));
 }
 
 // ── Core pure function ────────────────────────────────────────────────────────
@@ -68,6 +75,7 @@ export function computePersonInteractions(
   upcomingEvents: calendar_v3.Schema$Event[],
   selfEmail?: string | null,
   nowIso?: string,
+  selfName?: string | null,
 ): PersonInteraction[] {
   const now = nowIso ?? new Date().toISOString();
 
@@ -83,7 +91,7 @@ export function computePersonInteractions(
     if (!startStr) continue;
     if (startStr >= now) continue; // skip future events even if in pastEvents
 
-    const attendees = extractAttendeesFromEvent(event, selfEmail);
+    const attendees = extractAttendeesFromEvent(event, selfEmail, selfName);
     for (const { name, email } of attendees) {
       const key = normalizeKey(name);
       if (!key) continue;
@@ -104,7 +112,7 @@ export function computePersonInteractions(
     if (!startStr) continue;
     if (startStr < now) continue; // only future events
 
-    const attendees = extractAttendeesFromEvent(event, selfEmail);
+    const attendees = extractAttendeesFromEvent(event, selfEmail, selfName);
     for (const { name } of attendees) {
       const key = normalizeKey(name);
       if (!key) continue;
@@ -146,9 +154,10 @@ export async function syncPeopleProfiles(
   pastEvents: calendar_v3.Schema$Event[],
   upcomingEvents: calendar_v3.Schema$Event[],
   selfEmail?: string | null,
+  selfName?: string | null,
 ): Promise<void> {
   try {
-    const profiles = computePersonInteractions(pastEvents, upcomingEvents, selfEmail);
+    const profiles = computePersonInteractions(pastEvents, upcomingEvents, selfEmail, undefined, selfName);
     for (const p of profiles.slice(0, 50)) {
       peopleProfileQueries.upsert(
         userId,
@@ -204,6 +213,7 @@ export function buildRelationshipContextBlock(
   upcomingEvents: calendar_v3.Schema$Event[],
   profiles: { canonical_name: string; interaction_count: number; last_interaction: string | null }[],
   selfEmail?: string | null,
+  selfName?: string | null,
 ): string {
   if (!profiles.length || !upcomingEvents.length) return '';
 
@@ -216,7 +226,7 @@ export function buildRelationshipContextBlock(
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const event of upcomingEvents) {
-    const attendees = extractAttendeesFromEvent(event, selfEmail);
+    const attendees = extractAttendeesFromEvent(event, selfEmail, selfName);
     for (const { name } of attendees) {
       const key = normalizeKey(name);
       if (seen.has(key)) continue;

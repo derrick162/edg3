@@ -88,6 +88,24 @@ describe('extractAttendeesFromEvent', () => {
     ]);
     expect(extractAttendeesFromEvent(event, SELF)).toEqual([]);
   });
+
+  it('filters the user by NAME when no self flag and a different email is used', () => {
+    // Solo/personal events often list the user as a plain attendee with their
+    // display name but no self flag and a secondary email — must not leak.
+    const event = makeEvent('x', '2026-06-10T09:00:00Z', [
+      { displayName: 'Derrick Fung', email: 'derrick.personal@gmail.com' },
+      { displayName: 'Alice Smith', email: 'alice@co.com' },
+    ]);
+    const result = extractAttendeesFromEvent(event, SELF, 'Derrick Fung');
+    expect(result.map(r => r.name)).toEqual(['Alice Smith']);
+  });
+
+  it('filters a nickname/STT variant of the user name (Derek → Derrick)', () => {
+    const event = makeEvent('x', '2026-06-10T09:00:00Z', [
+      { displayName: 'Derek', email: 'd2@gmail.com' },
+    ]);
+    expect(extractAttendeesFromEvent(event, SELF, 'Derrick Fung')).toEqual([]);
+  });
 });
 
 // ── computePersonInteractions ─────────────────────────────────────────────────
