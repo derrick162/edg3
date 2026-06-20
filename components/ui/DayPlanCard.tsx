@@ -32,6 +32,12 @@ export interface DayPlanCardProps {
   applied?: boolean;
   /** Score after application (may differ from plan.scoreAfter once real) */
   appliedScore?: number;
+  /** Plain-English summary lines from the confirm response (Darren wires; fallback shown when absent) */
+  changeLines?: string[];
+  /** Called when user clicks "Undo reshape" */
+  onUndo?: () => Promise<void>;
+  /** True while undo is in-flight */
+  undoing?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -65,6 +71,9 @@ export function DayPlanCard({
   onDismiss,
   applied = false,
   appliedScore,
+  changeLines,
+  onUndo,
+  undoing = false,
 }: DayPlanCardProps) {
   const [confirming, setConfirming] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -122,11 +131,14 @@ export function DayPlanCard({
 
   const delta = plan.scoreAfter - plan.scoreBefore;
 
-  // ── Applied / celebration state
+  // ── Applied / Day Reshaped toast
   // NO standalone EDGE SCORE here — there is ONE Edge Score (the headline EdgeScoreCard,
   // which refetches after apply). A second number here read as a competing score.
   if (applied) {
-    const noChanges = plan.changes.length === 0;
+    const lines = changeLines?.length
+      ? changeLines.slice(0, 3)
+      : ['Calendar reshaped to match your priorities'];
+
     return (
       <div
         className="glass-card p-5"
@@ -136,39 +148,66 @@ export function DayPlanCard({
           animation: 'score-rise 0.4s ease both',
         }}
       >
-        <div className="flex items-center gap-3">
+        {/* Header */}
+        <div className="flex items-center gap-2.5 mb-3">
           <span
-            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
+            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm"
             style={{
               background: 'var(--plan-success-tint)',
               border: '1.5px solid var(--plan-success-border)',
               boxShadow: 'var(--plan-success-glow)',
-              animation: 'pop-in 0.45s ease both',
+              color: 'var(--edg-success)',
             }}
           >
             ✓
           </span>
-          <div className="flex-1 min-w-0">
+          <div>
             <p className="text-sm font-bold leading-snug" style={{ color: 'var(--text-strong)' }}>
-              {noChanges ? 'Your day was already aligned' : 'Your day just got better'}
+              Day reshaped{delta > 0 && (
+                <span className="ml-1.5 font-semibold" style={{ color: 'var(--edg-success)' }}>
+                  — Edg3 Score +{delta}
+                </span>
+              )}
             </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {noChanges
-                ? 'Nothing needed changing — your Edg3 Score is up top.'
-                : `${plan.changes.length} change${plan.changes.length !== 1 ? 's' : ''} applied · your Edg3 Score updated up top`}
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+              Changes are in your Google Calendar
             </p>
           </div>
         </div>
-        {!noChanges && delta > 0 && (
-          <div
-            className="text-xs px-3 py-1.5 rounded-lg text-center font-semibold mt-3"
-            style={{
-              background: 'var(--plan-success-delta-bg)',
-              color: scoreDeltaColor(delta),
-              border: '1px solid var(--plan-success-ring)',
-            }}
-          >
-            +{delta} points{delta >= 15 ? ' 🚀' : delta >= 10 ? ' — big improvement' : ' — solid gain'}
+
+        {/* Change lines */}
+        <ul className="space-y-1 mb-4 pl-1">
+          {lines.map((l, i) => (
+            <li key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span className="flex-shrink-0 mt-px" style={{ color: 'var(--text-faint)' }}>•</span>
+              {l}
+            </li>
+          ))}
+        </ul>
+
+        {/* Undo CTA + countdown bar */}
+        {onUndo && (
+          <div>
+            <button
+              onClick={onUndo}
+              disabled={undoing}
+              className="btn-secondary w-full text-sm py-2"
+            >
+              {undoing ? 'Undoing…' : 'Undo reshape'}
+            </button>
+            <div
+              className="mt-2 h-0.5 rounded-full overflow-hidden"
+              style={{ background: 'var(--edg-fill-04)' }}
+              aria-hidden="true"
+            >
+              <div
+                className="toast-countdown-bar h-full rounded-full"
+                style={{
+                  background: 'var(--plan-success-border)',
+                  animation: 'toast-countdown 30s linear forwards',
+                }}
+              />
+            </div>
           </div>
         )}
       </div>

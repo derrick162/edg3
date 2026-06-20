@@ -1411,6 +1411,8 @@ export default function Dashboard() {
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
   const [dayPlanApplied, setDayPlanApplied] = useState(false);
   const [dayPlanAppliedScore, setDayPlanAppliedScore] = useState<number | undefined>(undefined);
+  const [dayPlanChangeLines, setDayPlanChangeLines] = useState<string[]>([]);
+  const [dayPlanUndoing, setDayPlanUndoing] = useState(false);
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
   const [activationFacts, setActivationFacts] = useState<string[]>([]);
   const [activationDismissed, setActivationDismissed] = useState(false);
@@ -1600,9 +1602,28 @@ export default function Dashboard() {
     const d = await res.json().catch(() => ({}));
     setDayPlanApplied(true);
     if (d.newScore != null) setDayPlanAppliedScore(d.newScore);
+    if (Array.isArray(d.changeLines) && d.changeLines.length > 0) setDayPlanChangeLines(d.changeLines);
     // ALWAYS refetch the canonical Edge Score so the HEADLINE moves to the real new
     // value — otherwise the headline stayed stale (e.g. 63) while the plan card showed
     // its projected number (67). One Edge Score, and it's the headline.
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    // Auto-dismiss toast after 30 s
+    setTimeout(() => { setDayPlanApplied(false); setDayPlan(null); }, 30_000);
+  }
+
+  async function handleUndoDayPlan() {
+    if (!dayPlan) return;
+    setDayPlanUndoing(true);
+    try {
+      await fetch(`/api/undo/plan?planId=${dayPlan.planId}`, { method: 'POST' });
+    } catch {
+      // best-effort
+    }
+    setDayPlanUndoing(false);
+    setDayPlanApplied(false);
+    setDayPlan(null);
+    setDayPlanChangeLines([]);
+    // Refetch scores after undo
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
   }
 
@@ -2483,6 +2504,9 @@ export default function Dashboard() {
                   onDismiss={() => setDayPlan(null)}
                   applied={dayPlanApplied}
                   appliedScore={dayPlanAppliedScore}
+                  changeLines={dayPlanChangeLines}
+                  onUndo={handleUndoDayPlan}
+                  undoing={dayPlanUndoing}
                 />
               )}
               {/* Open loops — commitments Edge is tracking */}
