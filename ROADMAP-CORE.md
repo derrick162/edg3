@@ -31,9 +31,223 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 15 — Calendar intelligence: searchEvents, checkConflict, setEventReminder, blockFocusTime, getNextEvents, briefEvent, generateWeeklyReview)
+
+> `git merge master` first. Seven tickets sharpening calendar management and the daily call experience. **Do all before R14 or pillar work.**
+
+---
+
+### T1 — `searchEvents` tool: "when did I last meet with Sarah?" (HIGH — 1.5h)
+
+**Problem:** Edge can only find events when it already knows the title. Natural questions like "find my dentist appointment", "when is the investor dinner?", or "when did I last meet with David?" have no handler.
+
+**Fix — three parts:**
+
+**Part A — handler (`app/api/vapi/tool-call/route.ts`):**
+Params: `query: string` (required), `startDate?: string` (YYYY-MM-DD, default 30 days ago), `endDate?: string` (default 60 days from today).
+
+Use Google Calendar's built-in search: `cal.events.list({ calendarId, q: query, timeMin, timeMax, singleEvents: true, maxResults: 10 })` across all calIds. Merge results, deduplicate by eventId, sort by start time. Return up to 5 as a spoken list: `"Found 3 events matching 'dentist': 'Dr. Smith cleaning' on Apr 12 at 2pm, 'Dentist follow-up' on May 3 at 10am, 'Dr. Smith' on Jun 18 at 2pm."` If none: `"Nothing on your calendar matches '${query}'."`.
+
+**Part B — prompt (`lib/vapi.ts`):**
+Add `SEARCH EVENTS` block:
+> "SEARCHING EVENTS — when ${firstName} asks 'when did I last meet X', 'find my [appointment]', 'when is the [event]', 'do I have anything about [topic]' → call searchEvents with the query. If searching for past events, set startDate to cover the likely range. Don't call readCalendar and scan manually."
+
+**Part C — Vapi tool (external — PM handles after ship):**
+⚠️ External: `searchEvents` — params: `query` (string, required), `startDate` (string, optional), `endDate` (string, optional).
+
+**Tests:** results returned, no results, results sorted by date, dedup across calendars (≥4 cases).
+
+---
+
+### T2 — `checkConflict` tool: "am I free Thursday at 2pm?" (LOW — 30min)
+
+**Problem:** Before scheduling anything, the natural first question is "am I free at X?" `findFreeTime` searches a range but a point-in-time check is a different, faster shape — and Edge often needs to verify a slot before proposing it.
+
+**Fix — two parts:**
+
+**Part A — handler:**
+Params: `date: string` (YYYY-MM-DD), `startTime: string` (wall-clock, e.g. "2:00 PM"), `endTime?: string` (wall-clock, defaults to startTime + 1 hour).
+
+Resolve times to UTC using `zonedWallTimeToUtc`. Call `eventsOnDay(cal, calIds, date, tz)`. Filter timed events that overlap `[startMs, endMs)`. Return:
+- No conflicts: `"You're free Thursday at 2pm — nothing on your calendar then."`
+- Conflicts: `"You've got [Event A] from 2–3pm on Thursday. Want me to find another slot?"`
+
+**Part B — prompt:**
+Add `CHECK CONFLICT` note under CALENDAR TOOLS:
+> "CHECK CONFLICT — when ${firstName} asks 'am I free at X?', 'is [time] open?', 'do I have anything at 3pm?' → call checkConflict first. If free, offer to create an event. Don't assume they're free without checking."
+
+⚠️ External: `checkConflict` — params: `date` (string), `startTime` (string), `endTime` (string, optional).
+
+**Tests:** free slot returns clear, single conflict named, multiple conflicts listed, endTime defaults correctly (≥4 cases).
+
+---
+
+### T3 — `setEventReminder`: "remind me 30 minutes before the pitch" (LOW — 45min)
+
+**Problem:** No voice path to set or change an event's reminder. "Remind me an hour before my investor meeting" is a very common request with no handler.
+
+**Fix — two parts:**
+
+**Part A — handler:**
+Params: `title: string`, `minutesBefore: number`, `currentTime?: string` (disambiguation).
+
+Resolve with `resolveEvent`. Read-only calendar check. PATCH the event with:
+```js
+{ reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: minutesBefore }] } }
+```
+`recordUndo` with the original `event.reminders`. Return: `"Set a ${minutesBefore}-minute reminder for '${eventName}'."`.
+
+**Part B — prompt:**
+Add `REMINDERS` block:
+> "REMINDERS — when ${firstName} says 'remind me X before [event]', 'set a reminder for [event]', 'alert me an hour before [meeting]' → call setEventReminder with the event title and minutesBefore. Convert natural language: 'an hour' = 60, 'half an hour' = 30, '15 minutes' = 15."
+
+⚠️ External: `setEventReminder` — params: `title` (string), `minutesBefore` (number), `currentTime` (string, optional).
+
+**Tests:** sets reminder, undo restores original reminders, read-only calendar blocked, disambiguation works (≥4 cases).
+
+---
+
+### T4 — `blockFocusTime`: "block 2 hours for fundraising this week" (MEDIUM — 1.5h)
+
+**Problem:** The briefing already surfaces time-starved priorities ("fundraising: 0h this week") and offers to block time — but Edge then has to call `findFreeTime`, wait, then call `createEvent` separately. One intent, two round-trips.
+
+**Fix — two parts:**
+
+**Part A — handler:**
+Params: `label: string` (what to block for, e.g. "fundraising", "deep work"), `duration: number` (minutes), `startDate?: string` (default today), `endDate?: string` (default +6 days), `windowStart?: string` (default "9:00 AM"), `windowEnd?: string` (default "6:00 PM").
+
+Reuse the `findFreeSlots` helper from T1 (R14) — find the earliest available slot of `duration` minutes within the window. Create an event: title `⚡ Focus: ${label}`, duration matches, colorId `'2'` (sage/green — focus color). `recordUndo`. Return: `"Blocked ${durationLabel} for ${label}: ${dayName} at ${startWall}–${endWall}. Want me to protect more time this week?"`
+
+If no slot found: `"Your week looks packed in that window — want me to look at next week instead?"`
+
+**Part B — prompt:**
+Add `FOCUS BLOCKING` block:
+> "FOCUS BLOCKING — when ${firstName} says 'block time for X', 'protect 2 hours for Y', 'find me time to work on Z this week' → call blockFocusTime with the label and duration (minutes). Don't call findFreeTime + createEvent separately — blockFocusTime does both in one step. If they say yes to a briefing offer to block time for a priority, call blockFocusTime immediately."
+
+⚠️ External: `blockFocusTime` — params: `label` (string), `duration` (number), `startDate` (string, optional), `endDate` (string, optional), `windowStart` (string, optional), `windowEnd` (string, optional).
+
+**Tests:** finds slot + creates event, no slot found message, undo recreates event, windowStart/End clipping (≥4 cases). Note: requires R14 T1 `findFreeSlots` helper to be present in `lib/time.ts` — do R14 first.
+
+---
+
+### T5 — `getNextEvents`: "what's my next meeting?" (LOW — 30min)
+
+**Problem:** "What's coming up?" is one of the most natural mid-call questions. `readCalendar` reads a date range but requires knowing the date and returns more than needed. A targeted "next N events from now" query is faster and more natural.
+
+**Fix — two parts:**
+
+**Part A — handler:**
+Params: `count?: number` (default 3, max 5).
+
+Query Google Calendar: `events.list({ timeMin: now.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: count })` across all calIds. Filter to timed events (not all-day). Return spoken list: `"Your next 3 events: Gym at 7am, Team sync at 10am, Lunch with Faiza at noon."` If none: `"Nothing else on your calendar today."`.
+
+**Part B — prompt:**
+> "GET NEXT EVENTS — when ${firstName} asks 'what's next?', 'what do I have today?', 'what's coming up?', 'what's on my calendar?' (without a specific date) → call getNextEvents. For a specific date, use readCalendar instead."
+
+⚠️ External: `getNextEvents` — params: `count` (number, optional).
+
+**Tests:** returns next N, filters all-day events, empty result message, count capped at 5 (≥4 cases).
+
+---
+
+### T6 — `briefEvent`: "what do I need to know for my 3pm?" (MEDIUM — 2h)
+
+**Problem:** No pre-meeting prep tool. Edge can't answer "brief me on the board meeting" or "what should I know going into the investor call?" — it would have to guess from memory alone.
+
+**Fix — two parts:**
+
+**Part A — handler:**
+Params: `title: string`, `currentTime?: string` (disambiguation).
+
+Resolve the event with `resolveEvent`. Then in parallel:
+1. Pull `event.description`, `event.attendees`, `event.location`
+2. If `hasGmailReadScope`: call `getRecentEmailSignal(userId, { days: 7, fullBodies: false })` and filter `items` whose `subject` fuzzy-matches `event.summary` (use `normalizeTitle` comparison)
+3. Pull any stored facts whose `topic` fuzzy-matches the event summary or attendee names (query facts table)
+
+Pass all three to a Haiku call with prompt: `"In 3 sentences or fewer, brief ${firstName} on this upcoming event. State: who's attending (if known), what the agenda/description says, and one piece of relevant context from recent emails or memory. Be specific and concise — this will be read aloud."`
+
+Return the Haiku output directly as the spoken response. On any failure, degrade gracefully to just the event details (attendees + description without AI synthesis).
+
+**Part B — prompt:**
+Add `MEETING PREP` block:
+> "MEETING PREP — when ${firstName} asks 'brief me on [event]', 'what do I need to know for [meeting]', 'prep me for [event]', 'what's the [meeting] about?' → call briefEvent. Don't try to answer from memory — the tool pulls live event details + recent context."
+
+⚠️ External: `briefEvent` — params: `title` (string), `currentTime` (string, optional).
+
+**Tests:** returns brief with description, degrades gracefully when no description, email filter by subject, facts pulled for attendee name, Haiku failure falls back to raw details (≥5 cases).
+
+---
+
+### T7 — `generateWeeklyReview`: "how was my week?" (MEDIUM — 2h)
+
+**Problem:** No end-of-week wrap-up tool. The briefing covers the day ahead but not "what did I actually accomplish this week?" A Friday close-out or Monday look-back is a natural call moment with no handler.
+
+**Fix — two parts:**
+
+**Part A — handler:**
+Params: `weekOf?: string` (YYYY-MM-DD of the Monday, defaults to current week's Monday).
+
+Compute `[weekStart, weekEnd]` from `weekOf`. In parallel:
+1. `readCalendarRange(userId, weekStart, weekEnd)` — past events (timed, non-all-day)
+2. `SELECT * FROM tasks WHERE user_id = ? AND completed_at >= weekStart AND completed_at < weekEnd` — tasks completed this week
+3. `SELECT * FROM tasks WHERE user_id = ? AND due_date >= weekStart AND due_date < weekEnd AND completed_at IS NULL` — open/missed tasks
+4. Whoop weekly trend (`computeWhoopTrends` if history available)
+
+Pass to Haiku: `"Give ${firstName} a brief spoken weekly review (3–4 sentences max). Cover: (1) what happened — key events or meetings, (2) what was completed — tasks done, (3) one observation or pattern. Be direct and honest. If recovery data is present, weave in one note about energy. End with one question: what's the priority for next week?"`
+
+Return Haiku output. Degrade to a plain list if Haiku fails.
+
+**Part B — prompt:**
+Add `WEEKLY REVIEW` block:
+> "WEEKLY REVIEW — when ${firstName} asks 'how was my week?', 'weekly review', 'wrap up the week', 'what did I get done this week?' → call generateWeeklyReview. Don't summarize from memory — the tool pulls real event + task data."
+
+⚠️ External: `generateWeeklyReview` — params: `weekOf` (string, optional).
+
+**Tests:** returns review, handles no tasks, handles no events, Whoop data injected when present, Haiku failure degrades to list (≥5 cases).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Vapi tool expansion: free-time finder, recurring events, attendees, task voice tools, forgetFact)
 
-> `git merge master` first. Five tickets extending Edge's voice capabilities. **Do all before R13 or pillar work.**
+> `git merge master` first (master at `2ca869f`). Five tickets. ~~T6 (Gmail indicator) reassigned to Security~~ — they own `/api/auth/accounts`. **Do all before R13 or pillar work.**
+
+---
+
+### T6 — Gmail reading indicator in dashboard sidebar (LOW — 30min)
+
+**Problem:** The "Connect Gmail" UI was removed during R12 cleanup along with email drafting. But `gmail.readonly` inbox reading (for briefing signals, focus score, etc.) still works through the main Google token — it just has no visible status in the UI. Users can't tell if Gmail reading is active, and there's no nudge if their token predates the scope.
+
+**Fix — two parts:**
+
+**Part A — update `/api/auth/accounts` route:**
+Add `hasGmailScope: boolean` to the `calendar` object in the response. Use the existing `hasGmailReadScope` helper from `lib/google-auth.ts`:
+```ts
+import { hasGmailReadScope } from '@/lib/google-auth';
+// in the GET handler:
+const cal = calendarQueries.get(user.id);
+const tokenScope = cal?.scope ?? null; // or however the scope is stored — check calendarQueries schema
+return NextResponse.json({
+  calendar: {
+    connected: !!cal,
+    hasGmailScope: hasGmailReadScope(tokenScope),
+    email: null,
+  },
+  ...
+});
+```
+Check `lib/db.ts` for what `calendarQueries.get` returns — the scope field may be named differently.
+
+**Part B — restore Gmail status in dashboard sidebar (`app/dashboard/page.tsx`):**
+Add back `calendarHasGmailScope` state (boolean, default false). In `loadData`, read `d.calendar?.hasGmailScope` from `/api/auth/accounts` and set it.
+
+In the sidebar, below the Google Calendar connected section, add a Gmail reading status row:
+- **If `calendarConnected && calendarHasGmailScope`:** show `● Reading Gmail` in the same muted style as the calendar connected indicator.
+- **If `calendarConnected && !calendarHasGmailScope`:** show a small inline nudge: `Gmail reading inactive — [re-authorize →]` where the link is `href="/api/auth/google"` (the standard Google OAuth entry point — it will request the full `GOOGLE_SCOPES` including `gmail.readonly` and update the stored token). Open in the same tab.
+- **If `!calendarConnected`:** show nothing (the calendar connect flow will grant gmail.readonly automatically).
+
+No new routes, no OAuth changes — just surfacing what's already there. No Vapi tool, no external steps.
+
+**Tests:** update `app/api/auth/accounts/route.ts` test (if one exists) to assert `calendar.hasGmailScope` is present and reflects the scope. Otherwise a manual smoke-test note in the PR is fine.
 
 ---
 

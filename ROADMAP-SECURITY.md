@@ -30,6 +30,81 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 13 — Gmail primitives: email cache gate + Gmail reading indicator + searchEmailsBySubject helper)
+
+> `git merge master` first (master is at `2ca869f`). Three tickets. **Do all before R12 or pillar work.**
+
+---
+
+### T1 — `getRecentEmailSignal` 24h cache gate + suppress empty audit entries (MEDIUM — 1.5h)
+
+*(Carried from R12 T1 — spec unchanged, just not started yet.)*
+
+**Problem:** The Activity tab shows "Reviewed 30 inbox threads" repeating every 30 minutes. `getRecentEmailSignal` in `lib/gmail.ts` is called from 4 routes on every dashboard load and writes a new audit entry each time regardless of whether anything changed.
+
+**Fix — two parts in `lib/gmail.ts`:**
+
+**Part A — 24h cache gate:** At the top of `getRecentEmailSignal`, before any Gmail API call, query `audit_log` for the most recent `email_signal_fetch` entry for this user. If it exists and `created_at` is within the last 24h: return cached result from `snapshot_after.subjects` — no API call, no new audit entry. If older than 24h or missing: fetch normally. EXEMPTION: `{ fullBodies: true }` calls always fetch live (briefing path needs fresh bodies for fact extraction).
+
+**Part B — suppress empty entries:** Wrap the `auditLogQueries.record(...)` call at the bottom in `if (items.length > 0)` — zero-thread fetches produce no Activity tab entry.
+
+**Tests:** second call within 24h → cached, no new audit entry; call after 24h → fresh fetch; empty result → no audit entry; non-empty → audit entry written (≥4 cases).
+
+---
+
+### T2 — Gmail reading indicator in dashboard sidebar (LOW — 30min)
+
+*(Reassigned from Core R14 T6 — this lives in `app/api/auth/**` which Security owns.)*
+
+**Problem:** The Gmail connect UI was removed during R12 cleanup. The inbox reading feature (`gmail.readonly`) still works via the main Google token — there's just no UI confirming it's active.
+
+**Fix — two parts:**
+
+**Part A — `/api/auth/accounts/route.ts`:** Add `hasGmailScope: boolean` to the `calendar` object. Import `hasGmailReadScope` from `@/lib/google-auth`. Get the calendar token's scope via `calendarQueries.get(user.id)` and pass its `.scope` field to `hasGmailReadScope`. Return:
+```ts
+calendar: { connected: !!cal, hasGmailScope: hasGmailReadScope(cal?.scope ?? null), email: null }
+```
+Check `lib/db.ts` for the exact field name on the `calendarQueries.get` row.
+
+**Part B — `app/dashboard/page.tsx` (shared file — claim in Status Board):** Restore `calendarHasGmailScope` state (boolean, default false). In `loadData`, set it from `d.calendar?.hasGmailScope`. In the sidebar, below the Google Calendar connected section:
+- `calendarConnected && calendarHasGmailScope` → `● Reading Gmail` in the same muted style as other connected indicators
+- `calendarConnected && !calendarHasGmailScope` → `Gmail reading inactive — [re-authorize →]` linking to `/api/auth/google` (same tab)
+- `!calendarConnected` → show nothing
+
+No new routes, no OAuth changes.
+
+**Tests:** `hasGmailScope: true` when scope includes gmail.readonly; `false` when scope is null or calendar-only (≥2 cases).
+
+---
+
+### T3 — `searchEmailsBySubject` helper in `lib/gmail.ts` (MEDIUM — 1h)
+
+**Why:** Core's upcoming `briefEvent` tool (R15 T6) needs to pull recent emails that match an event's title — e.g. "brief me on the investor meeting" → find emails with subjects matching "investor". This is a Gmail access primitive that belongs in Security's `lib/gmail.ts`, not in the tool handler.
+
+**Fix — new exported function in `lib/gmail.ts`:**
+
+```ts
+export async function searchEmailsBySubject(
+  userId: number,
+  query: string,
+  opts: { days?: number; max?: number } = {}
+): Promise<EmailSignal>
+```
+
+Implementation:
+1. Get calendar token (`getCalendarTokens`). Return `{ items: [], fetchedAt, scopeMissing: true }` if missing or no gmail.readonly scope.
+2. Use Gmail search query: `q: \`subject:(${query}) newer_than:${days}d\`` with `maxResults: opts.max ?? 10`.
+3. For each thread, fetch snippet only (no full body — this is a lightweight search).
+4. Return `EmailSignal` (same shape as `getRecentEmailSignal`) — Core consumes the same interface.
+5. **No audit log entry** for this call — it's a targeted search, not the inbox scan.
+6. **No cache** — searches are query-specific and called only on-demand from briefEvent, not on every dashboard load.
+
+**Tests:** returns matching items, empty when no match, scopeMissing when no token, days param limits range (≥4 cases).
+
+**Coordination:** Once shipped, notify PM — Core's R15 T6 (`briefEvent`) will import this function. No merge needed before Core can start; they can stub it.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 12 — Email signal fetch: once-per-day cache gate)
 
 > `git merge master` first. One ticket. **Do before any R11 or pillar work.**
