@@ -94,13 +94,14 @@ describe('VOICES', () => {
     expect(VOICES.daniel.model).toBe('eleven_turbo_v2_5');
     expect(VOICES.daniel.stability).toBe(0.55);
     expect(VOICES.daniel.similarityBoost).toBe(0.75);
+    expect(VOICES.daniel.speed).toBe(0.9); // R9 T1 — slowed down from default
   });
 
   it('aria config uses 11labs provider with aria voiceId', () => {
     expect(VOICES.aria.provider).toBe('11labs');
     expect(VOICES.aria.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
     expect(VOICES.aria.model).toBe('eleven_turbo_v2_5');
-    expect((VOICES.aria as { speed?: number }).speed).toBeUndefined();
+    expect(VOICES.aria.speed).toBe(0.9); // R9 T1 — slowed down from default
     expect(VOICES.aria.stability).toBe(0.4);
     expect(VOICES.aria.similarityBoost).toBe(0.7);
   });

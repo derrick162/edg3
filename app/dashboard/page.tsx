@@ -2598,6 +2598,7 @@ export default function Dashboard() {
                 <FocusRecommendationCard
                   recommendation={focusRec}
                   loading={focusRecLoading}
+                  recoveryTier={whoopData?.tier === 'high' ? 'green' : whoopData?.tier === 'medium' ? 'yellow' : whoopData?.tier === 'low' ? 'red' : null}
                   onConfirm={handleConfirmFocus}
                   onDismiss={() => setFocusRecDismissed(true)}
                 />

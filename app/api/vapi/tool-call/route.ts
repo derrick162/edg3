@@ -1184,6 +1184,12 @@ Query: ${query}` }],
     const updates = hasReadScope ? await checkOutreachReplies(userId) : [];
     return formatRepliesForVoice(updates, hasReadScope);
 
+  } else if (fn === 'getWeather') {
+    // R9 T4: live weather via Open-Meteo (free, no key). Hardcoded Toronto for now;
+    // degrades to a graceful line on any failure (never "I don't have weather data").
+    const { getWeatherForecast } = await import('@/lib/weather');
+    return await getWeatherForecast();
+
   } else if (fn === 'searchMemory') {
     // M3-2: on-demand memory retrieval — searches facts + episodes + memories for the query.
     const { query } = args as { query?: string };

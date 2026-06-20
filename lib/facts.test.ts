@@ -701,6 +701,22 @@ describe('runSleepTimeConsolidation', () => {
     expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'goal', 'Close Series A by September', null, 'high');
   });
 
+  it('drops an ungrounded health metric on "add" (guard parity with extraction path)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'add', category: 'fact', entity: null, new: 'Derrick weighs 122 lbs', reason: 'mentioned' },
+    ])));
+    await runSleepTimeConsolidation(1, 'We discussed fundraising and the calendar today.', 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks a self-entity person fact on "add" (guard parity with extraction path)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { action: 'add', category: 'person', entity: 'derek', new: 'Derrick works with Derrick Fung', reason: 'mentioned' },
+    ])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick Fung');
+    expect(factQueries.upsertFact).not.toHaveBeenCalled();
+  });
+
   it('calls retire for "retire" action when matching active fact exists', async () => {
     vi.mocked(factQueries.getByCategory).mockReturnValue([
       { id: 99, user_id: 1, category: 'goal', statement: 'Raise $500K by June', entity: 'fundraising', learned_at: '2026-06-01', confidence: 'low', source_briefing_id: null },

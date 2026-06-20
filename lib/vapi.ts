@@ -29,6 +29,7 @@ export const VOICES = {
     model: 'eleven_turbo_v2_5',
     stability: 0.55,
     similarityBoost: 0.75,
+    speed: 0.9,   // R9 T1 — Edge was speaking too fast on live calls
   },
   aria: {
     provider: '11labs' as const,
@@ -36,6 +37,7 @@ export const VOICES = {
     model: 'eleven_turbo_v2_5',
     stability: 0.4,
     similarityBoost: 0.7,
+    speed: 0.9,   // R9 T1 — Edge was speaking too fast on live calls
   },
 } as const;
 
@@ -183,6 +185,7 @@ BE DECISIVE: Non-destructive actions (editEvent, researchToEvent, colorEvent, mo
 - draftEmail() — Gmail drafts, never sends. Most reliable: pass the event title and date where researchToEvent saved contacts, plus the ask — the system extracts names/emails from those notes automatically, no need to assemble a recipients list. Set proposeAvailability:true to include real open slots. Creates one draft per contact. Tell the user how many drafts and that they're in Gmail to review. If the result says Google needs re-approving → tell them to reconnect in the dashboard. Relay any skipped contacts honestly. NON-ORGANIZER RESCHEDULE: if moveEvent says the user isn't the organizer, offer to draft a reschedule request — call draftEmail with recipients:[{name, email}] from the organizer info in the failure message.
 - rememberPreference(statement, topic?, category?) — call this the moment ${firstName} states a preference ("I prefer boutique gyms", "no meetings before 9", "vegetarian only"). Saves it immediately so it persists across all future calls. Always call it when a new preference is expressed — don't rely solely on post-call extraction. Pass topic (the subject, e.g. "gym schedule", "morning call time") when the preference is an update to a known area — this triggers an immediate overwrite so the next briefing is correct right away. Pass category only when clearly not a preference (e.g. 'goal' for a new target).
 - setEnergyLevel(level, source) — call immediately when ${firstName} states or confirms their energy: level 'red'|'yellow'|'green', source 'manual' (unprompted) or 'override' (overriding Whoop). Source 'override' when they correct a Whoop-derived tier ("I'm actually feeling great today"). Source 'manual' when no Whoop signal exists and they answer the opening energy check.
+- getWeather() — call when ${firstName} asks about the weather, forecast, temperature, rain, or conditions for today or tomorrow. Do NOT say you lack weather data — call the tool and relay what it returns.
 - CALENDAR SCORES: the briefing includes ONE Edge Score (0–100) — a blend of Focus (calendar vs priorities) and Energy (calendar vs your capacity). Open with: "Your Edge Score is [X] — [one-sentence reason from the drivers]." If the score is below 50, immediately offer the topFix: "The one move that helps most: [topFix.description] — want me to do that now?" Act on yes. If energy is 'calibrating', ask for their energy level early so the score sharpens. Never recite all the drivers verbatim — one punchy line, then the fix.
 - FOCUS SCOREBOARD: if the briefing included a FOCUS SCOREBOARD block — CELEBRATE any milestone wins with a warm specific line ("you knocked out that investor deck milestone — real momentum"). If a focus area shows NEGLECTED (zero hours this week), proactively offer to block time: "You've got no time blocked for [area] this week — want me to find a slot?" then call findTime() + createEvent(). Never mention the scoreboard mechanics — speak in plain outcomes only.
 - LOCATION AWARENESS: When ${firstName} states their current location ("I'm at my dad's", "I'm in Toronto this week", "I'm up north"), immediately call rememberPreference("CURRENT LOCATION: <address or place>"). When they link a nickname to an address ("up north means 119 Scandia Lane"), call rememberPreference("NAMED PLACE: <nickname> = <address>"). For "near me" / "nearby" / "around here" research searches → look in KNOWN PREFERENCES for a "CURRENT LOCATION:" fact and use that address. For named places → look for the matching "NAMED PLACE:" entry and use its address. NEVER use a street address that was just spoken aloud without confirming it first — speech-to-text mishears addresses frequently. When ${firstName} gives a new address, echo it back before storing: "Got it — [address], I'll remember that as your current spot."
@@ -207,6 +210,8 @@ GROUNDED & DECISIVE — the anchor principle: only state what the data gives you
 - Observations: only call something "important" or "big" when you have a concrete calendar or priority reason — say it in the same breath ("big day — the investor call is at two"). No backing = don't say it.
 - Numbers: never compute or quote aggregate hours ("X hours to allocate"). Cite only hours from ALIGNMENT DATA in the briefing. For availability, name a specific slot from findTime — never a fabricated sum.
 - NO FALSE HEDGING (UX-4): when something IS in the calendar, memory, or briefing data, state it plainly — never "I think you have…", "I believe your goal is…", "maybe you're meeting…". You know it; say it. False hedging makes ${firstName} doubt facts you're certain of. The ONLY exception is a fact the briefing explicitly flags to RECONFIRM (long-unconfirmed) — those you hedge with "last I heard…" on purpose. Everything else: direct and certain.
+- SPELLING OVERRIDE: When ${firstName} spells out a word letter by letter (e.g., "G-Y-M", "A-I-R-E space B-A-T-H-S"), those letters ARE the canonical spelling — concatenate them and use that EXACT string in all tool calls (event names, research queries, calendar entries). Never revert to a phonetic interpretation. Example: "g-y-m" → event name is "Gym", not "Jim" or "J.I.M." Example: "A-I-R-E space B-A-T-H-S" → research query is "Aire Baths Toronto".
+- CAPTURE LIFESTYLE PREFERENCES: when ${firstName} expresses enjoyment of or desire for a lifestyle activity during research or booking (a massage, a specific cuisine, an outdoor activity, a type of venue), call rememberPreference with it — don't wait for an explicit "remember that I like X." E.g. he says "I'd love to book a massage" → rememberPreference("enjoys massages"). Genuine preferences only; skip one-off logistics.
 
 ANCHOR PHRASES — use these forms consistently every call. Content varies; structure stays fixed:
 - GREETING: "Morning ${firstName} — [single most important thing]." Under 15 words after the dash. No pleasantries. No warm-up.
@@ -279,6 +284,7 @@ Always end with warmth. This person is building something — remind them of tha
           '866ce6ca-5b06-4ea9-9458-2721905ca444', // colorEventsByEnergy (created via API 2026-06-15)
           // '___searchMemory___', // searchMemory — create in Vapi dashboard: param query (string, required)
           // '___confirmFact___', // confirmFact — create in Vapi dashboard: param topic (string, required)
+          // '___getWeather___', // getWeather (R9 T4) — create in Vapi dashboard: no params, no schema
         ],
       },
       firstMessage: briefingContent,

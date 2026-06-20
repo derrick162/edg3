@@ -44,6 +44,23 @@ describe('buildFallbackBriefing', () => {
     const result = buildFallbackBriefing('Good morning', 'Derrick', '9 AM: Meeting', '1. Fundraising');
     expect(result).not.toMatch(/[*_#`]|^\d+\./m);
   });
+
+  // R9 T2 — no apologetic "trouble loading" preamble; deliver content silently.
+  it('does NOT announce a loading failure', () => {
+    const result = buildFallbackBriefing('Good morning', 'Derrick', '9 AM: Meeting', '1. Fundraising');
+    expect(result).not.toMatch(/trouble loading|trouble|essentials|having a problem/i);
+  });
+
+  // R9 T2 — strip [bracket descriptions] and cap each priority to 5 words for clean TTS.
+  it('strips bracket descriptions and truncates long priorities to 5 words', () => {
+    const longPrio = '1. Improve Runway [sell unused items, rent the parking spot, cut subscriptions, lower travel spend]\n2. Get to 130 lbs';
+    const result = buildFallbackBriefing('Good morning', 'Derrick', '', longPrio);
+    expect(result).toContain('Improve Runway');
+    expect(result).not.toContain('sell unused items');
+    expect(result).not.toContain('[');
+    // "Get to 130 lbs" is 4 words → kept whole.
+    expect(result).toContain('Get to 130 lbs');
+  });
 });
 
 describe('buildWhoopSection', () => {
