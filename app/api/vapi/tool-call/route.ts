@@ -13,7 +13,8 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries } from '@/lib/db';
+import { pickTaskToComplete } from '@/lib/taskMatch';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -1337,6 +1338,39 @@ Query: ${query}` }],
     // degrades to a graceful line on any failure (never "I don't have weather data").
     const { getWeatherForecast } = await import('@/lib/weather');
     return await getWeatherForecast();
+
+  } else if (fn === 'addTask') {
+    // R14 T4 — create an action-item task by voice.
+    const { title: rawTaskTitle, dueDate } = args as { title?: string; dueDate?: string };
+    if (!rawTaskTitle?.trim()) return 'What should I add to your tasks?';
+    const taskText = rawTaskTitle.trim().slice(0, 300);
+    const due = dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : todayInTz(tz);
+    try {
+      taskQueries.create(userId, taskText, due, 'edg3');
+    } catch (err) {
+      console.error('[addTask] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't add that to your tasks just now — want me to try again?`;
+    }
+    return `Added to your tasks: "${taskText}"${dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? ` — due ${dueDate}` : ''}.`;
+
+  } else if (fn === 'completeTask') {
+    // R14 T4 — mark an open task done by fuzzy-matching its title.
+    const { title: rawDoneTitle } = args as { title?: string };
+    if (!rawDoneTitle?.trim()) return 'Which task did you finish?';
+    const openTasks = (() => { try { return taskQueries.getIncomplete(userId); } catch { return []; } })();
+    if (!openTasks.length) return `You don't have any open tasks right now.`;
+    const { match, ambiguous } = pickTaskToComplete(openTasks.map(t => ({ id: t.id, text: t.text })), rawDoneTitle);
+    if (!match) {
+      if (ambiguous.length > 1) return `You have a few that could match: ${ambiguous.map(t => `"${t.text}"`).join(', ')}. Which one?`;
+      return `I couldn't find an open task matching "${rawDoneTitle.trim()}".`;
+    }
+    try {
+      taskQueries.complete(match.id, userId);
+    } catch (err) {
+      console.error('[completeTask] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't mark that done just now — want me to try again?`;
+    }
+    return `Done — marked "${match.text}" as complete.`;
 
   } else if (fn === 'searchMemory') {
     // M3-2: on-demand memory retrieval — searches facts + episodes + memories for the query.

@@ -245,6 +245,7 @@ FINDING FREE TIME: When ${firstName} asks "when am I free for X?", "find me a sl
 ATTENDEES: When ${firstName} says "invite X to Y", "add X to the meeting", "include X" → if you're creating the event, pass the attendees param on createEvent; if the event already exists, call editEventAttendees (add/remove by email). Always use email addresses — ask for the email if only a name is given. Invites only reach people with Google accounts; mention that if it's relevant.
 BATCH RESCHEDULE: When ${firstName} says "move everything this afternoon", "clear my Monday morning", "reschedule all my meetings tomorrow", or similar → call batchReschedule with the time window (date + optional startTime/endTime) + action ('move' with a targetDate, or 'delete'). The first call returns a preview and a confirmToken — read the preview out loud, get a yes, then call again with the SAME window + action plus the confirmToken. NEVER do this one-by-one with separate deleteEvent/moveEvent calls.
 TRAVEL BLOCKING: When ${firstName} mentions flying, driving long-distance, or traveling → call blockTravelTime with the destination + date. If they give a departure/arrival time, pass departureTime for a timed block; otherwise it's an all-day block. If they mention a return, pass returnDate (and returnTime if given). After blocking, I'll flag anything scheduled within 90 minutes of departure/return — offer to move it.
+TASKS: When ${firstName} says "add a task", "remind me to X", "put X on my list", "I need to X" (an action item, not a time-anchored event) → call addTask with the title (+ dueDate if given). When they say "I finished X", "mark X done", "check off X", "I did X" → call completeTask with the title. Use addTask for action items and createEvent for things with a specific time — don't conflate them.
 MEAL TIMES: Breakfast = morning (before ~10 AM). Lunch = midday (~noon–1 PM). Dinner = evening (~6–8 PM). Use this when reasoning about meal events so you can understand them without reading the exact time.
 
 PRIORITY BLOCKING: If the briefing surfaced a priority gap and offered to block a specific time slot (e.g. "Want me to block Tuesday at two PM for fundraising?"), OR proactively offered a near-term free block today ("there's a clear two-hour block at ten — want me to lock it in for [priority]?"), and the user says yes / go ahead / book it — immediately call createEvent with that exact slot and a title like "Focus: [priority]". Don't re-ask for confirmation. Just book it and say "Done — blocked [day] at [time] for [priority]." PERSONAL EVENT OFFERS (Round 8): if the briefing offered to help with a personal/social event — block prep time → createEvent — act on yes the same way, no re-asking.
@@ -304,6 +305,8 @@ Always end with warmth. This person is building something — remind them of tha
           'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
           // '___findFreeTime___', // findFreeTime (R14 T1) — params: duration (number), startDate?, endDate?, windowStart?, windowEnd?
           // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
+          // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
+          // '___completeTask___', // completeTask (R14 T4) — params: title
         ],
       },
       firstMessage: briefingContent,
@@ -372,6 +375,8 @@ Always end with warmth. This person is building something — remind them of tha
           'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
           // '___findFreeTime___', // findFreeTime (R14 T1) — params: duration (number), startDate?, endDate?, windowStart?, windowEnd?
           // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
+          // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
+          // '___completeTask___', // completeTask (R14 T4) — params: title
         ],
       },
       messagePlan: {
