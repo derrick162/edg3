@@ -5,7 +5,6 @@ import type { calendar_v3 } from 'googleapis';
 import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
-import { checkOutreachReplies } from './replies';
 import { computeAlignment, detectHygieneFlags, isRoutineTitle } from './alignment';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
@@ -749,9 +748,6 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   })();
   const accountabilityBlock = accountabilitySnapshot ? formatAccountabilityForBriefing(accountabilitySnapshot) : '';
   const accountabilityInstruction = accountabilitySnapshot ? accountabilityBriefingInstruction(accountabilitySnapshot, reliabilitySignal) : '';
-  // Email-reply tracking: new replies to the outreach Edge drafted (only its own threads).
-  // Degrades to [] if Gmail read access isn't granted yet or anything errors.
-  const outreachReplies = await checkOutreachReplies(userId).catch(() => []);
   // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
   // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
   const alignment = await computeAlignment(priorities, fullWeekEvents, userTimezone).catch(() => null);
@@ -953,9 +949,6 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     ? priorities.map((p, i) => `${i + 1}. ${p.text}`).join('\n')
     : 'No priorities set for this week.';
 
-  const repliesText = outreachReplies.length
-    ? outreachReplies.map(r => `- ${r.recipient}${r.eventTitle ? ` (re: ${r.eventTitle})` : ''}: ${r.summary} → Suggested next step: ${r.suggestedAction}`).join('\n')
-    : 'No new replies to your outreach.';
 
   const alignmentText = alignment
     ? [
@@ -1094,9 +1087,6 @@ ${weekCalendarText}
 
 FREE TIME SLOTS (next 7 days, 8am–8pm):
 ${freeTimeText}
-
-REPLIES TO YOUR OUTREACH (Edge drafted these emails for the user and they were sent; these are the contacts' replies. If any are present, RAISE them in the briefing and OFFER to take the suggested next step — e.g. "Wilmec replied, they can come Thursday at two PM — want me to book it?". If "No new replies", do not mention this section at all.):
-${repliesText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}

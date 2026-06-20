@@ -59,7 +59,6 @@ vi.mock('./calendar', () => ({
 }));
 vi.mock('./calendarPatterns', () => ({ detectCalendarPatterns: vi.fn(), formatCalendarPatternsForBriefing: vi.fn(() => '') }));
 vi.mock('./timeAllocation', () => ({ computeTimeAllocation: vi.fn(), formatTimeAllocationForBriefing: vi.fn(() => '') }));
-vi.mock('./replies', () => ({ checkOutreachReplies: vi.fn(() => '') }));
 vi.mock('./alignment', () => ({ computeAlignment: vi.fn(), detectHygieneFlags: vi.fn(() => null) }));
 vi.mock('./streak', () => ({ computeCallStreak: vi.fn(() => 0) }));
 vi.mock('./facts', () => ({ linkEventsToFacts: vi.fn(), extractAndUpsertFactsFromEmail: vi.fn() }));

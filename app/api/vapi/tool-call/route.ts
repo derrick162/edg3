@@ -11,12 +11,8 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, watchedThreadQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
-import { emailableRecipients, formatSlotsForEmail, composeOutreachEmail, recipientsFromNotes, correctRecipientNames } from '@/lib/outreach';
-import { checkOutreachReplies, formatRepliesForVoice } from '@/lib/replies';
-import { hasGmailReadScope } from '@/lib/google-auth';
-import { createDraft, GmailScopeError, GmailRateLimitError } from '@/lib/gmail';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
 import { checkRateLimit } from '@/lib/rateLimit';
@@ -835,112 +831,6 @@ Query: ${query}` }],
       ? `Copied ${src.length} event(s) (${[...titles].join(', ')}) from ${sourceDate} to ${targetDates.length} day(s) — ${created} created.`
       : `Couldn't save the copies from ${sourceDate} — Google didn't confirm them. Want me to try again?`;
 
-  } else if (fn === 'draftEmail') {
-    // Draft (never send) a personalized outreach email per recipient, optionally proposing the
-    // user's real open slots. Composition lives in lib/outreach.ts (Core); the actual draft is
-    // created by Security's guarded, draft-only createDraft (lib/gmail.ts). Undo deletes the drafts.
-    const { recipients, title: rawTitle, date, ask, proposeAvailability, startDate, endDate, subject } = args as {
-      recipients?: { name?: string; email?: string }[];
-      title?: string;
-      date?: string;
-      ask?: string;
-      proposeAvailability?: boolean;
-      startDate?: string;
-      endDate?: string;
-      subject?: string;
-    };
-    const title = rawTitle ? groundTitle(rawTitle) : undefined;
-    if (!ask || !ask.trim()) return 'What should I ask them in the email?';
-
-    // Recipients: prefer an explicit list; otherwise read them from the research notes on the
-    // referenced event (title + date) — the model only has to name the event, not build the list.
-    let sourceRecipients: { name?: string; email?: string }[] = Array.isArray(recipients) ? recipients : [];
-    if (!sourceRecipients.length && title && date) {
-      const er = resolveEvent(await eventsOnDay(cal, calIds, date, tz), title, tz);
-      if (er.kind === 'none') return `I couldn't find an event matching "${title}" on ${date} to pull contacts from.`;
-      if (er.kind === 'ambiguous') return `There are multiple "${title}" events on ${date}: ${er.message}. Which one has the contacts?`;
-      sourceRecipients = recipientsFromNotes(er.event.description ?? '');
-      if (!sourceRecipients.length) return `I found "${title}" on ${date}, but couldn't pull any contacts with emails from its notes. Research them first so the emails are saved.`;
-    }
-    if (!sourceRecipients.length) return "Tell me who to email — point me to the event that has the research, or give me names and emails.";
-
-    // Prefer user-typed name spellings over STT-transcribed ones.
-    // (1) If a recipient's email matches the user's own, use their profile name.
-    // (2) If the event title has a name token that fuzzy-matches a notes name, prefer title.
-    // This reduces errors like "Derek" (transcribed) → "Derrick" (user-typed in title).
-    const userRow = userQueries.findById(userId);
-    sourceRecipients = correctRecipientNames(sourceRecipients, {
-      eventTitle: title,
-      userEmail: userRow?.email,
-      userName: userRow?.name,
-    });
-
-    const { ok, skipped } = emailableRecipients(sourceRecipients);
-    if (!ok.length) {
-      return `I couldn't draft anything — none of those contacts had a usable email${skipped.length ? ` (missing for ${skipped.join(', ')})` : ''}. Research them first to find emails, then try again.`;
-    }
-
-    const senderName = userRow?.name?.trim() || 'Me';
-
-    // Availability: default to a one-week window starting today (in the user's tz).
-    let slots: string[] = [];
-    if (proposeAvailability !== false) {
-      const start = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : todayInTz(tz);
-      let end = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : '';
-      if (!end || end < start) {
-        const d = new Date(`${start}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + 6);
-        end = d.toISOString().slice(0, 10);
-      }
-      const evMin = dayRangeUtc(tz, start).start.toISOString();
-      const evMax = dayRangeUtc(tz, end).end.toISOString();
-      const evts: calendar_v3.Schema$Event[] = (await Promise.all(calIds.map(calId =>
-        cal.events.list({ calendarId: calId, timeMin: evMin, timeMax: evMax, singleEvents: true, orderBy: 'startTime', maxResults: 250 }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
-      ))).flat();
-      slots = formatSlotsForEmail(findFreeSlots(evts, tz, start, end, 30));
-    }
-
-    // Compose + draft all recipients in PARALLEL so the tool returns quickly — a sequential
-    // per-recipient Claude+Gmail loop was slow enough to trip the call's 30s silence timeout.
-    const results = await Promise.all(ok.map(async (recipient): Promise<{ ok: true; name: string; draftId: string } | { ok: false; name: string; fatal: unknown }> => {
-      try {
-        const composed = await composeOutreachEmail({ recipient, senderName, ask, slots, subject, userTimezone: tz });
-        const to = recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email;
-        const { draftId, threadId } = await createDraft(userId, { to, subject: composed.subject, body: composed.body });
-        // Email-reply tracking (Phase 1): remember this outreach thread so Edge can watch it
-        // for replies later. Only threads Edge itself drafts are ever recorded.
-        if (threadId) watchedThreadQueries.register(userId, threadId, recipient.name || recipient.email, ask, title, date);
-        return { ok: true, name: recipient.name || recipient.email, draftId };
-      } catch (perErr) {
-        if (perErr instanceof GmailScopeError || perErr instanceof GmailRateLimitError) return { ok: false, name: recipient.name || recipient.email, fatal: perErr };
-        console.error(`[draftEmail] draft failed for ${recipient.email}:`, perErr);
-        return { ok: false, name: recipient.name || recipient.email, fatal: null };
-      }
-    }));
-
-    const undoOps: UndoOp[] = [];
-    const draftedFor: string[] = [];
-    const failed: string[] = [];
-    let fatalErr: unknown = null;
-    for (const res of results) {
-      if (res.ok) { undoOps.push({ type: 'deleteDraft', userId, draftId: res.draftId }); draftedFor.push(res.name); }
-      else if (res.fatal) { fatalErr = res.fatal; }
-      else { failed.push(res.name); }
-    }
-    if (undoOps.length) recordUndo(userId, `drafted ${undoOps.length} email(s)`, undoOps);
-    if (fatalErr instanceof GmailScopeError) {
-      return "I can't create email drafts yet — you'll need to re-approve Google so I can use Gmail. Open the dashboard and reconnect your Google account; this time it'll ask for email/draft permission.";
-    }
-    if (fatalErr instanceof GmailRateLimitError) {
-      return `Couldn't finish — ${fatalErr.message}${undoOps.length ? ` I did draft ${undoOps.length} before hitting the limit; they're in your Gmail.` : ''}`;
-    }
-    if (!draftedFor.length) return `Couldn't create any drafts${failed.length ? ` — Gmail errored for ${failed.join(', ')}` : ''}. Please try again.`;
-    const notes = [
-      skipped.length ? `skipped ${skipped.join(', ')} (no email on file)` : '',
-      failed.length ? `couldn't draft for ${failed.join(', ')}` : '',
-    ].filter(Boolean);
-    return `Drafted ${draftedFor.length} email(s) in your Gmail — review and send.${notes.length ? ` I ${notes.join('; and ')}.` : ''}`;
-
   } else if (fn === 'cleanupEvents') {
     // Batch delete for consolidation cleanup — deletes a list of events by EXACT start time,
     // bypassing fuzzy-title resolution that would otherwise hit the newly-created merged event.
@@ -1181,12 +1071,6 @@ Query: ${query}` }],
     if (!match) return "I couldn't find that one to confirm — no harm, I'll keep what I have.";
     try { factQueries.confirmFact(userId, match.id); } catch { /* non-critical */ }
     return "Great — I've got that confirmed as current.";
-
-  } else if (fn === 'checkReplies') {
-    const tokenRow = calendarQueries.get(userId);
-    const hasReadScope = hasGmailReadScope(tokenRow?.scope);
-    const updates = hasReadScope ? await checkOutreachReplies(userId) : [];
-    return formatRepliesForVoice(updates, hasReadScope);
 
   } else if (fn === 'getWeather') {
     // R9 T4: live weather via Open-Meteo (free, no key). Hardcoded Toronto for now;

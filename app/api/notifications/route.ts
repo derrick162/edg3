@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { notificationQueries } from '@/lib/db';
-import { checkOutreachReplies } from '@/lib/replies';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
-// In-app notification center (Core). Notifications are created by reply-detection
-// (lib/replies.ts) at briefing time and on an explicit "check". This route reads the
-// stored notifications and lets the dashboard mark them read.
+// In-app notification center (Core). Notifications are created by activity/score/fact
+// events. This route reads the stored notifications and lets the dashboard mark them read.
+// (The email-outreach reply-pull was removed with the email feature in R12 T7.)
 
 export async function GET() {
   const user = await getSession();
@@ -29,9 +28,8 @@ export async function POST(req: NextRequest) {
 
   switch (body.action) {
     case 'check':
-      // Pull fresh outreach replies → creates notifications. Degrades safely to nothing
-      // if Gmail read access isn't granted yet or there are no watched threads.
-      await checkOutreachReplies(user.id).catch(() => []);
+      // No-op since R12 T7 (email-outreach reply tracking removed). Kept so the dashboard's
+      // existing "check" action still returns success rather than a 400.
       break;
     case 'markRead':
       if (typeof body.id === 'number') notificationQueries.markRead(body.id, user.id);
