@@ -19,6 +19,8 @@ export interface ScoreResult {
   topFix: { description: string; op?: 'create' | 'move' | 'delete' | 'recolor' } | null;
   worstMismatchEventId?: string | null;     // event ID of the highest-penalty mismatch (for hero loop)
   worstMismatchEventTitle?: string | null;  // display title of that event
+  alignedHours?: number;                    // R9 T5 — focus-aligned hours this week (for "X of Y" detail)
+  totalWorkingHours?: number;               // R9 T5 — denominator working hours
 }
 
 export interface CalendarFit {
@@ -39,7 +41,6 @@ export interface ClarityInputs {
   whoopConnected: boolean;
   factsCount: number;
   memoriesCount: number;
-  briefingCallsCount: number; // completed briefing calls
   prioritiesCount: number;
 }
 
@@ -259,6 +260,8 @@ export function computeFocusScore(
   const score = Math.min(100, Math.round(100 * ratio * (0.6 + 0.4 * coverage)));
 
   const drivers: string[] = [];
+  // R9 T5: lead with the concrete number Derrick can act on, not just a percentage.
+  drivers.push(`${focusAlignedHours.toFixed(1)} of ${totalWorkingHours} working hours aligned to your focus areas this week.`);
   for (const p of perPriority) {
     if (p.hours === 0) {
       drivers.push(`"${p.priority}" has zero hours scheduled this week.`);
@@ -293,7 +296,7 @@ export function computeFocusScore(
     };
   }
 
-  return { score, drivers, topFix };
+  return { score, drivers, topFix, alignedHours: focusAlignedHours, totalWorkingHours };
 }
 
 // ─── computeEnergyScore ───────────────────────────────────────────────────────
@@ -363,24 +366,25 @@ export function computeEnergyScore(
 /**
  * Clarity Score = how clear a picture does Edge have of you? (was "Intelligence" — renamed)
  * Connected sources (60 pts): Calendar (20), Gmail read (20), Whoop (20).
- * Accumulated context (40 pts): facts (15), memories (10), briefing calls (10), priorities (5).
+ * Accumulated context (40 pts): facts (22), memories (13), priorities (5).
+ * R9 T6: briefing-call count was REMOVED — that's an engagement signal (Momentum),
+ * not a "how well does Edge know you" signal. Its 10 pts were reallocated to facts/memory depth.
  * Pure — caller provides the counts.
  */
 export function computeClarityScore(inputs: ClarityInputs): ScoreResult {
   const {
     calendarConnected, gmailReadGranted, whoopConnected,
-    factsCount, memoriesCount, briefingCallsCount, prioritiesCount,
+    factsCount, memoriesCount, prioritiesCount,
   } = inputs;
 
   // Connected sources (60 pts max)
   const srcPoints = (calendarConnected ? 20 : 0) + (gmailReadGranted ? 20 : 0) + (whoopConnected ? 20 : 0);
 
-  // Accumulated context (40 pts max)
-  const factsPoints    = Math.round(Math.min(factsCount, 20) / 20 * 15);
-  const memoryPoints   = Math.round(Math.min(memoriesCount, 15) / 15 * 10);
-  const briefingPoints = Math.round(Math.min(briefingCallsCount, 10) / 10 * 10);
+  // Accumulated context (40 pts max) — depth of what Edge has learned about you.
+  const factsPoints    = Math.round(Math.min(factsCount, 20) / 20 * 22);
+  const memoryPoints   = Math.round(Math.min(memoriesCount, 15) / 15 * 13);
   const priorityPoints = prioritiesCount > 0 ? 5 : 0;
-  const ctxPoints = factsPoints + memoryPoints + briefingPoints + priorityPoints;
+  const ctxPoints = factsPoints + memoryPoints + priorityPoints;
 
   const score = clamp(0, 100, srcPoints + ctxPoints);
 
@@ -394,7 +398,7 @@ export function computeClarityScore(inputs: ClarityInputs): ScoreResult {
   else drivers.push('Whoop not connected — energy score is estimated, not measured.');
   if (factsCount > 0) drivers.push(`${factsCount} preference facts learned from your calls.`);
   else drivers.push('No preference facts yet — Edge learns from every call.');
-  if (briefingCallsCount > 0) drivers.push(`${briefingCallsCount} completed briefing call${briefingCallsCount !== 1 ? 's' : ''}.`);
+  if (memoriesCount > 0) drivers.push(`${memoriesCount} memor${memoriesCount !== 1 ? 'ies' : 'y'} of accumulated context.`);
 
   // Top fix — the single most impactful missing piece
   let topFix: ScoreResult['topFix'] = null;
@@ -406,8 +410,6 @@ export function computeClarityScore(inputs: ClarityInputs): ScoreResult {
     topFix = { description: 'Connect your Whoop to base your Energy Score on real health data.', op: 'create' };
   } else if (prioritiesCount === 0) {
     topFix = { description: 'Set your top 3 focus areas in the Priorities tab.', op: 'create' };
-  } else if (briefingCallsCount < 3) {
-    topFix = { description: 'Complete a few more morning briefings — Edge learns your patterns from every call.', op: 'create' };
   } else if (factsCount < 5) {
     topFix = { description: 'Share your goals and preferences with Edge on your next call to build a richer profile.', op: 'create' };
   }

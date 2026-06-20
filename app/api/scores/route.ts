@@ -70,11 +70,10 @@ export async function GET() {
         whoopConnected:     !!whoopToken,
         factsCount:         facts.length,
         memoriesCount:      memories.length,
-        briefingCallsCount: briefings.filter(b => b.status === 'completed').length,
         prioritiesCount:    priorities.length,
       };
     } catch {
-      return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 };
+      return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 };
     }
   })();
 
@@ -128,17 +127,28 @@ export async function GET() {
     // Degraded compute (LLM/Google hiccup). Do NOT persist a transient 0 — that would
     // flicker the UI and corrupt the trend. Serve the last good score so the number
     // stays stable across refreshes when nothing actually changed.
+    // R9 T5 Fix A: explain WHY it couldn't refresh, not just that it couldn't.
+    let reason: string;
+    if (priorities.length === 0) {
+      reason = 'Set your priorities to activate Focus Score.';
+    } else if (alignment === null) {
+      console.error(`[scores] focus alignment unavailable for user ${user.id} — Google/LLM step failed`);
+      reason = 'Calendar alignment unavailable — check your Google Calendar connection.';
+    } else {
+      reason = 'No calendar events found for this week.';
+    }
     try {
       const lastGood = calendarScoreQueries.getLatest(user.id);
       if (lastGood && lastGood.focus_score != null) {
         fit.focusScore.score = lastGood.focus_score;
         fit.focusScore.calibrating = false;
-        fit.focusScore.drivers = ['Showing your most recent Focus Score — Edge couldn’t refresh it this moment; it’ll update on the next successful load.'];
+        fit.focusScore.drivers = [`Showing your most recent Focus Score — ${reason}`];
         fit.focusScore.topFix = null;
         if (lastGood.edge_score != null) fit.edgeScore = lastGood.edge_score;
       } else {
-        // No history yet — show focus as calibrating rather than a hard, misleading 0.
+        // No history yet — show focus as calibrating with the specific reason.
         fit.focusScore.calibrating = true;
+        fit.focusScore.drivers = [reason];
       }
     } catch {
       // Ignore — fall through with computed values.

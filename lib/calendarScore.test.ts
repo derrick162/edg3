@@ -137,6 +137,16 @@ describe('computeFocusScore — percentage formula', () => {
     expect(r.score).toBe(100);
   });
 
+  // R9 T5 — concrete "X of Y working hours" detail + exposed hour fields.
+  it('exposes alignedHours/totalWorkingHours and leads with an "X of Y" driver', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 4.5 }], 0);
+    const r = computeFocusScore(alignment, priorities, 45);
+    expect(r.alignedHours).toBe(4.5);
+    expect(r.totalWorkingHours).toBe(45);
+    expect(r.drivers[0]).toBe('4.5 of 45 working hours aligned to your focus areas this week.');
+  });
+
   it('22.5h focused out of 45h → score 50', () => {
     const priorities = [makeP(1, 'Build', 1)];
     const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
@@ -553,7 +563,6 @@ function makeClarity(overrides: Partial<ClarityInputs> = {}): ClarityInputs {
     whoopConnected: true,
     factsCount: 20,
     memoriesCount: 15,
-    briefingCallsCount: 10,
     prioritiesCount: 3,
     ...overrides,
   };
@@ -569,14 +578,14 @@ describe('computeClarityScore', () => {
   it('returns 0 when nothing connected and no context', () => {
     const result = computeClarityScore(makeClarity({
       calendarConnected: false, gmailReadGranted: false, whoopConnected: false,
-      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+      factsCount: 0, memoriesCount: 0, prioritiesCount: 0,
     }));
     expect(result.score).toBe(0);
   });
 
   it('connected sources only — no context — scores 60', () => {
     const result = computeClarityScore(makeClarity({
-      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+      factsCount: 0, memoriesCount: 0, prioritiesCount: 0,
     }));
     expect(result.score).toBe(60); // 20+20+20
   });
@@ -585,13 +594,13 @@ describe('computeClarityScore', () => {
     const result = computeClarityScore(makeClarity({
       calendarConnected: false, gmailReadGranted: false, whoopConnected: false,
     }));
-    expect(result.score).toBe(40); // 15+10+10+5
+    expect(result.score).toBe(40); // 22 (facts) + 13 (memories) + 5 (priorities)
   });
 
   it('calendar only + priorities = 25', () => {
     const result = computeClarityScore(makeClarity({
       calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
-      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 1,
+      factsCount: 0, memoriesCount: 0, prioritiesCount: 1,
     }));
     expect(result.score).toBe(25); // 20 + 5
   });
@@ -603,10 +612,10 @@ describe('computeClarityScore', () => {
     expect(r1.score).toBe(100);
   });
 
-  it('caps briefing calls at 10', () => {
-    const r1 = computeClarityScore(makeClarity({ briefingCallsCount: 10 }));
-    const r2 = computeClarityScore(makeClarity({ briefingCallsCount: 50 }));
-    expect(r1.score).toBe(r2.score);
+  it('R9 T6 — briefing call count no longer affects Clarity (moved to Momentum)', () => {
+    // Clarity should reflect only connected sources + accumulated context.
+    const r = computeClarityScore(makeClarity());
+    expect(r.drivers.join(' ')).not.toMatch(/briefing call/i);
   });
 
   it('topFix is calendar when not connected', () => {
@@ -768,7 +777,7 @@ describe('computeCalendarFit -- clarity blend', () => {
     const p = [makeP(1, 'Build', 1)];
     const clarityInputs: ClarityInputs = {
       calendarConnected: true, gmailReadGranted: false, whoopConnected: false,
-      factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0,
+      factsCount: 0, memoriesCount: 0, prioritiesCount: 0,
     }; // score = 20
     const fit = computeCalendarFit(
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
@@ -789,7 +798,7 @@ describe('computeCalendarFit -- clarity blend', () => {
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [makeRecovDay('2026-06-14', 80)], makeSleep(80),
       45,
-      { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 },
+      { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 },
       { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
     );
     expect(fit.clarityScore).toBeDefined();
@@ -805,7 +814,7 @@ describe('computeCalendarFit -- clarity blend', () => {
       makeAlign([{ priority: 'Build', hours: 45 }]), p,
       [], null, // no Whoop → energy excluded from blend
       45,
-      { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, briefingCallsCount: 0, prioritiesCount: 0 },
+      { calendarConnected: true, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 },
       { completedCallDays14d: 7, completedCallDays7d: 4, confirmedFocusDays14d: 7, streakDays: 4 },
     );
     // priorities.length=1 → top-level calibrating=false (per-component energy calibrating stays true in breakdown)
