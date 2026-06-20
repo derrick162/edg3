@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkVapiSecret, VOICES, initiateCall } from './vapi';
+import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall } from './vapi';
 
 // checkVapiSecret reads process.env — stub it cleanly per test.
 const env = process.env;
@@ -108,6 +108,19 @@ describe('VOICES', () => {
 
   it('daniel and aria voiceIds are distinct', () => {
     expect(VOICES.daniel.voiceId).not.toBe(VOICES.aria.voiceId);
+  });
+});
+
+// ── SPEED_MAP (R12 T6) ────────────────────────────────────────────────────────
+describe('SPEED_MAP', () => {
+  it('maps each preset to its ElevenLabs speed value', () => {
+    expect(SPEED_MAP.slow).toBe(0.75);
+    expect(SPEED_MAP.default).toBe(0.9);
+    expect(SPEED_MAP.fast).toBe(1.1);
+  });
+
+  it('default preset matches the VOICES baseline speed', () => {
+    expect(SPEED_MAP.default).toBe(VOICES.daniel.speed);
   });
 });
 

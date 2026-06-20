@@ -37,9 +37,13 @@ export const VOICES = {
     model: 'eleven_turbo_v2_5',
     stability: 0.4,
     similarityBoost: 0.7,
-    speed: 0.9,   // R9 T1 — Edge was speaking too fast on live calls
+    speed: 0.9,   // R9 T1 — default; overridden per-call by the user's voice_speed preset (R12 T6)
   },
 } as const;
+
+// R12 T6 — user-selectable speaking-speed presets. Applied per call over the VOICES base.
+export const SPEED_MAP = { slow: 0.75, default: 0.9, fast: 1.1 } as const;
+export type VoiceSpeedPref = keyof typeof SPEED_MAP;
 
 // Public URL Vapi calls back when a call starts/ends. Must be a real https domain —
 // a localhost value (e.g. in local dev) is unreachable by Vapi, so fall back to prod.
@@ -83,9 +87,13 @@ export async function initiateCall(
   callTime: string = '',
   energyText: string = '',
   voicePref: 'daniel' | 'aria' = 'daniel',
+  voiceSpeedPref: VoiceSpeedPref = 'default',
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
+
+  // R12 T6 — apply the user's speaking-speed preset over the selected voice's base config.
+  const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] ?? SPEED_MAP.default };
 
   // Calculate all date references in the user's actual timezone
   const firstName = (userName || '').split(' ')[0] || userName;
@@ -254,7 +262,7 @@ Always end with warmth. This person is building something — remind them of tha
         url: resolveWebhookUrl(),
         ...(process.env.VAPI_SERVER_SECRET ? { secret: process.env.VAPI_SERVER_SECRET } : {}),
       },
-      voice: VOICES[voicePref],
+      voice: voiceConfig,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
@@ -320,7 +328,7 @@ Always end with warmth. This person is building something — remind them of tha
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
-      voice: VOICES[voicePref],
+      voice: voiceConfig,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
