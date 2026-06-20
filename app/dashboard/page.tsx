@@ -2894,9 +2894,18 @@ export default function Dashboard() {
                   pattern:    { label: 'Patterns',    icon: '📈' },
                 };
                 const FACTS_CAT_LIMIT = 15;
-                const ORDER = ['goal', 'project', 'person', 'pattern', 'preference', 'fact'];
+                const ORDER = ['goal', 'person', 'preference', 'fact', 'pattern', 'project'];
+                const _userFirst = ((user?.name || '').split(' ')[0] || '').toLowerCase();
+                const _userLast = ((user?.name || '').split(' ').slice(-1)[0] || '').toLowerCase();
                 const grouped = ORDER.reduce<Record<string, Fact[]>>((acc, cat) => {
-                  const items = facts.filter(f => f.category === cat);
+                  const items = facts.filter(f => {
+                    if (f.category !== cat) return false;
+                    if (cat === 'person') {
+                      const entity = (f.entity || '').toLowerCase();
+                      if (entity === _userFirst || entity === _userLast) return false;
+                    }
+                    return true;
+                  });
                   if (items.length) acc[cat] = items;
                   return acc;
                 }, {});
@@ -3297,257 +3306,21 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
-                  {/* Decisions (M4/L4) */}
-                  <div>
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
-                      <span aria-hidden="true">🔑</span>
-                      Decisions
-                    </h3>
-                    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
-                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                        Major decisions and their rationale — so Edg3 never re-litigates what you&apos;ve already resolved.
-                      </p>
-                    </div>
-                  </div>
-                  {/* Accountability (L7) */}
-                  <div>
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: 'var(--text-body)' }}>
-                      <span aria-hidden="true">✓</span>
-                      Commitments &amp; outcomes
-                    </h3>
-                    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--edg-fill-04)', border: '1px dashed var(--edg-hairline)' }}>
-                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                        What you committed to, and what actually happened. Edg3 uses this to learn from reality, not just your intentions.
-                      </p>
-                    </div>
-                  </div>
                 </div>
               )}
 
-              {/* Divider between structured facts and raw call notes */}
-              {facts.length > 0 && memories.length > 0 && (
-                <div className="mb-6" style={{ borderTop: '1px solid var(--edg-hairline)' }} />
-              )}
 
-              {/* Past commitments (M4 accountability) */}
-              {accountability && (accountability.stillOpen.length > 0 || accountability.done.length > 0) && (
-                <div className="mb-8">
-                  <button
-                    onClick={() => toggleMemorySection('accountability')}
-                    aria-expanded={!collapsedMemorySections.has('accountability')}
-                    className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
-                    style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >
-                    <span aria-hidden="true">✅</span>
-                    Past commitments
-                    <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {accountability.stillOpen.length + accountability.done.length}</span>
-                    {accountability.completionRate !== null && (
-                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium"
-                        style={{
-                          background: accountability.completionRate >= 0.7 ? 'rgba(34,197,94,0.1)' : 'var(--edg-fill-04)',
-                          color: accountability.completionRate >= 0.7 ? 'var(--edg-success)' : 'var(--text-faint)',
-                        }}>
-                        {Math.round(accountability.completionRate * 100)}% done
-                      </span>
-                    )}
-                    <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('accountability') ? '▸' : '▾'}</span>
-                  </button>
-                  {!collapsedMemorySections.has('accountability') && <>
-                  <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
-                    What you&apos;ve committed to on calls — Edg3 checks in when they stay open.
-                  </p>
-                  {accountability.stillOpen.length > 0 && (
-                    <div className="space-y-2 mb-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Still open</p>
-                      {accountability.stillOpen.slice(0, 5).map(c => {
-                        const urgent = c.daysOpen >= 7;
-                        return (
-                          <div key={`ol-${c.id}-${c.source}`} className="glass-card px-4 py-3 flex items-start gap-3"
-                            style={urgent ? { borderColor: 'var(--edg-warning-border)' } : undefined}>
-                            <span className="mt-0.5 flex-shrink-0 text-base" aria-hidden="true"
-                              style={{ color: urgent ? 'var(--edg-warning)' : 'var(--text-faint)' }}>
-                              {urgent ? '⚠' : '⏳'}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{c.text}</p>
-                              <p className="text-xs mt-0.5" style={{ color: urgent ? 'var(--edg-warning)' : 'var(--text-faint)' }}>
-                                Open {c.daysOpen === 1 ? '1 day' : `${c.daysOpen} days`}
-                                {c.dueDate ? ` · due ${c.dueDate}` : ''}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {accountability.done.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>Completed</p>
-                      {accountability.done.slice(0, 3).map(c => (
-                        <div key={`done-${c.id}-${c.source}`} className="flex items-start gap-3 px-4 py-2.5 rounded-xl"
-                          style={{ background: 'var(--edg-success-soft)', border: '1px solid var(--edg-success-ring)' }}>
-                          <span className="mt-0.5 flex-shrink-0 text-sm" aria-hidden="true" style={{ color: 'var(--edg-success)' }}>✓</span>
-                          <p className="text-sm leading-snug" style={{ color: 'var(--text-muted)' }}>{c.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  </>}
-                </div>
-              )}
 
-              {/* Episode history timeline (M5) */}
-              {episodes.length > 0 && (() => {
-                const SOURCE_ICON: Record<string, string> = { call: '📞', email: '✉️', calendar: '📅' };
-                const SOURCE_LABEL: Record<string, string> = { call: 'Morning call', email: 'Email', calendar: 'Calendar' };
-                const byDate = episodes.reduce<Record<string, typeof episodes>>((acc, ep) => {
-                  const key = ep.occurredAt.slice(0, 10);
-                  (acc[key] = acc[key] || []).push(ep);
-                  return acc;
-                }, {});
-                const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
-                const secCollapsed = collapsedMemorySections.has('episodes');
-                return (
-                  <div className="mb-8">
-                    <button
-                      onClick={() => toggleMemorySection('episodes')}
-                      aria-expanded={!secCollapsed}
-                      className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
-                      style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                    >
-                      <span aria-hidden="true">🧠</span>
-                      What Edg3 remembers
-                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {episodes.length} {episodes.length === 1 ? 'session' : 'sessions'}</span>
-                      <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
-                    </button>
-                    {!secCollapsed && <>
-                      <p className="text-xs mb-4" style={{ color: 'var(--text-faint)' }}>
-                        Every conversation Edg3 has held onto — the accumulated memory that makes each briefing smarter than the last.
-                      </p>
-                      <div className="pl-4" style={{ borderLeft: '2px solid var(--edg-accent-15)' }}>
-                        {dateKeys.map((dateKey, di) => {
-                          const dayEps = byDate[dateKey];
-                          const dateLabel = new Date(dateKey + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-                          return (
-                            <div key={dateKey} className={di > 0 ? 'mt-5' : ''}>
-                              <div className="flex items-center gap-2 mb-2 relative">
-                                <div
-                                  className="absolute rounded-full"
-                                  style={{ left: -20, top: 3, width: 10, height: 10, background: 'var(--edg-bg)', border: '2px solid var(--edg-accent-30, var(--edg-accent-20))' }}
-                                  aria-hidden="true"
-                                />
-                                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>{dateLabel}</p>
-                              </div>
-                              <div className="space-y-2">
-                                {dayEps.map(ep => {
-                                  const isEpExpanded = expandedEpisodes.has(ep.id);
-                                  return (
-                                    <div key={ep.id} className="glass-card px-4 py-3" style={{ border: '1px solid var(--edg-hairline)' }}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-base flex-shrink-0" aria-hidden="true">{SOURCE_ICON[ep.source] ?? '📞'}</span>
-                                        <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>{SOURCE_LABEL[ep.source] ?? 'Call'}</p>
-                                        <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
-                                          {new Date(ep.occurredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                        </p>
-                                      </div>
-                                      {ep.topics.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5 mb-2" role="list" aria-label="Topics discussed">
-                                          {ep.topics.slice(0, 5).map((t, i) => (
-                                            <span key={i} role="listitem" className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
-                                              {t}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                      {ep.commitments.length > 0 && (
-                                        <div>
-                                          <button
-                                            onClick={() => setExpandedEpisodes(prev => { const next = new Set(prev); isEpExpanded ? next.delete(ep.id) : next.add(ep.id); return next; })}
-                                            className="flex items-center gap-1 text-xs"
-                                            style={{ color: 'var(--text-faint)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                                            aria-expanded={isEpExpanded}
-                                          >
-                                            <span aria-hidden="true" style={{ fontSize: 10 }}>{isEpExpanded ? '▾' : '▸'}</span>
-                                            {ep.commitments.length} commitment{ep.commitments.length !== 1 ? 's' : ''}
-                                          </button>
-                                          {isEpExpanded && (
-                                            <ul className="mt-2 space-y-1.5 pl-1">
-                                              {ep.commitments.map((c, i) => (
-                                                <li key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                  <span className="flex-shrink-0 font-bold" style={{ color: 'var(--edg-indigo)', lineHeight: '1.4' }} aria-hidden="true">↳</span>
-                                                  {c}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>}
-                  </div>
-                );
-              })()}
-
-              {/* Behavioral patterns (M3) */}
-              {patterns.length > 0 && (
-                <div className="mb-8">
-                  <button
-                    onClick={() => toggleMemorySection('patterns-m3')}
-                    aria-expanded={!collapsedMemorySections.has('patterns-m3')}
-                    className="flex items-center gap-1.5 text-sm font-semibold mb-1 w-full text-left"
-                    style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >
-                    <span aria-hidden="true">📈</span>
-                    Patterns Edg3 has noticed
-                    <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {patterns.length}</span>
-                    <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('patterns-m3') ? '▸' : '▾'}</span>
-                  </button>
-                  {!collapsedMemorySections.has('patterns-m3') && <>
-                  <p className="text-xs mb-3" style={{ color: 'var(--text-faint)' }}>
-                    Detected from your calendar and health data — used to protect your best time.
-                  </p>
-                  <div className="space-y-2">
-                    {patterns.map((p, i) => {
-                      const isHigh = p.confidence === 'high';
-                      return (
-                        <div key={i} className="glass-card px-4 py-3 flex items-start gap-3">
-                          <span className="flex-shrink-0 mt-0.5 text-base" aria-hidden="true">
-                            {p.type === 'energy' ? '⚡' : p.type === 'meeting' ? '📅' : p.type === 'focus' ? '🎯' : '〰'}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{p.summary}</p>
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                                style={{
-                                  background: isHigh ? 'var(--edg-success-soft)' : 'var(--edg-warning-tint)',
-                                  color: isHigh ? 'var(--edg-success)' : 'var(--edg-warning)',
-                                }}>
-                                {isHigh ? 'High' : 'Medium'} confidence
-                              </span>
-                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                                {p.sampleDays} data point{p.sampleDays !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  </>}
-                </div>
-              )}
 
               {/* People profiles (M2) */}
               {people.length > 0 && (() => {
                 const PEOPLE_LIMIT = 15;
-                const topPeople = people.slice(0, PEOPLE_LIMIT);
+                const _selfFirst = ((user?.name || '').split(' ')[0] || '').toLowerCase();
+                const _selfLast = ((user?.name || '').split(' ').slice(-1)[0] || '').toLowerCase();
+                const topPeople = people.filter(p => {
+                  const pFirst = p.canonical_name.trim().split(' ')[0].toLowerCase();
+                  return pFirst !== _selfFirst && pFirst !== _selfLast;
+                }).slice(0, PEOPLE_LIMIT);
                 return (
                   <div className="mb-8">
                     <button
@@ -3558,7 +3331,7 @@ export default function Dashboard() {
                     >
                       <span aria-hidden="true">🤝</span>
                       People you meet with
-                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {people.length}</span>
+                      <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {topPeople.length}</span>
                       <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{collapsedMemorySections.has('people-m2') ? '▸' : '▾'}</span>
                     </button>
                     {!collapsedMemorySections.has('people-m2') && <>
