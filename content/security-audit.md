@@ -633,9 +633,11 @@ Derrick dropped the email-drafting feature; the Gmail multi-account flow, contac
 - **Privacy page:** Gmail section rewritten to read-only only (no drafting/compose language).
 - **`gmail_tokens` table + `gmailTokenQueries` retained** (existing rows readable; no schema change).
 
-**Still inbound (separate ticket, build-blocked):** `createDraft` (`lib/gmail.ts`) + the
-`gmail.compose` scope (`GMAIL_COMPOSE_SCOPE` in `GOOGLE_SCOPES` + `hasGmailScope`/`missingRequiredScopes`)
-are still present because `app/api/vapi/tool-call/route.ts` (Core-owned `draftEmail` handler) still
-imports `createDraft`. They land once Core's R12 T7 removes that handler. `deleteDraft` is retained
-permanently (`lib/undo.ts` backward-compat for existing undo records). **Net effect once both land:**
-`gmail.readonly` (inbox signal for briefings/Focus score) is the only remaining Gmail scope.
+**Follow-up — ✅ DONE (2026-06-20, after Core R12 T7 merged).** `createDraft` + `DraftInput`/`DraftResult`
++ `GMAIL_DRAFTS_PER_HOUR` + the anti-spam block + `logDraft` call removed from `lib/gmail.ts`; the
+`gmail.compose` scope removed entirely — `GMAIL_COMPOSE_SCOPE` constant deleted, dropped from
+`GOOGLE_SCOPES`, and `hasGmailScope`/`userHasGmailScope` removed (their only consumers were the draft
+flow + the accounts-status field, now gone). `GmailScopeError` kept (read-path scope errors), message
+genericized. `deleteDraft` retained permanently (`lib/undo.ts` backward-compat). **Net result:
+`gmail.readonly` is now the ONLY Gmail scope EDG3 requests** — no compose, no send, read-only inbox
+signal for briefings/Focus score/fact extraction. `/api/auth/accounts` dropped its `hasGmailScope` field.
