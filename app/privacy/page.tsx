@@ -107,7 +107,7 @@ export default function PrivacyPage() {
                 'We do not allow humans to read your Google Calendar or Gmail data except for security, to comply with the law, or with your explicit consent',
                 'We do not transfer Google user data to third parties except as necessary to provide the service or as required by law',
                 'We do not use Google user data for any purpose unrelated to the features you requested',
-                'For Gmail specifically: Edg3 creates drafts only (it never sends email); it reads inbox thread metadata (sender, subject, auto-snippet — never message bodies) to compute your Focus score and recognize replies. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and bodies are never stored.',
+                'For Gmail specifically: Edg3 creates drafts only (it never sends email); it reads inbox threads — sender, subject, Google’s auto-snippet, and, for a small number of recent non-promotional threads, the message body text — to compute your Focus score, recognize replies, and learn durable facts for your briefings. Message body text is read in memory only and is discarded immediately after Edg3 derives its summary. Thread subject lines are stored encrypted at rest for 90 days so you can review them in your Activity tab; senders, snippets, and message bodies are never stored.',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span style={{ color: 'var(--edg-indigo)' }}>&#x2192;</span>
