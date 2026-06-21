@@ -59,10 +59,10 @@ function IconBrain() {
 // ── Mock calendar SVG — chaotic week → focused week ────────────────────────
 function CalendarVisual() {
   const accent = 'var(--edg-indigo)';
-  const accentFade = 'rgba(99,102,241,0.18)';
-  const red = 'rgba(239,68,68,0.55)';
-  const muted = 'rgba(255,255,255,0.06)';
-  const border = 'rgba(255,255,255,0.07)';
+  const accentFade = 'var(--edg-accent-15)';
+  const red = 'var(--edg-danger-tint)';
+  const muted = 'var(--edg-accent-06)';
+  const border = 'var(--edg-accent-08)';
 
   return (
     <div
@@ -91,7 +91,7 @@ function CalendarVisual() {
               <div key={i} className="flex items-center gap-2">
                 <div
                   className="rounded text-xs px-2 py-1 truncate"
-                  style={{ width: b.w, background: b.c, color: 'rgba(255,255,255,0.7)', fontSize: 10, minWidth: 0 }}
+                  style={{ width: b.w, background: b.c, color: 'var(--text-body)', fontSize: 10, minWidth: 0 }}
                 >{b.label}</div>
               </div>
             ))}
@@ -154,8 +154,8 @@ function WaveformVisual() {
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Mon–Fri · 3–5 min · your time</p>
         </div>
         <div className="ml-auto">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'var(--edg-success-ring)', color: 'rgba(134,239,172,0.9)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(134,239,172,0.9)', display: 'inline-block' }} className="animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'var(--edg-success-ring)', color: 'var(--edg-green-light)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--edg-green-light)', display: 'inline-block' }} className="animate-pulse" />
             Live
           </span>
         </div>
