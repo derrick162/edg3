@@ -1458,6 +1458,16 @@ function PriorityHistory() {
   );
 }
 
+// R16 T3 — VAPID public key (URL-safe base64) → Uint8Array for PushManager.subscribe.
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -1816,6 +1826,32 @@ export default function Dashboard() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // R16 T3 — register push service worker + subscribe. Degrades silently if the VAPID
+  // public key isn't set yet (Security wires the env var + /api/notifications/subscribe).
+  useEffect(() => {
+    const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapid) return;
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        const existing = await reg.pushManager.getSubscription();
+        const sub = existing ?? await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapid) as BufferSource,
+        });
+        if (cancelled) return;
+        await fetch('/api/notifications/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub),
+        }).catch(() => {});
+      } catch { /* push unavailable — silent */ }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Reset memory pagination when switching tabs or when data reloads.
