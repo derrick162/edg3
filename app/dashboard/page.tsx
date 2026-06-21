@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard, NotificationHistoryPanel } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
@@ -2453,6 +2453,9 @@ export default function Dashboard() {
                 <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Get intro call
               </button>
             )}
+            {/* Recent alerts history */}
+            <NotificationHistoryPanel defaultCollapsed={true} />
+
             <button
               onClick={logout}
               className="w-full text-xs py-2 text-left px-2 rounded"
