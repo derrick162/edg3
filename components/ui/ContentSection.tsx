@@ -129,11 +129,11 @@ const GRADIENTS: Record<ContentCard['gradient'], string> = {
 
 const ICON_COLORS: Record<ContentCard['gradient'], string> = {
   indigo: 'var(--text-accent)',
-  teal:   'rgba(20,184,166,0.9)',
-  amber:  'rgba(245,158,11,0.9)',
-  rose:   'rgba(244,63,94,0.9)',
-  violet: 'rgba(139,92,246,0.9)',
-  slate:  'rgba(100,116,139,0.9)',
+  teal:   'var(--edg-teal)',
+  amber:  'var(--edg-amber)',
+  rose:   'var(--edg-rose)',
+  violet: 'var(--edg-violet)',
+  slate:  'var(--edg-slate)',
 };
 
 // ── Simple bold-aware paragraph renderer ──────────────────────────────────────

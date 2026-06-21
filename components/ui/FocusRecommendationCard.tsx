@@ -301,7 +301,7 @@ export function FocusRecommendationCard({
         style={{ background: 'var(--rec-card-bg)', borderColor: 'var(--rec-card-border)' }}
       >
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+          <span className="w-4 h-4 border-2 spinner animate-spin inline-block" />
           <span className="text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
             Edg3 is reading your data…
           </span>
