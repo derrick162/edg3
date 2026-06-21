@@ -33,7 +33,30 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 18 — Smarter priority-blocking + reply surface in briefing)
 
-> `git merge master` first (master at `8d83a93`). Two tickets sharpening the Daily Call flywheel. **Do both before R17 or pillar work.**
+> `git merge master` first (master at `8d83a93`). Three tickets — T3 is a quick dashboard fix, do it first. **Do all before R17 or pillar work.**
+
+---
+
+### T3 — Show connected Google account email + "Switch account" button (LOW — 30m)
+
+**Problem:** The dashboard never shows *which* Google account is connected. When Gmail scope is active, there's just a passive `● Reading Gmail` dot with no action. Derrick can't tell which account is linked or how to switch to a different one.
+
+**Fix — two parts:**
+
+**Part A — Store + return the Google account email in `/api/auth/accounts`:**
+The `calendar_tokens` row doesn't currently store the account email. In the Google OAuth callback (wherever the token is saved after exchange), extract the email from the ID token or by calling `https://www.googleapis.com/oauth2/v2/userinfo` with the access token, then save it to the `calendar_tokens` row. Add an `email TEXT` column to `calendar_tokens` in `lib/db.ts` if it doesn't exist (additive, no migration needed — existing rows get NULL). Return it in `/api/auth/accounts` as `calendar.email`.
+
+**Part B — Dashboard UI (`app/dashboard/page.tsx`):**
+In the Google Calendar connected section, below the `● Calendar connected` line:
+- If `calendar.email` is non-null, show it in `text-xs --text-faint`: e.g. `derrick@gmail.com`
+- Replace the current passive `● Reading Gmail` dot with: `● Reading Gmail · `[`Switch account`](/api/auth/google?prompt=select_account)`` — the `prompt=select_account` param forces Google's account picker so the user can pick a different Google account without disconnecting first
+- When Gmail scope is inactive, the existing `re-authorize →` link should also use `?prompt=select_account`
+
+No new tests needed for the UI change. Add 1 test to the accounts route for the email field presence.
+
+⚠️ **Claim `app/dashboard/page.tsx`** in the Status Board before editing (Design is also touching `app/onboarding/`; no conflict expected but claim it).
+
+---
 
 ---
 
