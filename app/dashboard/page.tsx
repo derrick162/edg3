@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
+import { factDisplayStatement } from '@/lib/factDisplay';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
@@ -3033,7 +3034,7 @@ export default function Dashboard() {
                                   {correctName(f.entity, firstName)}:{' '}
                                 </span>
                               )}
-                              {correctName(f.statement, firstName)}
+                              {correctName(factDisplayStatement(f.category, f.statement), firstName)}
                             </p>
                             {(() => {
                               const src = factSourceLabel(f);
@@ -3089,7 +3090,7 @@ export default function Dashboard() {
                             <div key={f.id} className="flex items-start gap-2">
                               <p className="text-xs flex-1 min-w-0" style={{ color: 'var(--text-muted)' }}>
                                 {f.entity && <span className="font-medium" style={{ color: 'var(--text-body)' }}>{f.entity}: </span>}
-                                {f.statement}
+                                {factDisplayStatement(f.category, f.statement)}
                               </p>
                               <div className="flex gap-1.5 flex-shrink-0">
                                 <button
@@ -3215,7 +3216,7 @@ export default function Dashboard() {
                                   {!indented && f.entity && (
                                     <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
                                   )}
-                                  {correctName(f.statement, firstName)}
+                                  {correctName(factDisplayStatement(f.category, f.statement), firstName)}
                                   {f.confidence === 'low' && (
                                     <button
                                       title="Edg3 isn't sure it caught this right — tap to fix"
@@ -3376,7 +3377,7 @@ export default function Dashboard() {
                                           ) : (
                                             <>
                                               <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
-                                                {correctName(f.statement, firstName)}
+                                                {correctName(factDisplayStatement(f.category, f.statement), firstName)}
                                               </p>
                                               {(() => {
                                                 const src = factSourceLabel(f);
