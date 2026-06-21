@@ -37,3 +37,5 @@ export { EventBriefCard } from './EventBriefCard';
 export type { EventBriefCardProps } from './EventBriefCard';
 export { WeeklyReviewCard } from './WeeklyReviewCard';
 export type { WeeklyReviewCardProps, WeeklyReviewStats } from './WeeklyReviewCard';
+export { NotificationHistoryPanel } from './NotificationHistoryPanel';
+export type { NotificationHistoryPanelProps } from './NotificationHistoryPanel';

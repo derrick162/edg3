@@ -1,4 +1,111 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { FocusScoreCard, FocusScoreCardSkeleton } from '@/components/ui';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface ScoreData {
+  focusScore: {
+    score: number;
+    drivers: string[];
+    alignedHours?: number;
+    totalWorkingHours?: number;
+    calibrating?: boolean;
+  };
+  edgeScore: number;
+  momentum?: { streakDays?: number };
+}
+
+function scoreTier(s: number): 'high' | 'medium' | 'low' {
+  return s >= 67 ? 'high' : s >= 34 ? 'medium' : 'low';
+}
+
+// ── Live score hero (authenticated users only) ────────────────────────────
+
+function LiveScoreHero() {
+  const [data, setData] = useState<ScoreData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/scores')
+      .then(r => {
+        if (r.status === 401) { setAuthed(false); setLoading(false); return null; }
+        setAuthed(true);
+        return r.json();
+      })
+      .then(d => { if (d) setData(d); })
+      .catch(() => setAuthed(false))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (authed === false || (!loading && !data)) return null;
+
+  const score = data?.focusScore?.score ?? 0;
+  const tier = scoreTier(score);
+  const headline = data?.focusScore?.drivers?.[0] ?? 'Calculating your Focus Score…';
+  const alignedH = data?.focusScore?.alignedHours;
+  const totalH = data?.focusScore?.totalWorkingHours;
+  const streakDays = (data as Record<string, unknown> | null)?.streakDays as number | undefined;
+
+  return (
+    <div className="glass-card p-6 mb-10" style={{ border: '1px solid var(--edg-accent-20)' }}>
+      <div className="flex items-center justify-between mb-4">
+        <p className="label-caps">Your Focus Score</p>
+        <Link href="/dashboard" className="text-xs" style={{ color: 'var(--text-accent)' }}>
+          Open dashboard →
+        </Link>
+      </div>
+
+      {loading ? (
+        <FocusScoreCardSkeleton />
+      ) : data ? (
+        <>
+          <FocusScoreCard score={score} tier={tier} headline={headline} />
+
+          {/* Hours detail */}
+          {alignedH !== undefined && totalH !== undefined && (
+            <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
+              {alignedH.toFixed(1)}h of {totalH}h working hours focused on your priorities this week
+            </p>
+          )}
+
+          {/* Breakdown weights (static — shows component weights, not dynamic sub-scores) */}
+          <div className="mt-4 pt-4 space-y-2" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
+            <p className="label-caps mb-2">Score breakdown</p>
+            {[
+              { label: 'Recovery', weight: 40, color: 'var(--edg-green)' },
+              { label: 'Schedule', weight: 35, color: 'var(--edg-indigo)' },
+              { label: 'Follow-through', weight: 25, color: 'var(--edg-warn)' },
+            ].map(({ label, weight, color }) => (
+              <div key={label} className="flex items-center gap-3">
+                <span className="text-xs w-28 shrink-0" style={{ color: 'var(--text-muted)' }}>{label}</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--edg-fill-04)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${weight}%`, background: color, opacity: 0.7 }} />
+                </div>
+                <span className="text-xs w-8 text-right shrink-0 tabular-nums" style={{ color: 'var(--text-faint)' }}>{weight}%</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Streak footer */}
+          {streakDays !== undefined && streakDays >= 1 && (
+            <p className="text-xs mt-4 pt-3" style={{ borderTop: '1px solid var(--edg-hairline)', color: 'var(--text-faint)' }}>
+              {streakDays >= 2
+                ? <><span style={{ color: 'var(--edg-warning)' }}>🔥 {streakDays}-day streak</span> — keep showing up</>
+                : <>First call done — momentum starts here</>
+              }
+            </p>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScorePage() {
   return (
@@ -16,6 +123,9 @@ export default function ScorePage() {
         </div>
 
         <div className="space-y-10">
+          {/* Live score hero — only shown when authenticated */}
+          <LiveScoreHero />
+
           {/* Hero */}
           <div>
             <h1 className="text-4xl font-black mb-3">The Edg3 Score</h1>
@@ -94,7 +204,6 @@ export default function ScorePage() {
             <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
               High performers don&apos;t fail because they&apos;re lazy. They fail because their calendar doesn&apos;t match their goals. The Edg3 Score makes that gap visible — so you can fix it before it becomes a problem.
             </p>
-            {/* Two-column visual: priorities vs actual week */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
               <div className="rounded-xl p-4 space-y-2" style={{ background: 'var(--edg-accent-06)', border: '1px solid var(--edg-accent-15)' }}>
                 <p className="text-xs font-semibold label-caps" style={{ color: 'var(--text-accent)' }}>What you said mattered</p>

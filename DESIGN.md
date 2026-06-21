@@ -533,3 +533,53 @@ import { FocusScoreCard } from '@/components/ui';
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).
+
+---
+
+## 15. /score page live hero + NotificationHistoryPanel (R15)
+
+### /score page live hero (`app/score/page.tsx`)
+
+`LiveScoreHero` renders only for authenticated users (401 → `return null`). Lives at the top of the `/score` marketing page above the static explainer content.
+
+**Data source:** `GET /api/scores` → `{ focusScore: { score, drivers[], alignedHours?, totalWorkingHours?, calibrating? }, edgeScore, streakDays? }`
+
+**Structure:**
+```
+┌─────────────────────────────────────────────────────┐
+│ YOUR FOCUS SCORE                 Open dashboard →   │
+│                                                     │
+│ [FocusScoreCard: score + tier badge + headline]     │
+│                                                     │
+│ 3.2h of 8h working hours focused on priorities      │
+│                                                     │
+│ SCORE BREAKDOWN                                     │
+│ Recovery        ████████░░░░░░  40%  (--edg-green) │
+│ Schedule        ███████░░░░░░░  35%  (--edg-indigo) │
+│ Follow-through  █████░░░░░░░░░  25%  (--edg-warn)  │
+│                                                     │
+│ 🔥 5-day streak — keep showing up                   │
+└─────────────────────────────────────────────────────┘
+```
+
+**States:** skeleton (`FocusScoreCardSkeleton`) while loading; full card when data present; `null` when unauthenticated or error.
+
+### NotificationHistoryPanel (`components/ui/NotificationHistoryPanel.tsx`)
+
+Collapsible sidebar section showing past push notifications. Self-fetches; no prop required.
+
+**Props:**
+```tsx
+interface NotificationHistoryPanelProps {
+  notifications?: Notification[];   // optional override; omit to self-fetch
+  defaultCollapsed?: boolean;        // default: true
+}
+```
+
+**Data source:** `GET /api/notifications` → `{ notifications: Notification[], unread: number }` — slices to 10 most recent for display.
+
+**Type icons:** `celebration` → 🎉, `energy_prompt` → ⚡, `drift_nudge` → 📋, `edge_action` → ✦, `general` → 💚, default → 🔔
+
+**Age format:** `fmtAge(createdAt ms)` → `just now` / `Xm ago` / `Xh ago` / `Xd ago`
+
+**Note:** `/api/notifications/history` route does not exist. Panel uses the existing `/api/notifications` route (returns 30 recent; panel shows first 10).
