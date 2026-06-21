@@ -31,6 +31,58 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 17 — Daily call quality: opener sharpening + call feedback signal)
+
+> `git merge master` first. Two tickets deepening the Daily Call flywheel. **Do both before any pillar work.**
+
+---
+
+### T1 — Sharper briefing opener: lead with what matters, skip routine (HIGH — 1.5h)
+
+**Problem:** Edge opens calls by mentioning breakfast or gym ("you've got your morning run at 7") — routine events the user already knows. The opener should grab attention with something genuinely time-sensitive or high-stakes.
+
+**Fix — two parts:**
+
+**Part A — Filter opener events in `lib/briefing.ts`:**
+The GREETING section 1 instruction should explicitly exclude routine daily habits. Expand the exclusion list beyond the existing "no breakfast/lunch/dinner/gym" to also skip: `morning walk`, `morning routine`, `daily standup` (if recurring), `meal prep`, `coffee`, `commute`, `workout`, any all-day event spanning >3 days (hotel stays etc. aren't news), and any event the user has every week at the same time (recurring with no date-specificity). Instead: lead with the first externally-facing, time-sensitive, or non-recurring event — a meeting with someone, a deadline, a one-off task.
+
+Add `isRoutineEvent(summary: string, isRecurring: boolean): boolean` pure helper to `lib/briefing.ts`. Returns true when summary (lowercased) matches any routine keyword list OR isRecurring is true and summary matches a daily-habit pattern. 6 new tests.
+
+**Part B — Opener fallback in the prompt (`lib/vapi.ts`):**
+Update the GREETING block: "Lead with the first NON-ROUTINE event today — something external, one-off, or with a real deadline. Skip breakfast, gym, commute, meals, recurring habits. If everything today is routine, open with the top priority and what the user committed to yesterday."
+
+---
+
+### T2 — Post-call quality signal: one-tap feedback captured in DB (MEDIUM — 1h)
+
+**Problem:** We have no signal on whether a call was good. Without it, we can't track improvement or catch regressions.
+
+**Fix — two parts:**
+
+**Part A — `call_feedback` table in `lib/db.ts` (coordinate with Security — they own the schema file):**
+```sql
+CREATE TABLE IF NOT EXISTS call_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  briefing_id TEXT,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+Add `callFeedbackQueries.create(userId, briefingId, rating, note?)` and `callFeedbackQueries.recent(userId, limit?)` to `lib/db.ts`.
+
+**Part B — `POST /api/briefing/feedback` route:**
+`app/api/briefing/feedback/route.ts` — accepts `{ briefingId: string, rating: 1|2|3|4|5, note?: string }`, user-scoped via session. Returns 200 or 400. No dashboard UI needed yet — just the API endpoint so the dashboard can POST to it after a call summary appears.
+
+Wire a simple 1–5 star row into the Call Summary card in `app/dashboard/page.tsx`: after a briefing card is expanded, show "How was this call? ★ ★ ★ ★ ★" — clicking a star fires `POST /api/briefing/feedback`. One-time per briefing (disable after submit). Use `--edg-accent` for filled stars, `--text-faint` for empty.
+
+4 new tests for the route (auth check, valid rating, invalid rating, duplicate submit idempotency).
+
+⚠️ **Coordinate:** `lib/db.ts` is Shared — check Status Board, claim it, merge fast.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 16 — Accountability loop + Focus Score + push front-end)
 
 > `git merge master` first (master at `8234791`). Three tickets deepening the Daily Call flywheel. **Do all before R15 or pillar work.**

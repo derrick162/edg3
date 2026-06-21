@@ -30,6 +30,85 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 15 — Data durability: SQLite backup to S3 via Litestream)
+
+> `git merge master` first. One high-priority ticket. **Do before any pillar work. This is existential — Railway restarts wipe SQLite without this.**
+
+---
+
+### T1 — Litestream S3 backup: continuous WAL replication + restore on startup (P0 — 2h)
+
+**Why this is P0:** The app runs SQLite on Railway. If the container restarts (deploys, crashes, scale events), the database file is gone. Litestream replicates the WAL to S3 in near-real-time, and a startup script restores from S3 before Next.js boots. Without this, every deploy risks data loss.
+
+**Fix — three parts:**
+
+**Part A — `litestream.yml` config (new file, project root):**
+```yaml
+dbs:
+  - path: /app/edg3.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_S3_BUCKET}
+        path: edg3/db
+        region: ${LITESTREAM_S3_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_S3_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_S3_SECRET_ACCESS_KEY}
+```
+
+**Part B — `scripts/start.sh` (new file):**
+```bash
+#!/bin/sh
+set -e
+# Restore DB from S3 if it doesn't exist locally (first boot or fresh container).
+if [ -n "$LITESTREAM_S3_BUCKET" ] && [ ! -f /app/edg3.db ]; then
+  echo "Restoring DB from S3..."
+  litestream restore -config /app/litestream.yml /app/edg3.db || echo "No backup found — starting fresh."
+fi
+# Start Litestream replication in background, then start Next.js.
+if [ -n "$LITESTREAM_S3_BUCKET" ]; then
+  litestream replicate -config /app/litestream.yml &
+fi
+exec node server.js
+```
+
+**Part C — `Dockerfile` updates:**
+Check if there's an existing Dockerfile; if not, create one:
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+# Install Litestream binary.
+RUN apk add --no-cache curl && \
+    curl -fsSL https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64-static.tar.gz | tar xz -C /usr/local/bin
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+COPY litestream.yml ./
+COPY scripts/start.sh ./
+RUN chmod +x start.sh
+CMD ["./start.sh"]
+```
+
+If a Dockerfile already exists, add only the Litestream install + start.sh swap (don't rewrite unrelated sections).
+
+**Railway env vars needed (note in Status Board — PM sets these):**
+- `LITESTREAM_S3_BUCKET` — S3 bucket name
+- `LITESTREAM_S3_ACCESS_KEY_ID` — AWS key with s3:PutObject/GetObject/ListBucket on that bucket
+- `LITESTREAM_S3_SECRET_ACCESS_KEY` — secret
+- `LITESTREAM_S3_REGION` — optional, defaults to `us-east-1`
+
+**Tests:** Since this is infra/shell, no vitest tests. Instead add a `scripts/verify-backup.sh` that does `litestream snapshots -config litestream.yml` and exits 0 if at least one snapshot exists. Document the restore drill in `docs/backup-restore.md` (create if it doesn't exist): step-by-step recovery from S3 to local + Railway.
+
+⚠️ **Coordinate:** `Dockerfile` is not currently in the ownership map — claim it in the Status Board. If Railway uses Nixpacks (auto-detected, no Dockerfile), check first with `railway status` — if Nixpacks is active, the Dockerfile approach may need a `railway.toml` override instead. Note findings in Status Board before proceeding.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Push notification infrastructure)
 
 > `git merge master` first (master at `8234791`). Two tickets. **Do after R13, before any pillar work.**

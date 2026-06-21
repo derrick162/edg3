@@ -49,6 +49,58 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 15 — Focus Score page + notification history UI)
+
+> `git merge master` first. Two tickets making new data surfaces visible and polished. **Do both before R14 or pillar work.**
+
+---
+
+### T1 — `/score` page: Focus Score dashboard (HIGH — 2h)
+
+**Problem:** `lib/focusScore.ts` computes a daily 0–100 Focus Score and Core wired it into `/api/scores` — but the `/score` route (`app/score/page.tsx`) is a placeholder with no meaningful UI. This is the most legible "is Edge working?" signal we have, and it's invisible.
+
+**Fix:**
+
+The `/score` page should be a clean single-column dashboard card layout (consistent with dashboard glass-card system). No sidebar needed — centered content, max-width `540px`, same `var(--bg)` background.
+
+**Section 1 — Today's score (hero):**
+- Fetch `GET /api/scores` on load (returns `{ dailyFocusScore: { score, tier, headline } | null, streak, ... }`)
+- Large `score` number (48–56px, `--edg-indigo`), tier badge below it (`high` / `medium` / `low` using `--edg-success` / `--edg-warn` / `--edg-error` background on a rounded pill), then `headline` in 14px `--text-muted`
+- If score is null (Whoop not connected, <3 data points), show: "Score available after a few calls — keep going."
+- Import and render `<FocusScoreCard>` from `components/ui` below the hero if the score is available (Core ships the data shape; it's `{ score, tier, headline }`)
+
+**Section 2 — What goes into your score:**
+Three rows with icon + label + brief description:
+- ⚡ Recovery (40%) — "Your Whoop recovery score for today"
+- 📅 Schedule quality (35%) — "Free time, focus blocks, and breathing room"
+- ✓ Follow-through (25%) — "Tasks you've completed vs. missed this week"
+Each row: `flex items-center gap-3`, icon in `--edg-accent` 18px, label `font-medium text-sm`, description `text-xs --text-muted`. Add a thin `--border` divider between rows.
+
+**Section 3 — Call streak:**
+Reuse the streak value from `/api/scores` response. Small `🔥 N-day streak` line in `text-xs --text-muted` at the bottom of the card. Hide if streak < 2.
+
+**Spec:** Document this page in `DESIGN.md §12 — Score Page`.
+
+---
+
+### T2 — Notification history panel in dashboard (MEDIUM — 1.5h)
+
+**Problem:** Security shipped `lib/proactiveNotifications.ts` and push infrastructure, but there's no in-app surface showing what notifications Edge has sent. Users can't see what they missed when they didn't have push enabled.
+
+**Fix:**
+
+Add a `NotificationHistoryPanel` component at `components/ui/NotificationHistoryPanel.tsx`:
+- `interface NotificationHistoryItem { id: number; type: 'low_recovery' | 'priority_gap' | 'generic'; title: string; body: string; sent_at: string; }`
+- Renders a scrollable list of past notifications (max 10, newest first). Each row: icon (🔴 for low_recovery, 📅 for priority_gap, 🔔 for generic) + `title` in 13px + `body` in 11px `--text-faint` + relative timestamp ("2h ago", "Yesterday").
+- Empty state: "No notifications sent yet — Edge will reach out when something needs your attention."
+- No pagination needed at launch.
+
+Wire it into the dashboard sidebar below the Focus Score display: a collapsible "Recent alerts" section (collapsed by default, `▸ Recent alerts` toggle, same style as other sidebar sections). Claim `app/dashboard/page.tsx` in Status Board first.
+
+The data endpoint: `GET /api/notifications/history` — check if Security shipped it with R14; if not, add a note in Status Board for Vijay and skip the data-wiring (ship the component shell that renders empty-state, wire the fetch when the route lands).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — First-call experience audit + Focus Score component)
 
 > `git merge master` first (master at `8234791`). Two tickets. **Do before R13 or pillar work.**
