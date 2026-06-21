@@ -1733,6 +1733,12 @@ export const notificationLogQueries = {
     ).get(userId, type, `-${withinHours} hours`) as { 1: number } | undefined;
     return !!row;
   },
+  /** Most-recent N proactive notifications for a user, newest first (for the history panel). */
+  listForUser: (userId: number, limit = 10): Array<{ type: string; payload: string | null; sent_at: string }> => {
+    return getDb().prepare(
+      'SELECT type, payload, sent_at FROM notification_log WHERE user_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?'
+    ).all(userId, limit) as Array<{ type: string; payload: string | null; sent_at: string }>;
+  },
 };
 
 // Task queries

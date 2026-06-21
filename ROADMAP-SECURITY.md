@@ -673,6 +673,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-20** — **`GET /api/notifications/history` — proactive notification feed for the dashboard panel (2060 green).** _(PM dispatch; synced master first)_
+  - `notificationLogQueries.listForUser(userId, limit=10)` added (`lib/db.ts`) — newest-first `notification_log` rows.
+  - `app/api/notifications/history/route.ts`: authed GET, user-scoped, limit 10. Renders each `{type, payload, sent_at}` row into `{type, title, body, sentAt}` (the shape `NotificationHistoryPanel` consumes) — `low_recovery`/`priority_gap` mapped to the same copy `lib/proactiveNotifications.ts` pushes; unknown types degrade gracefully. 4 tests.
+  - **🔔 @Cam (Design):** `components/ui/NotificationHistoryPanel.tsx` currently fetches `/api/notifications` (the in-app feed) — repoint it to **`/api/notifications/history`** to show the proactive push log. Response shape: `{ notifications: [{ type, title, body, sentAt }] }`.
+  - R15 T1 (Litestream) confirmed already-built (findings on Status Board); Trust Tier 0/1 + DAILY-CALL DC1/DC3-2 Security items all shipped. 118 files / 2060 green.
 - **2026-06-20** — **R14 T2 — Proactive notification cron jobs: low-recovery + priority-gap (1990 green).**
   - `lib/proactiveNotifications.ts` (new): `maybeLowRecoveryAlert` (Whoop recovery ≤40% → push; gated on ≥1 completed call + once/day via `notification_log`), `maybePriorityGapAlert` (reuses `computeAlignment` — any priority at 0 calendar hours → push; once/week/user gate runs BEFORE the calendar+LLM calls to bound cost). `runProactiveNotifications(now)` sweeps active users and dispatches by LOCAL time: Job A at 7:30, Job B at 9:00 Tue–Thu (Mon low-signal, Fri too late). 12 tests.
   - `lib/scheduler.ts`: new `*/30 * * * *` cron → **dynamic** `import('./proactiveNotifications')` (same pattern as `./briefing`) so its heavy deps (calendar/alignment/whoop/push) stay out of the scheduler module-load graph — avoids breaking other suites' partial mocks.
