@@ -1,10 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock, pickTopCommitment } from './briefing';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock, pickTopCommitment, isRoutineEvent } from './briefing';
 import type { Fact, PeopleModel, Task } from './db';
 
 function makePref(statement: string, id = 1): Fact {
   return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00', confidence: 'high', source_briefing_id: null };
 }
+
+describe('isRoutineEvent (R17 T1)', () => {
+  it('flags always-routine events (meals, gym, walk, commute)', () => {
+    expect(isRoutineEvent('Breakfast', false)).toBe(true);
+    expect(isRoutineEvent('Morning Gym', false)).toBe(true);
+    expect(isRoutineEvent('Morning walk', false)).toBe(true);
+    expect(isRoutineEvent('Commute to office', false)).toBe(true);
+  });
+
+  it('does NOT flag external/one-off events', () => {
+    expect(isRoutineEvent('Investor call with Faiza', false)).toBe(false);
+    expect(isRoutineEvent('Quarterly board meeting', true)).toBe(false);
+    expect(isRoutineEvent('Dentist appointment', false)).toBe(false);
+  });
+
+  it('flags standup/habit events only when recurring', () => {
+    expect(isRoutineEvent('Daily standup', true)).toBe(true);
+    expect(isRoutineEvent('Standup', false)).toBe(false);
+    expect(isRoutineEvent('Meditation', true)).toBe(true);
+  });
+
+  it('returns false for empty input', () => {
+    expect(isRoutineEvent('', false)).toBe(false);
+  });
+});
 
 describe('pickTopCommitment (R16 T1)', () => {
   const mk = (id: number, over: Partial<Task> = {}): Task => ({
