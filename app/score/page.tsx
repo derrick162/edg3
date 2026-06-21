@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { FocusScoreCard, FocusScoreCardSkeleton } from '@/components/ui';
+import { FocusScoreCard, FocusScoreCardSkeleton, ScoreSparkline } from '@/components/ui';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +16,8 @@ interface ScoreData {
   };
   edgeScore: number;
   momentum?: { streakDays?: number };
+  // 7-day Edge Score history for sparkline (oldest→newest). May be absent on first day.
+  history?: Array<{ date: string; score: number }>;
 }
 
 function scoreTier(s: number): 'high' | 'medium' | 'low' {
@@ -49,6 +51,16 @@ function LiveScoreHero() {
   const alignedH = data?.focusScore?.alignedHours;
   const totalH = data?.focusScore?.totalWorkingHours;
   const streakDays = (data as Record<string, unknown> | null)?.streakDays as number | undefined;
+  // Build 7-day sparkline data. API returns history[] when available; pad to 7 with nulls if short.
+  const sparkScores: Array<{ date: string; score: number | null }> = (() => {
+    const hist = data?.history ?? [];
+    // Pad left with null entries so we always have 7 slots for a consistent width
+    const nullPad = Array.from({ length: Math.max(0, 7 - hist.length) }, (_, i) => ({
+      date: `pad-${i}`,
+      score: null as null,
+    }));
+    return [...nullPad, ...hist.map(h => ({ date: h.date, score: h.score }))].slice(-7);
+  })();
 
   return (
     <div className="glass-card p-6 mb-10" style={{ border: '1px solid var(--edg-accent-20)' }}>
@@ -63,7 +75,16 @@ function LiveScoreHero() {
         <FocusScoreCardSkeleton />
       ) : data ? (
         <>
-          <FocusScoreCard score={score} tier={tier} headline={headline} />
+          {/* Score + 7-day sparkline side by side */}
+          <div className="flex items-center gap-6">
+            <div className="flex-1 min-w-0">
+              <FocusScoreCard score={score} tier={tier} headline={headline} />
+            </div>
+            <div className="flex-shrink-0">
+              <ScoreSparkline scores={sparkScores} height={48} width={160} />
+              <p className="text-xs mt-1 text-center" style={{ color: 'var(--text-faint)' }}>7-day trend</p>
+            </div>
+          </div>
 
           {/* Hours detail */}
           {alignedH !== undefined && totalH !== undefined && (

@@ -24,9 +24,36 @@ vi.mock('next/headers', () => ({
 
 // ── module under test ───────────────────────────────────────────────────────────
 
-import { createToken, verifyToken, setSessionCookie, clearSessionCookie, getSession, hashPassword, verifyPassword } from './auth';
+import { createToken, verifyToken, setSessionCookie, clearSessionCookie, getSession, hashPassword, verifyPassword, validateJwtSecret } from './auth';
 
 const SECRET = 'test-secret-32-chars-minimum-abc';
+
+// ── R16 T1 — validateJwtSecret ────────────────────────────────────────────────
+describe('validateJwtSecret', () => {
+  it('throws when JWT_SECRET is unset/empty', () => {
+    const orig = process.env.JWT_SECRET;
+    delete process.env.JWT_SECRET;
+    expect(() => validateJwtSecret()).toThrow(/not set/i); // reads the (now unset) env default
+    process.env.JWT_SECRET = orig;
+    expect(() => validateJwtSecret('')).toThrow(/not set/i);
+    expect(() => validateJwtSecret('   ')).toThrow(/not set/i);
+  });
+
+  it('throws for a known placeholder (even when padded ≥ 32 chars)', () => {
+    expect(() => validateJwtSecret('change-me-change-me-change-me-change')).toThrow(/placeholder/i);
+    expect(() => validateJwtSecret('this-is-just-a-placeholder-value-xx')).toThrow(/placeholder/i);
+  });
+
+  it('throws for a too-short secret (< 32 chars)', () => {
+    expect(() => validateJwtSecret('short')).toThrow(/too short/i);
+    expect(() => validateJwtSecret('a'.repeat(31))).toThrow(/too short/i);
+  });
+
+  it('returns a valid 64-char hex secret unchanged', () => {
+    const hex = 'a3f1'.repeat(16); // 64 hex chars, no placeholder token
+    expect(validateJwtSecret(hex)).toBe(hex);
+  });
+});
 
 beforeEach(() => {
   process.env.JWT_SECRET = SECRET;
