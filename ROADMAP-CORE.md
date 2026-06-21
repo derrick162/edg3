@@ -1495,6 +1495,11 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-20** — **R16 — accountability loop + Focus Score + push front-end — SHIPPED (2010 green).**
+  - **T1 accountability:** new pure `pickTopCommitment(tasks)` (earliest-due incomplete, created_at tiebreak) drives the opener; vapi COMMITMENT CAPTURE (proactive addTask on "I'll X") + ACCOUNTABILITY CLOSE (≤2 open tasks before hangup) blocks. +4 tests.
+  - **T2 daily Focus Score:** new pure `lib/focusScore.ts` — `computeFocusScore` (recovery 40% / schedule 35% / follow-through 25%) → `{score,tier,headline,breakdown}` + `formatFocusScoreForBriefing`. Wired into `lib/briefing.ts` as the opener anchor (computed from recovery + alignment hours + today's breathing-room gap + last-7d follow-through). Exposed on `/api/scores` as **`dailyFocusScore`** (distinct key — the existing calendar-fit `focusScore` is untouched; reuses already-computed data, no extra fetches). +13 tests.
+  - **T3 push front-end:** `public/sw.js` (push handler) + dashboard registers SW & subscribes & POSTs to `/api/notifications/subscribe`, guarded on `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (silent until Security R14 lands).
+  - 2010/2010 green, tsc + next build clean. Committed on `core` — ready for PM merge. ⚠️ **Design R14 T2 FocusScoreCard** consumes `dailyFocusScore` (`{score,tier,headline}`). **Security R14** must ship `/api/notifications/subscribe` + VAPID env for T3 to activate.
 - **2026-06-20** — **R15 — calendar intelligence (7 tools) — SHIPPED (1993 green).**
   - **T1 searchEvents** (Google q-search → ≤5 spoken w/ dates), **T2 checkConflict** (point-in-time overlap, endTime +1h default), **T5 getNextEvents** (next N timed from now) — share new pure `lib/calendarQuery.ts` (`dedupeSortEvents`/`formatEventForSpeech`/`findOverlappingEvents`, +9 tests).
   - **T3 setEventReminder** (PATCH popup override, undo original reminders, read-only guard), **T4 blockFocusTime** (computeFreeSlots earliest slot + book `⚡ Focus: <label>` colorId 2 in one shot, delete-undo).
