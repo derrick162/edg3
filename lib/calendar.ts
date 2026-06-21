@@ -45,17 +45,37 @@ export function getOAuthClient() {
   );
 }
 
-export function getAuthUrl(state: string): string {
+export function getAuthUrl(state: string, opts: { selectAccount?: boolean } = {}): string {
   const oauth2Client = getOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
-    prompt: 'consent',
+    // R18 T3 — `select_account` forces Google's account picker so the user can switch
+    // which account is linked (otherwise Google silently reuses the current one).
+    prompt: opts.selectAccount ? 'select_account consent' : 'consent',
     // Incremental auth: keep previously-granted scopes when a calendar-only user
     // re-consents to add Gmail, so we never silently drop calendar access.
     include_granted_scopes: true,
     state,
   });
+}
+
+/**
+ * R18 T3 — fetch the connected Google account's email from the userinfo endpoint using a
+ * just-issued access token. Best-effort: returns null on any failure so the OAuth flow is
+ * never blocked by it (the email is a nice-to-have display field, not a credential).
+ */
+export async function fetchGoogleAccountEmail(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { email?: string };
+    return typeof data.email === 'string' && data.email ? data.email : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function exchangeCode(code: string) {

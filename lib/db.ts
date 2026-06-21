@@ -700,6 +700,8 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // T4-1 — track consecutive Google auth failures; flag when refresh fails 3+ times
   "ALTER TABLE calendar_tokens ADD COLUMN calendar_auth_failures INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
+  // R18 T3 — store the connected Google account email so the dashboard can show which account is linked.
+  "ALTER TABLE calendar_tokens ADD COLUMN email TEXT",
   // Multi-account: oauth_state.flow CHECK was ('calendar','whoop') — recreate to allow 'gmail'.
   // Rows are ephemeral CSRF tokens (minutes TTL), so dropping non-matching rows on rebuild is fine.
   "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
@@ -1009,17 +1011,20 @@ export const calendarQueries = {
   // `scope` is the space-delimited set of scopes Google reported as granted. It is
   // optional so token-*refresh* callers (which don't change the grant) can omit it —
   // COALESCE then preserves the previously stored scope rather than nulling it.
-  upsert: (userId: number, accessToken: string, refreshToken: string, expiry: string, scope?: string | null) => {
+  // `email` (R18 T3 — the connected Google account's address) is optional so token-refresh
+  // callers that don't re-fetch userinfo can omit it; COALESCE preserves the stored value.
+  upsert: (userId: number, accessToken: string, refreshToken: string, expiry: string, scope?: string | null, email?: string | null) => {
     return getDb().prepare(`
-      INSERT INTO calendar_tokens (user_id, access_token, refresh_token, expiry, scope, updated_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO calendar_tokens (user_id, access_token, refresh_token, expiry, scope, email, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET
         access_token = excluded.access_token,
         refresh_token = excluded.refresh_token,
         expiry = excluded.expiry,
         scope = COALESCE(excluded.scope, calendar_tokens.scope),
+        email = COALESCE(excluded.email, calendar_tokens.email),
         updated_at = excluded.updated_at
-    `).run(userId, encryptField(accessToken), encryptNullable(refreshToken) ?? '', expiry, scope ?? null);
+    `).run(userId, encryptField(accessToken), encryptNullable(refreshToken) ?? '', expiry, scope ?? null, email ?? null);
   },
   get: (userId: number) => {
     const row = getDb().prepare('SELECT * FROM calendar_tokens WHERE user_id = ?').get(userId) as CalendarToken | undefined;
@@ -1970,6 +1975,7 @@ export interface CalendarToken {
   refresh_token: string | null;
   expiry: string | null;
   scope: string | null;
+  email: string | null;
   updated_at: string;
 }
 

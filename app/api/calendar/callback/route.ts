@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { exchangeCode } from '@/lib/calendar';
+import { exchangeCode, fetchGoogleAccountEmail } from '@/lib/calendar';
 import { calendarQueries, oauthStateQueries, userQueries } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
@@ -33,12 +33,15 @@ export async function GET(req: NextRequest) {
 
   try {
     const tokens = await exchangeCode(code);
+    // R18 T3 — capture which Google account was linked (best-effort; null on failure).
+    const accountEmail = await fetchGoogleAccountEmail(tokens.access_token!);
     calendarQueries.upsert(
       userId,
       tokens.access_token!,
       tokens.refresh_token || '',
       tokens.expiry_date?.toString() || '',
-      tokens.scope
+      tokens.scope,
+      accountEmail
     );
     // Where to send a full-page (non-popup) return: an already-onboarded user is just
     // re-linking, so drop them back on the dashboard with a "linked ✓" confirmation.

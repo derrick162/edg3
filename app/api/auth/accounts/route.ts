@@ -9,7 +9,7 @@ import { hasGmailReadScope } from '@/lib/google-auth';
 //               R13 T2 powers the "● Reading Gmail" sidebar indicator.
 //   - gmail:    a vestigial dedicated-Gmail row (R12 T2 removed the link/draft flow; existing
 //               rows remain readable, but there's no longer a way to connect a new one)
-// `email` is null for calendar (we don't store the calendar account's email today).
+// `calendar.email` is the connected Google account address (R18 T3 — null for rows linked before it shipped).
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -21,7 +21,7 @@ export async function GET() {
     calendar: {
       connected: !!cal,
       hasGmailScope: hasGmailReadScope(cal?.scope ?? null),
-      email: null,
+      email: cal?.email ?? null,
     },
     gmail: {
       connected: !!gmail,
