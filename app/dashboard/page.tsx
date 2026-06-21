@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
+import { factDisplayStatement } from '@/lib/factDisplay';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
@@ -1517,6 +1518,16 @@ export default function Dashboard() {
   const [rollingBackId, setRollingBackId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
+  // R17 T2 — briefing ids the user has rated this session (one rating per call).
+  const [ratedBriefings, setRatedBriefings] = useState<Set<number>>(new Set());
+  async function submitCallFeedback(briefingId: number, rating: number) {
+    setRatedBriefings(prev => new Set(prev).add(briefingId));
+    await fetch('/api/briefing/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ briefingId: String(briefingId), rating }),
+    }).catch(() => {});
+  }
   const isWelcome = typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1';
   const [showWelcome, setShowWelcome] = useState(() => {
     if (typeof window !== 'undefined' && sessionStorage.getItem('edg3_welcome') === '1') {
@@ -2828,6 +2839,25 @@ export default function Dashboard() {
                             </div>
                           )}
 
+                          {/* R17 T2 — one-tap call rating */}
+                          <div className="mt-4 flex items-center gap-2">
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                              {ratedBriefings.has(b.id) ? 'Thanks for the feedback' : 'How was this call?'}
+                            </span>
+                            <div className="flex gap-0.5">
+                              {[1, 2, 3, 4, 5].map(star => (
+                                <button
+                                  key={star}
+                                  disabled={ratedBriefings.has(b.id)}
+                                  onClick={(e) => { e.stopPropagation(); submitCallFeedback(b.id, star); }}
+                                  className="text-sm leading-none disabled:cursor-default"
+                                  style={{ color: 'var(--edg-accent)', cursor: ratedBriefings.has(b.id) ? 'default' : 'pointer' }}
+                                  aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                                >★</button>
+                              ))}
+                            </div>
+                          </div>
+
                           {b.edge_promises && (() => {
                             try {
                               const promises = JSON.parse(b.edge_promises);
@@ -3004,7 +3034,7 @@ export default function Dashboard() {
                                   {correctName(f.entity, firstName)}:{' '}
                                 </span>
                               )}
-                              {correctName(f.statement, firstName)}
+                              {correctName(factDisplayStatement(f.category, f.statement), firstName)}
                             </p>
                             {(() => {
                               const src = factSourceLabel(f);
@@ -3060,7 +3090,7 @@ export default function Dashboard() {
                             <div key={f.id} className="flex items-start gap-2">
                               <p className="text-xs flex-1 min-w-0" style={{ color: 'var(--text-muted)' }}>
                                 {f.entity && <span className="font-medium" style={{ color: 'var(--text-body)' }}>{f.entity}: </span>}
-                                {f.statement}
+                                {factDisplayStatement(f.category, f.statement)}
                               </p>
                               <div className="flex gap-1.5 flex-shrink-0">
                                 <button
@@ -3186,7 +3216,7 @@ export default function Dashboard() {
                                   {!indented && f.entity && (
                                     <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
                                   )}
-                                  {correctName(f.statement, firstName)}
+                                  {correctName(factDisplayStatement(f.category, f.statement), firstName)}
                                   {f.confidence === 'low' && (
                                     <button
                                       title="Edg3 isn't sure it caught this right — tap to fix"
@@ -3347,7 +3377,7 @@ export default function Dashboard() {
                                           ) : (
                                             <>
                                               <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-strong)' }}>
-                                                {correctName(f.statement, firstName)}
+                                                {correctName(factDisplayStatement(f.category, f.statement), firstName)}
                                               </p>
                                               {(() => {
                                                 const src = factSourceLabel(f);

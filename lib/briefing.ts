@@ -240,6 +240,28 @@ export function pickTopCommitment(tasks: Task[]): Task | null {
   })[0];
 }
 
+// R17 T1 — events that shouldn't lead the opener (the user already knows them).
+const ALWAYS_ROUTINE_KEYWORDS = [
+  'breakfast', 'lunch', 'dinner', 'brunch', 'meal prep', 'mealprep', 'coffee',
+  'gym', 'workout', 'work out', 'walk', 'run', 'jog', 'swim', 'yoga', 'pilates',
+  'commute', 'morning routine',
+];
+const RECURRING_HABIT_PATTERN = /\b(stand-?up|standup|meditation|meditate|stretch|journal|vitamins?|medication|morning pages|daily habit)\b/;
+
+/**
+ * R17 T1 — true when an event is a routine daily habit not worth leading the opener with.
+ * Always-routine: meals, gym/movement, commute, morning routine. Recurring-only: standups
+ * and habit-pattern events (meditation, journaling, etc.) — these are only "routine" when
+ * they repeat. Pure; exported for tests.
+ */
+export function isRoutineEvent(summary: string, isRecurring: boolean): boolean {
+  const s = (summary || '').toLowerCase().trim();
+  if (!s) return false;
+  if (ALWAYS_ROUTINE_KEYWORDS.some(k => s.includes(k))) return true;
+  if (isRecurring && RECURRING_HABIT_PATTERN.test(s)) return true;
+  return false;
+}
+
 export function buildWhoopSection(
   recovery: WhoopRecovery | null,
   sleep: WhoopSleep | null,
