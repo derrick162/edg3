@@ -419,7 +419,117 @@ These two tools are landing in R15 (Core) as voice-only tools — they return sp
 
 ---
 
-## 12. First asks (suggested)
+---
+
+## 12. First-Call Experience — audit findings + spec (R14 T1)
+
+> Audited 2026-06-20. Covers `lib/vapi.ts` system prompt + `app/onboarding/page.tsx`.
+
+### What's working
+- `isFirstCall` flag exists — call closes early with "I want to keep today's first call short and sweet — we'll go deeper tomorrow."
+- `firstName` injected from day 1 (split from `userName`).
+- Missing data handled gracefully: no Whoop → explicit fallback, no priorities → section omitted, no memories → nothing fabricated.
+- Opener format ("Morning [name] — [single most important thing]") is strong — no preamble, direct to value.
+- Magic moment: the **Edge Score + one specific calendar action on day 1** (e.g. "moved your focus block to 2pm") proves Edge can act before the user even starts their day.
+
+### Gaps + fixes shipped (Design)
+| Gap | Fix |
+|---|---|
+| Done state showed bare time slot, no context | Updated copy: "A 2-minute voice call. Edge will open with your top priority, offer to move one thing on your calendar, and ask what you're committing to today." |
+| No "pick up when it calls" moment | Added ✦ callout: "Pick up when Edge calls — even for 90 seconds. The first call sets up everything that compounds from here." |
+| Form labels inline-styled uppercase (`className="block text-xs font-semibold mb-2 uppercase tracking-wider"`) — setup-wizard feel | Replaced with `.label-caps` utility class (3 labels: Call time, Timezone, Phone number). |
+
+### Gaps to fix — Core (system-prompt specs)
+These require changes to `lib/vapi.ts` — route to Core/Darren:
+
+**1. First-call self-introduction block** (when `isFirstCall === true`)
+Edge currently opens exactly like call 2, 3, 100 — no acknowledgment that this is the first time. A new user doesn't know what to expect.
+
+Proposed addition to `lib/vapi.ts` (inject when `isFirstCall`):
+```
+FIRST CALL INTRO: This is ${firstName}'s very first call. Before the briefing, say exactly:
+"Hey ${firstName} — I'm Edge, your AI Chief of Staff. I've already looked at your calendar and priorities.
+I'll keep this first call to two minutes — just the most important thing and one move I can make for you right now."
+Then go straight into the briefing opener (Morning ${firstName} — ...).
+Do NOT explain how the system works, what memory is, or what future calls will cover.
+One hook, then the value.
+```
+
+**2. Thin-briefing fallback** (when briefing content is minimal — no priorities set, no calendar events)
+Currently: if `briefingContent` is empty/sparse, Edge's `firstMessage` is blank or near-blank — the call opens in silence.
+
+Proposed addition:
+```
+THIN BRIEFING FALLBACK (first call, no data yet): If there's nothing concrete in the briefing,
+open with: "Morning ${firstName} — I don't have your calendar data yet, so let me ask:
+what's the one thing that most needs to go well today?" Then listen, offer to block time for it,
+and capture it as a priority. Never go silent. Never say "I don't have anything for you."
+```
+
+**3. Post-call follow-through prompt** (already partially handled — verify)
+On `isFirstCall`, Edge closes with "we'll go deeper tomorrow." Verify the briefing builder
+always produces at least the Edge Score + call streak note on day 1, so there's always
+a hook regardless of calendar fullness.
+
+---
+
+## 13. FocusScoreCard component spec (R14 T2)
+
+> Built at `components/ui/FocusScoreCard.tsx`. Exported via `@/components/ui`.
+> Core wires data from `computeFocusScore()` output (R16 T2).
+
+### Visual layout
+```
+┌─────────────────────────────────────────────┐
+│  Focus Score                                │
+│                                             │
+│           72                                │
+│        High Focus                           │
+│  Your calendar is aligned with what         │
+│  matters this week.                         │
+│                                             │
+│  ── breakdown ───────────────────────── ▾  │
+│  Recovery       ████████░░░░  28/40         │
+│  Schedule       ██████████░░  30/35         │
+│  Follow-through ████░░░░░░░░  14/25         │
+└─────────────────────────────────────────────┘
+```
+
+### Tier colors
+| Tier | Score range | Score color | Label |
+|---|---|---|---|
+| `high` | 70–100 | `--edg-green` | "High Focus" |
+| `medium` | 40–69 | `--edg-indigo` | "Medium Focus" |
+| `low` | 0–39 | `--edg-warn` | "Low Focus" |
+
+### Tokens (`app/globals.css`)
+- `--edg-green: #22c55e` — positive green (distinct from `--edg-success` which is emerald)
+- `--edg-warn: #f59e0b` — same as `--edg-warning`; alias added for clarity
+
+### Prop contract
+```tsx
+interface FocusScoreCardProps {
+  score: number;             // 0–100
+  tier: 'high' | 'medium' | 'low';
+  headline: string;          // one sentence, shown as subtitle
+  breakdown?: {
+    recovery: number;        // 0–40
+    schedule: number;        // 0–35
+    followThrough: number;   // 0–25
+  };
+}
+// Core imports:
+import { FocusScoreCard } from '@/components/ui';
+```
+
+### States
+- **Loaded**: score + tier label + headline + optional breakdown (collapsed by default, expand on click)
+- **Loading skeleton**: 48px circle pulse + two text line pulses
+- **No data / null score**: "Focus Score computing…" in `--text-faint`, small spinner
+
+---
+
+## 14. First asks (suggested)
 1. Audit the **dashboard** and **onboarding** for usability + visual consistency (these are what users touch daily).
 2. Propose a tightened **design-token + component** pass in `globals.css` (consolidate the inline styles).
 3. Design the **notification center** and the **"Recent activity"** surface (both about user trust — see `ROADMAP-CORE.md`).
