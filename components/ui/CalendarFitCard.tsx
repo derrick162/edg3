@@ -123,6 +123,7 @@ function ScoreGauge({
         onClick={onToggle}
         className="w-full flex items-center gap-3 py-1 text-left transition-opacity hover:opacity-80"
         aria-expanded={expanded}
+        aria-controls={`calendar-fit-${type}`}
       >
         <span className="text-base flex-shrink-0">{icon}</span>
         <div className="flex-1 min-w-0">
@@ -160,7 +161,7 @@ function ScoreGauge({
 
       {/* Expanded: drivers + top fix */}
       {expanded && (
-        <div className="mt-2 pl-7 space-y-2">
+        <div id={`calendar-fit-${type}`} className="mt-2 pl-7 space-y-2">
           {calibrating && (
             <p className="text-xs px-2 py-1 rounded" style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)' }}>
               Edg3 is learning your energy — call {callsCompleted ?? 0} of 10
