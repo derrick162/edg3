@@ -1,6 +1,6 @@
 /**
  * Tests for scheduler resilience:
- * 1. 120-minute catch-up window so a missed exact-minute tick fires late, not never.
+ * 1. 5-minute catch-up window so a missed exact-minute tick fires late, not never.
  * 2. CallError classification — Vapi and briefing failures surface with a user-facing
  *    reason code instead of an opaque 500.
  */
@@ -115,7 +115,7 @@ describe('scheduler catch-up window', () => {
   });
 
   it('fires a few minutes after call_time (missed-tick catch-up)', async () => {
-    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 5));
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 3)); // 07:03 = within 5-min window
     expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
@@ -124,8 +124,8 @@ describe('scheduler catch-up window', () => {
     expect(h.briefingCreatePending).not.toHaveBeenCalled();
   });
 
-  it('does NOT fire past the 120-minute grace window', async () => {
-    await checkAndInitiateCalls(nyTime('2026-06-11', 9, 0)); // 09:00 = call_time + 120 min
+  it('does NOT fire past the 5-minute grace window', async () => {
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 6)); // 07:06 = call_time + 6 min (outside window)
     expect(h.briefingCreatePending).not.toHaveBeenCalled();
   });
 
@@ -145,13 +145,13 @@ describe('scheduler catch-up window', () => {
     expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
-  it('fires at the last minute of the grace window (07:00 + 119 min = 08:59)', async () => {
-    await checkAndInitiateCalls(nyTime('2026-06-11', 8, 59));
+  it('fires at the last minute of the grace window (07:00 + 4 min = 07:04)', async () => {
+    await checkAndInitiateCalls(nyTime('2026-06-11', 7, 4));
     expect(h.briefingCreatePending).toHaveBeenCalledTimes(1);
   });
 
   // DC1-3 — cold-start accuracy: app restarts a few minutes after call_time and
-  // the scheduler catches up on the first tick (within the 120-minute grace window).
+  // the scheduler catches up on the first tick (within the 5-minute grace window).
   it('DC1-3: fires 2 minutes late when app cold-starts after call_time', async () => {
     // App starts at 07:02 — the scheduler fires on the first cron tick.
     await checkAndInitiateCalls(nyTime('2026-06-11', 7, 2));

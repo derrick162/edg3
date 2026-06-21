@@ -69,7 +69,7 @@ function classifyVapiError(err: unknown): CallError {
 // How long after call_time we'll still fire if the exact-minute tick was missed
 // (e.g. server restart during that minute). Capped so a long outage doesn't
 // place a morning briefing call in the afternoon.
-const CALL_GRACE_MINUTES = 120;
+const CALL_GRACE_MINUTES = 5; // Survive a missed single-minute tick on cold-start. 120 was too wide — it caused catch-up calls on every Railway deploy.
 
 // A 'calling' briefing row older than this means the call was initiated but never
 // completed (the end-webhook never arrived / the call didn't connect). Past this age it
