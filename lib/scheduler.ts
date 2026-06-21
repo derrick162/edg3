@@ -406,6 +406,17 @@ export function startScheduler() {
     decayFactConfidenceScores();
   });
 
+  // R14 T2 — proactive push notifications. Every 30 min so we can hit local 7:30 (low-recovery)
+  // and local 9:00 (priority gap). The sweep filters by each user's LOCAL time + gates, so it's
+  // cheap on non-matching ticks (no fetches unless a user is at a trigger time).
+  // Dynamic import (same pattern as './briefing' above) keeps its heavy deps — calendar /
+  // alignment / whoop / push — out of the scheduler's module-load graph.
+  cron.schedule('*/30 * * * *', () => {
+    import('./proactiveNotifications')
+      .then(m => m.runProactiveNotifications())
+      .catch(e => console.error('[scheduler] runProactiveNotifications failed:', e));
+  });
+
   console.log('EDG3 scheduler started');
 }
 

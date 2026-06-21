@@ -594,6 +594,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-20** — **R14 T2 — Proactive notification cron jobs: low-recovery + priority-gap (1990 green).**
+  - `lib/proactiveNotifications.ts` (new): `maybeLowRecoveryAlert` (Whoop recovery ≤40% → push; gated on ≥1 completed call + once/day via `notification_log`), `maybePriorityGapAlert` (reuses `computeAlignment` — any priority at 0 calendar hours → push; once/week/user gate runs BEFORE the calendar+LLM calls to bound cost). `runProactiveNotifications(now)` sweeps active users and dispatches by LOCAL time: Job A at 7:30, Job B at 9:00 Tue–Thu (Mon low-signal, Fri too late). 12 tests.
+  - `lib/scheduler.ts`: new `*/30 * * * *` cron → **dynamic** `import('./proactiveNotifications')` (same pattern as `./briefing`) so its heavy deps (calendar/alignment/whoop/push) stay out of the scheduler module-load graph — avoids breaking other suites' partial mocks.
+  - **Note (per-priority simplification):** the priority-gap gate is once/week/**user** (not strictly per-priority) so the expensive alignment runs at most once/week/user; the specific gap priority is recorded in `notification_log.payload`. 110 files / 1990 green.
 - **2026-06-20** — **R14 T1 — Push notification infrastructure: VAPID + DB + `lib/push.ts` + subscribe routes (1978 green).** _(synced master first)_
   - Added `web-push` dependency (+ `@types/web-push`). **VAPID keys generated into `.env.local`** (gitignored; ⚠️ **Railway/prod keys are Derrick's separate external step** — `VAPID_PUBLIC_KEY`/`NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`).
   - `lib/db.ts` (claimed): `push_subscriptions` table (UNIQUE user+endpoint, CASCADE) + `pushSubscriptionQueries.upsert/getAll/delete`; `notification_log` table + `notificationLogQueries.record/hasRecentEntry`. Both added to `USER_SCOPED_DELETE_ORDER` (deletion drift-guard passes). Indexes added.
