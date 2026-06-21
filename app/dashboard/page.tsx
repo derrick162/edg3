@@ -1547,6 +1547,7 @@ export default function Dashboard() {
   });
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [calendarHasGmailScope, setCalendarHasGmailScope] = useState(false);
+  const [calendarEmail, setCalendarEmail] = useState<string | null>(null);
   const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
   const [whoopConnected, setWhoopConnected] = useState<boolean | null>(null);
   const [disconnectingWhoop, setDisconnectingWhoop] = useState(false);
@@ -1662,9 +1663,10 @@ export default function Dashboard() {
     fetch('/api/auth/accounts')
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        if (!d) { setCalendarConnected(false); setCalendarHasGmailScope(false); return; }
+        if (!d) { setCalendarConnected(false); setCalendarHasGmailScope(false); setCalendarEmail(null); return; }
         setCalendarConnected(!!d.calendar?.connected);
         setCalendarHasGmailScope(!!d.calendar?.hasGmailScope);
+        setCalendarEmail(d.calendar?.email ?? null);
       })
       .catch(() => {});
     fetch('/api/calendar/reminder').then(r => r.ok ? r.json() : { exists: false }).then(d => setReminderInCalendar(!!d.exists)).catch(() => {});
@@ -2058,6 +2060,14 @@ export default function Dashboard() {
     if (data.url) window.location.href = data.url;
   }
 
+  // R18 T3 — re-run the OAuth flow forcing Google's account picker so the user can switch
+  // which Google account is linked (or re-authorize to add Gmail scope) without a full disconnect.
+  async function switchGoogleAccount() {
+    const res = await fetch('/api/calendar/connect?select_account=1');
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  }
+
   async function disconnectCalendar() {
     if (!confirm('Disconnect your Google Calendar? Edg3 will stop reading your schedule and can no longer add or change calendar events until you reconnect.')) return;
     setDisconnectingCalendar(true);
@@ -2405,15 +2415,19 @@ export default function Dashboard() {
                   <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{calendarConnected ? 'Calendar connected' : 'Google connection'}</p>
                 </div>
+                {/* R18 T3 — which Google account is linked */}
+                {calendarConnected && calendarEmail && (
+                  <p className="text-xs mb-1 pl-3.5" style={{ color: 'var(--text-faint)' }}>{calendarEmail}</p>
+                )}
                 {/* R13 T2 — Gmail reading indicator (gmail.readonly powers the Focus score + fact learning) */}
                 {calendarConnected && (calendarHasGmailScope ? (
                   <div className="flex items-center gap-2 mb-1 pl-3.5">
                     <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Reading Gmail</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Reading Gmail · <button onClick={switchGoogleAccount} style={{ color: 'var(--text-accent)' }}>Switch account →</button></p>
                   </div>
                 ) : (
                   <p className="text-xs mb-1 pl-3.5" style={{ color: 'var(--text-faint)' }}>
-                    Gmail reading inactive — <a href="/api/auth/google" style={{ color: 'var(--text-accent)' }}>re-authorize →</a>
+                    Gmail reading inactive — <button onClick={switchGoogleAccount} style={{ color: 'var(--text-accent)' }}>re-authorize →</button>
                   </p>
                 ))}
                 <div className="flex items-center gap-3 pl-3.5 mb-1">
@@ -2445,18 +2459,23 @@ export default function Dashboard() {
                 {calendarHasGmailScope ? (
                   <div className="flex items-center gap-2">
                     <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Reading Gmail</p>
+                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                      Reading Gmail ·{' '}
+                      <button onClick={switchGoogleAccount} className="underline" style={{ color: 'var(--text-accent)' }}>
+                        Switch account →
+                      </button>
+                    </p>
                   </div>
                 ) : (
                   <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
                     Gmail reading inactive —{' '}
-                    <a
-                      href="/api/auth/google"
+                    <button
+                      onClick={switchGoogleAccount}
                       className="underline"
                       style={{ color: 'var(--text-accent)' }}
                     >
                       re-authorize →
-                    </a>
+                    </button>
                   </p>
                 )}
               </div>

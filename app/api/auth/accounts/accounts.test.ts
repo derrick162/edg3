@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   session: null as { id: number } | null,
-  cal: undefined as { scope: string | null } | undefined,
+  cal: undefined as { scope: string | null; email?: string | null } | undefined,
   gmail: undefined as { email: string | null } | undefined,
 }));
 
@@ -54,5 +54,13 @@ describe('GET /api/auth/accounts — calendar.hasGmailScope', () => {
     const data = await (await GET()).json();
     expect(data.calendar.connected).toBe(false);
     expect(data.calendar.hasGmailScope).toBe(false);
+  });
+
+  // R18 T3 — surface the connected Google account email (null on rows linked before it shipped).
+  it('returns calendar.email when stored, null otherwise', async () => {
+    h.cal = { scope: READONLY, email: 'derrick@example.com' };
+    expect((await (await GET()).json()).calendar.email).toBe('derrick@example.com');
+    h.cal = { scope: READONLY };
+    expect((await (await GET()).json()).calendar.email).toBeNull();
   });
 });

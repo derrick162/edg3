@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFreeSlots, buildBriefingReminderBody, BRIEFING_REMINDER_TITLE } from './calendar';
+import { findFreeSlots, buildBriefingReminderBody, BRIEFING_REMINDER_TITLE, findNextFreeSlot, type FreeSlotEvent } from './calendar';
 import type { calendar_v3 } from 'googleapis';
 
 // Use a far-future date so the "don't suggest past slots today" clamp never affects results.
@@ -78,5 +78,41 @@ describe('buildBriefingReminderBody', () => {
     const body = buildBriefingReminderBody('09:00', TOR, now);
     expect(body.start.dateTime).toBe('2026-06-13T09:00:00');
     expect(body.end.dateTime).toBe('2026-06-13T09:15:00');
+  });
+});
+
+describe('findNextFreeSlot (R18 T1)', () => {
+  // UTC tz keeps wall-clock == Z; 2027-06-14 Mon, 15 Tue, 16 Wed, 19 Sat, 21 Mon.
+  const MON = '2027-06-14', TUE = '2027-06-15', SAT = '2027-06-19', MON2 = '2027-06-21';
+  const ue = (date: string, sh: number, eh: number): FreeSlotEvent => ({
+    start: { dateTime: `${date}T${String(sh).padStart(2, '0')}:00:00Z` },
+    end: { dateTime: `${date}T${String(eh).padStart(2, '0')}:00:00Z` },
+  });
+  const o = { today: MON, tz: 'UTC' };
+
+  it('empty calendar → first morning slot at the window start', () => {
+    expect(findNextFreeSlot([], 60, undefined, o)).toEqual({ date: MON, startTime: '09:00', endTime: '10:00' });
+  });
+
+  it('today fully packed 9–6 → falls back to the next weekday morning', () => {
+    expect(findNextFreeSlot([ue(MON, 9, 18)], 60, undefined, o)).toEqual({ date: TUE, startTime: '09:00', endTime: '10:00' });
+  });
+
+  it('respects the preferred hour when it fits a gap', () => {
+    expect(findNextFreeSlot([], 60, 14, o)).toEqual({ date: MON, startTime: '14:00', endTime: '15:00' });
+  });
+
+  it('skips the weekend when today is Saturday', () => {
+    expect(findNextFreeSlot([], 60, undefined, { today: SAT, tz: 'UTC' })).toEqual({ date: MON2, startTime: '09:00', endTime: '10:00' });
+  });
+
+  it('returns null when all scanned weekdays are fully packed', () => {
+    const packed = [ue(MON, 9, 18), ue(TUE, 9, 18), ue('2027-06-16', 9, 18)];
+    expect(findNextFreeSlot(packed, 60, undefined, { ...o, daysToScan: 3 })).toBeNull();
+  });
+
+  it('finds the post-noon gap when the morning is blocked', () => {
+    // 9–12 booked; the 60-min block lands in the 12:00 gap (preferred hour absent).
+    expect(findNextFreeSlot([ue(MON, 9, 12)], 60, undefined, o)).toEqual({ date: MON, startTime: '12:00', endTime: '13:00' });
   });
 });

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
 import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, briefingContextPackQueries, User, type Fact, type Task } from './db';
 import type { calendar_v3 } from 'googleapis';
-import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
+import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents, findNextFreeSlot } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 import { computeAlignment, detectHygieneFlags, isRoutineTitle } from './alignment';
@@ -1034,6 +1034,27 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
       ].join('\n')
     : null;
 
+  // R18 T1 — when a priority has < 1h scheduled this week, name a SPECIFIC slot to block
+  // (not a vague "want me to block time?"). Pick the least-served under-1h priority and find
+  // the next 60-min weekday gap from the week's events. Degrades to null silently.
+  const priorityBlockingText = (() => {
+    try {
+      if (!alignment) return null;
+      const underServed = alignment.perPriority
+        .filter(p => p.hours < 1)
+        .sort((a, b) => a.hours - b.hours)[0];
+      if (!underServed) return null;
+      const slot = findNextFreeSlot([...calendarEvents, ...weekEvents], 60, undefined, { today, tz: userTimezone });
+      if (!slot) return null;
+      const [sh, sm] = slot.startTime.split(':').map(Number);
+      const ampm = sh < 12 ? 'AM' : 'PM';
+      const h12 = sh % 12 === 0 ? 12 : sh % 12;
+      const clock = sm === 0 ? `${h12} ${ampm}` : `${h12}:${String(sm).padStart(2, '0')} ${ampm}`;
+      const when = `${format(new Date(`${slot.date}T12:00:00Z`), 'EEEE')} at ${clock}`;
+      return `PRIORITY BLOCKING SLOT: "${underServed.priority}" has only ${underServed.hours.toFixed(1)}h scheduled this week. Next available 60-min slot: ${when}. Offer specifically: "Want me to block ${when} for ${underServed.priority}?" — never a vague offer, name this exact slot.`;
+    } catch { return null; }
+  })();
+
   const memoriesText = recentMemories.length
     ? recentMemories.map(m => `[${m.type} - ${format(new Date(m.created_at), 'MMM d')}]: ${m.content}`).join('\n')
     : 'No prior conversation memory.';
@@ -1161,6 +1182,8 @@ ${freeTimeText}
 ${alignmentText ? `
 ALIGNMENT DATA — real calendar hours mapped to stated priorities (source of truth for section 3 below — do NOT invent numbers):
 ${alignmentText}
+` : ''}${priorityBlockingText ? `
+${priorityBlockingText}
 ` : ''}${timeAllocationBlock ? `
 ${timeAllocationBlock}
 Use TIME ALLOCATION in section 3 (ALIGNMENT CHECK) only — surface the biggest misalignment concretely (e.g. "60% of your calendar time has been going to meetings, while fundraising — your top priority — has only gotten 8% in the last 8 weeks"). One observation max. Do not repeat it elsewhere.

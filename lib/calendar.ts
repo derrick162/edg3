@@ -1,6 +1,6 @@
 import { google, calendar_v3 } from 'googleapis';
 import { calendarQueries, userQueries } from './db';
-import { wallTimeToUtc, dayRangeUtc, todayInTz } from './time';
+import { wallTimeToUtc, dayRangeUtc, todayInTz, nextDay, formatInTz } from './time';
 import { GOOGLE_SCOPES } from './google-auth';
 
 const BRIEFING_EVENT_TITLE = 'Edg3 Morning Briefing';
@@ -45,17 +45,37 @@ export function getOAuthClient() {
   );
 }
 
-export function getAuthUrl(state: string): string {
+export function getAuthUrl(state: string, opts: { selectAccount?: boolean } = {}): string {
   const oauth2Client = getOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
-    prompt: 'consent',
+    // R18 T3 — `select_account` forces Google's account picker so the user can switch
+    // which account is linked (otherwise Google silently reuses the current one).
+    prompt: opts.selectAccount ? 'select_account consent' : 'consent',
     // Incremental auth: keep previously-granted scopes when a calendar-only user
     // re-consents to add Gmail, so we never silently drop calendar access.
     include_granted_scopes: true,
     state,
   });
+}
+
+/**
+ * R18 T3 — fetch the connected Google account's email from the userinfo endpoint using a
+ * just-issued access token. Best-effort: returns null on any failure so the OAuth flow is
+ * never blocked by it (the email is a nice-to-have display field, not a credential).
+ */
+export async function fetchGoogleAccountEmail(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { email?: string };
+    return typeof data.email === 'string' && data.email ? data.email : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function exchangeCode(code: string) {
@@ -445,6 +465,93 @@ export async function getPastCalendarEvents(
   );
 
   return allEvents.flat();
+}
+
+/** Minimal event shape findNextFreeSlot needs — timed events carry start/end dateTime;
+ *  all-day events (date only, no dateTime) are ignored as they don't block working hours. */
+export interface FreeSlotEvent {
+  start?: { dateTime?: string | null; date?: string | null } | null;
+  end?: { dateTime?: string | null; date?: string | null } | null;
+}
+
+/**
+ * R18 T1 — find the next concrete free slot so the briefing can offer a SPECIFIC time
+ * ("Want me to block Tuesday at two for fundraising?") instead of a vague "want me to
+ * block time?". Pure, no I/O — operates on events already fetched for the briefing.
+ *
+ * Scans the next `daysToScan` weekdays (Sat/Sun skipped) for the first gap ≥ durationMins
+ * inside the 9 AM–6 PM working window in `tz`. If `preferredHour` is given (e.g. the user's
+ * energy-profile peak), a slot anchored at that hour is preferred when it fits a gap that day,
+ * otherwise the day's first available gap is used. Returns null if nothing qualifies.
+ *
+ * `today`/`tz` default to the real clock + UTC; both are injectable for deterministic tests.
+ */
+export function findNextFreeSlot(
+  events: FreeSlotEvent[],
+  durationMins: number,
+  preferredHour?: number,
+  opts: { today?: string; tz?: string; daysToScan?: number } = {},
+): { date: string; startTime: string; endTime: string } | null {
+  const tz = opts.tz || 'UTC';
+  const today = opts.today || todayInTz(tz);
+  const daysToScan = opts.daysToScan ?? 3;
+  if (durationMins <= 0) return null;
+
+  const WINDOW_START_MIN = 9 * 60;   // 09:00
+  const WINDOW_END_MIN = 18 * 60;    // 18:00
+  const durMs = durationMins * 60_000;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toClock = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}:00`;
+
+  // Busy intervals from timed events only (all-day events don't block working hours).
+  const busy = events
+    .filter(e => e.start?.dateTime && e.end?.dateTime)
+    .map(e => ({ start: Date.parse(e.start!.dateTime!), end: Date.parse(e.end!.dateTime!) }))
+    .filter(b => Number.isFinite(b.start) && Number.isFinite(b.end) && b.end > b.start)
+    .sort((a, b) => a.start - b.start);
+
+  // Next `daysToScan` weekdays starting today (a calendar date's weekday is tz-independent).
+  const dates: string[] = [];
+  let cursor = today;
+  for (let i = 0; i < 14 && dates.length < daysToScan; i++) {
+    const dow = new Date(`${cursor}T12:00:00Z`).getUTCDay(); // 0=Sun..6=Sat
+    if (dow !== 0 && dow !== 6) dates.push(cursor);
+    cursor = nextDay(cursor);
+  }
+
+  const fmtHHMM = (ms: number) => formatInTz(new Date(ms), tz, { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  for (const date of dates) {
+    const dayStart = wallTimeToUtc(`${date}T${toClock(WINDOW_START_MIN)}`, tz).getTime();
+    const dayEnd = wallTimeToUtc(`${date}T${toClock(WINDOW_END_MIN)}`, tz).getTime();
+
+    // Free gaps inside the window, large enough to hold the block.
+    const dayBusy = busy
+      .filter(b => b.end > dayStart && b.start < dayEnd)
+      .map(b => ({ start: Math.max(b.start, dayStart), end: Math.min(b.end, dayEnd) }))
+      .sort((a, b) => a.start - b.start);
+    const gaps: { start: number; end: number }[] = [];
+    let c = dayStart;
+    for (const b of dayBusy) {
+      if (b.start - c >= durMs) gaps.push({ start: c, end: b.start });
+      c = Math.max(c, b.end);
+    }
+    if (dayEnd - c >= durMs) gaps.push({ start: c, end: dayEnd });
+    if (!gaps.length) continue;
+
+    // Prefer a slot anchored at the peak hour when it fits a gap; else the day's first gap.
+    let startMs: number | null = null;
+    if (typeof preferredHour === 'number' && preferredHour >= 0 && preferredHour <= 23) {
+      const prefMs = wallTimeToUtc(`${date}T${pad(preferredHour)}:00:00`, tz).getTime();
+      for (const g of gaps) {
+        if (prefMs >= g.start && prefMs + durMs <= g.end) { startMs = prefMs; break; }
+      }
+    }
+    if (startMs === null) startMs = gaps[0].start;
+
+    return { date, startTime: fmtHHMM(startMs), endTime: fmtHHMM(startMs + durMs) };
+  }
+  return null;
 }
 
 export async function createCalendarEvent(
