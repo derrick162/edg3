@@ -46,6 +46,7 @@ vi.mock('./db', () => ({
     createPending: h.briefingCreatePending,
     updateContent: h.briefingUpdateContent,
     update: h.briefingUpdate,
+    countCompleted: vi.fn(() => 0),
   },
   userQueries: { findById: h.findById },
   priorityQueries: { getThisWeek: vi.fn(() => []), getMostRecent: vi.fn(() => []) },

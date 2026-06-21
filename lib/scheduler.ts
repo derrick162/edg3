@@ -606,9 +606,9 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
   if (phoneNumber && process.env.VAPI_API_KEY) {
     briefingQueries.update(briefingId, { status: 'calling' });
 
-    const { memoryQueries } = await import('./db');
-    const recentMemories = memoryQueries.getRecent(userId, 1);
-    const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
+    // R19 T1 — first-call detection keys off completed calls, not memories: memory extraction
+    // can fail silently, but a completed briefing is the true "we've spoken before" signal.
+    const isFirstCall = briefingQueries.countCompleted(userId) === 0;
 
     // T4-2 — Pre-call Vapi health check: ping Vapi API before generating the briefing
     // call so a service outage fails fast with a user notification instead of wasting
@@ -680,9 +680,9 @@ export async function scheduleOpenCall(userId: number) {
   if (phoneNumber && process.env.VAPI_API_KEY) {
     briefingQueries.update(briefingId, { status: 'calling' });
 
-    const { memoryQueries } = await import('./db');
-    const recentMemories = memoryQueries.getRecent(userId, 1);
-    const isFirstCall = recentMemories.filter(m => m.type !== 'profile').length === 0;
+    // R19 T1 — first-call detection keys off completed calls, not memories: memory extraction
+    // can fail silently, but a completed briefing is the true "we've spoken before" signal.
+    const isFirstCall = briefingQueries.countCompleted(userId) === 0;
 
     try {
       console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
