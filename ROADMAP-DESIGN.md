@@ -49,6 +49,66 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-21 (ROUND 16 — Score page sparkline + onboarding mobile polish)
+
+> `git merge master` first (master at `8d83a93`). Two polish tickets sharpening key surfaces. **Do both before R15 or pillar work.**
+
+---
+
+### T1 — 7-day score sparkline on `/score` page (HIGH — 1.5h)
+
+**Problem:** The `/score` page shows today's Focus Score as a static number, but has no trend context. A 7-day sparkline makes the score legible: is it improving, crashing, or flat?
+
+**Fix — two parts:**
+
+**Part A — New `ScoreSparkline` component at `components/ui/ScoreSparkline.tsx` (pure presentational):**
+
+```ts
+interface ScoreSparklineProps {
+  scores: Array<{ date: string; score: number | null }>;  // 7 entries, oldest→newest
+  height?: number;  // default 48
+  width?: number;   // default 160
+}
+```
+
+- Inline SVG, no external charting lib — same approach as `RecoveryCard`'s sparkline.
+- Line connects non-null points. Null points (no call that day) render as a gap — don't interpolate.
+- Color the line: last score ≥70 → `--edg-success`, 45–69 → `--edg-warn`, < 45 → `--edg-error`.
+- Fill under the line with `opacity: 0.12` of the line color.
+- End-cap dot (4px, filled) on the last non-null point.
+- No axes, no labels — the score number above handles that.
+- Export from `components/ui/index.ts`.
+
+**Part B — Wire data into `/score` page (`app/score/page.tsx`):**
+The `/api/scores` route already returns today's score. Check if it also returns `scoreHistory: Array<{ date, score }>` — if not, add a `GET /api/scores/history` route that queries `call_feedback` + `briefings` (or whichever table Core stores daily scores in) for the last 7 calendar days, returning `[{ date: 'YYYY-MM-DD', score: number | null }]`. If the score history table doesn't exist yet, build the component shell and render with placeholder data (7 days of nulls → dashes); add a TODO comment for Core to wire it when the history table lands.
+
+Place the sparkline in Section 1 of the score page, to the right of the score number:
+```
+[Score: 74]  [━━━━╱╲╱━━━]
+[tier badge]
+```
+Use `flex items-center gap-6` to keep them on one row.
+
+**Spec:** Document in `DESIGN.md §13 — ScoreSparkline`.
+
+---
+
+### T2 — Onboarding step indicator: mobile polish (MEDIUM — 1h)
+
+**Problem:** On mobile (< 640px), the onboarding step dots and labels are cramped — dots are only 8px and run together, the label text wraps awkwardly, and the active/complete states are hard to distinguish.
+
+**What to fix in `app/onboarding/**` (claim `app/onboarding/page.tsx` or wherever `StepIndicator` lives in the Status Board):**
+
+1. **Dot size:** minimum 10px diameter on mobile, 12px on sm+. Currently 8px — too small for tap targets and hard to see.
+2. **Spacing:** increase gap between dots from `gap-1` to `gap-2` on mobile so they don't crowd; labels can hide entirely on xs (< 480px) — just show the colored dots.
+3. **Active state contrast:** the active dot should use `--edg-indigo` fill (solid), completed dots `--edg-success` with a ✓ checkmark (SVG, 8px). Inactive dots `--border` with `--text-faint` fill. Currently these states look similar in low-ambient-light.
+4. **Connector line:** make it `--border` (currently it may be transparent or too light). Length should stretch to fill between dots, not a fixed width.
+5. **Label truncation:** on sm+, show the step label in `text-xs --text-muted`; on xs, hide labels entirely (`hidden sm:block`).
+
+These are all visual/token changes — no behavior changes. Keep diffs minimal in the onboarding page files.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 15 — Focus Score page + notification history UI)
 
 > `git merge master` first. Two tickets making new data surfaces visible and polished. **Do both before R14 or pillar work.**

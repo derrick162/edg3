@@ -31,6 +31,60 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-21 (ROUND 18 — Smarter priority-blocking + reply surface in briefing)
+
+> `git merge master` first (master at `8d83a93`). Two tickets sharpening the Daily Call flywheel. **Do both before R17 or pillar work.**
+
+---
+
+### T1 — Priority-blocking names an actual free slot (HIGH — 1.5h)
+
+**Problem:** The briefing says "want me to block time for fundraising this week?" but never says *when*. The user has to think through their own calendar. Edge should do that work and offer a specific slot.
+
+**Fix — two parts:**
+
+**Part A — `findNextFreeSlot(events: CalendarEvent[], durationMins: number, preferredHour?: number): { date: string; startTime: string; endTime: string } | null` in `lib/calendar.ts` (pure, no I/O):**
+- Takes today's + tomorrow's events (already fetched for briefing) as input — no extra API call.
+- Looks for the next weekday gap ≥ `durationMins` between 9 AM and 6 PM in user's timezone.
+- If `preferredHour` supplied (from energy profile peak window), tries to land the slot near that hour first before falling back to the first available.
+- Returns null if no qualifying slot found in the next 3 weekdays.
+- 6 new tests: no events (whole day free → returns morning), packed day (fallback to next day), preferred-hour respected, weekend skipped, null when fully packed for 3 days, mixed events spanning noon.
+
+**Part B — Wire into `lib/briefing.ts` PRIORITY BLOCKING section:**
+The existing alignment check already surfaces under-scheduled priorities. When a priority has < 1h this week, call `findNextFreeSlot` (targeting a 60-min block near the user's peak hour if set) and inject the result into the briefing:
+
+```
+PRIORITY BLOCKING SLOT: "${priority.label}" has only ${hours}h scheduled this week.
+Next available 60-min slot: ${day} at ${time}. Offer specifically: "Want me to block ${day} at ${time} for ${priority.label}?"
+```
+
+The model then speaks: "Fundraising has zero blocks this week — want me to put ninety minutes on Tuesday at two?" (not a vague offer). Update `lib/vapi.ts` PRIORITY BLOCKING block to match: "When offering to block time, always name the specific slot (day + time) that Edge already identified — never ask the user to pick."
+
+---
+
+### T2 — Surface `checkReplies` signal in the morning briefing (MEDIUM — 1h)
+
+**Problem:** `checkReplies` is a mid-call tool only. But reply tracking runs at briefing time anyway (`checkOutreachReplies` is called in the webhook). The briefing should surface pending replies so the user knows before the call ends — not just when they ask.
+
+**Fix — two parts:**
+
+**Part A — Inject replies into briefing prompt in `lib/briefing.ts`:**
+`checkOutreachReplies(userId)` is already called somewhere in the briefing pipeline (or if not, add it to the `Promise.all` alongside the calendar + Whoop fetches). Map the result through `formatRepliesForVoice` and inject as a `PENDING REPLIES` block in the briefing prompt when non-empty:
+
+```
+PENDING REPLIES (${count}): ${formattedSummary}
+```
+
+**Part B — Prompt instruction in `lib/vapi.ts`:**
+Add to the CLOSING section guidance:
+> "OUTREACH REPLIES: If PENDING REPLIES block shows ≥1 reply, surface it near the end of section 1 or as its own quick note after the opener — 'Looks like [Name] replied to your email — worth a read before your call.' Don't skip it. Don't repeat if the user already acknowledged it mid-call."
+
+**Tests:** 2 new tests for the `lib/briefing.ts` injection: non-empty replies appear in output, empty replies → no PENDING REPLIES block injected (degrades silently).
+
+⚠️ **Coordinate:** `lib/db.ts` claim NOT needed for this ticket — reuses existing `outreach_tracking` table.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 17 — Daily call quality: opener sharpening + call feedback signal)
 
 > `git merge master` first. Two tickets deepening the Daily Call flywheel. **Do both before any pillar work.**

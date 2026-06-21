@@ -30,6 +30,73 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-21 (ROUND 16 — Startup hardening + GDPR data export)
+
+> `git merge master` first (master at `8d83a93`). Two reliability/trust tickets. **Do both before R15 or pillar work.**
+
+---
+
+### T1 — JWT_SECRET startup enforcement: crash loud if not set or still placeholder (HIGH — 45m)
+
+**Problem:** If `JWT_SECRET` is unset or left as a default placeholder like `"change-me"`, the app silently starts with a weak signing key — every session token is forgeable. We should refuse to boot rather than serve compromised tokens.
+
+**Fix — `lib/auth.ts` startup guard:**
+
+Add a `validateJwtSecret()` function called at module init (top of `lib/auth.ts`, outside any request handler):
+
+```ts
+const FORBIDDEN_SECRETS = new Set(['change-me', 'secret', 'changeme', 'your-secret', 'jwt-secret', 'mysecret', '']);
+
+function validateJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || FORBIDDEN_SECRETS.has(secret.toLowerCase()) || secret.length < 32) {
+    throw new Error(
+      `[EDG3] JWT_SECRET is ${!secret ? 'not set' : 'too weak or still a placeholder'}.` +
+      ` Set a cryptographically random string of ≥32 characters in your environment.`
+    );
+  }
+}
+
+validateJwtSecret();
+```
+
+This fires when `lib/auth.ts` is first imported (i.e., on first request in Next.js), crashing the process loudly rather than silently serving bad tokens. Add `JWT_SECRET=` to `.env.example` with a comment: `# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+
+**Tests:** 4 cases — unset env var throws, placeholder `"change-me"` throws, short string (< 32 chars) throws, valid 64-char hex string passes.
+
+---
+
+### T2 — `GET /api/user/export` — GDPR-ready data export (MEDIUM — 1.5h)
+
+**Problem:** We store a growing amount of user data (calendar events, facts, memories, tasks, call transcripts, Whoop tokens, outreach logs). Users should be able to download everything we have on them. This is required for GDPR compliance and builds trust — it's also listed in the privacy policy as something users can request.
+
+**Fix — `app/api/user/export/route.ts`:**
+
+```ts
+GET /api/user/export
+Authorization: session cookie (same as all other routes)
+Response: 200 application/json, filename header "edg3-export-{userId}-{date}.json"
+```
+
+Fetch and include ALL of the following (in parallel where possible, each `.catch(() => null)`):
+- `profile`: from `users` table (name, email, call_time, timezone, created_at — exclude password hash)
+- `facts`: all rows from `user_facts` for the user
+- `memories`: all rows from `call_memories` for the user (transcript omitted if > 10k chars — include a `truncated: true` flag)
+- `tasks`: all rows from `tasks` for the user
+- `call_feedback`: all rows (if table exists)
+- `outreach_tracking`: all rows
+- `notification_log`: all rows from `notification_log` for the user
+- `whoop_connected`: boolean (true if whoop_tokens row exists for user — do NOT include the token itself)
+- `push_subscriptions_count`: integer count (not the endpoint strings themselves — those are device identifiers)
+
+Return as a single JSON object: `{ exported_at, user_id, profile, facts, memories, tasks, call_feedback, outreach_tracking, notification_log, whoop_connected, push_subscriptions_count }`.
+
+Set response header: `Content-Disposition: attachment; filename="edg3-export-${userId}-${date}.json"`.
+
+**Tests:** 4 cases — unauthenticated 401, authenticated returns 200 with expected top-level keys, whoop_connected true when token row exists, whoop token value not present in response body.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 15 — Data durability: SQLite backup to S3 via Litestream)
 
 > `git merge master` first. One high-priority ticket. **Do before any pillar work. This is existential — Railway restarts wipe SQLite without this.**
