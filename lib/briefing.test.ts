@@ -1,10 +1,40 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock } from './briefing';
-import type { Fact, PeopleModel } from './db';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock, pickTopCommitment } from './briefing';
+import type { Fact, PeopleModel, Task } from './db';
 
 function makePref(statement: string, id = 1): Fact {
   return { id, user_id: 1, category: 'preference', statement, entity: null, learned_at: '2026-06-13T00:00:00', confidence: 'high', source_briefing_id: null };
 }
+
+describe('pickTopCommitment (R16 T1)', () => {
+  const mk = (id: number, over: Partial<Task> = {}): Task => ({
+    id, user_id: 1, text: `t${id}`, completed: 0, completed_at: null, source: 'edg3',
+    date: '2026-06-20', created_at: '2026-06-19T00:00:00', ...over,
+  } as Task);
+
+  it('returns null when no incomplete tasks', () => {
+    expect(pickTopCommitment([])).toBeNull();
+    expect(pickTopCommitment([mk(1, { completed: 1 })])).toBeNull();
+  });
+
+  it('picks the earliest due date', () => {
+    const r = pickTopCommitment([mk(1, { date: '2026-06-21' }), mk(2, { date: '2026-06-18' }), mk(3, { date: '2026-06-25' })]);
+    expect(r?.id).toBe(2);
+  });
+
+  it('falls back to created_at when due dates tie', () => {
+    const r = pickTopCommitment([
+      mk(1, { date: '2026-06-20', created_at: '2026-06-19T10:00:00' }),
+      mk(2, { date: '2026-06-20', created_at: '2026-06-19T08:00:00' }),
+    ]);
+    expect(r?.id).toBe(2);
+  });
+
+  it('ignores completed tasks in selection', () => {
+    const r = pickTopCommitment([mk(1, { date: '2026-06-10', completed: 1 }), mk(2, { date: '2026-06-22' })]);
+    expect(r?.id).toBe(2);
+  });
+});
 
 describe('buildFallbackBriefing', () => {
   it('uses first name only, not full name', () => {

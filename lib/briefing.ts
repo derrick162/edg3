@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { format, startOfWeek } from 'date-fns';
-import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, briefingContextPackQueries, User, type Fact } from './db';
+import { userQueries, priorityQueries, memoryQueries, briefingQueries, taskQueries, factQueries, energyLogQueries, effectiveTimezone, openLoopQueries, calendarScoreQueries, briefingContextPackQueries, User, type Fact, type Task } from './db';
 import type { calendar_v3 } from 'googleapis';
 import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBriefing, getFreeTimeSlots, getPastCalendarDays, getPastCalendarEvents } from './calendar';
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
@@ -224,6 +224,22 @@ export function buildFallbackBriefing(greeting: string, userName: string, calend
  * omit the health section entirely rather than injecting an empty block.
  * Pure function; exported for unit tests.
  */
+/**
+ * R16 T1 — pick the single commitment to hold the user accountable for in the opener.
+ * Pure: from the incomplete set, the earliest-due task (falling back to created_at when
+ * no due date), tiebroken by created_at. Returns null when nothing is incomplete.
+ */
+export function pickTopCommitment(tasks: Task[]): Task | null {
+  const incomplete = tasks.filter(t => !t.completed);
+  if (!incomplete.length) return null;
+  return [...incomplete].sort((a, b) => {
+    const ad = a.date || a.created_at || '';
+    const bd = b.date || b.created_at || '';
+    if (ad !== bd) return ad.localeCompare(bd);
+    return (a.created_at || '').localeCompare(b.created_at || '');
+  })[0];
+}
+
 export function buildWhoopSection(
   recovery: WhoopRecovery | null,
   sleep: WhoopSleep | null,
@@ -726,9 +742,8 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Accountability: the most recent Edge-captured commitment from yesterday (not today's tasks).
   // source='edg3' tasks come from extractTasksFromTranscript at call end.
   // M3-3: oldest (most overdue) edg3 commitment surfaces first — .at(0) on ASC-sorted array.
-  const edg3Commitment = incompleteTasks
-    .filter(t => t.source === 'edg3' && t.date < today)
-    .at(0) ?? null;
+  // R16 T1 — route through pickTopCommitment (earliest-due overdue Edge commitment).
+  const edg3Commitment = pickTopCommitment(incompleteTasks.filter(t => t.source === 'edg3' && t.date < today));
   // M4 Accountability Snapshot: all commitments (tasks + open_loops) over past 7 days with outcomes.
   // M4-2 Reliability Signal: 30-day window to derive per-horizon completion rates for calibrated language.
   const accountabilitySnapshot = (() => {
