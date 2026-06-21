@@ -313,18 +313,19 @@ Always end with warmth. This person is building something — remind them of tha
           'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', // skipRecurringOccurrence (R13 T2)
           '8de65c6d-513b-4469-ace6-df7cdef165b1', // endRecurringSeries (R13 T2)
           'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
-          // '___findFreeTime___', // findFreeTime (R14 T1) — params: duration (number), startDate?, endDate?, windowStart?, windowEnd?
-          // '___searchEvents___', // searchEvents (R15 T1) — params: query, startDate?, endDate?
-          // '___checkConflict___', // checkConflict (R15 T2) — params: date, startTime, endTime?
-          // '___getNextEvents___', // getNextEvents (R15 T5) — params: count?
-          // '___setEventReminder___', // setEventReminder (R15 T3) — params: title, minutesBefore, currentTime?
-          // '___blockFocusTime___', // blockFocusTime (R15 T4) — params: label, duration, startDate?, endDate?, windowStart?, windowEnd?
-          // '___briefEvent___', // briefEvent (R15 T6) — params: title, currentTime?
-          // '___generateWeeklyReview___', // generateWeeklyReview (R15 T7) — params: weekOf?
-          // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
-          // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
-          // '___completeTask___', // completeTask (R14 T4) — params: title
-          // '___forgetFact___', // forgetFact (R14 T5) — params: topic
+          '6b27b6ce-3158-410f-b4da-8de926ed3af2', // findFreeTime (R14 T1)
+          'ee225796-83c6-4aa0-a653-e70f09bb2a51', // createRecurringEvent (R14 T2)
+          'e25a8d73-dd1f-4751-9a7e-e2531c8e36e7', // editEventAttendees (R14 T3)
+          '3287533b-7953-4569-91d6-e3b9a33d9201', // addTask (R14 T4)
+          '3b9c9db8-86fc-4db8-b308-c31c3e38b8d7', // completeTask (R14 T4)
+          '1ee5ce8b-01d5-4886-886e-c8d27414cd92', // forgetFact (R14 T5)
+          'ad8beae1-2713-4195-8543-90744a8c6019', // searchEvents (R15 T1)
+          'bea8ea33-79b0-4217-bf92-950e74a01504', // checkConflict (R15 T2)
+          '7e3a631b-34a8-4598-887c-996ef090f766', // setEventReminder (R15 T3)
+          '92708964-3c5b-412f-b9cb-eb2bd716645e', // blockFocusTime (R15 T4)
+          '6e1263e0-9155-413f-a1c7-231323cd5704', // getNextEvents (R15 T5)
+          '3bda7770-65db-4a5f-89cd-684c7111ba22', // briefEvent (R15 T6)
+          '29898c32-3823-4a29-820d-7cacbc4427d8', // generateWeeklyReview (R15 T7)
         ],
       },
       firstMessage: briefingContent,
@@ -391,18 +392,19 @@ Always end with warmth. This person is building something — remind them of tha
           'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', // skipRecurringOccurrence (R13 T2)
           '8de65c6d-513b-4469-ace6-df7cdef165b1', // endRecurringSeries (R13 T2)
           'd18135ff-645f-4fcd-b965-879f1887e2a2', // blockTravelTime (R13 T3)
-          // '___findFreeTime___', // findFreeTime (R14 T1) — params: duration (number), startDate?, endDate?, windowStart?, windowEnd?
-          // '___searchEvents___', // searchEvents (R15 T1) — params: query, startDate?, endDate?
-          // '___checkConflict___', // checkConflict (R15 T2) — params: date, startTime, endTime?
-          // '___getNextEvents___', // getNextEvents (R15 T5) — params: count?
-          // '___setEventReminder___', // setEventReminder (R15 T3) — params: title, minutesBefore, currentTime?
-          // '___blockFocusTime___', // blockFocusTime (R15 T4) — params: label, duration, startDate?, endDate?, windowStart?, windowEnd?
-          // '___briefEvent___', // briefEvent (R15 T6) — params: title, currentTime?
-          // '___generateWeeklyReview___', // generateWeeklyReview (R15 T7) — params: weekOf?
-          // '___editEventAttendees___', // editEventAttendees (R14 T3) — params: title, currentTime?, add?[], remove?[]
-          // '___addTask___', // addTask (R14 T4) — params: title, dueDate?
-          // '___completeTask___', // completeTask (R14 T4) — params: title
-          // '___forgetFact___', // forgetFact (R14 T5) — params: topic
+          '6b27b6ce-3158-410f-b4da-8de926ed3af2', // findFreeTime (R14 T1)
+          'ee225796-83c6-4aa0-a653-e70f09bb2a51', // createRecurringEvent (R14 T2)
+          'e25a8d73-dd1f-4751-9a7e-e2531c8e36e7', // editEventAttendees (R14 T3)
+          '3287533b-7953-4569-91d6-e3b9a33d9201', // addTask (R14 T4)
+          '3b9c9db8-86fc-4db8-b308-c31c3e38b8d7', // completeTask (R14 T4)
+          '1ee5ce8b-01d5-4886-886e-c8d27414cd92', // forgetFact (R14 T5)
+          'ad8beae1-2713-4195-8543-90744a8c6019', // searchEvents (R15 T1)
+          'bea8ea33-79b0-4217-bf92-950e74a01504', // checkConflict (R15 T2)
+          '7e3a631b-34a8-4598-887c-996ef090f766', // setEventReminder (R15 T3)
+          '92708964-3c5b-412f-b9cb-eb2bd716645e', // blockFocusTime (R15 T4)
+          '6e1263e0-9155-413f-a1c7-231323cd5704', // getNextEvents (R15 T5)
+          '3bda7770-65db-4a5f-89cd-684c7111ba22', // briefEvent (R15 T6)
+          '29898c32-3823-4a29-820d-7cacbc4427d8', // generateWeeklyReview (R15 T7)
         ],
       },
       messagePlan: {
