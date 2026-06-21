@@ -49,6 +49,80 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-21 (ROUND 17 — Dashboard skeleton states + Settings page)
+
+> `git merge master` first (master at `264b168`). Two launch-readiness tickets. **Do both before R16 or pillar work.**
+
+---
+
+### T1 — Dashboard skeleton loading states (HIGH — 1.5h)
+
+**Problem:** The dashboard flashes blank white space for 1-2 seconds while `loadData` runs — sidebar cards, briefing list, and tasks all appear empty before data arrives. This looks broken to new users.
+
+**Fix — add skeleton shimmer states to `app/dashboard/page.tsx` and `app/globals.css`:**
+
+**Part A — `.skeleton` utility class in `app/globals.css`:**
+```css
+.skeleton {
+  background: linear-gradient(90deg, var(--card-bg) 25%, color-mix(in srgb, var(--card-bg) 70%, var(--text-faint)) 50%, var(--card-bg) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+```
+
+**Part B — Skeleton placeholders while `loading` state is true:**
+Add a `loading` state (boolean, default true, set false after `loadData` resolves). In the sidebar, while loading:
+- Next call card: show a `skeleton` div `h-10 w-32` in place of the call time
+- Calendar section: `skeleton` block `h-4 w-40` for the connection status line
+- Recovery card slot: `skeleton` block `h-16 w-full rounded-lg`
+
+In the Briefings tab content area while loading, show 3 skeleton rows:
+```
+[skeleton h-4 w-48] [skeleton h-3 w-64 mt-1]
+```
+(title line + body line, like a ghost briefing card)
+
+Keep it minimal — don't skeleton everything, just the 3-4 most visible blank spots. Claim `app/dashboard/page.tsx` in Status Board (Core has a concurrent T2 there — coordinate: Core is adding an empty-state block in the Briefings tab, you're adding skeleton rows to the same tab while `loading === true`. No conflict if you gate on `loading` vs Core gates on `!loading && briefings.length === 0`).
+
+---
+
+### T2 — `/settings` account page (MEDIUM — 2h)
+
+**Problem:** There's no dedicated settings page. Users who want to change their call time, manage connections, or export their data have to dig through the dashboard sidebar. Pre-launch, every user needs an obvious place to manage their account.
+
+**Fix — new `app/settings/page.tsx`:**
+
+Clean single-column layout, max-width 540px, same `var(--bg)` background, consistent `glass-card` sections. Add a nav link "Settings" to the dashboard sidebar (small link at the bottom, `text-xs --text-faint`).
+
+**Section 1 — Profile:**
+- Display name (read-only for now, editable later)
+- Email (from session, read-only)
+
+**Section 2 — Morning call:**
+- Current call time (fetched from `GET /api/profile` or `/api/onboarding/call-time`)
+- "Change" link → `/onboarding?step=call-time` (reuse the existing onboarding step)
+- Timezone display (read-only)
+
+**Section 3 — Connections:**
+- Google Calendar: connected/disconnected status + Reconnect/Disconnect buttons (same logic as dashboard sidebar — can import the same state pattern or just link back: "Manage connections in your dashboard")
+- Whoop: same
+
+**Section 4 — Your data:**
+- "Download everything Edge knows about you" button → `GET /api/account/export` (use `download` attribute on an `<a>` tag, not fetch)
+- Brief copy: "Includes all your facts, memories, tasks, and call history."
+
+**Section 5 — Account:**
+- "Delete account" button (red, confirmation dialog) → existing `DELETE /api/account` or equivalent. If the delete endpoint doesn't exist, render the button as disabled with copy "Email support@edg3.ai to delete your account" — don't build the endpoint, just surface the path.
+
+Add link to Settings from dashboard sidebar. Spec in `DESIGN.md §14 — Settings Page`.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 16 — Score page sparkline + onboarding mobile polish)
 
 > `git merge master` first (master at `8d83a93`). Two polish tickets sharpening key surfaces. **Do both before R15 or pillar work.**

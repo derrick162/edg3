@@ -30,6 +30,54 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-21 (ROUND 17 — Wire proactive notifications + export consolidation)
+
+> `git merge master` first (master at `264b168`). Two tickets completing work that's already been built. **Do both before R16 or pillar work.**
+
+---
+
+### T1 — Wire proactive notifications into the scheduler (HIGH — 1.5h)
+
+**Problem:** `lib/proactiveNotifications.ts` has two working jobs — `maybeLowRecoveryAlert` and `maybePriorityGapAlert` — but nothing in the codebase calls them. The push infrastructure is live (VAPID keys set on Railway, subscriptions table exists, `lib/push.ts` works), but zero notifications have ever fired because the jobs are dead code.
+
+**Fix — `lib/scheduler.ts`:**
+Read the existing scheduler to understand the 30-min cron sweep structure. It already loops over users for the morning call schedule. Add a new sweep block that runs once per 30-min tick for all active users:
+
+```ts
+import { maybeLowRecoveryAlert, maybePriorityGapAlert } from './proactiveNotifications';
+
+// In the per-user sweep (or as a separate tick handler):
+for (const user of activeUsers) {
+  await maybeLowRecoveryAlert(user).catch(e => console.error('low-recovery alert failed', user.id, e));
+  await maybePriorityGapAlert(user).catch(e => console.error('priority-gap alert failed', user.id, e));
+}
+```
+
+Each function already has its own rate-limiting gate (`notificationLogQueries.hasRecentEntry`) so calling them every 30 min is safe — they self-throttle (low_recovery: 20h cooldown, priority_gap: 7d cooldown).
+
+**activeUsers definition:** users who have a push subscription AND have completed at least one briefing call. Check `push_subscriptions` JOIN `briefings WHERE status='completed'` — or reuse `hasCompletedCall` which already lives inside `lib/proactiveNotifications.ts` (extract it if needed).
+
+**Tests:** 2 integration-style tests with mocked `maybeLowRecoveryAlert` + `maybePriorityGapAlert` verifying they're called during the sweep and errors are caught without aborting the loop.
+
+---
+
+### T2 — Consolidate `/api/user/export` and `/api/account/export` (MEDIUM — 45m)
+
+**Problem:** Two GDPR export endpoints now exist doing overlapping work. `/api/account/export` (older, richer — includes `people_models`, full audit log, energy profile, open loops, undo history) and `/api/user/export` (just shipped in R16, simpler). Having two is confusing and will drift.
+
+**Fix:**
+Read both routes. The richer one is `/api/account/export`. The right resolution is:
+
+Option A (preferred if clean): Delete `app/api/user/export/route.ts` and add a redirect from `/api/user/export` to `/api/account/export` — either a Next.js redirect in `next.config.ts` or a thin route that calls the account export handler.
+
+Option B: If `/api/user/export` has fields `/api/account/export` doesn't (check), merge the missing fields into `/api/account/export` and then do Option A.
+
+Whichever route survives, ensure its response includes `people_models` (already in `/api/account/export`). Update the Privacy page copy at `app/privacy/page.tsx` if it references the export URL — point it to whichever endpoint you keep.
+
+No new tests needed — existing account export tests cover correctness.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 16 — Startup hardening + GDPR data export)
 
 > `git merge master` first (master at `8d83a93`). Two reliability/trust tickets. **Do both before R15 or pillar work.**

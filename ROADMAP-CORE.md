@@ -31,6 +31,48 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-21 (ROUND 19 — First-call experience + new-user empty states)
+
+> `git merge master` first (master at `264b168`). Two launch-readiness tickets. **Do both before R18 or pillar work.**
+
+---
+
+### T1 — First-call awareness: Edge introduces itself on call #1 (HIGH — 1.5h)
+
+**Problem:** New users finish onboarding and Edge launches straight into a briefing as if they already know what it is. That's a cold first impression at the most critical moment.
+
+**Fix — two parts:**
+
+**Part A — `briefingQueries.countCompleted(userId): number` in `lib/db.ts`:**
+One line: `SELECT COUNT(*) FROM briefings WHERE user_id = ? AND status = 'completed'`. Add alongside the other `briefingQueries` methods.
+
+**Part B — `FIRST CALL` block injected into system prompt in `lib/vapi.ts`:**
+In `buildVapiConfig` (or wherever the system prompt is assembled), fetch `countCompleted(userId)`. When it is `0`, prepend a `FIRST CALL` block:
+
+> "FIRST CALL — this is ${firstName}'s very first call with Edge. Open with a warm 2-sentence intro before the briefing: what Edge is ('I'm Edge — I run your morning briefing, manage your calendar, and keep you focused on what matters') and a quick invite ('Want a quick overview or should we dive in?'). If they want a tour: explain the 3 things Edge does in plain English in 30 seconds. Then move into the normal briefing. Keep the intro under 30 seconds total — don't overdo it. After this call, NEVER introduce yourself again."
+
+When `countCompleted >= 1`, omit the block entirely.
+
+**Tests:** 2 tests for `countCompleted` — returns 0 when no completed rows, returns correct count when rows exist.
+
+---
+
+### T2 — New-user empty state in Briefings tab (MEDIUM — 1h)
+
+**Problem:** A user who just connected Google but hasn't had their first call sees a completely blank Briefings tab. No content, no explanation, no sense of what's coming.
+
+**Fix — `app/dashboard/page.tsx` Briefings tab:**
+When `activeTab === 'briefings' && briefings.length === 0 && calendarConnected`, render in place of the empty list:
+
+A `glass-card` centered block with:
+- Header: "Your first briefing is on its way"
+- Body (2-3 lines, `--text-muted`): "Edge calls you each morning at [callTime] to run your day — calendar, priorities, and what to focus on first. After your first call, your summary will appear here."
+- Link: "Change call time →" in `--edg-accent`, routing to `/onboarding?step=call-time` or the profile call-time setting.
+
+Use the `callTime` and `timezone` already in dashboard state (fetched via `loadData`). Claim `app/dashboard/page.tsx` in Status Board — Design is idle so no conflict expected, but claim it anyway.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 18 — Smarter priority-blocking + reply surface in briefing)
 
 > `git merge master` first (master at `8d83a93`). Three tickets — T3 is a quick dashboard fix, do it first. **Do all before R17 or pillar work.**
