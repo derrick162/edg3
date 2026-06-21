@@ -594,6 +594,12 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-20** — **R14 T1 — Push notification infrastructure: VAPID + DB + `lib/push.ts` + subscribe routes (1978 green).** _(synced master first)_
+  - Added `web-push` dependency (+ `@types/web-push`). **VAPID keys generated into `.env.local`** (gitignored; ⚠️ **Railway/prod keys are Derrick's separate external step** — `VAPID_PUBLIC_KEY`/`NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`).
+  - `lib/db.ts` (claimed): `push_subscriptions` table (UNIQUE user+endpoint, CASCADE) + `pushSubscriptionQueries.upsert/getAll/delete`; `notification_log` table + `notificationLogQueries.record/hasRecentEntry`. Both added to `USER_SCOPED_DELETE_ORDER` (deletion drift-guard passes). Indexes added.
+  - `lib/push.ts` (new): `sendPushToUser(userId, {title, body})` — best-effort, never throws; no-op when VAPID unset or no subs; deletes 410/404-expired endpoints; logs other errors. 6 tests.
+  - Routes: `POST /api/notifications/subscribe` (validates `{endpoint, keys:{p256dh,auth}}` → upsert) + `/unsubscribe` (delete by endpoint), authed + `pushSubscribe` rate-limit (30/hr). 7 route tests.
+  - 109 files / 1978 green. _(T2 cron jobs next.)_
 - **2026-06-20** — **R13 — Gmail primitives: cache gate (already shipped) + reading indicator + `searchEmailsBySubject` (1965 green).** _(synced master first)_
   - **T1 — already on master** (`6abf51c`, R12 T1): `getRecentEmailSignal` 24h cache gate + suppress-empty audit + `fullBodies` bypass. Verified present; no work needed.
   - **T2 — Gmail reading indicator.** `app/api/auth/accounts/route.ts`: added `calendar.hasGmailScope = hasGmailReadScope(cal?.scope ?? null)` (READONLY, not the removed compose). `app/dashboard/page.tsx` (claimed shared file; minimal additive diff): restored `calendarHasGmailScope` state, set from `d.calendar?.hasGmailScope` in `loadData`, sidebar shows "● Reading Gmail" (granted) / "Gmail reading inactive — re-authorize →" (`/api/auth/google`) / nothing if calendar not connected. 4 route tests.

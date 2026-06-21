@@ -72,6 +72,7 @@ export const LIMITS = {
   priorityEnergy:       { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user (priority energy-cost tag)
   milestoneWrite:       { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (milestone create/complete/delete)
   vapiToolCall:         { limit: 60, windowMs: 60 * 1000 },        // 60 / MIN per user (R11 T2 — runaway Vapi tool-loop guard: cost + calendar-spam protection)
+  pushSubscribe:        { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R14 — push subscribe/unsubscribe)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

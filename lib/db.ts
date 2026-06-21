@@ -580,6 +580,29 @@ export function initSchema(db: Database.Database) {
       fail_reason   TEXT,
       attempted_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- R14 — Web Push (VAPID) subscriptions. One row per browser/device endpoint per user.
+    -- endpoint/p256dh/auth are the W3C PushSubscription fields (per-device push credentials,
+    -- not user PII) — stored plaintext, same tier as a device token.
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint   TEXT NOT NULL,
+      p256dh     TEXT NOT NULL,
+      auth       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, endpoint)
+    );
+
+    -- R14 — Notification send log. Gates repeat proactive notifications (low-recovery,
+    -- priority-gap) so we don't re-notify the same thing within a window.
+    CREATE TABLE IF NOT EXISTS notification_log (
+      id      INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type    TEXT NOT NULL,
+      payload TEXT,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Indexes for performance
@@ -614,6 +637,8 @@ export function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_bg_job_failures_job_user ON background_job_failures(job, user_id, failed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_health_log_checked_at ON health_log(checked_at DESC);
     CREATE INDEX IF NOT EXISTS idx_call_attempts_user ON call_attempts(user_id, attempted_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notification_log_user_type ON notification_log(user_id, type, sent_at DESC);
   `);
 
   applyMigrations(db);
@@ -1401,6 +1426,8 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'failed_webhooks',
   'background_job_failures',
   'call_attempts',
+  'push_subscriptions',
+  'notification_log',
 ];
 
 // ── Encrypted-column inventory (R11 T3 — key rotation authority) ─────────────────
@@ -1661,6 +1688,39 @@ export const callAttemptQueries = {
         `DELETE FROM call_attempts WHERE attempted_at < datetime('now', ?)`
       ).run(`-${keepDays} days`);
     } catch { /* best effort */ }
+  },
+};
+
+// R14 — Web Push subscriptions (one row per device endpoint per user).
+export interface PushSubscriptionRow { id: number; user_id: number; endpoint: string; p256dh: string; auth: string; created_at: string; }
+export const pushSubscriptionQueries = {
+  upsert: (userId: number, endpoint: string, p256dh: string, auth: string): void => {
+    getDb().prepare(
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`
+    ).run(userId, endpoint, p256dh, auth);
+  },
+  getAll: (userId: number): PushSubscriptionRow[] => {
+    return getDb().prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(userId) as PushSubscriptionRow[];
+  },
+  delete: (userId: number, endpoint: string): void => {
+    getDb().prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?').run(userId, endpoint);
+  },
+};
+
+// R14 — Notification send log. Gates repeat proactive notifications within a window.
+export const notificationLogQueries = {
+  record: (userId: number, type: string, payload?: string | null): void => {
+    try {
+      getDb().prepare('INSERT INTO notification_log (user_id, type, payload) VALUES (?, ?, ?)').run(userId, type, payload ?? null);
+    } catch { /* best effort */ }
+  },
+  /** True if a notification of `type` was sent to the user within the last `withinHours`. */
+  hasRecentEntry: (userId: number, type: string, withinHours: number): boolean => {
+    const row = getDb().prepare(
+      `SELECT 1 FROM notification_log WHERE user_id = ? AND type = ? AND sent_at >= datetime('now', ?) LIMIT 1`
+    ).get(userId, type, `-${withinHours} hours`) as { 1: number } | undefined;
+    return !!row;
   },
 };
 
