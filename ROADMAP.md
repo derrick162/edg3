@@ -110,7 +110,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(📋 **R19 DISPATCHED (2026-06-21) — T1: first-call intro in Edge's system prompt, T2: new-user empty state in Briefings tab. R18 fully merged.**)_ | `lib/vapi.ts`, `lib/db.ts`, `app/dashboard/page.tsx` | 2026-06-21 |
 | 🔒 Security | `security` | _(📋 **R17 DISPATCHED (2026-06-21) — T1: wire proactive notifications into scheduler (maybeLowRecoveryAlert + maybePriorityGapAlert), T2: consolidate /api/user/export → /api/account/export. R16 fully merged.**)_ | `lib/scheduler.ts`, `app/api/user/export/**` | 2026-06-21 |
 | 🔧 PM/CoS | `master` | _(✅ **All R18+R16 merged (2075 green). R19+R17+R17 dispatched overnight. ⚠️ Litestream S3 creds still needed from Derrick.**)_ | `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md`, `ROADMAP.md` | 2026-06-21 |
-| 🎨 Design | `design` | _(📋 **R17 DISPATCHED (2026-06-21) — T1: dashboard skeleton loading states (.skeleton CSS + shimmer), T2: /settings account page. R16 fully merged.**)_ | `app/globals.css`, `app/dashboard/page.tsx`, `app/settings/**` | 2026-06-21 |
+| 🎨 Design | `design` | _(✅ **R17 T1+T2 shipped (2075 green).** T1: .skeleton shimmer class + dashboard skeleton layout (sidebar next-call, calendar line, recovery slot, 3 briefing rows). T2: /settings page (profile, call time, connections, data export, account delete). All dispatch exhausted. Idle, awaiting next dispatch.)_ | `app/globals.css`, `app/dashboard/page.tsx`, `app/settings/page.tsx` | 2026-06-21 |
 
 ---
 
