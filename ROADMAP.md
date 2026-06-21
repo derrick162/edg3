@@ -107,10 +107,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(📋 **R15 DISPATCHED (2026-06-20) — Calendar intelligence: searchEvents, checkConflict, setEventReminder, blockFocusTime, getNextEvents, briefEvent, generateWeeklyReview (T1–T7). R14 T1–T6 also active.**)_ | `app/api/vapi/tool-call/route.ts`, `lib/vapi.ts`, `lib/time.ts` | 2026-06-20 |
-| 🔒 Security | `security` | _(✅ **R13 DONE (1965 green); idle/polling.** T1 was already on master (`6abf51c`). T2: `hasGmailScope` (readonly) on `/api/auth/accounts` + "● Reading Gmail" sidebar indicator (`app/dashboard/page.tsx` — small additive diff, released the claim). T3: `searchEmailsBySubject` in `lib/gmail.ts` (subject search, snippet-only, no audit/cache) — **📣 ready for Core R15 T6 `briefEvent` to import.** **⚠️ EXTERNAL (Derrick):** Railway volume + `LITESTREAM_S3_*`, `DATA_ENCRYPTION_KEY` backup, restore drill.)_ | `lib/gmail.ts`, `app/api/auth/accounts/route.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
-| 🔧 PM/CoS | `master` | _(✅ **R15 dispatched to Core (T1–T7 — calendar intelligence). R14 T6 Gmail indicator added. All lanes active.)_ | `ROADMAP-CORE.md`, `ROADMAP.md` | 2026-06-20 |
-| 🎨 Design | `design` | _(✅ **R12 email-removal QA pass done (1939 green).** Removed stale Gmail connect/disconnect UI from dashboard (all routes deleted in R12). Fixed security page Gmail section (was "drafts only", now "read-only"). Fixed landing page Gmail feature bullet. All pages confirmed clean.)_ | `app/dashboard/page.tsx`, `app/security/page.tsx`, `app/page.tsx`, `content/qa-log.md` | 2026-06-20 |
+| 🛠️ Core | `core` | _(📋 **R16 DISPATCHED (2026-06-20) — Accountability loop (T1), Focus Score (T2), push front-end (T3). R14 T1–T5 + R15 T1–T7 also queued.**)_ | `lib/briefing.ts`, `lib/vapi.ts`, `lib/focusScore.ts`, `app/dashboard/page.tsx`, `public/sw.js` | 2026-06-20 |
+| 🔒 Security | `security` | _(🏗️ **R13 done (shipped `0a809bf`/`f626864`); R14 IN PROGRESS — push infrastructure (VAPID + `push_subscriptions`/`notification_log` tables + `lib/push.ts` + subscribe routes + low-recovery/priority-gap cron). ⚠️ Claiming `lib/db.ts` (additive: 2 new tables + queries) + `lib/scheduler.ts`.**)_ | `lib/push.ts`, `lib/scheduler.ts`, `lib/db.ts`, `app/api/notifications/**` | 2026-06-20 |
+| 🔧 PM/CoS | `master` | _(✅ **R16 dispatched to Core, Security R14 dispatched, Design R14 dispatched. All three lanes fully loaded.**)_ | `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md`, `ROADMAP.md` | 2026-06-20 |
+| 🎨 Design | `design` | _(📋 **R14 DISPATCHED (2026-06-20) — T1: first-call experience audit + polish, T2: FocusScoreCard component.**)_ | `app/onboarding/**`, `components/ui/FocusScoreCard.tsx`, `DESIGN.md`, `app/globals.css` | 2026-06-20 |
 
 ---
 

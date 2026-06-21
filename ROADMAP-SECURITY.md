@@ -30,6 +30,91 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — Push notification infrastructure)
+
+> `git merge master` first (master at `8234791`). Two tickets. **Do after R13, before any pillar work.**
+
+---
+
+### T1 — Push notification infrastructure: VAPID + DB + `lib/push.ts` + subscribe routes (HIGH — 2h)
+
+**Why:** Edge is currently call-only. Push notifications make it ambient — low-recovery alerts, priority gaps, pre-meeting briefs — without requiring the user to open the app. Core (R16 T3) ships the front-end; Security owns the server infrastructure.
+
+**Fix — four parts:**
+
+**Part A — VAPID key generation:**
+Generate a VAPID keypair. Add to `.env.local` and Railway:
+- `VAPID_PUBLIC_KEY` — public key (base64url), also exposed as `NEXT_PUBLIC_VAPID_PUBLIC_KEY` for the front-end
+- `VAPID_PRIVATE_KEY` — private key (base64url), server-only
+- `VAPID_SUBJECT` — `mailto:derrick@deltaedg3.com`
+
+Generate with: `node -e "const wp = require('web-push'); const k = wp.generateVAPIDKeys(); console.log(k)"` (requires `web-push` — add to `package.json` dependencies).
+
+**Part B — `push_subscriptions` table in `lib/db.ts`:**
+```sql
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, endpoint)
+)
+```
+Add `pushSubscriptionQueries` to `lib/db.ts`: `upsert(userId, endpoint, p256dh, auth)`, `getAll(userId)`, `delete(userId, endpoint)`.
+
+**Part C — `lib/push.ts` (new file):**
+```ts
+export async function sendPushToUser(
+  userId: number,
+  notification: { title: string; body: string },
+): Promise<void>
+```
+Gets all subscriptions for the user. For each, calls `webpush.sendNotification(subscription, JSON.stringify(notification))`. On 410 (Gone) or 404 (endpoint expired) → deletes that subscription from DB. Catches and logs other errors without throwing (push is best-effort, never blocks the caller). Degrades silently if `VAPID_PRIVATE_KEY` is not set.
+
+**Part D — API routes:**
+- `POST /api/notifications/subscribe` — authenticated; upserts `{ endpoint, keys: { p256dh, auth } }` from request body into `push_subscriptions`. Returns `{ ok: true }`.
+- `POST /api/notifications/unsubscribe` — authenticated; deletes the subscription by endpoint.
+
+**Tests:** `sendPushToUser` — no subscriptions (no-op), sends to all subs, removes expired 410 subscription, degrades when VAPID key missing (≥4 cases). Route tests: subscribe upserts, unsubscribe deletes.
+
+---
+
+### T2 — Proactive notification cron jobs: low recovery alert + priority gap (MEDIUM — 1.5h)
+
+**Why:** Once the infrastructure exists, wire the first two high-value triggers.
+
+**Fix — extend `lib/scheduler.ts`** with two new scheduled jobs (or add to the existing cron structure):
+
+**Job A — Low recovery alert (runs daily at 7:30 AM user's local time):**
+For each active user with Whoop connected:
+1. `getLatestRecovery(userId)` — if null or score > 40, skip.
+2. `sendPushToUser(userId, { title: 'Recovery Alert', body: 'Your recovery is ${score}% today — Edge adjusted your briefing to protect your energy.' })`.
+3. Gate: only fire if the user has completed ≥1 briefing call (don't push to churned users).
+
+**Job B — Priority gap alert (runs daily at 9 AM user's local time, AFTER the morning call):**
+For each active user:
+1. Check if any priority has 0 calendar hours this week (reuse the alignment check logic from `lib/alignment.ts`).
+2. If yes and today is Tuesday–Thursday (Mon is low-signal, Fri is too late): `sendPushToUser(userId, { title: 'Priority Gap', body: '"${priority}" hasn\'t had any time this week. Want Edge to block some?' })`.
+3. Gate: only fire once per week per priority (store last-sent date in a simple `notification_log` table or check audit_log).
+
+**`notification_log` table (minimal):**
+```sql
+CREATE TABLE IF NOT EXISTS notification_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  payload TEXT,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+)
+```
+Used to gate repeat notifications. `notificationLogQueries.hasRecentEntry(userId, type, withinHours)` → boolean.
+
+**Tests:** low recovery — skips when score > 40, skips when no Whoop, sends when conditions met; priority gap — skips Mon/Fri, skips when priority has hours, sends when gap detected (≥6 cases).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 13 — Gmail primitives: email cache gate + Gmail reading indicator + searchEmailsBySubject helper)
 
 > `git merge master` first (master is at `2ca869f`). Three tickets. **Do all before R12 or pillar work.**
