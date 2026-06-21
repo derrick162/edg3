@@ -33,3 +33,7 @@ export { TimeAllocationViz } from './TimeAllocationViz';
 export type { TimeAllocationVizProps, TimeAllocationBucket } from './TimeAllocationViz';
 export { FocusScoreCard, FocusScoreCardSkeleton } from './FocusScoreCard';
 export type { FocusScoreCardProps } from './FocusScoreCard';
+export { EventBriefCard } from './EventBriefCard';
+export type { EventBriefCardProps } from './EventBriefCard';
+export { WeeklyReviewCard } from './WeeklyReviewCard';
+export type { WeeklyReviewCardProps, WeeklyReviewStats } from './WeeklyReviewCard';
