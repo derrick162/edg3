@@ -60,7 +60,12 @@ vi.mock('@/lib/db', () => ({
   factQueries: { getAll: () => h.facts },
   memoryQueries: { getRecent: () => h.memories },
   briefingQueries: { getRecent: () => h.briefings },
+  taskQueries: { getRecent: () => [] },
   getDb: () => ({ prepare: () => ({ get: () => ({ n: 0 }) }) }),
+}));
+
+vi.mock('@/lib/focusScore', () => ({
+  computeFocusScore: () => ({ score: 72, tier: 'high', headline: 'Focus Score 72 — test.', breakdown: { recovery: 40, schedule: 20, followThrough: 12 } }),
 }));
 
 vi.mock('@/lib/calendar', () => ({

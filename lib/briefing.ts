@@ -6,6 +6,7 @@ import { getCalendarEvents, getWeekEvents, getFullWeekEvents, formatEventsForBri
 import { detectCalendarPatterns, formatCalendarPatternsForBriefing } from './calendarPatterns';
 import { computeTimeAllocation, formatTimeAllocationForBriefing } from './timeAllocation';
 import { computeAlignment, detectHygieneFlags, isRoutineTitle } from './alignment';
+import { computeFocusScore, formatFocusScoreForBriefing } from './focusScore';
 import { computeCallStreak } from './streak';
 import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
@@ -751,6 +752,39 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   // Priority↔calendar alignment: ONE Haiku call maps events to priorities so the briefing can
   // state concrete facts ("0h on fundraising") rather than a vague aside. Degrades to null.
   const alignment = await computeAlignment(priorities, fullWeekEvents, userTimezone).catch(() => null);
+  // R16 T2 — daily Focus Score: synthesize recovery + schedule + follow-through into one anchor.
+  const focusScoreObj = (() => {
+    try {
+      const priorityHours = alignment ? alignment.perPriority.reduce((s, p) => s + p.hours, 0) : 0;
+      // Breathing room: a 30+ min gap between consecutive timed events today (or <2 events).
+      const todayTimed = calendarEvents
+        .filter(e => e.start?.dateTime)
+        .sort((a, b) => (a.start!.dateTime!).localeCompare(b.start!.dateTime!));
+      let breathingRoom = todayTimed.length < 2;
+      for (let i = 1; !breathingRoom && i < todayTimed.length; i++) {
+        const prevEnd = Date.parse(todayTimed[i - 1].end?.dateTime ?? todayTimed[i - 1].start!.dateTime!);
+        const curStart = Date.parse(todayTimed[i].start!.dateTime!);
+        if (curStart - prevEnd >= 30 * 60000) breathingRoom = true;
+      }
+      // Follow-through: completed / (completed + overdue) over the last 7 days; null if <3 data points.
+      const ftRate = (() => {
+        try {
+          const t7 = taskQueries.getRecent(userId, 7);
+          const completed = t7.filter(t => t.completed).length;
+          const overdue = t7.filter(t => !t.completed && t.date && t.date < today).length;
+          const denom = completed + overdue;
+          return denom >= 3 ? completed / denom : null;
+        } catch { return null; }
+      })();
+      return computeFocusScore({
+        recoveryScore: whoopRecovery?.recoveryScore ?? null,
+        priorityHoursThisWeek: priorityHours,
+        hasBreathingRoom: breathingRoom,
+        followThroughRate: ftRate,
+      });
+    } catch { return null; }
+  })();
+  const focusScoreLine = focusScoreObj ? formatFocusScoreForBriefing(focusScoreObj) : '';
   // Calendar hygiene: pure local analysis — no LLM call. Degrades to null.
   const hygieneFlag = detectHygieneFlags(fullWeekEvents, userTimezone);
   // Call streak: count consecutive days with completed briefings.
@@ -1051,7 +1085,7 @@ IMPORTANT: The user's name is ${user.name.split(' ')[0]} — always address them
 IMPORTANT: The product is spelled "Edg3" but should be pronounced "Edge" — always write it as "Edge" in the text so it is spoken correctly.`;
 
   const userPrompt = `Generate today's (${todayLabel}) morning briefing for ${user.name}.
-
+${focusScoreLine ? `\nFOCUS SCORE (anchor the opener on this — say the number + the one-line reason naturally in Part 1, then move on):\n${focusScoreLine}\n` : ''}
 USER PROFILE:
 ${user.profile_summary || 'No profile summary available.'}
 
