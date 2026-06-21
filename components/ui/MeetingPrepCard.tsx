@@ -103,8 +103,8 @@ export function MeetingPrepCard({ context, onDismiss }: MeetingPrepCardProps) {
           )}
         </div>
         {onDismiss && (
-          <button onClick={onDismiss} className="flex-shrink-0 text-xs transition-opacity hover:opacity-70" style={{ color: 'var(--text-faint)' }}>
-            ✕
+          <button onClick={onDismiss} className="flex-shrink-0 text-xs transition-opacity hover:opacity-70" style={{ color: 'var(--text-faint)' }} aria-label="Dismiss meeting prep">
+            <span aria-hidden="true">✕</span>
           </button>
         )}
       </div>
