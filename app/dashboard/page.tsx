@@ -2773,6 +2773,22 @@ export default function Dashboard() {
                       Your briefing history will appear here after your first call.
                     </p>
                   </div>
+                ) : calendarConnected ? (
+                  // R19 T2 — connected but no calls yet: tell the new user what's coming.
+                  <div className="glass-card p-8 text-center">
+                    <p className="text-4xl mb-3">📞</p>
+                    <p className="font-medium mb-1">Your first briefing is on its way</p>
+                    <p className="text-sm mx-auto" style={{ color: 'var(--text-muted)', maxWidth: '28rem' }}>
+                      Edge calls you each morning at {user.call_time || '7:00 AM'} to run your day — calendar, priorities, and what to focus on first. After your first call, your summary will appear here.
+                    </p>
+                    <button
+                      onClick={() => setActiveTab('profile')}
+                      className="text-sm mt-4"
+                      style={{ color: 'var(--edg-accent)' }}
+                    >
+                      Change call time →
+                    </button>
+                  </div>
                 ) : (
                   <div className="glass-card p-8 text-center">
                     <p className="text-4xl mb-3">📞</p>

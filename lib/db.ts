@@ -976,6 +976,14 @@ export const briefingQueries = {
     ).get(userId, `-${days} days`) as { n: number };
     return row?.n ?? 0;
   },
+  // R19 T1 — total completed calls for a user; 0 means this is their very first call
+  // (drives Edge's one-time self-introduction).
+  countCompleted: (userId: number): number => {
+    const row = getDb().prepare(
+      `SELECT COUNT(*) as n FROM briefings WHERE user_id = ? AND status = 'completed'`
+    ).get(userId) as { n: number };
+    return row?.n ?? 0;
+  },
   // R12 T4 — set the open-call flag (called by scheduleOpenCall right after insert).
   markOpenCall: (id: number): void => {
     getDb().prepare('UPDATE briefings SET is_open_call = 1 WHERE id = ?').run(id);
