@@ -8,18 +8,21 @@ const h = vi.hoisted(() => ({
   users: [] as Array<{ id: number; timezone: string }>,
   completed: true,
   recovery: null as { recoveryScore: number } | null,
+  recoveryThrows: false,
   hasRecent: {} as Record<string, boolean>,
   priorities: [] as Array<{ text: string }>,
   alignment: null as { perPriority: Array<{ priority: string; hours: number; blocked: boolean }> } | null,
   pushed: [] as Array<{ uid: number; n: { title: string; body: string } }>,
   logged: [] as Array<{ uid: number; type: string; payload?: string | null }>,
+  bgFailures: [] as Array<{ job: string; uid: number | null; err: string }>,
+  pushThrowsForUser: null as number | null,
 }));
 
 vi.mock('./db', () => ({
   getDb: () => ({
     prepare: (sql: string) => ({
       get: (_uid?: number) => (sql.includes('FROM briefings') ? (h.completed ? { 1: 1 } : undefined) : undefined),
-      all: () => h.users,
+      all: () => h.users, // the eligibility JOIN query just returns the configured users
     }),
   }),
   userQueries: {},
@@ -29,12 +32,14 @@ vi.mock('./db', () => ({
     record: (uid: number, type: string, payload?: string | null) => h.logged.push({ uid, type, payload }),
   },
   effectiveTimezone: () => 'UTC',
-  backgroundJobFailureQueries: { record: vi.fn() },
+  backgroundJobFailureQueries: { record: (job: string, uid: number | null, err: string) => h.bgFailures.push({ job, uid, err }) },
 }));
-vi.mock('./push', () => ({ sendPushToUser: async (uid: number, n: { title: string; body: string }) => { h.pushed.push({ uid, n }); } }));
-vi.mock('./whoop', () => ({ getLatestRecovery: async (_id: number) => h.recovery }));
+vi.mock('./push', () => ({ sendPushToUser: async (uid: number, n: { title: string; body: string }) => { if (h.pushThrowsForUser === uid) throw new Error('push fail'); h.pushed.push({ uid, n }); } }));
+vi.mock('./whoop', () => ({ getLatestRecovery: async (_id: number) => { if (h.recoveryThrows) throw new Error('whoop boom'); return h.recovery; } }));
 vi.mock('./alignment', () => ({ computeAlignment: async () => h.alignment }));
 vi.mock('./calendar', () => ({ getWeekEvents: async () => [] }));
+
+const TUE = new Date('2026-06-16T12:00:00Z'); // a Tuesday (Job B weekday gate passes)
 
 const { maybeLowRecoveryAlert, maybePriorityGapAlert, runProactiveNotifications } = await import('./proactiveNotifications');
 
@@ -44,11 +49,14 @@ beforeEach(() => {
   h.users = [USER];
   h.completed = true;
   h.recovery = null;
+  h.recoveryThrows = false;
   h.hasRecent = {};
   h.priorities = [];
   h.alignment = null;
   h.pushed = [];
   h.logged = [];
+  h.bgFailures = [];
+  h.pushThrowsForUser = null;
 });
 
 describe('maybeLowRecoveryAlert', () => {
@@ -89,19 +97,27 @@ describe('maybeLowRecoveryAlert', () => {
 });
 
 describe('maybePriorityGapAlert', () => {
-  it('sends when a priority has 0 hours this week', async () => {
+  it('sends when a priority has 0 hours this week (Tue–Thu)', async () => {
     h.priorities = [{ text: 'fundraising' }];
     h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] };
-    expect(await maybePriorityGapAlert(USER as never)).toBe(true);
+    expect(await maybePriorityGapAlert(USER as never, TUE)).toBe(true);
     expect(h.pushed[0].n.title).toBe('Priority Gap');
     expect(h.pushed[0].n.body).toContain('fundraising');
     expect(h.logged[0]).toMatchObject({ type: 'priority_gap', payload: 'fundraising' });
   });
 
+  it('skips on Mon/Fri (weekday self-gate)', async () => {
+    h.priorities = [{ text: 'fundraising' }];
+    h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] };
+    expect(await maybePriorityGapAlert(USER as never, new Date('2026-06-15T09:00:00Z'))).toBe(false); // Mon
+    expect(await maybePriorityGapAlert(USER as never, new Date('2026-06-19T09:00:00Z'))).toBe(false); // Fri
+    expect(h.pushed).toHaveLength(0);
+  });
+
   it('skips when every priority has calendar hours', async () => {
     h.priorities = [{ text: 'fundraising' }];
     h.alignment = { perPriority: [{ priority: 'fundraising', hours: 4, blocked: true }] };
-    expect(await maybePriorityGapAlert(USER as never)).toBe(false);
+    expect(await maybePriorityGapAlert(USER as never, TUE)).toBe(false);
     expect(h.pushed).toHaveLength(0);
   });
 
@@ -109,37 +125,27 @@ describe('maybePriorityGapAlert', () => {
     h.priorities = [{ text: 'fundraising' }];
     h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] };
     h.hasRecent = { priority_gap: true };
-    expect(await maybePriorityGapAlert(USER as never)).toBe(false);
+    expect(await maybePriorityGapAlert(USER as never, TUE)).toBe(false);
     expect(h.pushed).toHaveLength(0);
   });
 });
 
-describe('runProactiveNotifications — local-time dispatch', () => {
-  it('fires the priority-gap job at 9:00 on a Tuesday', async () => {
+describe('runProactiveNotifications — R17 sweep', () => {
+  it('calls BOTH jobs for an eligible user (both pushes fire when conditions are met)', async () => {
+    h.recovery = { recoveryScore: 22 };                                              // → low-recovery push
     h.priorities = [{ text: 'fundraising' }];
-    h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] };
-    await runProactiveNotifications(new Date('2026-06-16T09:00:00Z')); // Tue 09:00 UTC
+    h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] }; // → priority-gap push
+    await runProactiveNotifications(TUE);
+    expect(h.pushed.some(p => p.n.title === 'Recovery Alert')).toBe(true);
     expect(h.pushed.some(p => p.n.title === 'Priority Gap')).toBe(true);
   });
 
-  it('does NOT fire the priority-gap job on a Monday (Mon/Fri excluded)', async () => {
-    h.priorities = [{ text: 'fundraising' }];
-    h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] };
-    await runProactiveNotifications(new Date('2026-06-15T09:00:00Z')); // Mon 09:00 UTC
-    expect(h.pushed).toHaveLength(0);
-  });
-
-  it('fires the low-recovery job at 7:30 local', async () => {
-    h.recovery = { recoveryScore: 22 };
-    await runProactiveNotifications(new Date('2026-06-16T07:30:00Z')); // 07:30
-    expect(h.pushed.some(p => p.n.title === 'Recovery Alert')).toBe(true);
-  });
-
-  it('fires nothing at an off-hour (e.g. 14:00)', async () => {
-    h.recovery = { recoveryScore: 22 };
-    h.priorities = [{ text: 'fundraising' }];
-    h.alignment = { perPriority: [{ priority: 'fundraising', hours: 0, blocked: false }] };
-    await runProactiveNotifications(new Date('2026-06-16T14:00:00Z'));
-    expect(h.pushed).toHaveLength(0);
+  it('catches a per-user error and continues to the next user (sweep never throws)', async () => {
+    h.users = [{ id: 1, timezone: 'UTC' }, { id: 2, timezone: 'UTC' }];
+    h.pushThrowsForUser = 1;                  // user 1's push throws
+    h.recovery = { recoveryScore: 22 };       // both users would get a low-recovery push
+    await expect(runProactiveNotifications(TUE)).resolves.toBeUndefined(); // never throws
+    expect(h.bgFailures.some(f => f.job === 'proactive_notifications' && f.uid === 1)).toBe(true); // user 1 logged
+    expect(h.pushed.some(p => p.uid === 2 && p.n.title === 'Recovery Alert')).toBe(true);          // user 2 still processed
   });
 });

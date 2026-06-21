@@ -1,15 +1,14 @@
-// R14 T2 — proactive push notification jobs. Driven by the scheduler's 30-min cron;
-// each job fires at a specific LOCAL hour for the user. Best-effort: every job degrades
-// gracefully (push send + external fetches are wrapped) and a per-user failure never
-// aborts the sweep.
-import { User, userQueries, priorityQueries, notificationLogQueries, effectiveTimezone, getDb, backgroundJobFailureQueries } from './db';
+// R14 T2 / R17 T1 — proactive push notification jobs + the scheduler sweep that drives them.
+// Each job SELF-THROTTLES (low-recovery 20h cooldown, priority-gap 7d) and self-gates, so the
+// sweep can safely call them on every 30-min tick. Best-effort throughout: external fetches are
+// wrapped, and a per-user failure never aborts the sweep.
+import { User, priorityQueries, notificationLogQueries, effectiveTimezone, getDb, backgroundJobFailureQueries } from './db';
 import { sendPushToUser } from './push';
 import { getLatestRecovery } from './whoop';
 import { computeAlignment } from './alignment';
 import { getWeekEvents } from './calendar';
 
 const LOW_RECOVERY_THRESHOLD = 40; // recovery ≤ 40% is "red" — worth a heads-up
-void userQueries; // (kept for symmetry with other scheduler helpers; users are loaded via getDb below)
 
 // Gate: only notify users who've actually used the product (≥1 completed briefing call) —
 // don't push to churned / never-onboarded accounts.
@@ -34,8 +33,12 @@ export async function maybeLowRecoveryAlert(user: User): Promise<boolean> {
   return true;
 }
 
-/** Job B — priority gap alert. Returns true if a push was sent. */
-export async function maybePriorityGapAlert(user: User): Promise<boolean> {
+/** Job B — priority gap alert. Returns true if a push was sent. `now` drives the weekday gate. */
+export async function maybePriorityGapAlert(user: User, now: Date = new Date()): Promise<boolean> {
+  // Tue–Thu only (Mon is low-signal, Fri too late) — gate on the user's LOCAL weekday. This is a
+  // self-gate inside the job (the sweep just calls it every tick), preserving the R14 timing intent.
+  const localDay = new Date(now.toLocaleString('en-US', { timeZone: effectiveTimezone(user) })).getDay(); // 0=Sun…6=Sat
+  if (localDay < 2 || localDay > 4) return false;
   // Once per week per user. This cheap gate runs BEFORE the calendar + LLM calls so we don't
   // pay for alignment more than once a week per user.
   if (notificationLogQueries.hasRecentEntry(user.id, 'priority_gap', 24 * 7)) return false;
@@ -64,24 +67,22 @@ export async function maybePriorityGapAlert(user: User): Promise<boolean> {
  * Injectable `now` for deterministic tests.
  */
 export async function runProactiveNotifications(now: Date = new Date()): Promise<void> {
-  const users = getDb().prepare(
-    `SELECT * FROM users WHERE onboarding_complete = 1 AND phone_number IS NOT NULL AND call_time IS NOT NULL`
-  ).all() as User[];
+  // R17 T1 — eligibility: only sweep users who (a) have ≥1 push subscription AND (b) have
+  // completed ≥1 briefing. This avoids running the jobs (and their Whoop/calendar/LLM fetches)
+  // for users who can't receive a push or have never used the product. The jobs self-throttle,
+  // so calling both every 30-min tick is safe.
+  const users = getDb().prepare(`
+    SELECT DISTINCT u.* FROM users u
+    JOIN push_subscriptions ps ON ps.user_id = u.id
+    WHERE EXISTS (SELECT 1 FROM briefings b WHERE b.user_id = u.id AND b.status = 'completed')
+  `).all() as User[];
 
   for (const user of users) {
-    try {
-      const tz = effectiveTimezone(user);
-      const local = new Date(now.toLocaleString('en-US', { timeZone: tz }));
-      const hour = local.getHours();
-      const minute = local.getMinutes();
-      const day = local.getDay(); // 0=Sun … 6=Sat
-
-      // Job A — low recovery at 7:30 local.
-      if (hour === 7 && minute === 30) await maybeLowRecoveryAlert(user);
-      // Job B — priority gap at 9:00 local, Tue–Thu only (Mon low-signal, Fri too late).
-      if (hour === 9 && minute === 0 && day >= 2 && day <= 4) await maybePriorityGapAlert(user);
-    } catch (err) {
-      backgroundJobFailureQueries.record('proactive_notifications', user.id, String(err));
-    }
+    // Per-JOB try/catch so a low-recovery failure can't skip the priority-gap job, and one
+    // user's failure never aborts the sweep.
+    try { await maybeLowRecoveryAlert(user); }
+    catch (err) { backgroundJobFailureQueries.record('proactive_notifications', user.id, `low_recovery: ${err}`); }
+    try { await maybePriorityGapAlert(user, now); }
+    catch (err) { backgroundJobFailureQueries.record('proactive_notifications', user.id, `priority_gap: ${err}`); }
   }
 }
