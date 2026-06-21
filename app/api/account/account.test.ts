@@ -76,6 +76,10 @@ vi.mock('@/lib/db', () => ({
   undoQueries: {
     listRecent: (_id: number, _lim?: number) => h.undo,
   },
+  callFeedbackQueries: { recent: (_id: number, _lim?: number) => [] },
+  notificationLogQueries: { listForUser: (_id: number, _lim?: number) => [] },
+  whoopQueries: { get: (_id: number) => undefined },
+  pushSubscriptionQueries: { getAll: (_id: number) => [] },
 }));
 
 vi.mock('@/lib/crypto', () => ({
@@ -171,7 +175,7 @@ describe('GET /api/account/export — response shape', () => {
     const res = await exportGET(makeReq());
     const data = await res.json();
     expect(data).toHaveProperty('exportedAt');
-    expect(data).toHaveProperty('version', '4');
+    expect(data).toHaveProperty('version', '5');
     expect(data).toHaveProperty('profile');
     expect(data).toHaveProperty('priorities');
     expect(data).toHaveProperty('memories');
@@ -194,6 +198,11 @@ describe('GET /api/account/export — response shape', () => {
     expect(data).toHaveProperty('supportMessages');
     // T3-3 completion — undo history.
     expect(data).toHaveProperty('undoHistory');
+    // R17 T2 — merged in from the consolidated /api/user/export.
+    expect(data).toHaveProperty('callFeedback');
+    expect(data).toHaveProperty('notificationLog');
+    expect(data).toHaveProperty('whoopConnected');
+    expect(data).toHaveProperty('pushSubscriptionsCount');
   });
 
   it('T3-3: facts include status + confidence metadata (active + retired); undoHistory exported', async () => {

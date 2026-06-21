@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries, peopleModelQueries, undoQueries } from '@/lib/db';
+import { getDb, userQueries, priorityQueries, memoryQueries, factQueries, taskQueries, briefingQueries, energyLogQueries, decryptBriefingRow, energyProfileQueries, openLoopQueries, auditLogQueries, peopleProfileQueries, peopleModelQueries, undoQueries, callFeedbackQueries, notificationLogQueries, whoopQueries, pushSubscriptionQueries } from '@/lib/db';
 import { decryptField, safeDecryptField } from '@/lib/crypto';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 
@@ -181,9 +181,19 @@ export async function GET(_req: NextRequest) {
     at: u.created_at,
   }));
 
+  // Merged in from the (now-consolidated) /api/user/export — R17 T2.
+  const callFeedback = callFeedbackQueries.recent(userId, 1000).map(c => ({
+    briefingId: c.briefing_id ?? null, rating: c.rating, note: c.note ?? null, createdAt: c.created_at,
+  }));
+  const notificationLog = notificationLogQueries.listForUser(userId, 1000).map(n => ({
+    type: n.type, payload: n.payload, sentAt: n.sent_at,
+  }));
+  const whoopConnected = !!whoopQueries.get(userId);              // boolean only — never the token
+  const pushSubscriptionsCount = pushSubscriptionQueries.getAll(userId).length; // count only
+
   const payload = {
     exportedAt: new Date().toISOString(),
-    version: '4',
+    version: '5',
     profile: {
       name: profile.name,
       email: profile.email,
@@ -248,6 +258,10 @@ export async function GET(_req: NextRequest) {
     focusMilestones: focusMilestoneRows,
     supportMessages: supportMessageRows,
     undoHistory: undoHistoryRows,
+    callFeedback,
+    notificationLog,
+    whoopConnected,
+    pushSubscriptionsCount,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
