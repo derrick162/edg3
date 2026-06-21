@@ -245,8 +245,9 @@ function NotifRow({
             className="flex-shrink-0 text-xs opacity-0 hover:opacity-100 transition-opacity mt-0.5"
             style={{ color: 'var(--text-faint)' }}
             title="Dismiss"
+            aria-label="Dismiss notification"
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         )}
       </div>
