@@ -110,7 +110,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(📋 **R16 DISPATCHED (2026-06-20) — Accountability loop (T1), Focus Score (T2), push front-end (T3). R14 T1–T5 + R15 T1–T7 also queued.**)_ | `lib/briefing.ts`, `lib/vapi.ts`, `lib/focusScore.ts`, `app/dashboard/page.tsx`, `public/sw.js` | 2026-06-20 |
 | 🔒 Security | `security` | _(📋 **R13 active + R14 DISPATCHED (2026-06-20) — R13: email cache, Gmail indicator, searchEmailsBySubject. R14: push infrastructure (VAPID + DB + lib/push.ts + cron jobs).**)_ | `lib/gmail.ts`, `lib/push.ts`, `lib/scheduler.ts`, `lib/db.ts`, `app/api/auth/accounts/route.ts`, `app/api/notifications/**` | 2026-06-20 |
 | 🔧 PM/CoS | `master` | _(✅ **R16 dispatched to Core, Security R14 dispatched, Design R14 dispatched. All three lanes fully loaded.**)_ | `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md`, `ROADMAP.md` | 2026-06-20 |
-| 🎨 Design | `design` | _(✅ **R14 T1+T2 shipped (1956 green).** T1: onboarding done-state copy + label cleanup + DESIGN.md §12 first-call spec for Core. T2: FocusScoreCard component ready to drop in when Core ships computeFocusScore. Idle, awaiting next dispatch.)_ | `app/onboarding/page.tsx`, `components/ui/FocusScoreCard.tsx`, `app/globals.css`, `DESIGN.md` | 2026-06-20 |
+| 🎨 Design | `design` | _(✅ **R14 T1+T2 + R15-prep shipped (1956 green).** R14: onboarding done-state copy, FocusScoreCard component. R15-prep: EventBriefCard + WeeklyReviewCard built ahead of Core R15 calendar intelligence. All dispatch + pillar queues exhausted. Idle, awaiting next dispatch.)_ | `components/ui/EventBriefCard.tsx`, `components/ui/WeeklyReviewCard.tsx`, `components/ui/index.ts` | 2026-06-20 |
 
 ---
 
