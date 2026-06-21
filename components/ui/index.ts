@@ -31,3 +31,5 @@ export { HelpSupportSection } from './HelpSupportSection';
 export type { HelpSupportSectionProps } from './HelpSupportSection';
 export { TimeAllocationViz } from './TimeAllocationViz';
 export type { TimeAllocationVizProps, TimeAllocationBucket } from './TimeAllocationViz';
+export { FocusScoreCard, FocusScoreCardSkeleton } from './FocusScoreCard';
+export type { FocusScoreCardProps } from './FocusScoreCard';
