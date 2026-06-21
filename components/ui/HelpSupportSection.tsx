@@ -263,6 +263,7 @@ function FaqAccordion({ sections }: { sections: FaqSection[] }) {
             <button
               onClick={() => setOpenSection(isSectionOpen ? null : section.title)}
               aria-expanded={isSectionOpen}
+              aria-controls={`help-section-${section.title.toLowerCase().replace(/\s+/g, '-')}`}
               className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors"
               style={{ background: isSectionOpen ? 'var(--edg-accent-08)' : 'var(--edg-fill-04)' }}
             >
@@ -287,6 +288,7 @@ function FaqAccordion({ sections }: { sections: FaqSection[] }) {
             {/* Items */}
             {isSectionOpen && (
               <div
+                id={`help-section-${section.title.toLowerCase().replace(/\s+/g, '-')}`}
                 className="divide-y"
                 style={{ borderTop: '1px solid var(--edg-hairline)', background: 'var(--glass-bg)' }}
               >
@@ -298,6 +300,7 @@ function FaqAccordion({ sections }: { sections: FaqSection[] }) {
                       <button
                         onClick={() => setOpenItem(isOpen ? null : key)}
                         aria-expanded={isOpen}
+                        aria-controls={`help-item-${key.replace(/[^a-z0-9]/gi, '-')}`}
                         className="w-full flex items-start justify-between gap-3 px-4 py-3 text-left"
                       >
                         <span className="text-sm font-medium leading-snug" style={{ color: 'var(--text-body)' }}>
@@ -316,6 +319,7 @@ function FaqAccordion({ sections }: { sections: FaqSection[] }) {
                       </button>
                       {isOpen && (
                         <div
+                          id={`help-item-${key.replace(/[^a-z0-9]/gi, '-')}`}
                           className="px-4 pb-4 text-sm leading-relaxed"
                           style={{ color: 'var(--text-muted)', animation: 'score-rise 0.2s ease both' }}
                         >
