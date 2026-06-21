@@ -5,16 +5,48 @@ import { userQueries, User } from './db';
 
 const COOKIE_NAME = 'edg3_session';
 
-// Fail closed: never fall back to a hardcoded secret. An unset JWT_SECRET would
+// R16 T1 — known-weak placeholder secrets we must reject. Short generic values
+// ('secret', 'changeme', 'change-me') are already caught by the < 32-char length
+// check; these distinctive multi-char tokens catch PADDED placeholders ≥ 32 chars
+// (e.g. 'change-me-change-me-change-me-change'). Substring match, case-insensitive.
+const JWT_PLACEHOLDER_TOKENS = [
+  'change-me', 'changeme', 'change_me', 'changethis', 'change-this',
+  'your-secret', 'your_secret', 'yoursecret', 'replace-me', 'replaceme',
+  'placeholder', 'supersecret', 'mysecret', 'dev-secret', 'jwt-secret', 'jwtsecret',
+  'insecure', 'notsecret', 'example-secret',
+];
+
+const GENERATE_HINT =
+  'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"';
+
+/**
+ * R16 T1 — validate JWT_SECRET. Throws a loud, actionable error if the secret is unset,
+ * shorter than 32 chars, or a known placeholder. Returns the (trimmed) secret on success.
+ * Called by getJwtSecret() on every auth op AND once at server startup (instrumentation.ts)
+ * so a misconfigured prod deploy fails immediately instead of silently signing forgeable
+ * sessions. Accepts an explicit value for testing; defaults to process.env.JWT_SECRET.
+ */
+export function validateJwtSecret(secret: string | undefined = process.env.JWT_SECRET): string {
+  if (!secret || !secret.trim()) {
+    throw new Error(`JWT_SECRET is not set — refusing to sign/verify sessions with a fallback secret. ${GENERATE_HINT}`);
+  }
+  const s = secret.trim();
+  if (s.length < 32) {
+    throw new Error(`JWT_SECRET is too short (${s.length} chars) — must be at least 32. ${GENERATE_HINT}`);
+  }
+  const lower = s.toLowerCase();
+  if (JWT_PLACEHOLDER_TOKENS.some(tok => lower.includes(tok))) {
+    throw new Error(`JWT_SECRET looks like a placeholder — set a real random secret. ${GENERATE_HINT}`);
+  }
+  return s;
+}
+
+// Fail closed: never fall back to a hardcoded secret. An unset/weak JWT_SECRET would
 // let anyone forge a session cookie (account takeover), so we refuse to sign or
 // verify rather than silently using a public default. Resolved lazily so a build
 // without runtime env doesn't crash at import — only actual auth operations throw.
 function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET is not set — refusing to sign/verify sessions with a fallback secret.');
-  }
-  return secret;
+  return validateJwtSecret();
 }
 
 export async function hashPassword(password: string): Promise<string> {
