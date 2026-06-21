@@ -31,6 +31,118 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 16 — Accountability loop + Focus Score + push front-end)
+
+> `git merge master` first (master at `8234791`). Three tickets deepening the Daily Call flywheel. **Do all before R15 or pillar work.**
+
+---
+
+### T1 — Commitment tracking: stronger accountability at open and close of call (HIGH — 1.5h)
+
+**Problem:** Edge surfaces yesterday's incomplete tasks in the briefing but it's too passive — it lists them without real tension. And mid-call, when Derrick says "I'll do X today", there's no confirmation that Edge locked it in. The flywheel lives or dies on this loop.
+
+**Fix — three parts:**
+
+**Part A — Sharper accountability opener in `lib/briefing.ts`:**
+The existing ACTION ITEMS block shows `source='edg3'` incomplete tasks from yesterday. Strengthen the injection: instead of a list, pick the single most overdue / highest-stakes task and open with a direct question in section 1: `"Yesterday you said you'd [task]. Did that happen?"`. If completed → affirm and move on. If not → offer to reschedule or carry forward. Only ask about ONE task in the opener — don't stack questions.
+
+New helper `pickTopCommitment(tasks: Task[]): Task | null` in `lib/briefing.ts` — pure, picks the task with the earliest `due_date` (or `created_at` if no due date) from the incomplete set. Returns null when empty.
+
+**Part B — Commitment capture mid-call in `lib/vapi.ts`:**
+Add `COMMITMENT CAPTURE` block:
+> "COMMITMENT CAPTURE — when ${firstName} says 'I'll X', 'I'm going to X', 'I need to X', 'I should X today', or makes any time-bound personal commitment → immediately call addTask (if R14 T4 is live) to lock it in, then confirm aloud: 'Got it — I'll hold you to that tomorrow.' Don't wait for them to say 'add a task' — capture it proactively when the intent is clear."
+
+**Part C — Accountability close in `lib/vapi.ts`:**
+Add `ACCOUNTABILITY CLOSE` block:
+> "ACCOUNTABILITY CLOSE — when wrapping up the call (after the user says they're done or asks to hang up), if ${firstName} has open tasks for today that haven't been mentioned: surface at most 2 of them before ending — 'Before I let you go — you've got [task A] and [task B] on your plate today. Anything you want to adjust?' Don't do this if all tasks for today are already covered. Never delay ending the call more than one exchange."
+
+**Tests:** `pickTopCommitment` — returns null on empty, picks earliest due, tiebreaks by created_at (≥4 cases).
+
+---
+
+### T2 — Focus Score: one daily number anchoring the morning call (HIGH — 2h)
+
+**Problem:** The briefing has good data (Whoop recovery, schedule density, priority alignment, task follow-through) but no single synthesized signal. A scored, spoken "Focus Score" gives the call an anchor and makes Edge's value instantly legible.
+
+**Fix — three parts:**
+
+**Part A — `lib/focusScore.ts` (new pure file, 0 I/O):**
+
+```ts
+export interface FocusScoreInput {
+  recoveryScore: number | null;       // 0–100 from Whoop; null if not connected
+  priorityHoursThisWeek: number;      // from alignment check (already computed)
+  hasBreathingRoom: boolean;          // true if ≥1 gap of 30+ min exists today
+  followThroughRate: number | null;   // completed / (completed + overdue), last 7d; null if < 3 data points
+}
+
+export interface FocusScore {
+  score: number;          // 0–100
+  tier: 'high' | 'medium' | 'low';
+  headline: string;       // one spoken sentence
+  breakdown: { recovery: number; schedule: number; followThrough: number };
+}
+
+export function computeFocusScore(input: FocusScoreInput): FocusScore
+```
+
+Weights: recovery 40%, schedule quality 35%, follow-through 25%.
+- Recovery: null → 20 (neutral), ≥67 → 40, 34–66 → 24, ≤33 → 10
+- Schedule: priorityHoursThisWeek ≥ 2h AND hasBreathingRoom → 35; one condition → 20; neither → 8
+- Follow-through: null → 18 (neutral), ≥0.8 → 25, 0.5–0.79 → 15, < 0.5 → 5
+
+Tier: ≥70 → 'high', 45–69 → 'medium', < 45 → 'low'.
+
+`formatFocusScoreForBriefing(score: FocusScore): string` → one plain sentence. Examples:
+- High: `"Focus Score 82 — recovery's strong, priorities have time, and your follow-through's been solid."`
+- Medium: `"Focus Score 61 — recovery's good but fundraising hasn't had a block all week."`
+- Low: `"Focus Score 38 — recovery's low and the schedule's tight; worth protecting your energy today."`
+
+**Part B — wire into `lib/briefing.ts`:**
+Compute `FocusScoreInput` from already-available data in the main `Promise.all`: recovery from `getLatestRecovery`, priority hours from the alignment check result, breathing room from today's events (check if any 30-min gap exists between consecutive timed events), follow-through from last-7d tasks query. Pass to `computeFocusScore`. Inject `formatFocusScoreForBriefing(score)` at the very top of the briefing prompt — before section 1 — so it anchors the opener.
+
+**Part C — expose via `/api/whoop/status` or new `/api/focus/score` route:**
+Add `focusScore: { score, tier, headline } | null` to the `/api/whoop/status` response (or a new `/api/focus/score` route — whichever is cleaner given what's already there). Dashboard will display it in the sidebar when Core + Design coordinate later. For now, just make the data available.
+
+**Tests:** `computeFocusScore` — all-null inputs, all-high inputs, low recovery only, no breathing room, low follow-through, mixed inputs (≥8 cases). `formatFocusScoreForBriefing` — each tier (≥3 cases).
+
+---
+
+### T3 — Push front-end: service worker + subscription registration (MEDIUM — 1h)
+
+> **Dependency:** Security must ship R14 T1 (VAPID keys + `/api/notifications/subscribe` route) before this can be completed. Start it after Security confirms T1 is merged. If Security hasn't shipped yet, stub the `registerPushSubscription()` call and skip the API call.
+
+**Problem:** Push notifications need a client-side service worker to receive them and a subscription object to send to the server.
+
+**Fix — two parts:**
+
+**Part A — `public/sw.js` (service worker):**
+Minimal push event handler:
+```js
+self.addEventListener('push', event => {
+  const data = event.data?.json() ?? {};
+  event.waitUntil(self.registration.showNotification(data.title ?? 'Edg3', {
+    body: data.body ?? '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+  }));
+});
+self.addEventListener('notificationclick', event => { event.notification.close(); });
+```
+
+**Part B — registration in `app/dashboard/page.tsx`:**
+In `useEffect` (on mount, once), after checking `'serviceWorker' in navigator && 'PushManager' in window`:
+1. Register `/sw.js`.
+2. Call `registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY })`.
+3. POST the subscription JSON to `/api/notifications/subscribe`.
+4. No UI change needed — this is invisible infrastructure.
+
+Guard with `process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY` — if not set, skip silently (no error in console). This way it's safe to deploy before Security sets the env var.
+
+**Tests:** manual smoke test only — unit tests aren't meaningful for service worker registration.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 15 — Calendar intelligence: searchEvents, checkConflict, setEventReminder, blockFocusTime, getNextEvents, briefEvent, generateWeeklyReview)
 
 > `git merge master` first. Seven tickets sharpening calendar management and the daily call experience. **Do all before R14 or pillar work.**

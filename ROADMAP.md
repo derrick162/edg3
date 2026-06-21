@@ -107,10 +107,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(📋 **R15 DISPATCHED (2026-06-20) — Calendar intelligence: searchEvents, checkConflict, setEventReminder, blockFocusTime, getNextEvents, briefEvent, generateWeeklyReview (T1–T7). R14 T1–T6 also active.**)_ | `app/api/vapi/tool-call/route.ts`, `lib/vapi.ts`, `lib/time.ts` | 2026-06-20 |
-| 🔒 Security | `security` | _(📋 **R13 DISPATCHED (2026-06-20) — T1: email cache gate, T2: Gmail reading indicator (reassigned from Core), T3: `searchEmailsBySubject` helper for briefEvent.**)_ | `lib/gmail.ts`, `app/api/auth/accounts/route.ts`, `app/dashboard/page.tsx` | 2026-06-20 |
-| 🔧 PM/CoS | `master` | _(✅ **R15 dispatched to Core (T1–T7 — calendar intelligence). R14 T6 Gmail indicator added. All lanes active.)_ | `ROADMAP-CORE.md`, `ROADMAP.md` | 2026-06-20 |
-| 🎨 Design | `design` | _(✅ **R12 email-removal QA pass done (1939 green).** Removed stale Gmail connect/disconnect UI from dashboard (all routes deleted in R12). Fixed security page Gmail section (was "drafts only", now "read-only"). Fixed landing page Gmail feature bullet. All pages confirmed clean.)_ | `app/dashboard/page.tsx`, `app/security/page.tsx`, `app/page.tsx`, `content/qa-log.md` | 2026-06-20 |
+| 🛠️ Core | `core` | _(📋 **R16 DISPATCHED (2026-06-20) — Accountability loop (T1), Focus Score (T2), push front-end (T3). R14 T1–T5 + R15 T1–T7 also queued.**)_ | `lib/briefing.ts`, `lib/vapi.ts`, `lib/focusScore.ts`, `app/dashboard/page.tsx`, `public/sw.js` | 2026-06-20 |
+| 🔒 Security | `security` | _(📋 **R13 active + R14 DISPATCHED (2026-06-20) — R13: email cache, Gmail indicator, searchEmailsBySubject. R14: push infrastructure (VAPID + DB + lib/push.ts + cron jobs).**)_ | `lib/gmail.ts`, `lib/push.ts`, `lib/scheduler.ts`, `lib/db.ts`, `app/api/auth/accounts/route.ts`, `app/api/notifications/**` | 2026-06-20 |
+| 🔧 PM/CoS | `master` | _(✅ **R16 dispatched to Core, Security R14 dispatched, Design R14 dispatched. All three lanes fully loaded.**)_ | `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md`, `ROADMAP.md` | 2026-06-20 |
+| 🎨 Design | `design` | _(📋 **R14 DISPATCHED (2026-06-20) — T1: first-call experience audit + polish, T2: FocusScoreCard component.**)_ | `app/onboarding/**`, `components/ui/FocusScoreCard.tsx`, `DESIGN.md`, `app/globals.css` | 2026-06-20 |
 
 ---
 
