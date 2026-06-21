@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { format, startOfWeek } from 'date-fns';
 import { getSession } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
-import { priorityQueries, effectiveTimezone, calendarScoreQueries, dailyFocusQueries, calendarQueries, whoopQueries, factQueries, memoryQueries, briefingQueries, getDb, type Priority } from '@/lib/db';
+import { priorityQueries, effectiveTimezone, calendarScoreQueries, dailyFocusQueries, calendarQueries, whoopQueries, factQueries, memoryQueries, briefingQueries, taskQueries, getDb, type Priority } from '@/lib/db';
 import { getWeekEvents } from '@/lib/calendar';
 import { getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { computeAlignment } from '@/lib/alignment';
+import { computeFocusScore } from '@/lib/focusScore';
 import { computeCalendarFit, type ClarityInputs, type MomentumInputs } from '@/lib/calendarScore';
 import { computeCallStreak } from '@/lib/streak';
 import { maybeCreateScoreChangeNotif } from '@/lib/notifications';
@@ -186,5 +187,31 @@ export async function GET() {
     // Non-fatal — change is additive context only.
   }
 
-  return NextResponse.json({ ...fit, history, ...(change ? { change } : {}) });
+  // R16 T2 — daily Focus Score (recovery + schedule quality + follow-through), reusing the
+  // alignment/recovery/event data already computed above (no extra fetches).
+  const dailyFocusScore = (() => {
+    try {
+      const latestRec = recoveryHistory.length
+        ? [...recoveryHistory].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))[0].recoveryScore
+        : null;
+      const priorityHours = alignment ? alignment.perPriority.reduce((s, p) => s + p.hours, 0) : 0;
+      const todayTimed = weekEvents
+        .filter(e => e.start?.dateTime && new Date(e.start.dateTime).toLocaleDateString('en-CA', { timeZone: userTimezone }) === today)
+        .sort((a, b) => (a.start!.dateTime!).localeCompare(b.start!.dateTime!));
+      let breathingRoom = todayTimed.length < 2;
+      for (let i = 1; !breathingRoom && i < todayTimed.length; i++) {
+        const prevEnd = Date.parse(todayTimed[i - 1].end?.dateTime ?? todayTimed[i - 1].start!.dateTime!);
+        const curStart = Date.parse(todayTimed[i].start!.dateTime!);
+        if (curStart - prevEnd >= 30 * 60000) breathingRoom = true;
+      }
+      const t7 = (() => { try { return taskQueries.getRecent(user.id, 7); } catch { return []; } })();
+      const completed = t7.filter(t => t.completed).length;
+      const overdue = t7.filter(t => !t.completed && t.date && t.date < today).length;
+      const ftRate = completed + overdue >= 3 ? completed / (completed + overdue) : null;
+      const fs = computeFocusScore({ recoveryScore: latestRec, priorityHoursThisWeek: priorityHours, hasBreathingRoom: breathingRoom, followThroughRate: ftRate });
+      return { score: fs.score, tier: fs.tier, headline: fs.headline };
+    } catch { return null; }
+  })();
+
+  return NextResponse.json({ ...fit, history, dailyFocusScore, ...(change ? { change } : {}) });
 }

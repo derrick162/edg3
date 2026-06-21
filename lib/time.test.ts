@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, computeFreeSlots, buildRrule } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -284,4 +284,66 @@ describe('applyRruleUntil — cap a recurring series (R13 T2)', () => {
   it('returns [] for empty recurrence', () => {
     expect(applyRruleUntil([], '20260630T235959Z')).toEqual([]);
   });
+});
+
+describe('computeFreeSlots (R14 T1)', () => {
+  // Window 9:00–18:00 America/Toronto (UTC-4 in June) → 13:00Z–22:00Z.
+  const tz = 'America/Toronto';
+  const at = (date: string, hhmm: string) => wallTimeToUtc(`${date}T${hhmm}:00`, tz).getTime();
+  const base = { windowStartMin: 9 * 60, windowEndMin: 18 * 60, tz };
+
+  it('returns one slot for a fully-free day', () => {
+    const slots = computeFreeSlots({ ...base, busy: [], durationMs: 90 * 60000, dates: ['2026-06-22'] });
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toEqual({ date: '2026-06-22', startMs: at('2026-06-22', '09:00'), endMs: at('2026-06-22', '10:30') });
+  });
+
+  it('finds the gap between two meetings', () => {
+    const busy = [
+      { start: at('2026-06-22', '09:00'), end: at('2026-06-22', '11:00') },
+      { start: at('2026-06-22', '12:30'), end: at('2026-06-22', '18:00') },
+    ];
+    const slots = computeFreeSlots({ ...base, busy, durationMs: 90 * 60000, dates: ['2026-06-22'], maxResults: 5 });
+    expect(slots).toEqual([{ date: '2026-06-22', startMs: at('2026-06-22', '11:00'), endMs: at('2026-06-22', '12:30') }]);
+  });
+
+  it('skips gaps shorter than the duration', () => {
+    const busy = [
+      { start: at('2026-06-22', '09:00'), end: at('2026-06-22', '10:00') },
+      { start: at('2026-06-22', '11:00'), end: at('2026-06-22', '18:00') }, // only a 60-min gap
+    ];
+    expect(computeFreeSlots({ ...base, busy, durationMs: 90 * 60000, dates: ['2026-06-22'] })).toEqual([]);
+  });
+
+  it('accepts a gap exactly equal to the duration', () => {
+    const busy = [
+      { start: at('2026-06-22', '09:00'), end: at('2026-06-22', '10:00') },
+      { start: at('2026-06-22', '11:30'), end: at('2026-06-22', '18:00') }, // exactly 90 min
+    ];
+    const slots = computeFreeSlots({ ...base, busy, durationMs: 90 * 60000, dates: ['2026-06-22'] });
+    expect(slots).toHaveLength(1);
+    expect(slots[0].startMs).toBe(at('2026-06-22', '10:00'));
+  });
+
+  it('clips busy intervals to the window (ignores out-of-window busy)', () => {
+    const busy = [{ start: at('2026-06-22', '06:00'), end: at('2026-06-22', '08:00') }]; // before window
+    const slots = computeFreeSlots({ ...base, busy, durationMs: 60 * 60000, dates: ['2026-06-22'] });
+    expect(slots[0].startMs).toBe(at('2026-06-22', '09:00')); // window start, not 8am
+  });
+
+  it('spans multiple days and caps at maxResults', () => {
+    const slots = computeFreeSlots({ ...base, busy: [], durationMs: 60 * 60000, dates: ['2026-06-22', '2026-06-23', '2026-06-24', '2026-06-25'], maxResults: 3 });
+    expect(slots).toHaveLength(3);
+    expect(slots.map(s => s.date)).toEqual(['2026-06-22', '2026-06-23', '2026-06-24']);
+  });
+});
+
+describe('buildRrule (R14 T2)', () => {
+  it('daily', () => expect(buildRrule({ freq: 'daily' })).toBe('RRULE:FREQ=DAILY'));
+  it('weekdays', () => expect(buildRrule({ freq: 'weekly', days: ['MO', 'TU', 'WE', 'TH', 'FR'] })).toBe('RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'));
+  it('weekly single day', () => expect(buildRrule({ freq: 'weekly', days: ['MO'] })).toBe('RRULE:FREQ=WEEKLY;BYDAY=MO'));
+  it('with UNTIL (YYYY-MM-DD → YYYYMMDD)', () => expect(buildRrule({ freq: 'weekly', days: ['TU'], until: '2026-12-31' })).toBe('RRULE:FREQ=WEEKLY;BYDAY=TU;UNTIL=20261231'));
+  it('with COUNT', () => expect(buildRrule({ freq: 'daily', count: 10 })).toBe('RRULE:FREQ=DAILY;COUNT=10'));
+  it('monthly', () => expect(buildRrule({ freq: 'monthly' })).toBe('RRULE:FREQ=MONTHLY'));
+  it('until beats count when both supplied', () => expect(buildRrule({ freq: 'daily', until: '2026-12-31', count: 5 })).toBe('RRULE:FREQ=DAILY;UNTIL=20261231'));
 });

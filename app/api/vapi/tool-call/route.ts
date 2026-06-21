@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOAuthClient, getColorId, zonedWallTimeToUtc, findFreeSlots, getCalendarEvents, getWeekEvents } from '@/lib/calendar';
-import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes } from '@/lib/time';
-import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups } from '@/lib/eventMatch';
+import { rruleUntilUtc, nextDay, prevDay, wallTimeToUtc, dayRangeUtc, isValidTimeZone, todayInTz, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, bookEventTimes, computeFreeSlots } from '@/lib/time';
+import { titleMatchScore, selectEvent, resolveEventExact, findDuplicateGroups, normalizeTitle } from '@/lib/eventMatch';
+import { getRecentEmailSignal } from '@/lib/gmail';
+import { hasGmailReadScope } from '@/lib/google-auth';
 import { isTimedEventInWindow, formatBatchPreview, nearbyTimedEvents, buildConflictWarning } from '@/lib/batchSchedule';
+import { mergeAttendees } from '@/lib/attendees';
+import { dedupeSortEvents, formatEventForSpeech, findOverlappingEvents } from '@/lib/calendarQuery';
 import { groundProperNouns } from '@/lib/grounding';
 import { checkVapiSecret } from '@/lib/vapi';
 import { computeCalendarFit, classifyEventsEnergy, colorByEnergy } from '@/lib/calendarScore';
@@ -12,7 +16,9 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries } from '@/lib/db';
+import { pickTaskToComplete } from '@/lib/taskMatch';
+import { factsMatchingTopic } from '@/lib/factForget';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -359,8 +365,14 @@ Query: ${query}` }],
 
   } else if (fn === 'createEvent') {
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
-    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string };
+    const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location, recurrence, attendees } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string; recurrence?: string; attendees?: { email?: string; name?: string }[] };
     if (!rawCreateTitle) return "I didn't catch what to call that event — what's the title?";
+    // R14 T2 — only accept a well-formed RRULE string (the model passes it directly).
+    const recur = typeof recurrence === 'string' && /^RRULE:/i.test(recurrence.trim()) ? recurrence.trim() : undefined;
+    // R14 T3 — Google sends invites for any attendees with an email.
+    const attendeeList = Array.isArray(attendees)
+      ? attendees.filter(a => a?.email && /@/.test(a.email)).map(a => ({ email: a.email!, ...(a.name ? { displayName: a.name } : {}) }))
+      : [];
     const title = groundTitle(rawCreateTitle);
 
     // All-day event: date-only start/end. `endDate` is the LAST day the event covers (inclusive);
@@ -389,6 +401,8 @@ Query: ${query}` }],
         summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
         ...(description ? { description } : {}),
         ...(location ? { location } : {}),
+        ...(recur ? { recurrence: [recur] } : {}),
+        ...(attendeeList.length ? { attendees: attendeeList } : {}),
       } });
       if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
@@ -449,11 +463,12 @@ Query: ${query}` }],
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}) };
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}), ...(attendeeList.length ? { attendees: attendeeList } : {}) };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
-    return `Created and confirmed "${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.`;
+    const inviteNote = attendeeList.length ? ` Invited ${attendeeList.length} ${attendeeList.length === 1 ? 'person' : 'people'}.` : '';
+    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
@@ -913,6 +928,290 @@ Query: ${query}` }],
     const head = action === 'move' ? `Moved ${doneNames.length} event(s) to ${targetDate}` : `Cleared ${doneNames.length} event(s) from ${window.date}`;
     return `${head}: ${doneNames.join(', ')}.${failedNames.length ? ` Couldn't do ${failedNames.join(', ')}.` : ''}`;
 
+  } else if (fn === 'findFreeTime') {
+    // R14 T1 — find open slots of a given duration across a date range, honoring a daily
+    // wall-clock window. Uses freebusy across all calendars + pure computeFreeSlots.
+    const { duration, startDate, endDate, windowStart, windowEnd } = args as {
+      duration?: number; startDate?: string; endDate?: string; windowStart?: string; windowEnd?: string;
+    };
+    if (!duration || duration <= 0) return 'How long a block are you looking for?';
+    const fStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : todayInTz(tz);
+    let fEnd = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : '';
+    if (!fEnd || fEnd < fStart) {
+      const d = new Date(`${fStart}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 6); fEnd = d.toISOString().slice(0, 10);
+    }
+    const [wsH, wsM] = resolveNaturalTime(windowStart || '9:00 AM').split(':').map(Number);
+    const [weH, weM] = resolveNaturalTime(windowEnd || '6:00 PM').split(':').map(Number);
+    const fDates: string[] = [];
+    for (let c = fStart; c <= fEnd; c = nextDay(c)) { fDates.push(c); if (fDates.length > 31) break; }
+    const fbMin = dayRangeUtc(tz, fStart).start.toISOString();
+    const fbMax = dayRangeUtc(tz, fEnd).end.toISOString();
+    const fb = await cal.freebusy.query({ requestBody: { timeMin: fbMin, timeMax: fbMax, items: calIds.map(id => ({ id })) } })
+      .then(r => r.data).catch((e: unknown) => { console.error('[findFreeTime] freebusy failed:', e instanceof Error ? e.message : e); return null; });
+    if (!fb) return `I couldn't pull your availability just now — want me to try again?`;
+    const busy: { start: number; end: number }[] = [];
+    for (const c of Object.values(fb.calendars ?? {})) {
+      for (const b of (c.busy ?? [])) if (b.start && b.end) busy.push({ start: Date.parse(b.start), end: Date.parse(b.end) });
+    }
+    const slots = computeFreeSlots({ busy, durationMs: duration * 60000, windowStartMin: wsH * 60 + wsM, windowEndMin: weH * 60 + weM, dates: fDates, tz, maxResults: 3 });
+    if (!slots.length) return `Your calendar looks pretty packed in that window — want me to look at next week?`;
+    const fmtT = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+    const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long' });
+    const list = slots.map(s => `${fmtDay(s.date)} at ${fmtT(s.startMs)}–${fmtT(s.endMs)}`).join(', ');
+    return `Here are some open windows: ${list}. Want me to block one?`;
+
+  } else if (fn === 'searchEvents') {
+    // R15 T1 — Google calendar text search across all calendars.
+    const { query, startDate, endDate } = args as { query?: string; startDate?: string; endDate?: string };
+    if (!query?.trim()) return 'What should I search your calendar for?';
+    const seToday = todayInTz(tz);
+    const offsetDate = (days: number) => { const d = new Date(`${seToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+    const seStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : offsetDate(-30);
+    const seEnd = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : offsetDate(60);
+    const found = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, q: query, timeMin: dayRangeUtc(tz, seStart).start.toISOString(), timeMax: dayRangeUtc(tz, seEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 10 })
+        .then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
+    const results = dedupeSortEvents(found.filter(e => e.status !== 'cancelled')).slice(0, 5);
+    if (!results.length) return `Nothing on your calendar matches "${query}".`;
+    return `Found ${results.length} event${results.length !== 1 ? 's' : ''} matching "${query}": ${results.map(e => formatEventForSpeech(e, tz, { withDate: true })).join(', ')}.`;
+
+  } else if (fn === 'checkConflict') {
+    // R15 T2 — point-in-time availability check.
+    const { date, startTime, endTime } = args as { date?: string; startTime?: string; endTime?: string };
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'What day should I check?';
+    if (!startTime) return 'What time should I check?';
+    const ccStartMs = zonedWallTimeToUtc(`${date}T${resolveNaturalTime(startTime)}:00`, tz).getTime();
+    let ccEndMs = endTime ? zonedWallTimeToUtc(`${date}T${resolveNaturalTime(endTime)}:00`, tz).getTime() : ccStartMs + 60 * 60000;
+    if (ccEndMs <= ccStartMs) ccEndMs = ccStartMs + 60 * 60000;
+    const ccEvents = (await eventsOnDay(cal, calIds, date, tz)).map(x => x.event).filter(e => e.status !== 'cancelled');
+    const conflicts = findOverlappingEvents(ccEvents, ccStartMs, ccEndMs);
+    const whenLabel = new Date(ccStartMs).toLocaleString('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' });
+    if (!conflicts.length) return `You're free ${whenLabel} — nothing on your calendar then.`;
+    return `You've got ${conflicts.map(e => formatEventForSpeech(e, tz)).join(', ')} then. Want me to find another slot?`;
+
+  } else if (fn === 'getNextEvents') {
+    // R15 T5 — the next N timed events from now.
+    const { count } = args as { count?: number };
+    const n = Math.min(Math.max(typeof count === 'number' && count > 0 ? Math.floor(count) : 3, 1), 5);
+    const nowIso = new Date().toISOString();
+    const nextRaw = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: nowIso, singleEvents: true, orderBy: 'startTime', maxResults: n + 5 })
+        .then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+    ))).flat();
+    const timed = dedupeSortEvents(nextRaw.filter(e => e.status !== 'cancelled' && e.start?.dateTime)).slice(0, n);
+    if (!timed.length) return `Nothing else on your calendar coming up.`;
+    return `Your next ${timed.length === 1 ? 'event' : `${timed.length} events`}: ${timed.map(e => formatEventForSpeech(e, tz)).join(', ')}.`;
+
+  } else if (fn === 'setEventReminder') {
+    // R15 T3 — set a popup reminder N minutes before an event.
+    const { title: rawTitle, minutesBefore, currentTime } = args as { title?: string; minutesBefore?: number; currentTime?: string };
+    if (!rawTitle) return 'Which event should I set a reminder on?';
+    if (typeof minutesBefore !== 'number' || minutesBefore < 0) return 'How many minutes before should I remind you?';
+    const title = groundTitle(rawTitle);
+    const srToday = todayInTz(tz);
+    const srEnd = (() => { const d = new Date(`${srToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 30); return d.toISOString().slice(0, 10); })();
+    const srMatches = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, srToday).start.toISOString(), timeMax: dayRangeUtc(tz, srEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime' })
+        .then(r => (r.data.items ?? []).map(e => ({ event: e, calId }))).catch(() => [] as { event: calendar_v3.Schema$Event; calId: string }[])
+    ))).flat();
+    const r = resolveEvent(srMatches, title, tz, currentTime);
+    if (r.kind === 'none') return `I couldn't find "${title}" on your upcoming calendar.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events: ${r.message}. Which one? Re-call with currentTime set to its start time.`;
+    const srName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+    const srMeta = calMeta.get(r.calId);
+    if (srMeta && !isWritable(srMeta.accessRole)) return `"${srName}" is on a read-only calendar — I can't change its reminders from here.`;
+    const origReminders = r.event.reminders ?? { useDefault: true };
+    const srPatched = await cal.events.patch({ calendarId: r.calId, eventId: r.event.id!, requestBody: { reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: minutesBefore }] } } })
+      .catch((e: unknown) => { console.error('[setEventReminder] patch failed:', e instanceof Error ? e.message : e); return null; });
+    if (!srPatched) return `I couldn't set that reminder just now — want me to try again?`;
+    recordUndo(userId, `set reminder on "${srName}"`, [{ type: 'patch', calId: r.calId, eventId: r.event.id!, requestBody: { reminders: origReminders } }]);
+    return `Set a ${minutesBefore}-minute reminder for "${srName}".`;
+
+  } else if (fn === 'blockFocusTime') {
+    // R15 T4 — find the earliest open slot of `duration` and book a focus block in one shot.
+    const { label, duration, startDate, endDate, windowStart, windowEnd } = args as {
+      label?: string; duration?: number; startDate?: string; endDate?: string; windowStart?: string; windowEnd?: string;
+    };
+    if (!label?.trim()) return 'What should I block the time for?';
+    if (!duration || duration <= 0) return 'How long should I block?';
+    const bfStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : todayInTz(tz);
+    let bfEnd = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : '';
+    if (!bfEnd || bfEnd < bfStart) { const d = new Date(`${bfStart}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 6); bfEnd = d.toISOString().slice(0, 10); }
+    const [bwsH, bwsM] = resolveNaturalTime(windowStart || '9:00 AM').split(':').map(Number);
+    const [bweH, bweM] = resolveNaturalTime(windowEnd || '6:00 PM').split(':').map(Number);
+    const bfDates: string[] = [];
+    for (let c = bfStart; c <= bfEnd; c = nextDay(c)) { bfDates.push(c); if (bfDates.length > 31) break; }
+    const bfFb = await cal.freebusy.query({ requestBody: { timeMin: dayRangeUtc(tz, bfStart).start.toISOString(), timeMax: dayRangeUtc(tz, bfEnd).end.toISOString(), items: calIds.map(id => ({ id })) } })
+      .then(r => r.data).catch((e: unknown) => { console.error('[blockFocusTime] freebusy failed:', e instanceof Error ? e.message : e); return null; });
+    if (!bfFb) return `I couldn't check your availability just now — want me to try again?`;
+    const bfBusy: { start: number; end: number }[] = [];
+    for (const c of Object.values(bfFb.calendars ?? {})) for (const b of (c.busy ?? [])) if (b.start && b.end) bfBusy.push({ start: Date.parse(b.start), end: Date.parse(b.end) });
+    const bfSlots = computeFreeSlots({ busy: bfBusy, durationMs: duration * 60000, windowStartMin: bwsH * 60 + bwsM, windowEndMin: bweH * 60 + bweM, dates: bfDates, tz, maxResults: 1 });
+    if (!bfSlots.length) return `Your week looks packed in that window — want me to look at next week instead?`;
+    const slot = bfSlots[0];
+    const focusTitle = `Focus: ${label.trim()}`;
+    const bfIns = await cal.events.insert({ calendarId: 'primary', requestBody: { summary: `⚡ ${focusTitle}`, start: { dateTime: new Date(slot.startMs).toISOString(), timeZone: tz }, end: { dateTime: new Date(slot.endMs).toISOString(), timeZone: tz }, colorId: '2' } })
+      .catch((e: unknown) => { console.error('[blockFocusTime] insert failed:', e instanceof Error ? e.message : e); return null; });
+    if (!bfIns?.data.id) return `I found a slot but couldn't book it just now — want me to try again?`;
+    recordUndo(userId, `blocked focus time for ${label.trim()}`, [{ type: 'delete', calId: 'primary', eventId: bfIns.data.id }]);
+    const dayName = new Date(`${slot.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long' });
+    const fmtSlot = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+    const durLabel = duration % 60 === 0 ? `${duration / 60} hour${duration >= 120 ? 's' : ''}` : `${duration} minutes`;
+    return `Blocked ${durLabel} for ${label.trim()}: ${dayName} at ${fmtSlot(slot.startMs)}–${fmtSlot(slot.endMs)}. Want me to protect more time this week?`;
+
+  } else if (fn === 'briefEvent') {
+    // R15 T6 — pre-meeting prep: event details + matching email signal + attendee facts → Haiku brief.
+    const { title: rawTitle, currentTime } = args as { title?: string; currentTime?: string };
+    if (!rawTitle) return 'Which event should I brief you on?';
+    const title = groundTitle(rawTitle);
+    const beToday = todayInTz(tz);
+    const beEnd = (() => { const d = new Date(`${beToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 30); return d.toISOString().slice(0, 10); })();
+    const beMatches = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, beToday).start.toISOString(), timeMax: dayRangeUtc(tz, beEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime' })
+        .then(r => (r.data.items ?? []).map(e => ({ event: e, calId }))).catch(() => [] as { event: calendar_v3.Schema$Event; calId: string }[])
+    ))).flat();
+    const r = resolveEvent(beMatches, title, tz, currentTime);
+    if (r.kind === 'none') return `I couldn't find "${title}" on your upcoming calendar to brief you on.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events: ${r.message}. Which one? Re-call with currentTime set to its start time.`;
+    const ev = r.event;
+    const beName = (ev.summary ?? '').replace(/^⚡\s*/, '');
+    const attendeeNames = (ev.attendees ?? []).filter(a => !a.self).map(a => a.displayName || a.email).filter(Boolean) as string[];
+    const nTitle = normalizeTitle(beName);
+    // Email signal matching the event title (best-effort, gmail.readonly only).
+    let emailContext = '';
+    try {
+      const calTok = calendarQueries.get(userId);
+      if (hasGmailReadScope(calTok?.scope)) {
+        const sig = await getRecentEmailSignal(userId, { days: 7, max: 20 });
+        if (sig && !sig.scopeMissing) {
+          const hits = (sig.items ?? []).filter(it => { const ns = normalizeTitle(it.subject || ''); return ns && (ns.includes(nTitle) || nTitle.includes(ns)); }).slice(0, 3);
+          if (hits.length) emailContext = hits.map(h => `- ${h.subject} (from ${h.sender})`).join('\n');
+        }
+      }
+    } catch { /* degrade */ }
+    // Stored facts about attendees or the event topic.
+    let factContext = '';
+    try {
+      const allF = factQueries.getAll(userId);
+      const hits = allF.filter(f => {
+        const ne = normalizeTitle(f.entity ?? ''); const nst = normalizeTitle(f.statement ?? '');
+        if (ne && attendeeNames.some(a => { const na = normalizeTitle(a); return na && (ne.includes(na) || na.includes(ne)); })) return true;
+        return nTitle.length > 2 && (ne.includes(nTitle) || nst.includes(nTitle));
+      }).slice(0, 5);
+      if (hits.length) factContext = hits.map(f => `- ${f.entity ? `${f.entity}: ` : ''}${f.statement}`).join('\n');
+    } catch { /* degrade */ }
+
+    const rawDetails = [
+      attendeeNames.length ? `Attendees: ${attendeeNames.join(', ')}.` : '',
+      ev.location ? `Location: ${ev.location}.` : '',
+      ev.description ? `Notes: ${ev.description.slice(0, 400)}` : '',
+    ].filter(Boolean).join(' ');
+
+    try {
+      const beFirst = (userQueries.findById(userId)?.name ?? '').split(' ')[0] || 'them';
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const res = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 250,
+        messages: [{ role: 'user', content: `In 3 sentences or fewer, brief ${beFirst} on this upcoming event. State who's attending (if known), what the agenda/notes say, and one piece of relevant context from recent emails or memory. Be specific and concise — this is read aloud.
+
+EVENT: ${beName}
+${rawDetails || '(no description or attendees)'}
+${emailContext ? `\nRELATED EMAILS:\n${emailContext}` : ''}
+${factContext ? `\nWHAT I KNOW:\n${factContext}` : ''}` }],
+      }, { signal: AbortSignal.timeout(20000) });
+      const text = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('').trim();
+      if (text) return text;
+    } catch (e) { console.error('[briefEvent] Haiku failed:', e instanceof Error ? e.message : e); }
+    // Degrade: raw details without synthesis.
+    return rawDetails ? `Here's what I have on "${beName}": ${rawDetails}` : `I don't have much detail on "${beName}" beyond it being on your calendar.`;
+
+  } else if (fn === 'generateWeeklyReview') {
+    // R15 T7 — end-of-week wrap-up from real event + task + recovery data → Haiku review.
+    const { weekOf } = args as { weekOf?: string };
+    // Resolve the week's Monday (in user tz) and its Sunday end.
+    const baseDay = weekOf && /^\d{4}-\d{2}-\d{2}$/.test(weekOf) ? weekOf : todayInTz(tz);
+    const monday = (() => {
+      const d = new Date(`${baseDay}T12:00:00Z`);
+      const dow = (d.getUTCDay() + 6) % 7; // 0 = Monday
+      d.setUTCDate(d.getUTCDate() - dow);
+      return d.toISOString().slice(0, 10);
+    })();
+    const sunday = (() => { const d = new Date(`${monday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+    const [weekEventsRaw, recHist] = await Promise.all([
+      (async () => (await Promise.all(calIds.map(calId =>
+        cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, monday).start.toISOString(), timeMax: dayRangeUtc(tz, sunday).end.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 50 })
+          .then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
+      ))).flat())(),
+      getRecoveryHistory(userId, 7).catch(() => []),
+    ]);
+    const meetings = dedupeSortEvents(weekEventsRaw.filter(e => e.status !== 'cancelled' && e.start?.dateTime))
+      .map(e => (e.summary ?? '').replace(/^⚡\s*/, '')).filter(Boolean).slice(0, 12);
+    const recentTasks = (() => { try { return taskQueries.getRecent(userId, 10); } catch { return []; } })();
+    const completed = recentTasks.filter(t => t.completed && (t.completed_at ?? '') >= monday).map(t => t.text).slice(0, 12);
+    const openTasks = recentTasks.filter(t => !t.completed).map(t => t.text).slice(0, 12);
+    let whoopNote = '';
+    try {
+      if (recHist.length >= 3) {
+        const { computeWhoopTrends, formatTrendForBriefing } = await import('@/lib/whoopTrends');
+        const trend = computeWhoopTrends(recHist.map(h => ({ date: h.date, value: h.recoveryScore })), [], []);
+        whoopNote = trend ? (formatTrendForBriefing(trend) ?? '') : '';
+      }
+    } catch { /* degrade */ }
+
+    try {
+      const wrFirst = (userQueries.findById(userId)?.name ?? '').split(' ')[0] || 'them';
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const res = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 300,
+        messages: [{ role: 'user', content: `Give ${wrFirst} a brief spoken weekly review (3–4 sentences max). Cover: (1) what happened — key events/meetings, (2) what was completed, (3) one honest observation or pattern. If recovery data is present, weave in one note about energy. End with one question: what's the priority for next week?
+
+WEEK: ${monday} to ${sunday}
+MEETINGS/EVENTS: ${meetings.length ? meetings.join(', ') : '(none logged)'}
+COMPLETED TASKS: ${completed.length ? completed.join(', ') : '(none)'}
+OPEN TASKS: ${openTasks.length ? openTasks.join(', ') : '(none)'}
+${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
+      }, { signal: AbortSignal.timeout(20000) });
+      const text = res.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('').trim();
+      if (text) return text;
+    } catch (e) { console.error('[generateWeeklyReview] Haiku failed:', e instanceof Error ? e.message : e); }
+    // Degrade: plain list.
+    return `This week (${monday} to ${sunday}): ${meetings.length} event(s)${completed.length ? `, ${completed.length} task(s) done` : ''}${openTasks.length ? `, ${openTasks.length} still open` : ''}. What's the priority for next week?`;
+
+  } else if (fn === 'editEventAttendees') {
+    // R14 T3 — add/remove guests on an existing event (Google sends invites/cancellations).
+    const { title: rawTitle, currentTime, add, remove } = args as {
+      title?: string; currentTime?: string; add?: { email?: string; name?: string }[]; remove?: string[];
+    };
+    if (!rawTitle) return "Which event's guest list should I change?";
+    const addList = Array.isArray(add) ? add : [];
+    const removeList = Array.isArray(remove) ? remove : [];
+    if (!addList.length && !removeList.length) return 'Who should I add or remove?';
+    const title = groundTitle(rawTitle);
+    // Search the next 30 days for the event by title (no date param on this tool).
+    const eaToday = todayInTz(tz);
+    const eaEnd = (() => { const d = new Date(`${eaToday}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 30); return d.toISOString().slice(0, 10); })();
+    const eaMatches = (await Promise.all(calIds.map(calId =>
+      cal.events.list({ calendarId: calId, timeMin: dayRangeUtc(tz, eaToday).start.toISOString(), timeMax: dayRangeUtc(tz, eaEnd).end.toISOString(), singleEvents: true, orderBy: 'startTime' })
+        .then(r => (r.data.items ?? []).map(e => ({ event: e, calId }))).catch(() => [] as { event: calendar_v3.Schema$Event; calId: string }[])
+    ))).flat();
+    const r = resolveEvent(eaMatches, title, tz, currentTime);
+    if (r.kind === 'none') return `I couldn't find "${title}" on your upcoming calendar to change its guest list.`;
+    if (r.kind === 'ambiguous') return `There are multiple "${title}" events: ${r.message}. Which one? Re-call with currentTime set to its start time.`;
+    const eaName = (r.event.summary ?? '').replace(/^⚡\s*/, '');
+    const eaMeta = calMeta.get(r.calId);
+    if (eaMeta && !isWritable(eaMeta.accessRole)) return `"${eaName}" is on a read-only calendar — I can't change its guests from here.`;
+    const origAttendees = r.event.attendees ?? [];
+    const merged = mergeAttendees(origAttendees, addList, removeList);
+    const patched = await cal.events.patch({ calendarId: r.calId, eventId: r.event.id!, requestBody: { attendees: merged }, sendUpdates: 'all' })
+      .catch((e: unknown) => { console.error('[editEventAttendees] patch failed:', e instanceof Error ? e.message : e); return null; });
+    if (!patched) return `I couldn't update the guest list for "${eaName}" just now — want me to try again?`;
+    recordUndo(userId, `changed guests on "${eaName}"`, [{ type: 'patch', calId: r.calId, eventId: r.event.id!, requestBody: { attendees: origAttendees } }]);
+    const parts: string[] = [];
+    if (addList.length) parts.push(`added ${addList.map(a => a.name || a.email).filter(Boolean).join(', ')}`);
+    if (removeList.length) parts.push(`removed ${removeList.join(', ')}`);
+    return `Updated "${eaName}" — ${parts.join(' and ')}.${addList.length ? " They'll get an invite (Google accounts only)." : ''}`;
+
   } else if (fn === 'skipRecurringOccurrence') {
     // R13 T2 — cancel ONE occurrence of a recurring series (low-stakes → no confirm token).
     const { title: rawTitle, occurrenceDate } = args as { title?: string; occurrenceDate?: string };
@@ -1261,6 +1560,52 @@ Query: ${query}` }],
     // degrades to a graceful line on any failure (never "I don't have weather data").
     const { getWeatherForecast } = await import('@/lib/weather');
     return await getWeatherForecast();
+
+  } else if (fn === 'addTask') {
+    // R14 T4 — create an action-item task by voice.
+    const { title: rawTaskTitle, dueDate } = args as { title?: string; dueDate?: string };
+    if (!rawTaskTitle?.trim()) return 'What should I add to your tasks?';
+    const taskText = rawTaskTitle.trim().slice(0, 300);
+    const due = dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : todayInTz(tz);
+    try {
+      taskQueries.create(userId, taskText, due, 'edg3');
+    } catch (err) {
+      console.error('[addTask] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't add that to your tasks just now — want me to try again?`;
+    }
+    return `Added to your tasks: "${taskText}"${dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? ` — due ${dueDate}` : ''}.`;
+
+  } else if (fn === 'completeTask') {
+    // R14 T4 — mark an open task done by fuzzy-matching its title.
+    const { title: rawDoneTitle } = args as { title?: string };
+    if (!rawDoneTitle?.trim()) return 'Which task did you finish?';
+    const openTasks = (() => { try { return taskQueries.getIncomplete(userId); } catch { return []; } })();
+    if (!openTasks.length) return `You don't have any open tasks right now.`;
+    const { match, ambiguous } = pickTaskToComplete(openTasks.map(t => ({ id: t.id, text: t.text })), rawDoneTitle);
+    if (!match) {
+      if (ambiguous.length > 1) return `You have a few that could match: ${ambiguous.map(t => `"${t.text}"`).join(', ')}. Which one?`;
+      return `I couldn't find an open task matching "${rawDoneTitle.trim()}".`;
+    }
+    try {
+      taskQueries.complete(match.id, userId);
+    } catch (err) {
+      console.error('[completeTask] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't mark that done just now — want me to try again?`;
+    }
+    return `Done — marked "${match.text}" as complete.`;
+
+  } else if (fn === 'forgetFact') {
+    // R14 T5 — retire stored facts matching a topic so a correction doesn't conflict with stale data.
+    const { topic } = args as { topic?: string };
+    if (!topic?.trim()) return 'What should I forget?';
+    const activeFacts = (() => { try { return factQueries.getAll(userId); } catch { return []; } })();
+    const matches = factsMatchingTopic(activeFacts.map(f => ({ id: f.id, entity: f.entity, statement: f.statement })), topic);
+    if (!matches.length) return `I don't have anything stored about ${topic.trim()} — nothing to forget.`;
+    let removed = 0;
+    for (const m of matches) { try { factQueries.retire(userId, m.id); removed++; } catch (e) { console.error('[forgetFact] retire failed:', e instanceof Error ? e.message : e); } }
+    if (!removed) return `I ran into trouble clearing that — want me to try again?`;
+    const sensitive = /address|live|home|wake|name|partner|spouse/i.test(topic);
+    return `Got it — I've cleared everything I knew about ${topic.trim()}.${sensitive ? " If the new one is different, just tell me and I'll remember the updated version." : ''}`;
 
   } else if (fn === 'searchMemory') {
     // M3-2: on-demand memory retrieval — searches facts + episodes + memories for the query.

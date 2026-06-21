@@ -123,6 +123,68 @@ export function rruleUntilUtc(endDate: string, timeZone: string): string {
     .toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
+export interface FreeSlot { date: string; startMs: number; endMs: number; }
+
+/**
+ * R14 T1 — find open slots ≥ durationMs within a per-day wall-clock window across a date range.
+ * Pure: busy intervals come in as UTC ms (from freebusy.query); the window is minutes-from-midnight
+ * applied in `tz` per date. Returns up to maxResults duration-sized slots at the start of each
+ * qualifying gap, scanning days in order.
+ */
+export function computeFreeSlots(opts: {
+  busy: { start: number; end: number }[];
+  durationMs: number;
+  windowStartMin: number;
+  windowEndMin: number;
+  dates: string[];
+  tz: string;
+  maxResults?: number;
+}): FreeSlot[] {
+  const { busy, durationMs, windowStartMin, windowEndMin, dates, tz, maxResults = 3 } = opts;
+  if (durationMs <= 0 || windowEndMin <= windowStartMin) return [];
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hhmm = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}:00`;
+  const sortedBusy = [...busy].sort((a, b) => a.start - b.start);
+  const out: FreeSlot[] = [];
+
+  for (const date of dates) {
+    if (out.length >= maxResults) break;
+    const dayStart = wallTimeToUtc(`${date}T${hhmm(windowStartMin)}`, tz).getTime();
+    const dayEnd = wallTimeToUtc(`${date}T${hhmm(windowEndMin)}`, tz).getTime();
+    // Busy intervals overlapping this day's window, clipped to it.
+    const dayBusy = sortedBusy
+      .filter(b => b.end > dayStart && b.start < dayEnd)
+      .map(b => ({ start: Math.max(b.start, dayStart), end: Math.min(b.end, dayEnd) }))
+      .sort((a, b) => a.start - b.start);
+
+    let cursor = dayStart;
+    for (const b of dayBusy) {
+      if (b.start - cursor >= durationMs) {
+        out.push({ date, startMs: cursor, endMs: cursor + durationMs });
+        if (out.length >= maxResults) break;
+      }
+      cursor = Math.max(cursor, b.end);
+    }
+    if (out.length < maxResults && dayEnd - cursor >= durationMs) {
+      out.push({ date, startMs: cursor, endMs: cursor + durationMs });
+    }
+  }
+  return out.slice(0, maxResults);
+}
+
+/**
+ * R14 T2 — build a Google Calendar RRULE string from structured intent.
+ * `days` uses two-letter codes (MO,TU,WE,TH,FR,SA,SU). `until` is YYYY-MM-DD → YYYYMMDD.
+ * `count` and `until` are mutually exclusive (until wins if both given).
+ */
+export function buildRrule(opts: { freq: 'daily' | 'weekly' | 'monthly'; days?: string[]; until?: string; count?: number }): string {
+  const parts = [`FREQ=${opts.freq.toUpperCase()}`];
+  if (opts.days?.length) parts.push(`BYDAY=${opts.days.map(d => d.toUpperCase()).join(',')}`);
+  if (opts.until) parts.push(`UNTIL=${opts.until.replace(/-/g, '')}`);
+  else if (opts.count && opts.count > 0) parts.push(`COUNT=${opts.count}`);
+  return `RRULE:${parts.join(';')}`;
+}
+
 /**
  * R13 T2 — cap a recurrence at `until` (a UTC instant from rruleUntilUtc).
  * Rewrites each RRULE line: strips any existing UNTIL/COUNT (mutually exclusive
