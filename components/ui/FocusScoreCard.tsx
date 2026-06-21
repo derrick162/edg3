@@ -44,9 +44,10 @@ export function FocusScoreCard({ score, tier, headline, breakdown }: FocusScoreC
     <div className="glass-card p-5">
       <p className="label-caps mb-4">Focus Score</p>
 
-      <div className="flex items-end gap-4 mb-3">
+      <div className="flex items-end gap-4 mb-3" role="img" aria-label={`Focus Score: ${score} out of 100 — ${label}`}>
         <span
           className="leading-none font-bold"
+          aria-hidden="true"
           style={{ fontSize: 48, color }}
         >
           {score}
@@ -64,13 +65,14 @@ export function FocusScoreCard({ score, tier, headline, breakdown }: FocusScoreC
             style={{ borderTop: '1px solid var(--card-border)', color: 'var(--text-faint)' }}
             onClick={() => setExpanded(e => !e)}
             aria-expanded={expanded}
+            aria-controls="focus-score-breakdown"
           >
             <span className="text-xs flex-1 text-left" style={{ color: 'var(--text-faint)', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: 10, fontWeight: 600 }}>Breakdown</span>
             <span style={{ fontSize: 10 }}>{expanded ? '▲' : '▼'}</span>
           </button>
 
           {expanded && (
-            <div className="space-y-2.5 mt-3">
+            <div id="focus-score-breakdown" className="space-y-2.5 mt-3">
               <div>
                 <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Recovery</p>
                 <BreakdownBar value={breakdown.recovery} max={40} color={color} />
