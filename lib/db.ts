@@ -142,6 +142,16 @@ export function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- R17 T2 (Core, additive): one-tap post-call quality signal (1–5 stars).
+    CREATE TABLE IF NOT EXISTS call_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      briefing_id TEXT,
+      rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS undo_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id),
@@ -1414,6 +1424,7 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'memories',
   'priorities',
   'tasks',
+  'call_feedback',
   'undo_log',
   'event_dedupe_keys',
   'delete_confirm_tokens',
@@ -1775,6 +1786,35 @@ export const taskQueries = {
     return getDb().prepare(
       "SELECT * FROM tasks WHERE user_id = ? AND completed = 0 AND date >= date('now', '-7 days') ORDER BY date ASC"
     ).all(userId) as Task[];
+  },
+};
+
+// R17 T2 — one-tap post-call quality feedback (1–5 stars).
+export interface CallFeedback {
+  id: number;
+  user_id: number;
+  briefing_id: string | null;
+  rating: number;
+  note: string | null;
+  created_at: string;
+}
+export const callFeedbackQueries = {
+  create: (userId: number, briefingId: string | null, rating: number, note?: string | null) => {
+    return getDb().prepare(
+      'INSERT INTO call_feedback (user_id, briefing_id, rating, note) VALUES (?, ?, ?, ?)'
+    ).run(userId, briefingId ?? null, rating, note ?? null);
+  },
+  recent: (userId: number, limit = 30): CallFeedback[] => {
+    return getDb().prepare(
+      'SELECT * FROM call_feedback WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).all(userId, limit) as CallFeedback[];
+  },
+  // True if this user already rated this briefing (one feedback per call).
+  existsForBriefing: (userId: number, briefingId: string): boolean => {
+    const row = getDb().prepare(
+      'SELECT 1 FROM call_feedback WHERE user_id = ? AND briefing_id = ? LIMIT 1'
+    ).get(userId, briefingId);
+    return !!row;
   },
 };
 
