@@ -39,3 +39,5 @@ export { WeeklyReviewCard } from './WeeklyReviewCard';
 export type { WeeklyReviewCardProps, WeeklyReviewStats } from './WeeklyReviewCard';
 export { NotificationHistoryPanel } from './NotificationHistoryPanel';
 export type { NotificationHistoryPanelProps } from './NotificationHistoryPanel';
+export { ScoreSparkline } from './ScoreSparkline';
+export type { ScoreSparklineProps } from './ScoreSparkline';
