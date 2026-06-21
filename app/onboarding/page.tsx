@@ -31,44 +31,55 @@ function indicatorIdx(step: Step): number {
 function StepIndicator({ current }: { current: Step }) {
   const idx = indicatorIdx(current);
   return (
-    <div className="flex items-center gap-0 mb-8">
-      {INDICATOR_STEPS.map((s, i) => (
-        <div key={s} className="flex items-center flex-1 last:flex-none">
-          {/* Node */}
-          <div className="flex flex-col items-center gap-1">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300"
-              style={{
-                background: i < idx
-                  ? 'var(--edg-indigo)'
-                  : i === idx
-                  ? 'var(--edg-accent-20)'
-                  : 'var(--edg-fill-04)',
-                border: i === idx
-                  ? '2px solid var(--edg-indigo)'
-                  : '2px solid transparent',
-                color: i < idx ? '#fff' : i === idx ? 'var(--text-strong)' : 'var(--text-faint)',
-                boxShadow: i === idx ? '0 0 0 4px var(--edg-accent-08)' : 'none',
-              }}
-            >
-              {i < idx ? '✓' : INDICATOR_META[i].icon}
+    <div className="flex items-center gap-2 mb-8">
+      {INDICATOR_STEPS.map((s, i) => {
+        const completed = i < idx;
+        const active    = i === idx;
+        return (
+          <div key={s} className="flex items-center flex-1 last:flex-none">
+            {/* Node */}
+            <div className="flex flex-col items-center gap-1 flex-shrink-0">
+              <div
+                className="rounded-full flex items-center justify-center transition-all duration-300"
+                style={{
+                  // 10px mobile, 12px sm+
+                  width:  'clamp(10px, 2.5vw, 12px)',
+                  height: 'clamp(10px, 2.5vw, 12px)',
+                  background: completed
+                    ? 'var(--edg-success)'
+                    : active
+                    ? 'var(--edg-indigo)'
+                    : 'var(--edg-hairline)',
+                  boxShadow: active ? '0 0 0 3px var(--edg-accent-08)' : 'none',
+                }}
+              >
+                {/* ✓ checkmark SVG for completed steps */}
+                {completed && (
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                    <path d="M1.5 4L3 5.5L6.5 2" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+              <span
+                className="text-xs hidden sm:block text-center whitespace-nowrap"
+                style={{ color: active ? 'var(--text-accent)' : 'var(--text-faint)', fontWeight: active ? 600 : 400 }}
+              >
+                {INDICATOR_META[i].label}
+              </span>
             </div>
-            <span
-              className="text-xs hidden sm:block text-center"
-              style={{ color: i === idx ? 'var(--text-accent)' : 'var(--text-faint)', fontWeight: i === idx ? 600 : 400 }}
-            >
-              {INDICATOR_META[i].label}
-            </span>
+            {/* Connector stretches between dots */}
+            {i < INDICATOR_STEPS.length - 1 && (
+              <div
+                className="flex-1 h-px mx-1.5 transition-all duration-500"
+                style={{
+                  background: 'var(--edg-hairline)',
+                  marginBottom: 18,
+                }}
+              />
+            )}
           </div>
-          {/* Connector */}
-          {i < INDICATOR_STEPS.length - 1 && (
-            <div
-              className="flex-1 h-px mx-2 transition-all duration-500"
-              style={{ background: i < idx ? 'var(--edg-indigo)' : 'var(--edg-hairline)', marginBottom: 18 }}
-            />
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

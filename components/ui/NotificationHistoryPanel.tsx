@@ -1,55 +1,55 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Notification, NotifType } from './NotificationCenter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+// Matches the shape returned by GET /api/notifications/history
+interface HistoryNotif {
+  type: string;
+  title: string;
+  body: string;
+  sentAt: string; // ISO timestamp
+}
+
 export interface NotificationHistoryPanelProps {
-  /** If provided, uses these notifications instead of fetching. */
-  notifications?: Notification[];
   /** Whether to start collapsed (default: true). */
   defaultCollapsed?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function typeIcon(type: NotifType | undefined): string {
+function typeIcon(type: string): string {
   switch (type) {
-    case 'celebration':   return '🎉';
-    case 'energy_prompt': return '⚡';
-    case 'drift_nudge':   return '📋';
-    case 'edge_action':   return '✦';
-    case 'general': return '💚';
-    default:              return '🔔';
+    case 'low_recovery': return '⚡';
+    case 'priority_gap': return '📋';
+    case 'celebration':  return '🎉';
+    default:             return '🔔';
   }
 }
 
-function fmtAge(ms: number): string {
-  const diffS = Math.floor((Date.now() - ms) / 1000);
-  if (diffS < 60)  return 'just now';
-  if (diffS < 3600) return `${Math.floor(diffS / 60)}m ago`;
+function fmtAge(iso: string): string {
+  const diffS = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffS < 60)    return 'just now';
+  if (diffS < 3600)  return `${Math.floor(diffS / 60)}m ago`;
   if (diffS < 86400) return `${Math.floor(diffS / 3600)}h ago`;
   return `${Math.floor(diffS / 86400)}d ago`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function NotificationHistoryPanel({ notifications: propNotifs, defaultCollapsed = true }: NotificationHistoryPanelProps) {
+export function NotificationHistoryPanel({ defaultCollapsed = true }: NotificationHistoryPanelProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const [notifs, setNotifs] = useState<Notification[]>(propNotifs ?? []);
-  const [loading, setLoading] = useState(!propNotifs);
+  const [notifs, setNotifs] = useState<HistoryNotif[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (propNotifs) { setNotifs(propNotifs); return; }
-    fetch('/api/notifications')
+    fetch('/api/notifications/history')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.notifications) setNotifs(d.notifications); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [propNotifs]);
-
-  const recent = notifs.slice(0, 10);
+  }, []);
 
   return (
     <div className="glass-card overflow-hidden">
@@ -77,18 +77,14 @@ export function NotificationHistoryPanel({ notifications: propNotifs, defaultCol
         <div id="notif-history-list" style={{ borderTop: '1px solid var(--edg-hairline)' }}>
           {loading ? (
             <NotifHistorySkeleton />
-          ) : recent.length === 0 ? (
+          ) : notifs.length === 0 ? (
             <p className="px-4 py-5 text-xs text-center" style={{ color: 'var(--text-faint)' }}>
               No recent alerts — Edge will notify you when something needs attention.
             </p>
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--edg-hairline)' }}>
-              {recent.map(n => (
-                <li
-                  key={n.id}
-                  className="flex items-start gap-3 px-4 py-3"
-                  style={{ opacity: n.read ? 0.6 : 1 }}
-                >
+              {notifs.map((n, i) => (
+                <li key={i} className="flex items-start gap-3 px-4 py-3">
                   <span className="text-base leading-none mt-0.5 flex-shrink-0" aria-hidden="true">
                     {typeIcon(n.type)}
                   </span>
@@ -105,7 +101,7 @@ export function NotificationHistoryPanel({ notifications: propNotifs, defaultCol
                     )}
                   </div>
                   <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                    {fmtAge(n.createdAt)}
+                    {fmtAge(n.sentAt)}
                   </span>
                 </li>
               ))}
