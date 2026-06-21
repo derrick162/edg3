@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(📋 **R19 DISPATCHED (2026-06-21) — T1: first-call intro in Edge's system prompt, T2: new-user empty state in Briefings tab. R18 fully merged.**)_ | `lib/vapi.ts`, `lib/db.ts`, `app/dashboard/page.tsx` | 2026-06-21 |
+| 🛠️ Core | `core` | _(✅ **R19 SHIPPED (2077 green) — ready for PM merge.** T1: `briefingQueries.countCompleted` (`lib/db.ts`, +2 tests) + one-time `FIRST CALL` intro block in `lib/vapi.ts`; **`lib/scheduler.ts` `isFirstCall` switched to countCompleted — Security-owned, Vijay FYI** (more robust than the memories proxy). T2: new-user "first briefing on its way" empty state in Briefings tab (`app/dashboard/page.tsx`). All dispatch + pillars exhausted. Idle, awaiting next dispatch.)_ | `lib/db.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `app/dashboard/page.tsx` | 2026-06-21 |
 | 🔒 Security | `security` | _(📋 **R17 DISPATCHED (2026-06-21) — T1: wire proactive notifications into scheduler (maybeLowRecoveryAlert + maybePriorityGapAlert), T2: consolidate /api/user/export → /api/account/export. R16 fully merged.**)_ | `lib/scheduler.ts`, `app/api/user/export/**` | 2026-06-21 |
 | 🔧 PM/CoS | `master` | _(✅ **All R18+R16 merged (2075 green). R19+R17+R17 dispatched overnight. ⚠️ Litestream S3 creds still needed from Derrick.**)_ | `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md`, `ROADMAP.md` | 2026-06-21 |
 | 🎨 Design | `design` | _(📋 **R17 DISPATCHED (2026-06-21) — T1: dashboard skeleton loading states (.skeleton CSS + shimmer), T2: /settings account page. R16 fully merged.**)_ | `app/globals.css`, `app/dashboard/page.tsx`, `app/settings/**` | 2026-06-21 |
