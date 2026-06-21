@@ -49,6 +49,78 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-20 (ROUND 14 — First-call experience audit + Focus Score component)
+
+> `git merge master` first (master at `8234791`). Two tickets. **Do before R13 or pillar work.**
+
+---
+
+### T1 — First-call experience audit + polish (HIGH — 2h)
+
+**Problem:** The first time someone calls Edge is the most important moment in the product. Right now the system prompt has no explicit "is this user's first call?" awareness, and the onboarding → first-call handoff hasn't been reviewed end-to-end.
+
+**What to do — three parts:**
+
+**Part A — Audit the first-call flow:**
+Read through `lib/vapi.ts` (full system prompt) and simulate being a brand-new user who just completed onboarding. Ask:
+1. Does Edge know it's the first call? Is there an intro or does it just launch into a briefing?
+2. Does Edge know the user's name on the first call? (Check: `firstName` is injected from the profile — is it set after onboarding?)
+3. Is the tone appropriate for someone who has never spoken to Edge before?
+4. Does the briefing make sense for day 1 (no history, possibly no priorities set yet, no Whoop)?
+5. What's the "magic moment" — the thing that makes someone say "wow, I want to do this every day"?
+
+Document findings in `DESIGN.md §8 — First-Call Experience`. Be specific: quote the system prompt section that needs changing; note what's missing; propose the fix (copy edit, new prompt block, or UI change).
+
+**Part B — Onboarding end-to-end review:**
+Open `app/onboarding/page.tsx` and `app/onboarding/` and trace every step: signup → connect Google → set priorities → call-time → first call. Check:
+1. Is the copy warm and clear, or does it feel like a setup wizard?
+2. Is there a "welcome" or "what to expect" moment before the first call?
+3. Does the final onboarding step set clear expectations ("Tomorrow morning at 9am, Edge will call you")?
+4. Log any copy or UX gaps in `DESIGN.md §8`.
+
+**Part C — Fixes you can make directly:**
+Any copy polish, token fixes, or layout adjustments on onboarding pages — make them directly and commit. For system-prompt changes, write them as a spec in `DESIGN.md §8` and flag to PM for Core to implement.
+
+No external steps. Preflight green, merge to master.
+
+---
+
+### T2 — Focus Score display component: `FocusScoreCard` (MEDIUM — 1.5h)
+
+**Why:** Core (R16 T2) is building a `computeFocusScore` function and will expose `{ score, tier, headline }` via API. Design ships the display component so it's ready to drop in when Core lands.
+
+**Build `components/ui/FocusScoreCard.tsx`:**
+
+Self-contained presentational component. Props:
+```ts
+interface FocusScoreCardProps {
+  score: number;           // 0–100
+  tier: 'high' | 'medium' | 'low';
+  headline: string;        // one spoken sentence, show as subtitle
+  breakdown?: {
+    recovery: number;      // 0–40
+    schedule: number;      // 0–35
+    followThrough: number; // 0–25
+  };
+}
+```
+
+Visual design:
+- Large score number (48px, bold) color-coded by tier: high → `--edg-green` (or positive color), medium → `--edg-accent` (indigo), low → `--edg-warn` (amber/red)
+- Tier label below the number: "High Focus" / "Medium Focus" / "Low Focus"
+- `headline` text as a one-line subtitle in `--text-muted`
+- Optional `breakdown` section (show on hover/expand): three small bars showing the sub-scores with labels "Recovery", "Schedule", "Follow-through"
+- Matches the `glass-card` aesthetic from `app/globals.css`
+- Falls back gracefully when `breakdown` is not provided (shows score + tier + headline only)
+
+Add tokens if needed to `app/globals.css` (e.g. `--edg-green`, `--edg-warn` if not already there).
+
+Add spec to `DESIGN.md §8`. Export: `FocusScoreCard`, `FocusScoreCardProps`. Core imports from `@/components/ui`.
+
+Preflight green, merge to master.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-20 (ROUND 13 — Marketing pages: /score, /memory, /security)
 
 > `git merge master` first. Three new static pages. Do R12 mobile tickets first, then these. No auth needed — public-facing routes.
