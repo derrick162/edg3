@@ -1193,9 +1193,9 @@ interface ScoreboardData {
 }
 
 const ENERGY_COLOR: Record<string, { bg: string; text: string; label: string }> = {
-  high:   { bg: 'rgba(251,191,36,0.12)',  text: 'rgba(251,191,36,0.9)',  label: '⚡ High energy' },
-  medium: { bg: 'rgba(99,102,241,0.10)',  text: 'rgba(139,92,246,0.85)', label: '~ Medium energy' },
-  low:    { bg: 'rgba(148,163,184,0.10)', text: 'var(--text-faint)',      label: '· Low energy' },
+  high:   { bg: 'var(--edg-amber-bright-tint)', text: 'var(--edg-amber-bright-text)', label: '⚡ High energy' },
+  medium: { bg: 'var(--edg-accent-10)',         text: 'var(--edg-violet)',             label: '~ Medium energy' },
+  low:    { bg: 'var(--edg-slate-tint)',         text: 'var(--text-faint)',             label: '· Low energy' },
 };
 
 function MilestoneDots({ milestones }: { milestones: ScoreboardMilestone[] }) {
@@ -1205,7 +1205,7 @@ function MilestoneDots({ milestones }: { milestones: ScoreboardMilestone[] }) {
       {milestones.map(m => (
         <span key={m.id} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
           style={{
-            background: m.done ? 'rgba(99,102,241,0.12)' : 'var(--edg-accent-08)',
+            background: m.done ? 'var(--edg-accent-10)' : 'var(--edg-accent-08)',
             color: m.done ? 'var(--text-accent)' : 'var(--text-faint)',
             textDecoration: m.done ? 'line-through' : 'none',
           }}>
@@ -1325,7 +1325,7 @@ function FocusScoreboardPanel() {
                     <span
                       className="text-xs font-bold"
                       title={delta.up ? 'Trending up vs last week' : delta.flat ? 'Flat vs last week' : 'Trending down vs last week'}
-                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'rgba(239,68,68,0.8)' }}
+                      style={{ color: delta.up ? 'var(--edg-success)' : delta.flat ? 'var(--text-faint)' : 'var(--edg-danger-80)' }}
                     >
                       {delta.arrow}
                     </span>
@@ -1341,10 +1341,10 @@ function FocusScoreboardPanel() {
                     style={{
                       width: `${barPct}%`,
                       background: barPct > 60
-                        ? 'linear-gradient(90deg, var(--edg-indigo), rgba(139,92,246,0.9))'
+                        ? 'linear-gradient(90deg, var(--edg-indigo), var(--edg-violet))'
                         : barPct > 25
-                        ? 'linear-gradient(90deg, rgba(99,102,241,0.7), var(--edg-indigo))'
-                        : 'rgba(99,102,241,0.5)',
+                        ? 'linear-gradient(90deg, var(--edg-accent-70), var(--edg-indigo))'
+                        : 'var(--edg-accent-50)',
                     }} />
                 </div>
               </div>
@@ -2078,7 +2078,7 @@ export default function Dashboard() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface-page)' }}>
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 spinner animate-spin" />
       </div>
     );
   }
@@ -2428,18 +2428,24 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── Gmail reading indicator (R14 T6) — gmail.readonly rides the main Google token ── */}
+            {/* ── Gmail reading indicator ── */}
             {calendarConnected && (
-              <div className="px-2 pb-2">
+              <div className="px-2 py-1">
                 {calendarHasGmailScope ? (
                   <div className="flex items-center gap-2">
                     <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Reading Gmail</p>
+                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Reading Gmail</p>
                   </div>
                 ) : (
                   <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
                     Gmail reading inactive —{' '}
-                    <button onClick={connectCalendar} style={{ color: 'var(--text-accent)' }}>re-authorize →</button>
+                    <a
+                      href="/api/auth/google"
+                      className="underline"
+                      style={{ color: 'var(--text-accent)' }}
+                    >
+                      re-authorize →
+                    </a>
                   </p>
                 )}
               </div>
@@ -2720,7 +2726,7 @@ export default function Dashboard() {
                   <div className="glass-card p-8 text-center" style={{ borderColor: 'var(--edg-accent-20)' }}>
                     <p className="text-xs font-semibold mb-4" style={{ color: 'var(--edg-indigo)' }}>✦ HERE&apos;S WHAT EDG3 ALREADY KNOWS ABOUT YOUR WEEK</p>
                     <div className="flex items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}>
-                      <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                      <span className="w-4 h-4 border-2 spinner animate-spin inline-block" />
                       <span className="text-sm">Edg3 is putting together your preview…</span>
                     </div>
                   </div>
@@ -3730,7 +3736,7 @@ export default function Dashboard() {
             ) : (
               <div className="text-center space-y-4">
                 <div className="flex items-center justify-center gap-3 py-3">
-                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="w-5 h-5 border-2 spinner animate-spin" />
                   <span className="font-semibold" style={{ color: 'var(--text-accent)' }}>Edg3 is calling you now…</span>
                 </div>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Pick up — it'll only take 30 seconds.</p>

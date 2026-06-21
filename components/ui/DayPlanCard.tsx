@@ -90,7 +90,7 @@ export function DayPlanCard({
     return (
       <div className="glass-card p-5" style={{ borderColor: 'var(--plan-border)' }}>
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+          <span className="w-4 h-4 border-2 spinner animate-spin inline-block" />
           <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Edg3 is building your plan…</span>
         </div>
         <div className="space-y-2">

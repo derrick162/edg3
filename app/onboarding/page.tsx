@@ -202,7 +202,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <label htmlFor="onboard-summary" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+        <label htmlFor="onboard-summary" className="label-caps block mb-2">
           Paste your summary here
         </label>
         <textarea
@@ -710,14 +710,23 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             You&apos;re all set.
           </h3>
           <p className="text-sm mb-1" style={{ color: 'var(--text-body)' }}>
-            Your first call is
+            Edge will call you
           </p>
-          <p className="text-lg font-semibold mb-1" style={{ color: 'var(--text-strong)' }}>
-            {nextWeekday(timezone)}
+          <p className="text-lg font-semibold mb-0.5" style={{ color: 'var(--text-strong)' }}>
+            {nextWeekday(timezone)} at {fmt12(callTime)}
           </p>
-          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-            at <span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{fmt12(callTime)}</span>
+          <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
+            A 2-minute voice call. Edge will open with your top priority, offer to move one thing on your calendar, and ask what you&apos;re committing to today.
           </p>
+          <div
+            className="rounded-xl px-4 py-3 mb-6 text-left"
+            style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
+          >
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              <span style={{ color: 'var(--text-accent)' }}>✦</span>{' '}
+              Pick up when Edge calls — even for 90 seconds. The first call sets up everything that compounds from here.
+            </p>
+          </div>
           <button className="btn-primary px-8 py-2.5" onClick={onNext}>
             Go to your dashboard →
           </button>
@@ -747,7 +756,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label htmlFor="onboard-call-time" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+            <label htmlFor="onboard-call-time" className="label-caps block mb-2">
               Call time
             </label>
             <input
@@ -760,7 +769,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
             />
           </div>
           <div>
-            <label htmlFor="onboard-timezone" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+            <label htmlFor="onboard-timezone" className="label-caps block mb-2">
               Timezone
             </label>
             <select
@@ -782,7 +791,7 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
         </div>
 
         <div>
-          <label htmlFor="onboard-phone" className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
+          <label htmlFor="onboard-phone" className="label-caps block mb-2">
             Phone number
           </label>
           <div className="flex gap-2">

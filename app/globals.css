@@ -26,7 +26,14 @@
   --edg-violet:        #8b5cf6;
   --edg-violet-tint:   rgba(139, 92, 246, 0.12);
   --edg-violet-border: rgba(139, 92, 246, 0.25);
+  --edg-green:         #22c55e;
+  --edg-green-light:   rgba(134, 239, 172, 0.90);
+  --edg-warn:          #f59e0b;
   --edg-pink:          #ec4899;
+  --edg-teal:          #14b8a6;
+  --edg-rose:          #f43f5e;
+  --edg-amber:         #f59e0b;
+  --edg-slate:         #64748b;
 
   /* Ink */
   --edg-fg:        #e8e8f0;
@@ -44,11 +51,14 @@
   --edg-accent-04:    rgba(99, 102, 241, 0.04);
   --edg-accent-06:    rgba(99, 102, 241, 0.06);
   --edg-accent-08:    rgba(99, 102, 241, 0.08);
+  --edg-accent-10:    rgba(99, 102, 241, 0.10);
   --edg-accent-15:    rgba(99, 102, 241, 0.15);
   --edg-accent-20:    rgba(99, 102, 241, 0.20);
   --edg-accent-25:    rgba(99, 102, 241, 0.25);
   --edg-accent-30:    rgba(99, 102, 241, 0.30);
+  --edg-accent-50:    rgba(99, 102, 241, 0.50);
   --edg-accent-60:    rgba(99, 102, 241, 0.60);
+  --edg-accent-70:    rgba(99, 102, 241, 0.70);
 
   --edg-hairline:      rgba(255, 255, 255, 0.06);
   --edg-fill-03:       rgba(255, 255, 255, 0.03);
@@ -70,6 +80,12 @@
   --edg-warning-border: rgba(245, 158, 11,  0.25);
   --edg-danger-tint:    rgba(239, 68,  68,  0.15);
   --edg-danger-border:  rgba(239, 68,  68,  0.30);
+  --edg-danger-80:      rgba(239, 68,  68,  0.80);
+  /* amber-300 — brighter than --edg-warning; used for high-energy ENERGY_COLOR */
+  --edg-amber-bright:        #fbbf24;
+  --edg-amber-bright-tint:   rgba(251, 191, 36,  0.12);
+  --edg-amber-bright-text:   rgba(251, 191, 36,  0.90);
+  --edg-slate-tint:          rgba(148, 163, 184, 0.10);
 
   /* ── Energy OS — red / yellow / green daily signal ── */
   --energy-green:        #22c55e;
@@ -609,6 +625,15 @@ select:focus-visible {
   border: 1px solid var(--edg-accent-20);
   border-radius: var(--radius-lg);
   backdrop-filter: var(--blur-glass);
+}
+
+/* Spinner — token-consistent loading indicator (replaces border-indigo-* Tailwind classes) */
+.spinner {
+  border-color: var(--edg-indigo);
+  border-top-color: transparent;
+  border-radius: 9999px;
+  border-style: solid;
+  animation: spin 0.8s linear infinite;
 }
 
 /* Cursor affordances — pointer on all interactive elements, not-allowed on disabled */

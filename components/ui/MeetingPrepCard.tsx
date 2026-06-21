@@ -156,13 +156,11 @@ export function MeetingPrepCard({ context, onDismiss }: MeetingPrepCardProps) {
 
           {/* Expanded full context */}
           {expanded && (
-            <div className="space-y-4 mb-3" style={{ animation: 'score-rise 0.25s ease both' }}>
+            <div id="meeting-prep-context" className="space-y-4 mb-3" style={{ animation: 'score-rise 0.25s ease both' }}>
               {/* Facts */}
               {context.facts.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
-                    What Edg3 knows
-                  </p>
+                  <p className="label-caps mb-2">What Edg3 knows</p>
                   <div className="space-y-2">
                     {context.facts.map((f, i) => (
                       <div
@@ -185,9 +183,7 @@ export function MeetingPrepCard({ context, onDismiss }: MeetingPrepCardProps) {
               {/* Email threads */}
               {context.threads.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-faint)', letterSpacing: '0.08em' }}>
-                    Recent threads
-                  </p>
+                  <p className="label-caps mb-2">Recent threads</p>
                   <div className="space-y-1.5">
                     {context.threads.map((t, i) => (
                       <div
@@ -225,6 +221,8 @@ export function MeetingPrepCard({ context, onDismiss }: MeetingPrepCardProps) {
             onClick={() => setExpanded(v => !v)}
             className="text-xs w-full text-center transition-opacity hover:opacity-80"
             style={{ color: 'var(--text-accent)' }}
+            aria-expanded={expanded}
+            aria-controls="meeting-prep-context"
           >
             {expanded
               ? '▲ Show less'
