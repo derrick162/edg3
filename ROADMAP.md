@@ -109,7 +109,7 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(📋 **R18 DISPATCHED (2026-06-21) — T1: priority-blocking with actual free slot (findNextFreeSlot), T2: checkReplies in morning briefing. R17 fully shipped.**)_ | `lib/calendar.ts`, `lib/briefing.ts`, `lib/vapi.ts` | 2026-06-21 |
 | 🔒 Security | `security` | _(📋 **R16 DISPATCHED (2026-06-21) — T1: JWT_SECRET startup enforcement, T2: GET /api/user/export GDPR data export.**)_ | `lib/auth.ts`, `.env.example`, `app/api/user/export/**` | 2026-06-21 |
-| 🔧 PM/CoS | `master` | _(✅ **R18 dispatched to Core, R16 to Security, R16 to Design (2026-06-21). All 3 lanes loaded. ⚠️ Litestream S3 creds still needed from Derrick — see Security R15 T1.**)_ | `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md`, `ROADMAP.md` | 2026-06-21 |
+| 🔧 PM/CoS | `master` | _(✅ **Design R16 merged (2060 green). Core R18 T1 in progress. Security R16 pending. ⚠️ Litestream S3 creds still needed from Derrick.**)_ | `ROADMAP.md` | 2026-06-21 |
 | 🎨 Design | `design` | _(✅ **R16 T1+T2 shipped (2060 green).** T1: ScoreSparkline component + wired into /score page (7-day trend). T2: onboarding StepIndicator mobile polish — 10/12px dots, --edg-success completed, --edg-indigo active, SVG ✓ checkmark, labels hidden sm:block. NotificationHistoryPanel repointed to /api/notifications/history. All dispatch + pillar queues exhausted. Idle, awaiting next dispatch.)_ | `components/ui/ScoreSparkline.tsx`, `app/score/page.tsx`, `app/onboarding/page.tsx`, `components/ui/NotificationHistoryPanel.tsx` | 2026-06-21 |
 
 ---
