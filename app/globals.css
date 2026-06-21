@@ -406,6 +406,18 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
 
 .pulse-ring { animation: pulse-ring 1.5s infinite; }
 
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-card) 25%, color-mix(in srgb, var(--surface-card) 70%, var(--text-faint)) 50%, var(--surface-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+
 @keyframes pop-in {
   0%   { transform: scale(0.4); opacity: 0; }
   70%  { transform: scale(1.2); opacity: 1; }

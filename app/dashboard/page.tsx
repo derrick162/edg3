@@ -1472,6 +1472,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -1606,6 +1607,7 @@ export default function Dashboard() {
     const meRes = await fetch('/api/auth/me');
     if (!meRes.ok) { router.push('/login'); return; }
     setUser(await meRes.json());
+    setDashboardLoading(false);
 
     // Background loads — each section fills in as its data arrives; none blocks render.
     // Briefing history: a transient non-200 (cold start, session-timing race on first load)
@@ -2096,10 +2098,36 @@ export default function Dashboard() {
     if (res.ok) setWhoopConnected(false);
   }
 
-  if (!user) {
+  if (dashboardLoading || !user) {
+    if (!dashboardLoading && !user) return null; // auth error — redirect handled in loadData
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface-page)' }}>
-        <div className="w-8 h-8 border-2 spinner animate-spin" />
+      <div className="min-h-screen relative" style={{ background: 'var(--surface-page)' }}>
+        <div className="orb orb-1" /><div className="orb orb-2" />
+        <div className="relative z-10 flex h-screen">
+          {/* Sidebar skeleton */}
+          <aside className="hidden md:flex md:flex-col w-60 shrink-0 px-4 py-6 space-y-4" style={{ borderRight: '1px solid var(--edg-hairline)' }}>
+            <div className="skeleton h-6 w-24 mb-2" />
+            {/* Next call card */}
+            <div className="glass-card p-3">
+              <div className="skeleton h-3 w-16 mb-2" />
+              <div className="skeleton h-10 w-32" />
+            </div>
+            {/* Calendar line */}
+            <div className="skeleton h-4 w-40" />
+            {/* Recovery card slot */}
+            <div className="skeleton h-16 w-full rounded-lg" />
+          </aside>
+          {/* Main skeleton */}
+          <main className="flex-1 p-8 space-y-4">
+            <div className="skeleton h-8 w-40 mb-6" />
+            {[1, 2, 3].map(i => (
+              <div key={i} className="glass-card p-5">
+                <div className="skeleton h-4 w-48 mb-2" />
+                <div className="skeleton h-3 w-64 mt-1" />
+              </div>
+            ))}
+          </main>
+        </div>
       </div>
     );
   }
@@ -2533,6 +2561,13 @@ export default function Dashboard() {
             {/* Recent alerts history */}
             <NotificationHistoryPanel defaultCollapsed={true} />
 
+            <a
+              href="/settings"
+              className="block w-full text-xs py-1 px-2 rounded"
+              style={{ color: 'var(--text-faint)' }}
+            >
+              Settings
+            </a>
             <button
               onClick={logout}
               className="w-full text-xs py-2 text-left px-2 rounded"
@@ -2742,15 +2777,11 @@ export default function Dashboard() {
               />
               <h2 className="text-lg font-bold mb-4">Briefing history</h2>
               {!briefingsLoaded ? (
-                <div className="space-y-3 animate-pulse">
+                <div className="space-y-3">
                   {[1, 2, 3].map(i => (
                     <div key={i} className="glass-card p-5">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="h-3 rounded w-20" style={{ background: 'var(--edg-fill-04)' }} />
-                        <div className="h-3 rounded w-12" style={{ background: 'var(--edg-fill-04)' }} />
-                      </div>
-                      <div className="h-3 rounded w-full mb-2" style={{ background: 'var(--edg-fill-04)' }} />
-                      <div className="h-3 rounded w-3/4" style={{ background: 'var(--edg-fill-04)' }} />
+                      <div className="skeleton h-4 w-48 mb-2" />
+                      <div className="skeleton h-3 w-64 mt-1" />
                     </div>
                   ))}
                 </div>
