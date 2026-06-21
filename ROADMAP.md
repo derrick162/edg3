@@ -108,9 +108,9 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(📋 **R18 DISPATCHED (2026-06-21) — T1: priority-blocking with actual free slot (findNextFreeSlot), T2: checkReplies in morning briefing. R17 fully shipped.**)_ | `lib/calendar.ts`, `lib/briefing.ts`, `lib/vapi.ts` | 2026-06-21 |
-| 🔒 Security | `security` | _(📋 **R16 DISPATCHED (2026-06-21) — T1: JWT_SECRET startup enforcement, T2: GET /api/user/export GDPR data export.**)_ | `lib/auth.ts`, `.env.example`, `app/api/user/export/**` | 2026-06-21 |
-| 🔧 PM/CoS | `master` | _(✅ **Design R16 merged (2060 green). Core R18 T1 in progress. Security R16 pending. ⚠️ Litestream S3 creds still needed from Derrick.**)_ | `ROADMAP.md` | 2026-06-21 |
-| 🎨 Design | `design` | _(✅ **R16 T1+T2 shipped (2060 green).** T1: ScoreSparkline component + wired into /score page (7-day trend). T2: onboarding StepIndicator mobile polish — 10/12px dots, --edg-success completed, --edg-indigo active, SVG ✓ checkmark, labels hidden sm:block. NotificationHistoryPanel repointed to /api/notifications/history. All dispatch + pillar queues exhausted. Idle, awaiting next dispatch.)_ | `components/ui/ScoreSparkline.tsx`, `app/score/page.tsx`, `app/onboarding/page.tsx`, `components/ui/NotificationHistoryPanel.tsx` | 2026-06-21 |
+| 🔒 Security | `security` | _(✅ **R16 BOTH SHIPPED (2068 green); idle.** T1: `validateJwtSecret()` enforced via `instrumentation.ts` at startup (rejects unset/<32/placeholder). T2: `GET /api/user/export` GDPR self-export (whoop=bool, push=count, no raw tokens). ⚠️ `outreach_tracking` omitted (table removed R12). **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + restore drill still needed.)_ | `lib/auth.ts`, `instrumentation.ts`, `.env.example`, `app/api/user/export/**` | 2026-06-21 |
+| 🔧 PM/CoS | `master` | _(✅ **Design R16 + Security R16 merged (2068 green). Core R18 T1 shipped, T2 dropped (outreach removed R12), T3 in progress. ⚠️ Litestream S3 creds still needed from Derrick.**)_ | `ROADMAP.md` | 2026-06-21 |
+| 🎨 Design | `design` | _(✅ **R16 T1+T2 shipped (2060 green).** ScoreSparkline wired into /score. StepIndicator mobile polish. NotificationHistoryPanel → /api/notifications/history. Idle.)_ | `components/ui/ScoreSparkline.tsx`, `app/score/page.tsx`, `app/onboarding/page.tsx` | 2026-06-21 |
 
 ---
 
