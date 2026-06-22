@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [gratitudeMode, setGratitudeMode] = useState(false);
+  const [gratitudeSaved, setGratitudeSaved] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -35,7 +36,7 @@ export default function SettingsPage() {
       if (!me) { router.push('/login'); return; }
       setProfile(me);
       setAccounts(accts);
-      if (gm) setGratitudeMode(!!gm.enabled);
+      if (gm) setGratitudeMode(!!gm.gratitudeMode);
     }).catch(() => router.push('/login'))
       .finally(() => setLoading(false));
   }, [router]);
@@ -47,6 +48,9 @@ export default function SettingsPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: next }),
+    }).then(r => {
+      if (r.ok) { setGratitudeSaved(true); setTimeout(() => setGratitudeSaved(false), 2000); }
+      else setGratitudeMode(!next);
     }).catch(() => setGratitudeMode(!next));
   }
 
@@ -121,10 +125,13 @@ export default function SettingsPage() {
                   Your open call becomes a 3-minute check-in — date, weather, and what you&apos;re grateful for. No tasks, no calendar.
                 </p>
               </div>
-              <label className="toggle mt-0.5">
-                <input type="checkbox" checked={gratitudeMode} onChange={handleGratitudeToggle} />
-                <span className="toggle-track"><span className="toggle-thumb" /></span>
-              </label>
+              <div className="flex flex-col items-end gap-1">
+                <label className="toggle mt-0.5">
+                  <input type="checkbox" checked={gratitudeMode} onChange={handleGratitudeToggle} />
+                  <span className="toggle-track"><span className="toggle-thumb" /></span>
+                </label>
+                {gratitudeSaved && <span className="text-xs" style={{ color: 'var(--edg-green, #4ade80)' }}>Saved ✓</span>}
+              </div>
             </div>
           </section>
 
