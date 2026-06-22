@@ -291,8 +291,14 @@ Always end with warmth. This person is building something — remind them of tha
 
   // R20 — gratitude mode swaps in the warm gratitude prompt + a calm ambient background.
   // Briefings keep their normal prompt and 'off' background.
+  // Part F: Vapi's backgroundSound accepts either a preset string or an audio URL. Prefer the
+  // static ambient track Derrick drops in public/audio/ when an app URL is configured; otherwise
+  // fall back to the calmest preset ('office'). The file need not exist yet — we just wire the path.
   const effectiveSystemPrompt = gratitudeSystemPrompt || systemPrompt;
-  const effectiveBackgroundSound = gratitudeSystemPrompt ? 'office' : 'off';
+  const gratitudeBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
+  const effectiveBackgroundSound = gratitudeSystemPrompt
+    ? (gratitudeBaseUrl ? `${gratitudeBaseUrl}/audio/gratitude-ambient-1.mp3` : 'office')
+    : 'off';
 
   const payload: Record<string, unknown> = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
