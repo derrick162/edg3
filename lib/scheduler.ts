@@ -412,9 +412,15 @@ export function startScheduler() {
   // cheap on non-matching ticks (no fetches unless a user is at a trigger time).
   // Dynamic import (same pattern as './briefing' above) keeps its heavy deps — calendar /
   // alignment / whoop / push — out of the scheduler's module-load graph.
-  cron.schedule('*/30 * * * *', () => {
+  // R20 T2 — */10 (was */30): the proactive jobs self-throttle, so a higher check frequency
+  // only makes the gratitude auto-call fire promptly when the morning Whoop score lands —
+  // it does not change how often the throttled push jobs actually fire.
+  cron.schedule('*/10 * * * *', () => {
     import('./proactiveNotifications')
-      .then(m => m.runProactiveNotifications())
+      .then(async m => {
+        await m.runProactiveNotifications();
+        await m.runGratitudeAutoCall().catch(e => console.error('[scheduler] runGratitudeAutoCall failed:', e));
+      })
       .catch(e => console.error('[scheduler] runProactiveNotifications failed:', e));
   });
 
