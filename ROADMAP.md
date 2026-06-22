@@ -107,10 +107,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R19 MERGED to master. Idle, awaiting next dispatch.**)_ | `lib/db.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `app/dashboard/page.tsx` | 2026-06-21 |
+| 🛠️ Core | `core` | _(📋 **R20 DISPATCHED (2026-06-22) — T1: Gratitude mode — gratitude_mode toggle on users, gratitude_entries table, buildGratitudeSystemPrompt, recordGratitude tool handler, scheduleOpenCall branch. R19 fully merged.**)_ | `lib/db.ts`, `lib/vapi.ts`, `lib/scheduler.ts`, `app/api/vapi/tool-call/route.ts`, `app/api/settings/gratitude-mode/**` | 2026-06-22 |
 | 🔒 Security | `security` | _(✅ **R17 BOTH SHIPPED (2070 green); idle/polling.** T1: proactive sweep reworked — eligibility = push-sub + completed-briefing, calls both jobs every `*/30` tick (self-throttling), per-job error catch, Tue–Thu gate moved into the priority-gap job. T2: merged `callFeedback`/`notificationLog`/`whoopConnected`/`pushSubsCount` into `/api/account/export` (v5) + made `/api/user/export` a thin delegator (single source of truth). **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + volume + `DATA_ENCRYPTION_KEY` backup + restore drill.)_ | `lib/proactiveNotifications.ts`, `app/api/account/export/**`, `app/api/user/export/**` | 2026-06-21 |
-| 🔧 PM/CoS | `master` | _(✅ **R19+R17+R17 all merged to master (2026-06-21). All 3 lanes idle, awaiting next dispatch. ⚠️ Litestream S3 creds still needed from Derrick. ⚠️ CALL_GRACE_MINUTES fix needs Railway deploy.**)_ | `ROADMAP.md` | 2026-06-21 |
-| 🎨 Design | `design` | _(✅ **R17 T1+T2 shipped (2075 green).** T1: .skeleton shimmer class + dashboard skeleton layout (sidebar next-call, calendar line, recovery slot, 3 briefing rows). T2: /settings page (profile, call time, connections, data export, account delete). All dispatch exhausted. Idle, awaiting next dispatch.)_ | `app/globals.css`, `app/dashboard/page.tsx`, `app/settings/page.tsx` | 2026-06-21 |
+| 🔧 PM/CoS | `master` | _(📋 **R20 (Core) + R18 (Design) dispatched 2026-06-22 — Gratitude mode. Security idle. ⚠️ Litestream S3 creds still needed from Derrick. ⚠️ CALL_GRACE_MINUTES fix needs Railway deploy. ⚠️ Vapi key clarification pending.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md`, `ROADMAP-DESIGN.md` | 2026-06-22 |
+| 🎨 Design | `design` | _(📋 **R18 DISPATCHED (2026-06-22) — T1: Gratitude mode toggle in /settings — "Morning ritual" section, toggle pill (.toggle class in globals.css), GET/PATCH /api/settings/gratitude-mode. R17 fully merged.**)_ | `app/settings/page.tsx`, `app/globals.css` | 2026-06-22 |
 
 ---
 

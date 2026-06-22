@@ -49,6 +49,34 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Gratitude mode toggle in /settings)
+
+> `git merge master` first. One ticket. **Do this before R17 or pillar work.**
+
+---
+
+### T1 — Gratitude mode toggle in `/settings` (MEDIUM — 1h)
+
+**Context:** Core R20 T1 wires up a "Gratitude mode" that replaces the open call with a warm 3-minute check-in. Design owns the toggle UI in the `/settings` page (already shipped in R17).
+
+**Fix — add a "Morning ritual" section to `app/settings/page.tsx`:**
+
+Insert as the **first section** (before Profile), since it's the most emotionally resonant control on the page.
+
+**Section header:** "Morning ritual"
+
+**Content:**
+- Toggle row: label "Gratitude mode", sublabel (small, `--text-muted`) "Your open call becomes a 3-minute check-in — date, weather, and what you're grateful for. No tasks, no calendar."
+- Toggle: a styled checkbox or pill toggle. Use or extend whatever toggle pattern exists in `app/globals.css`; if none, create a `.toggle` class there (pill, 40×22px, accent color when on, `--border` when off — simple CSS transition).
+- On mount: `GET /api/settings/gratitude-mode` → set initial state
+- On change: `PATCH /api/settings/gratitude-mode` with `{ enabled: boolean }` → optimistic UI update
+
+**Visual feel:** keep it warm and non-transactional. This is not an enterprise toggle — it's a daily ritual switch. Consider a sun or gratitude glyph (✦ or ☀) next to the section header in `--text-faint`.
+
+No new tests needed for the UI. Claim `app/settings/page.tsx` in the Status Board before editing.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 17 — Dashboard skeleton states + Settings page)
 
 > `git merge master` first (master at `264b168`). Two launch-readiness tickets. **Do both before R16 or pillar work.**

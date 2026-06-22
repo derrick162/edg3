@@ -31,6 +31,82 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 20 — Gratitude mode)
+
+> `git merge master` first. One ticket. **Do this before R19 or pillar work.**
+
+---
+
+### T1 — Gratitude mode: replaces open call when enabled (HIGH — 2.5h)
+
+**Context:** Edg3's morning briefing feels like work. Derrick wants an alternative mode — warm, short, no tasks — where the open call button triggers a 3-minute gratitude check-in instead. User toggles it on/off in `/settings` (Design R18 adds the toggle UI). Core owns everything below.
+
+**Part A — Schema (`lib/db.ts`):**
+
+1. Add `gratitude_mode INTEGER NOT NULL DEFAULT 0` to the `users` table. Additive — no migration needed, existing rows default to 0 (off).
+2. New `gratitude_entries` table:
+   ```sql
+   CREATE TABLE IF NOT EXISTS gratitude_entries (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     user_id INTEGER NOT NULL,
+     entry_date TEXT NOT NULL,
+     item_1 TEXT,
+     item_2 TEXT,
+     item_3 TEXT,
+     created_at INTEGER NOT NULL DEFAULT (unixepoch())
+   )
+   ```
+3. `gratitudeQueries` alongside the other query groups:
+   - `create(userId, date, item1, item2, item3)`
+   - `getByDate(userId, date): row | undefined`
+   - `getRecent(userId, limit): row[]`
+
+**Part B — API route (`app/api/settings/gratitude-mode/route.ts`):**
+
+- `GET`: auth-gated, returns `{ gratitudeMode: boolean }` from `users.gratitude_mode`
+- `PATCH`: accepts `{ enabled: boolean }`, updates `users.gratitude_mode`, returns `{ ok: true }`
+
+**Part C — Gratitude system prompt + tool (`lib/vapi.ts`):**
+
+Add `buildGratitudeSystemPrompt(firstName: string, dateStr: string, weatherStr: string | null): string`. Tone: warm, unhurried, NO task/calendar energy. Template:
+
+> "You are Edge. This is a morning gratitude check-in — NOT a productivity briefing. Keep the entire call under 3 minutes. Warm, personal, unhurried. No tasks, no calendar, no priorities.
+>
+> Start: 'Good morning [firstName]! Today is [date].[if weather: ' [weather].'] Before the day gets going — what are three things you're grateful for today?'
+>
+> Listen to each item. Respond briefly and warmly to each ('That's wonderful.' / 'Love that.' / 'Beautiful.'). After all three, call the recordGratitude tool with the three items verbatim. Then close: 'Those are beautiful. Have a great day, [firstName].' End the call.
+>
+> IMPORTANT: Do not pivot to tasks, calendar, or priorities under any circumstances. This is a pure gratitude check-in. If the user tries to talk work, gently redirect: 'Let's save that for your morning briefing — for now, what else are you grateful for?'"
+
+Add `recordGratitude` to the toolIds object (as a commented placeholder, same pattern as `cleanupDuplicates`):
+```ts
+// recordGratitude: 'PASTE_VAPI_TOOL_UUID_HERE',
+```
+
+**Part D — `recordGratitude` tool handler (`app/api/vapi/tool-call/route.ts`):**
+
+Handler for `toolName === 'recordGratitude'`:
+- Args: `{ item1: string, item2: string, item3: string }`
+- Get today's date in user's timezone
+- `gratitudeQueries.create(userId, today, item1, item2, item3)`
+- Return `{ result: 'Saved — have a great day!' }`
+
+**Part E — Wire into open call (`lib/scheduler.ts` `scheduleOpenCall`):**
+
+After fetching the user, check `user.gratitude_mode`. If `1`:
+1. Fetch weather: use the existing `getWeatherForUser` or equivalent from `lib/weather.ts`. Catch → null.
+2. Get today's date string in user's timezone.
+3. Build `assistantOverrides` with `buildGratitudeSystemPrompt(firstName, dateStr, weatherStr)` as the system message — same structure as the existing open call `assistantOverrides`.
+4. Launch via `initiateCall` with those overrides. Log `[scheduler] Gratitude call for ${user.name}`.
+
+If `gratitude_mode === 0`: existing open call logic unchanged.
+
+**Tests:** 3 tests for `gratitudeQueries` (create, getByDate, getRecent); 2 for the API route (GET returns bool, PATCH updates); 2 for `buildGratitudeSystemPrompt` (includes firstName/date, omits weather section when null). No test for the scheduler branch — same pattern as existing open call, no new logic to unit-test.
+
+⚠️ **External step (Derrick):** Create a `recordGratitude` Vapi tool in the Vapi dashboard. Params: `item1` (string, required), `item2` (string, required), `item3` (string, required). Paste the UUID into the `toolIds.recordGratitude` placeholder in `lib/vapi.ts` and uncomment.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 19 — First-call experience + new-user empty states)
 
 > `git merge master` first (master at `264b168`). Two launch-readiness tickets. **Do both before R18 or pillar work.**
