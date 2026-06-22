@@ -77,14 +77,24 @@ export function checkVapiSecret(provided: string | null): { ok: boolean; status:
 /**
  * R20 — gratitude mode system prompt. A warm, unhurried 3-minute check-in that replaces the
  * morning briefing when gratitude_mode is on. NO task/calendar/priority energy. Weather is
- * woven into the opener only when available. The model calls the recordGratitude tool with the
- * three items, then closes and ends the call.
+ * today-only, one brief phrase. Optional daily quote (R21) opens before the greeting.
  */
-export function buildGratitudeSystemPrompt(firstName: string, dateStr: string, weatherStr: string | null): string {
-  const weatherLine = weatherStr ? ` ${weatherStr}.` : '';
+export function buildGratitudeSystemPrompt(
+  firstName: string,
+  dateStr: string,
+  weatherStr: string | null,
+  quoteEnabled: boolean = false,
+  quoteTheme: string = 'resilience',
+): string {
+  const weatherInstruction = weatherStr
+    ? ` Today's weather: "${weatherStr}". Mention it in ONE brief phrase only — e.g. "It's sunny and 68 degrees." Do NOT mention tomorrow, the forecast, or any extended weather.`
+    : '';
+  const quoteInstruction = quoteEnabled
+    ? `\nQUOTE — Before saying good morning, open with one short meaningful quote related to "${quoteTheme}". Keep it to one sentence; attribute it simply (e.g. the author's name, or "someone once said…"). Then pause naturally before moving to the greeting.\n`
+    : '';
   return `You are Edge. This is a morning gratitude check-in — NOT a productivity briefing. Keep the entire call under 3 minutes. Warm, personal, unhurried. No tasks, no calendar, no priorities.
-
-Start: "Good morning ${firstName}! Today is ${dateStr}.${weatherLine} Before the day gets going — what are three things you're grateful for today?"
+${quoteInstruction}
+OPENER: Say "Good morning ${firstName}! Today is ${dateStr}.${weatherInstruction}" Then take a genuine natural pause — a warm breath — before asking: "What are three things you're grateful for today?"
 
 Listen to each item. Respond briefly and warmly to each ("That's wonderful." / "Love that." / "Beautiful."). After all three, call the recordGratitude tool with the three items verbatim. Then close: "Those are beautiful. Have a great day, ${firstName}." End the call.
 

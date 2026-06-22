@@ -684,7 +684,8 @@ export async function scheduleOpenCall(userId: number) {
     const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
     const weatherStr = await getWeatherForecast().catch(() => null);
     gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr);
-    opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherStr ? ` ${weatherStr}.` : ''} Before the day gets going — what are three things you're grateful for today?`;
+    const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
+    opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;
   }
 
   const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
