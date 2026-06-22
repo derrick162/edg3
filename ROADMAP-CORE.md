@@ -105,13 +105,14 @@ If `gratitude_mode === 0`: existing open call logic unchanged.
 
 **Part F — Background sound (`lib/scheduler.ts` + `lib/vapi.ts`):**
 
-Vapi's assistant config supports a `backgroundSound` field. Check what the Vapi TypeScript types accept (look in `node_modules/@vapi-ai/server-sdk` or the Vapi type definitions already used in `lib/vapi.ts`). Wire it in on the gratitude call `assistantOverrides`:
+Derrick will manually generate 1-2 ambient/lo-fi instrumental tracks via Suno and drop them in `public/audio/` (e.g. `public/audio/gratitude-ambient-1.mp3`). Your job is to wire the URL into the Vapi call config.
 
-- If the type accepts a **string URL**: host `public/ambient-gratitude.mp3` in the repo (add a short lo-fi/nature loop, ~2MB max) and pass its public URL (via `process.env.APP_URL + '/ambient-gratitude.mp3'`).
-- If the type only accepts **preset strings** (e.g. `"off"` | `"office"`): use whichever preset sounds calmest. `"office"` is better than silence for now.
-- Either way, only apply `backgroundSound` to the gratitude call overrides — never to the morning briefing.
+Check what the Vapi TypeScript types accept for `backgroundSound` on the assistant config (look in `node_modules/@vapi-ai/server-sdk` or the Vapi type definitions already used in `lib/vapi.ts`):
 
-Do not block T1 on this — wire it in last, after the rest of T1 is green. If the Vapi types don't expose `backgroundSound` at all, note it in the Status Board and skip.
+- If the type accepts a **string URL**: pass `process.env.APP_URL + '/audio/gratitude-ambient-1.mp3'` as `backgroundSound` in the gratitude call `assistantOverrides`. If `APP_URL` isn't set, fall back to `null` (no background sound — don't crash).
+- If the type only accepts **preset strings** (e.g. `"off"` | `"office"`): use the calmest available preset.
+
+Only apply `backgroundSound` to the gratitude call — never the morning briefing. Wire this in last, after the rest of T1 is green. If `backgroundSound` isn't exposed at all, note it in the Status Board and skip.
 
 ---
 
