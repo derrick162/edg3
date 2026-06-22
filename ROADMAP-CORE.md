@@ -31,6 +31,48 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 21 — Daily quote in gratitude call)
+
+> `git merge master` first. One ticket. **Do this before R20 or pillar work.**
+
+---
+
+### T1 — Daily quote feature for gratitude mode (MEDIUM — 1.5h)
+
+**Context:** Derrick wants the gratitude call to optionally open with a short meaningful quote tailored to what he's going through (e.g. "rebuilding"). The quote is shown before "Good morning" when the toggle is on. Design R19 adds the settings UI; Core owns the DB, API, and prompt wiring.
+
+**Part A — Schema (`lib/db.ts`):**
+
+Add two columns to the `users` table (additive, no migration needed):
+```sql
+gratitude_quote_enabled INTEGER NOT NULL DEFAULT 0,
+gratitude_quote_theme TEXT NOT NULL DEFAULT 'resilience'
+```
+
+Add to `userQueries`:
+- `setGratitudeQuote(userId: number, enabled: boolean, theme: string): void` — updates both columns in one statement
+- `getGratitudeQuote(userId: number): { quoteEnabled: boolean; quoteTheme: string }` — reads from `findById`, returns defaults when row absent
+
+**Part B — API route (`app/api/settings/gratitude-quote/route.ts`):**
+
+- `GET` — session-gated, returns `{ quoteEnabled: boolean, quoteTheme: string }` using `userQueries.getGratitudeQuote`
+- `PATCH` — session-gated, rate-limited (same pattern as `gratitude-mode` route), accepts `{ enabled: boolean, theme: string }`. Validate: `enabled` must be boolean; `theme` must be string, trimmed, max 100 chars — return 400 if invalid. Calls `userQueries.setGratitudeQuote`. Returns `{ ok: true }`.
+
+**Part C — Wire into scheduler (`lib/scheduler.ts`):**
+
+In `scheduleOpenCall`, the gratitude branch already fetches weather and calls `buildGratitudeSystemPrompt`. Extend it:
+1. After fetching `weatherStr`, call `userQueries.getGratitudeQuote(userId)` — `catch(() => ({ quoteEnabled: false, quoteTheme: 'resilience' }))` to degrade safely.
+2. Pass `quoteEnabled` and `quoteTheme` to `buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme)`.
+
+`buildGratitudeSystemPrompt` already accepts these params (PM added them in the weather-fix commit). No changes needed to `lib/vapi.ts`.
+
+**Tests:**
+- 2 tests for `getGratitudeQuote`: returns defaults for new user, returns saved values after `setGratitudeQuote`.
+- 2 tests for the API route (GET returns expected shape, PATCH rejects invalid theme).
+- No scheduler test needed — same pattern as existing gratitude branch.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 20 — Gratitude mode)
 
 > `git merge master` first. One ticket. **Do this before R19 or pillar work.**

@@ -49,6 +49,71 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 19 — Daily quote settings UI)
+
+> `git merge master` first. One ticket. **Do this before R18 or pillar work.**
+
+---
+
+### T1 — Daily quote settings in `/settings` Morning ritual section (MEDIUM — 1h)
+
+**Context:** Core R21 adds a daily quote feature for gratitude calls — an optional short quote matched to the user's chosen theme (e.g. "rebuilding"). Design owns the settings UI: a toggle + theme text input inside the existing "Morning ritual" section of `app/settings/page.tsx`.
+
+**What to add inside the Morning ritual `<section>` (after the gratitude mode row):**
+
+Add a second row — only visible when `gratitudeMode` is on — with:
+- A toggle for "Daily quote" (same `.toggle` pill pattern as gratitude mode)
+- A text input for theme — shown only when `quoteEnabled` is true — label "Quote theme", placeholder "e.g. rebuilding, resilience, new beginnings", max 100 chars
+
+**State:**
+```ts
+const [quoteEnabled, setQuoteEnabled] = useState(false);
+const [quoteTheme, setQuoteTheme] = useState('');
+const [quoteSaved, setQuoteSaved] = useState(false);
+```
+
+**On mount:** `fetch('/api/settings/gratitude-quote')` → set `quoteEnabled` and `quoteTheme`.
+
+**On quote toggle change:**
+```ts
+async function handleQuoteToggle() {
+  const next = !quoteEnabled;
+  setQuoteEnabled(next);
+  fetch('/api/settings/gratitude-quote', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: next, theme: quoteTheme }),
+  }).then(r => {
+    if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
+    else setQuoteEnabled(!next);
+  }).catch(() => setQuoteEnabled(!next));
+}
+```
+
+**On theme blur (save on blur, not on every keystroke):**
+```ts
+function handleThemeBlur() {
+  if (!quoteEnabled) return;
+  fetch('/api/settings/gratitude-quote', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: quoteEnabled, theme: quoteTheme }),
+  }).then(r => {
+    if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
+  }).catch(() => {});
+}
+```
+
+**Visual feel:**
+- The daily quote row should feel subordinate to the gratitude mode row — slightly indented, slightly smaller text.
+- When `gratitudeMode` is off, hide the entire quote row (it only makes sense when gratitude mode is on).
+- Theme input: same `input` class from globals.css. Soft placeholder text. Minimal chrome.
+- Reuse the `quoteSaved` state for "Saved ✓" feedback (same green flash pattern as gratitude mode).
+
+Claim `app/settings/page.tsx` in the Status Board before editing.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Gratitude mode toggle in /settings)
 
 > `git merge master` first. One ticket. **Do this before R17 or pillar work.**
