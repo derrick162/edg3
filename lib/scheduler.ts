@@ -3,7 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
-import { initiateCall } from './vapi';
+import { initiateCall, buildGratitudeSystemPrompt } from './vapi';
+import { getWeatherForecast } from './weather';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
@@ -411,9 +412,15 @@ export function startScheduler() {
   // cheap on non-matching ticks (no fetches unless a user is at a trigger time).
   // Dynamic import (same pattern as './briefing' above) keeps its heavy deps — calendar /
   // alignment / whoop / push — out of the scheduler's module-load graph.
-  cron.schedule('*/30 * * * *', () => {
+  // R20 T2 — */10 (was */30): the proactive jobs self-throttle, so a higher check frequency
+  // only makes the gratitude auto-call fire promptly when the morning Whoop score lands —
+  // it does not change how often the throttled push jobs actually fire.
+  cron.schedule('*/10 * * * *', () => {
     import('./proactiveNotifications')
-      .then(m => m.runProactiveNotifications())
+      .then(async m => {
+        await m.runProactiveNotifications();
+        await m.runGratitudeAutoCall().catch(e => console.error('[scheduler] runGratitudeAutoCall failed:', e));
+      })
       .catch(e => console.error('[scheduler] runProactiveNotifications failed:', e));
   });
 
@@ -668,7 +675,17 @@ export async function scheduleOpenCall(userId: number) {
   const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
   const greet = hour >= 18 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning';
   const firstName = user.name.split(' ')[0];
-  const opener = `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
+
+  // R20 — gratitude mode: the open call becomes a warm 3-minute gratitude check-in.
+  const isGratitude = user.gratitude_mode === 1;
+  let opener = `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
+  let gratitudePrompt: string | null = null;
+  if (isGratitude) {
+    const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
+    const weatherStr = await getWeatherForecast().catch(() => null);
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr);
+    opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherStr ? ` ${weatherStr}.` : ''} Before the day gets going — what are three things you're grateful for today?`;
+  }
 
   const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
   const briefingId = result.lastInsertRowid;
@@ -685,8 +702,8 @@ export async function scheduleOpenCall(userId: number) {
     const isFirstCall = briefingQueries.countCompleted(userId) === 0;
 
     try {
-      console.log(`[scheduler] Initiating OPEN call for ${user.name}...`);
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'));
+      console.log(isGratitude ? `[scheduler] Gratitude call for ${user.name}` : `[scheduler] Initiating OPEN call for ${user.name}...`);
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt);
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
