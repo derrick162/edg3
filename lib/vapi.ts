@@ -74,6 +74,23 @@ export function checkVapiSecret(provided: string | null): { ok: boolean; status:
     : { ok: true, status: 'mismatch-allowed' };
 }
 
+/**
+ * R20 — gratitude mode system prompt. A warm, unhurried 3-minute check-in that replaces the
+ * morning briefing when gratitude_mode is on. NO task/calendar/priority energy. Weather is
+ * woven into the opener only when available. The model calls the recordGratitude tool with the
+ * three items, then closes and ends the call.
+ */
+export function buildGratitudeSystemPrompt(firstName: string, dateStr: string, weatherStr: string | null): string {
+  const weatherLine = weatherStr ? ` ${weatherStr}.` : '';
+  return `You are Edge. This is a morning gratitude check-in — NOT a productivity briefing. Keep the entire call under 3 minutes. Warm, personal, unhurried. No tasks, no calendar, no priorities.
+
+Start: "Good morning ${firstName}! Today is ${dateStr}.${weatherLine} Before the day gets going — what are three things you're grateful for today?"
+
+Listen to each item. Respond briefly and warmly to each ("That's wonderful." / "Love that." / "Beautiful."). After all three, call the recordGratitude tool with the three items verbatim. Then close: "Those are beautiful. Have a great day, ${firstName}." End the call.
+
+IMPORTANT: Do not pivot to tasks, calendar, or priorities under any circumstances. This is a pure gratitude check-in. If ${firstName} tries to talk work, gently redirect: "Let's save that for your morning briefing — for now, what else are you grateful for?"`;
+}
+
 export async function initiateCall(
   phoneNumber: string,
   briefingContent: string,
@@ -88,6 +105,9 @@ export async function initiateCall(
   energyText: string = '',
   voicePref: 'daniel' | 'aria' = 'daniel',
   voiceSpeedPref: VoiceSpeedPref = 'default',
+  // R20 — when set, this call is a gratitude check-in: the gratitude prompt replaces the
+  // briefing system prompt and a calm ambient background sound is applied. Never set for briefings.
+  gratitudeSystemPrompt: string | null = null,
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
@@ -269,6 +289,11 @@ ${isOpenCall ? 'Open call: keep replies short, let it flow. Wrap up only when th
 BEFORE ENDING: When winding down, say "I should let you go — want me to run through my action items real quick?" Wait for response. Yes → summarize. No/dismissive → "Perfect. Have a focused day." After 15 seconds of silence post-close, say "I\'ll take that as a sign you\'re ready to move. Have a focused day."
 Always end with warmth. This person is building something — remind them of that.`;
 
+  // R20 — gratitude mode swaps in the warm gratitude prompt + a calm ambient background.
+  // Briefings keep their normal prompt and 'off' background.
+  const effectiveSystemPrompt = gratitudeSystemPrompt || systemPrompt;
+  const effectiveBackgroundSound = gratitudeSystemPrompt ? 'office' : 'off';
+
   const payload: Record<string, unknown> = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
     customer: {
@@ -284,7 +309,7 @@ Always end with warmth. This person is building something — remind them of tha
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
-        systemPrompt,
+        systemPrompt: effectiveSystemPrompt,
         toolIds: [
           'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c',
           '4ac1508f-e8b1-46d4-aacf-2e7122f4594e',
@@ -309,6 +334,7 @@ Always end with warmth. This person is building something — remind them of tha
           '866ce6ca-5b06-4ea9-9458-2721905ca444', // colorEventsByEnergy (created via API 2026-06-15)
           // '___searchMemory___', // searchMemory — create in Vapi dashboard: param query (string, required)
           // '___confirmFact___', // confirmFact — create in Vapi dashboard: param topic (string, required)
+          // recordGratitude: 'PASTE_VAPI_TOOL_UUID_HERE', // R20 — create in Vapi dashboard: params item1/item2/item3 (string, required). Used by the gratitude call.
           '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
           '78c4d5f0-3968-40a6-8822-ea6140f5c3cb', // batchReschedule (R13 T1)
           'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', // skipRecurringOccurrence (R13 T2)
@@ -335,7 +361,7 @@ Always end with warmth. This person is building something — remind them of tha
       // detection) before Edge stops talking, and denoise the caller's audio — so a cough,
       // a door, or background chatter no longer cuts him off mid-sentence.
       backgroundDenoisingEnabled: true,
-      backgroundSound: 'off',
+      backgroundSound: effectiveBackgroundSound,
       stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
       // Smart endpointing: start replying as soon as it detects the user is actually done,
       // rather than always waiting a fixed gap — Edge feels noticeably snappier.
@@ -361,11 +387,12 @@ Always end with warmth. This person is building something — remind them of tha
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
+      backgroundSound: effectiveBackgroundSound,
       voice: voiceConfig,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
-        systemPrompt,
+        systemPrompt: effectiveSystemPrompt,
         toolIds: [
           'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c',
           '4ac1508f-e8b1-46d4-aacf-2e7122f4594e',

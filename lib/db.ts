@@ -613,6 +613,17 @@ export function initSchema(db: Database.Database) {
       payload TEXT,
       sent_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- R20 — gratitude mode: one row per user per day, three free-text gratitude items.
+    CREATE TABLE IF NOT EXISTS gratitude_entries (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      entry_date TEXT NOT NULL,
+      item_1     TEXT,
+      item_2     TEXT,
+      item_3     TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
 
   // Indexes for performance
@@ -702,6 +713,8 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE calendar_tokens ADD COLUMN calendar_reconnect_required INTEGER NOT NULL DEFAULT 0",
   // R18 T3 — store the connected Google account email so the dashboard can show which account is linked.
   "ALTER TABLE calendar_tokens ADD COLUMN email TEXT",
+  // R20 — gratitude mode: when on, the open call becomes a warm 3-min gratitude check-in.
+  "ALTER TABLE users ADD COLUMN gratitude_mode INTEGER NOT NULL DEFAULT 0",
   // Multi-account: oauth_state.flow CHECK was ('calendar','whoop') — recreate to allow 'gmail'.
   // Rows are ephemeral CSRF tokens (minutes TTL), so dropping non-matching rows on rebuild is fine.
   "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
@@ -764,6 +777,10 @@ export const userQueries = {
   // R12 T6 — set the user's speaking-speed preset.
   setVoiceSpeed: (id: number, speed: 'slow' | 'default' | 'fast') => {
     return getDb().prepare("UPDATE users SET voice_speed = ? WHERE id = ?").run(speed, id);
+  },
+  // R20 — toggle gratitude mode on/off (the open call becomes a gratitude check-in when on).
+  setGratitudeMode: (id: number, enabled: boolean) => {
+    return getDb().prepare("UPDATE users SET gratitude_mode = ? WHERE id = ?").run(enabled ? 1 : 0, id);
   },
 };
 
@@ -1452,6 +1469,7 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'call_attempts',
   'push_subscriptions',
   'notification_log',
+  'gratitude_entries',
 ];
 
 // ── Encrypted-column inventory (R11 T3 — key rotation authority) ─────────────────
@@ -1837,6 +1855,35 @@ export const callFeedbackQueries = {
   },
 };
 
+export interface GratitudeEntry {
+  id: number;
+  user_id: number;
+  entry_date: string;
+  item_1: string | null;
+  item_2: string | null;
+  item_3: string | null;
+  created_at: number;
+}
+
+// R20 — gratitude entries captured on the morning gratitude check-in call.
+export const gratitudeQueries = {
+  create: (userId: number, date: string, item1: string | null, item2: string | null, item3: string | null) => {
+    return getDb().prepare(
+      'INSERT INTO gratitude_entries (user_id, entry_date, item_1, item_2, item_3) VALUES (?, ?, ?, ?, ?)'
+    ).run(userId, date, item1 ?? null, item2 ?? null, item3 ?? null);
+  },
+  getByDate: (userId: number, date: string): GratitudeEntry | undefined => {
+    return getDb().prepare(
+      'SELECT * FROM gratitude_entries WHERE user_id = ? AND entry_date = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(userId, date) as GratitudeEntry | undefined;
+  },
+  getRecent: (userId: number, limit = 30): GratitudeEntry[] => {
+    return getDb().prepare(
+      'SELECT * FROM gratitude_entries WHERE user_id = ? ORDER BY entry_date DESC, created_at DESC LIMIT ?'
+    ).all(userId, limit) as GratitudeEntry[];
+  },
+};
+
 // Day-1 preview briefing — one record per user, generated once.
 export const previewBriefingQueries = {
   get: (userId: number): { id: number; content: string; created_at: string } | undefined => {
@@ -1908,6 +1955,8 @@ export interface User {
   data_consent?: 'improve' | 'privacy' | null;
   voice_preference?: 'daniel' | 'aria' | null;
   voice_speed?: 'slow' | 'default' | 'fast' | null;
+  // R20 — when 1, the open call becomes a warm gratitude check-in instead of a briefing.
+  gratitude_mode?: number;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,

@@ -16,7 +16,7 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries } from '@/lib/db';
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
@@ -1593,6 +1593,18 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
       return `I couldn't mark that done just now — want me to try again?`;
     }
     return `Done — marked "${match.text}" as complete.`;
+
+  } else if (fn === 'recordGratitude') {
+    // R20 — save the three gratitude items captured on the morning gratitude call.
+    const { item1, item2, item3 } = args as { item1?: string; item2?: string; item3?: string };
+    const clean = (s?: string) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, 500) : null);
+    try {
+      gratitudeQueries.create(userId, todayInTz(tz), clean(item1), clean(item2), clean(item3));
+    } catch (err) {
+      console.error('[recordGratitude] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't save that just now — but I heard you. Have a great day!`;
+    }
+    return `Saved — have a great day!`;
 
   } else if (fn === 'forgetFact') {
     // R14 T5 — retire stored facts matching a topic so a correction doesn't conflict with stale data.
