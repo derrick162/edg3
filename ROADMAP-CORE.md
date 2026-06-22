@@ -103,6 +103,40 @@ If `gratitude_mode === 0`: existing open call logic unchanged.
 
 **Tests:** 3 tests for `gratitudeQueries` (create, getByDate, getRecent); 2 for the API route (GET returns bool, PATCH updates); 2 for `buildGratitudeSystemPrompt` (includes firstName/date, omits weather section when null). No test for the scheduler branch — same pattern as existing open call, no new logic to unit-test.
 
+**Part F — Background sound (`lib/scheduler.ts` + `lib/vapi.ts`):**
+
+Vapi's assistant config supports a `backgroundSound` field. Check what the Vapi TypeScript types accept (look in `node_modules/@vapi-ai/server-sdk` or the Vapi type definitions already used in `lib/vapi.ts`). Wire it in on the gratitude call `assistantOverrides`:
+
+- If the type accepts a **string URL**: host `public/ambient-gratitude.mp3` in the repo (add a short lo-fi/nature loop, ~2MB max) and pass its public URL (via `process.env.APP_URL + '/ambient-gratitude.mp3'`).
+- If the type only accepts **preset strings** (e.g. `"off"` | `"office"`): use whichever preset sounds calmest. `"office"` is better than silence for now.
+- Either way, only apply `backgroundSound` to the gratitude call overrides — never to the morning briefing.
+
+Do not block T1 on this — wire it in last, after the rest of T1 is green. If the Vapi types don't expose `backgroundSound` at all, note it in the Status Board and skip.
+
+---
+
+### T2 — Auto-trigger gratitude call when Whoop score lands (HIGH — 1h)
+
+**Context:** Derrick doesn't want to tap a button. The gratitude call should fire automatically when his sleep/recovery score hits in the morning — within ~10 minutes of waking up.
+
+**Fix — two parts:**
+
+**Part A — Change `*/30` cron to `*/10` in `lib/scheduler.ts`:**
+
+Find the proactive notifications cron (currently `*/30 * * * *`). Change to `*/10 * * * *`. The notification jobs self-throttle (20h cooldown, weekly gates) so higher frequency is safe — it only changes how quickly they *check*, not how often they *fire*.
+
+**Part B — Auto-gratitude check in the same `*/10` tick:**
+
+In the proactive notifications cron callback, after the existing `runProactiveNotifications()` call, add `runGratitudeAutoCall()` — a new exported function in `lib/proactiveNotifications.ts` (Security owns that file, but Core is adding a new export — additive, no conflict):
+
+`runGratitudeAutoCall()` logic (iterate over all users with `gratitude_mode = 1`):
+1. Fetch `getLatestRecovery(userId)` — if null or `recovery.date !== today` → skip (score not in yet)
+2. Check `gratitudeQueries.getByDate(userId, today)` — if a row exists → skip (already called today)
+3. Check the hour in user's timezone — only fire between 5 AM and 11 AM (don't auto-call someone at noon if they slept in and the score came late)
+4. Call `scheduleOpenCall(userId)` — which already branches on `gratitude_mode` to use the gratitude prompt
+
+No new tests needed — same pattern as `maybeLowRecoveryAlert`. Note in Status Board that this touches `lib/proactiveNotifications.ts` (Security-owned) as an additive export — Security should sync down after this merges.
+
 ⚠️ **External step (Derrick):** Create a `recordGratitude` Vapi tool in the Vapi dashboard. Params: `item1` (string, required), `item2` (string, required), `item3` (string, required). Paste the UUID into the `toolIds.recordGratitude` placeholder in `lib/vapi.ts` and uncomment.
 
 ---
