@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall, buildGratitudeSystemPrompt } from './vapi';
-import { getWeatherForecast } from './weather';
+import { getWeatherForecast, getWeatherToday } from './weather';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
@@ -682,7 +682,8 @@ export async function scheduleOpenCall(userId: number) {
   let gratitudePrompt: string | null = null;
   if (isGratitude) {
     const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
-    const weatherStr = await getWeatherForecast().catch(() => null);
+    // Today-only — no forecast/tomorrow. Returns null on failure so weather is silently omitted.
+    const weatherStr = await getWeatherToday().catch(() => null);
     gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr);
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;

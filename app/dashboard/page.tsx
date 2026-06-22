@@ -1127,6 +1127,7 @@ interface Briefing {
   calendar_actions: string | null;
   edge_promises: string | null;
   tool_actions: string | null;
+  is_open_call?: number;
   created_at: string;
 }
 
@@ -2775,7 +2776,7 @@ export default function Dashboard() {
                 id="briefings"
                 text="Your call history and full transcripts."
               />
-              <h2 className="text-lg font-bold mb-4">Briefing history</h2>
+              <h2 className="text-lg font-bold mb-4">Call history</h2>
               {!briefingsLoaded ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -2839,13 +2840,16 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm">
                               {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
                             </p>
-                            {b.content && (
+                            {b.is_open_call === 1 && (
+                              <span className="badge badge-info text-xs">Open call</span>
+                            )}
+                            {b.transcript && (
                               <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                                · {b.content.trim().split(/\s+/).length} words
+                                · {b.transcript.trim().split(/\s+/).length} words
                               </span>
                             )}
                           </div>
@@ -2862,10 +2866,14 @@ export default function Dashboard() {
 
                       {selectedBriefing?.id === b.id && (
                         <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--card-border)' }}>
-                          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>BRIEFING CONTENT</p>
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
-                            {b.content}
-                          </p>
+                          {b.is_open_call !== 1 && (
+                            <>
+                              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--edg-indigo)' }}>BRIEFING CONTENT</p>
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-body)' }}>
+                                {b.content}
+                              </p>
+                            </>
+                          )}
 
                           {b.transcript && (
                             <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
