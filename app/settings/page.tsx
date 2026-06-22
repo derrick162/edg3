@@ -24,18 +24,31 @@ export default function SettingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [gratitudeMode, setGratitudeMode] = useState(false);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.ok ? r.json() : null),
       fetch('/api/auth/accounts').then(r => r.ok ? r.json() : null),
-    ]).then(([me, accts]) => {
+      fetch('/api/settings/gratitude-mode').then(r => r.ok ? r.json() : null),
+    ]).then(([me, accts, gm]) => {
       if (!me) { router.push('/login'); return; }
       setProfile(me);
       setAccounts(accts);
+      if (gm) setGratitudeMode(!!gm.enabled);
     }).catch(() => router.push('/login'))
       .finally(() => setLoading(false));
   }, [router]);
+
+  async function handleGratitudeToggle() {
+    const next = !gratitudeMode;
+    setGratitudeMode(next);
+    fetch('/api/settings/gratitude-mode', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    }).catch(() => setGratitudeMode(!next));
+  }
 
   async function handleDeleteAccount() {
     setDeleting(true);
@@ -94,6 +107,26 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-black mb-8">Settings</h1>
 
         <div className="space-y-4">
+
+          {/* 0 — Morning ritual */}
+          <section className="glass-card p-6 space-y-4">
+            <p className="label-caps flex items-center gap-2">
+              <span style={{ color: 'var(--text-faint)' }}>✦</span>
+              Morning ritual
+            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-strong)' }}>Gratitude mode</p>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  Your open call becomes a 3-minute check-in — date, weather, and what you&apos;re grateful for. No tasks, no calendar.
+                </p>
+              </div>
+              <label className="toggle mt-0.5">
+                <input type="checkbox" checked={gratitudeMode} onChange={handleGratitudeToggle} />
+                <span className="toggle-track"><span className="toggle-thumb" /></span>
+              </label>
+            </div>
+          </section>
 
           {/* 1 — Profile */}
           <section className="glass-card p-6 space-y-4">
