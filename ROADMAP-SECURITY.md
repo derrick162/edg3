@@ -30,6 +30,82 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Inbound call security)
+
+> `git merge master` first. One ticket. **Do before R17 or pillar work.**
+
+---
+
+### T1 — Rate limiting + audit for inbound calls (HIGH — 1.5h)
+
+**Context:** Core R23 T2 adds inbound call support — when Derrick calls the Twilio number, Vapi fires an `assistant-request` webhook and we return a full assistant config for the registered user. Security owns the anti-abuse layer: rate limiting and audit logging for all inbound attempts.
+
+**Rate limiting — `lib/rateLimit.ts` (or equivalent):**
+
+Add a new rate-limit check specifically for inbound calls:
+
+```ts
+export async function checkInboundCallRateLimit(phoneNumber: string): Promise<{ allowed: boolean; reason?: string }>
+```
+
+Rules:
+- Max **5 inbound calls** per phone number per rolling 24-hour window.
+- On breach: return `{ allowed: false, reason: 'rate_limit' }`.
+- On pass: record the attempt and return `{ allowed: true }`.
+- Use the existing `rate_limit_events` table (or add a new `inbound_call_attempts` table if it's cleaner) — one row per attempt with `phone_number TEXT`, `attempted_at INTEGER` (unix ms), `user_id INTEGER NULL` (null for unknown callers).
+- Query: `SELECT COUNT(*) FROM inbound_call_attempts WHERE phone_number = ? AND attempted_at > ?` (24h ago).
+
+**Audit logging — `lib/auditLog.ts` (or `lib/db.ts`):**
+
+Every `assistant-request` webhook fires should produce an audit log entry regardless of outcome. Add to `auditLogQueries`:
+
+```ts
+logInboundCallAttempt: (opts: {
+  phoneNumber: string;
+  userId: number | null;
+  outcome: 'allowed' | 'rate_limited' | 'unknown_caller';
+  vapiCallId?: string;
+}) => void
+```
+
+Writes to `audit_log` with:
+- `action = 'inbound_call_attempt'`
+- `user_id = opts.userId` (null for unknown)
+- `args = JSON.stringify({ phoneNumber, outcome, vapiCallId })`
+- `created_at = Date.now()`
+
+**Integration point (`app/api/vapi/webhook/route.ts`):**
+
+In the `assistant-request` handler (built by Core R23 T2), call `checkInboundCallRateLimit` immediately after parsing the caller number, BEFORE doing any user lookup:
+
+```ts
+const limitResult = await checkInboundCallRateLimit(callerNumber);
+if (!limitResult.allowed) {
+  await auditLogQueries.logInboundCallAttempt({ phoneNumber: callerNumber, userId: null, outcome: 'rate_limited' });
+  return NextResponse.json({
+    assistant: {
+      firstMessage: "You've made several calls recently. Please wait a bit before trying again.",
+      maxDurationSeconds: 8,
+      model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt: 'Say the firstMessage and immediately end the call.' },
+      voice: { provider: 'azure', voiceId: 'en-US-AriaNeural' },
+      endCallAfterSpokenEnabled: true,
+    }
+  });
+}
+```
+
+For unknown callers (no matching user), log `outcome: 'unknown_caller'`.
+For known users, log `outcome: 'allowed'` with the `userId`.
+
+**⚠️ Shared file note:** `app/api/vapi/webhook/route.ts` is Security-owned for auth/integrity. The `assistant-request` addition there is Core's T2. Security's edit is additive: inserting the rate-limit + audit calls into the flow Core builds. Coordinate so Core's PR lands first; Security's T1 either merges after or is a follow-up patch — no conflict if Security's diff is purely additive.
+
+**Tests:**
+- `checkInboundCallRateLimit` — allows first 5, blocks 6th within 24h; resets after 24h window
+- `logInboundCallAttempt` — writes correct `action`, `user_id`, `args` fields to `audit_log`
+- Integration: webhook with a rate-limited phone number returns the polite decline response
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-21 (ROUND 17 — Wire proactive notifications + export consolidation)
 
 > `git merge master` first (master at `264b168`). Two tickets completing work that's already been built. **Do both before R16 or pillar work.**

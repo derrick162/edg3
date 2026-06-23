@@ -31,6 +31,327 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 23 — Rich open call memory + inbound calls)
+
+> `git merge master` first. Two tickets. **Do both before R22 or pillar work.**
+
+---
+
+### T1 — Enrich open call memory context (HIGH — 2h)
+
+**Problem:** Open calls get a thin slice of memory — 10 preference facts and priorities. Morning briefings get everything: all fact categories, open loops, recent call context, episode memory. This makes Edge feel forgetful on open calls. Fix it.
+
+**What to change:**
+
+Add a new helper in `lib/scheduler.ts`:
+
+```ts
+function currentOpenCallMemoryText(userId: number): string
+```
+
+This builds a rich multi-section memory block:
+
+**Section 1 — All facts** (not just preferences):
+```
+WHAT EDGE KNOWS ABOUT YOU:
+Goals: [goal facts]
+Projects: [project facts]
+People: [people facts]
+Preferences: [preference facts]
+Other: [general facts]
+```
+Use `factQueries.getAll(userId)` (or equivalent). Group by `category`. Cap at 5 per category to stay within token budget. Skip empty categories.
+
+**Section 2 — Open loops** (commitments from recent calls):
+```
+OPEN COMMITMENTS (things you said you'd do — bring these up naturally if relevant):
+• [commitment text] (from [date])
+```
+Use `openLoopQueries.getOpen(userId)` — filter to non-resolved, most recent 5, format each as a bullet. Return empty string if none.
+
+**Section 3 — Recent call context** (what was on your mind lately):
+```
+RECENT CALL NOTES (last 2 calls — use for continuity, don't repeat back verbatim):
+[call date]: [user_response or first 150 chars of transcript summary]
+```
+Fetch last 2 completed briefings via `briefingQueries.getRecentForUser(userId, 2)`. Use `user_response` if present, else first 150 chars of `content`. Skip calls with no content.
+
+Combine all three sections into one string. Pass it as `preferencesText` to `initiateCall` in `scheduleOpenCall`. The existing system prompt already renders `preferencesText` under `KNOWN PREFERENCES` — no change to `initiateCall` signature needed.
+
+**Tests:** 3–4 unit tests for `currentOpenCallMemoryText` — verifies all three sections appear, degrades cleanly when facts/loops/recent calls are absent.
+
+---
+
+### T2 — Inbound call handler (HIGH — 2.5h)
+
+**Goal:** When Derrick (or his dad) calls the Twilio number, Vapi fires an `assistant-request` webhook. We respond with a personalized Edge assistant config. The call starts immediately — no app needed.
+
+**Schema (`lib/db.ts`):**
+
+Add to SCHEMA_MIGRATIONS (additive):
+```sql
+ALTER TABLE briefings ADD COLUMN is_inbound INTEGER NOT NULL DEFAULT 0
+```
+
+Add to `userQueries`:
+```ts
+findByPhoneNumber: (phone: string): User | undefined =>
+  getDb().prepare("SELECT * FROM users WHERE phone_number = ?").get(phone) as User | undefined
+```
+
+Add to `briefingQueries`:
+```ts
+markInbound: (id: number) => getDb().prepare("UPDATE briefings SET is_inbound = 1 WHERE id = ?").run(id)
+```
+
+**Webhook handler (`app/api/vapi/webhook/route.ts`):**
+
+Add handling for `message.type === 'assistant-request'` **before** the existing `call-ended` branch. This is an additive edit to a Security-owned file — keep the diff minimal.
+
+```ts
+if (type === 'assistant-request') {
+  const callerNumber = payload.call?.customer?.number as string | undefined;
+  // Unknown caller — politely decline
+  if (!callerNumber) {
+    return NextResponse.json({ error: 'No caller number provided.' });
+  }
+  const callerUser = userQueries.findByPhoneNumber(callerNumber);
+  if (!callerUser) {
+    return NextResponse.json({
+      assistant: {
+        firstMessage: "Hi there! This number isn't registered with Edg3. Visit edg3.ai to get started.",
+        endCallMessage: "Take care.",
+        maxDurationSeconds: 15,
+        model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt: 'You are Edge. This caller is not registered. Say the firstMessage and end the call immediately.' },
+        voice: VOICES.daniel,
+      }
+    });
+  }
+
+  // Registered user — build a full open call
+  const userId = callerUser.id;
+  const timezone = effectiveTimezone(callerUser);
+  const firstName = callerUser.name.split(' ')[0];
+  const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
+  const greet = hour >= 18 ? 'evening' : hour >= 12 ? 'afternoon' : 'morning';
+  const opener = `Hey, it's Edge — ${firstName}, good ${greet}. How can I help?`;
+  const scheduledFor = new Date().toISOString();
+
+  // Create briefing record for tracking + call history
+  const result = briefingQueries.create(userId, `[Inbound call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
+  const briefingId = result.lastInsertRowid;
+  try { briefingQueries.markOpenCall(briefingId); } catch {}
+  try { briefingQueries.markInbound(briefingId); } catch {}
+  briefingQueries.update(briefingId, { status: 'calling' });
+
+  // Build personalized assistant config — same pattern as initiateCall's assistantOverrides block
+  const language = callerUser.language || 'en';
+  const isCantonese = language === 'yue';
+  const voicePref = callerUser.voice_preference === 'aria' ? 'aria' : 'daniel';
+  const voiceSpeedPref: VoiceSpeedPref = (callerUser.voice_speed === 'slow' || callerUser.voice_speed === 'fast') ? callerUser.voice_speed : 'default';
+  const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] };
+  const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
+  const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
+
+  const memoryText = currentOpenCallMemoryText(userId);  // T1
+  const systemPrompt = buildOpenCallSystemPrompt({       // see below
+    firstName, userName: callerUser.name, timezone,
+    prioritiesText: currentPrioritiesText(userId),
+    memoryText,
+    language,
+  });
+
+  const assistantConfig = {
+    firstMessage: isCantonese ? `${hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨'}，${firstName}！我係 Edge——有咩想傾？` : opener,
+    voice: effectiveVoice,
+    ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
+    backgroundSound: (() => {
+      const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+      return base ? `${base}/audio/ambient-1.mp3` : 'office';
+    })(),
+    model: {
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      systemPrompt,
+      toolIds: [ /* same toolIds array as in initiateCall */ ],
+    },
+    endCallPhrases: isCantonese ? ['再見', '拜拜', '多謝', 'goodbye'] : ['have a focused day', 'have a great day', 'goodbye'],
+    silenceTimeoutSeconds: 40,
+    maxDurationSeconds: 1800,
+    messagePlan: {
+      idleMessages: ['Still here — take your time.', "No rush, I'm still on the line."],
+      idleTimeoutSeconds: 10,
+      idleMessageMaxSpokenCount: 2,
+    },
+  };
+
+  if (VAPI_ASSISTANT_ID) {
+    return NextResponse.json({ assistantId: VAPI_ASSISTANT_ID, assistantOverrides: assistantConfig });
+  }
+  return NextResponse.json({ assistant: { name: 'EDG3', server: { url: resolveWebhookUrl() }, ...assistantConfig } });
+}
+```
+
+**`buildOpenCallSystemPrompt` helper in `lib/vapi.ts`:**
+
+Extract the current open-call system prompt building out of `initiateCall` into a standalone exported function so both `initiateCall` and the webhook handler share the same logic. Signature:
+
+```ts
+export function buildOpenCallSystemPrompt(opts: {
+  firstName: string;
+  userName: string;
+  timezone: string;
+  prioritiesText: string;
+  memoryText: string;
+  language: string;
+}): string
+```
+
+The body is the same as the current `initiateCall` system prompt for open calls, with `preferencesText` replaced by `memoryText`. The KNOWN PREFERENCES section label should change to "MEMORY" for open calls to reflect the richer context.
+
+**`call-started` handler — link inbound call ID:**
+
+In the existing `call-started` / `assistant.started` branch, after finding the briefing, if it has no `vapi_call_id` yet and `payload.call?.id` is present, update it:
+```ts
+if (call.id && !briefing.vapi_call_id) {
+  briefingQueries.update(briefing.id, { vapi_call_id: call.id });
+}
+```
+For inbound calls the briefing is created in `assistant-request` so the call ID arrives later via `call-started`.
+
+**Imports needed in webhook route:** `VOICES`, `SPEED_MAP`, `VoiceSpeedPref`, `resolveWebhookUrl`, `buildOpenCallSystemPrompt` from `lib/vapi.ts`; `currentPrioritiesText`, `currentOpenCallMemoryText` from wherever they live (move to `lib/scheduler.ts` exports if needed, or inline in webhook).
+
+**⚠️ External step (Derrick):** In the Vapi dashboard, go to the phone number settings and set the inbound call handler to point to `https://www.edg3.ai/api/vapi/webhook`. This routes inbound calls through our `assistant-request` flow.
+
+**Tests:** 
+- `assistant-request` with unknown number → returns polite decline config
+- `assistant-request` with registered number → returns valid assistant config with correct firstName
+- `call-started` for inbound → updates briefing with call ID
+
+---
+
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 22 — Cantonese language support)
+
+> `git merge master` first. One ticket. **Do this before R21 or pillar work.**
+
+---
+
+### T1 — Cantonese language support (HIGH — 3h)
+
+**Context:** Derrick wants to onboard his dad who speaks Cantonese. When a user's language is set to `yue` (Cantonese), all calls — morning briefing, open call, gratitude — should use a Cantonese STT transcriber, a Cantonese TTS voice, and a Cantonese system prompt. English users are completely unaffected.
+
+**Part A — Schema (`lib/db.ts`):**
+
+Add to the `users` table (additive):
+```sql
+language TEXT NOT NULL DEFAULT 'en'
+```
+
+Add to `userQueries`:
+- `setLanguage(userId: number, language: string): void`
+- `getLanguage(userId: number): string` — reads `findById`, returns `'en'` when absent
+
+**Part B — API route (`app/api/settings/language/route.ts`):**
+
+- `GET` — session-gated, returns `{ language: string }`
+- `PATCH` — session-gated, rate-limited. Accepts `{ language: string }`. Validate: must be one of `['en', 'yue']`. Returns `{ ok: true }`.
+
+**Part C — Call stack (`lib/vapi.ts` + `lib/scheduler.ts`):**
+
+In `initiateCall`, add a `language: string = 'en'` parameter (after `voiceSpeed`). When `language === 'yue'`:
+
+**Transcriber override** — Cantonese STT via OpenAI Whisper (auto-detects language, handles Cantonese well):
+```ts
+transcriber: {
+  provider: 'openai',
+  model: 'whisper-1',
+}
+```
+Include in both the inline `assistant` block and `assistantOverrides`.
+
+**Voice override** — Azure Hong Kong Cantonese TTS (replaces the 11labs voices for this user):
+```ts
+voice: {
+  provider: 'azure',
+  voiceId: 'zh-HK-WanLungNeural',  // natural male Cantonese voice
+}
+```
+
+**System prompt** — when `language === 'yue'`, replace the English system prompt with a Cantonese one. Write it in Traditional Chinese (繁體中文). Core should write this prompt — here is the shape:
+
+```
+你是 Edge。你是一個有智慧、熱心的個人助理，說廣東話。你的任務是幫助用戶每天早上做好準備——了解他們的行程、提醒他們的重點，並在需要時幫他們管理日曆。
+
+保持對話自然、溫暖、簡潔。用廣東話回覆所有內容。如果用戶用英文說話，也用廣東話回應。
+```
+
+Then adapt the full briefing/open call prompt structure into Cantonese. Key sections to translate: GREETING, CALENDAR TOOLS guidance, BE DECISIVE, NEVER INVENT FACTS. Keep the tool-calling behavior identical — only the language of the prompt changes, not the logic.
+
+**`endCallPhrases`** for Cantonese — add `['再見', '拜拜', '多謝', 'goodbye']` when `language === 'yue'`.
+
+In `scheduleBriefingCall` and `scheduleOpenCall` in `lib/scheduler.ts`: read `user.language` and pass it to `initiateCall`.
+
+**Part D — Wire language into the gratitude prompt:**
+
+In `scheduleOpenCall`, when building a gratitude call for a Cantonese user, pass `language` to `buildGratitudeSystemPrompt` and write the gratitude prompt in Cantonese:
+
+```
+你是 Edge。這是一個清晨感恩分享——不是工作匯報。保持溫暖、輕鬆、不超過三分鐘。
+
+開場：「早晨 ${firstName}！今日係 ${dateStr}。${weatherInstruction} 喺今日開始之前——你今日有咩三件事值得感恩？」
+
+聆聽每一個分享，用一到兩句話真誠回應為什麼這件事有意義。三件都講完之後，call recordGratitude 工具。然後分享一兩句今日可以如何珍惜這些東西，最後說：「去創造美好的一天，${firstName}。」掛線。
+```
+
+**Tests:**
+- 2 tests for `getLanguage`/`setLanguage`: default `'en'`, persists `'yue'`
+- 2 tests for the API route: GET returns `{ language }`, PATCH rejects invalid language
+- 1 test: `initiateCall` called with `language='yue'` — payload includes `transcriber.provider === 'openai'` and `voice.provider === 'azure'`
+
+---
+
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 21 — Daily quote in gratitude call)
+
+> `git merge master` first. One ticket. **Do this before R20 or pillar work.**
+
+---
+
+### T1 — Daily quote feature for gratitude mode (MEDIUM — 1.5h)
+
+**Context:** Derrick wants the gratitude call to optionally open with a short meaningful quote tailored to what he's going through (e.g. "rebuilding"). The quote is shown before "Good morning" when the toggle is on. Design R19 adds the settings UI; Core owns the DB, API, and prompt wiring.
+
+**Part A — Schema (`lib/db.ts`):**
+
+Add two columns to the `users` table (additive, no migration needed):
+```sql
+gratitude_quote_enabled INTEGER NOT NULL DEFAULT 0,
+gratitude_quote_theme TEXT NOT NULL DEFAULT 'resilience'
+```
+
+Add to `userQueries`:
+- `setGratitudeQuote(userId: number, enabled: boolean, theme: string): void` — updates both columns in one statement
+- `getGratitudeQuote(userId: number): { quoteEnabled: boolean; quoteTheme: string }` — reads from `findById`, returns defaults when row absent
+
+**Part B — API route (`app/api/settings/gratitude-quote/route.ts`):**
+
+- `GET` — session-gated, returns `{ quoteEnabled: boolean, quoteTheme: string }` using `userQueries.getGratitudeQuote`
+- `PATCH` — session-gated, rate-limited (same pattern as `gratitude-mode` route), accepts `{ enabled: boolean, theme: string }`. Validate: `enabled` must be boolean; `theme` must be string, trimmed, max 100 chars — return 400 if invalid. Calls `userQueries.setGratitudeQuote`. Returns `{ ok: true }`.
+
+**Part C — Wire into scheduler (`lib/scheduler.ts`):**
+
+In `scheduleOpenCall`, the gratitude branch already fetches weather and calls `buildGratitudeSystemPrompt`. Extend it:
+1. After fetching `weatherStr`, call `userQueries.getGratitudeQuote(userId)` — `catch(() => ({ quoteEnabled: false, quoteTheme: 'resilience' }))` to degrade safely.
+2. Pass `quoteEnabled` and `quoteTheme` to `buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme)`.
+
+`buildGratitudeSystemPrompt` already accepts these params (PM added them in the weather-fix commit). No changes needed to `lib/vapi.ts`.
+
+**Tests:**
+- 2 tests for `getGratitudeQuote`: returns defaults for new user, returns saved values after `setGratitudeQuote`.
+- 2 tests for the API route (GET returns expected shape, PATCH rejects invalid theme).
+- No scheduler test needed — same pattern as existing gratitude branch.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 20 — Gratitude mode)
 
 > `git merge master` first. One ticket. **Do this before R19 or pillar work.**
@@ -1777,6 +2098,16 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-22** — **R21 SHIPPED (2093 green) — daily quote for gratitude mode.**
+  - `users.gratitude_quote_enabled` + `gratitude_quote_theme` columns + `userQueries.setGratitudeQuote`/`getGratitudeQuote` (defaults off / `'resilience'`) in `lib/db.ts` (additive, **Vijay FYI**). `GET/PATCH /api/settings/gratitude-quote` (auth + rate-limited; `enabled` boolean + `theme` trimmed 1–100 chars). `lib/scheduler.ts` (Security file, additive) gratitude branch fetches `getGratitudeQuote(userId)` (degrades to defaults) and passes `quoteEnabled`/`quoteTheme` into `buildGratitudeSystemPrompt` (params were PM-pre-added) — when on, the call opens with a short themed quote before "Good morning". 4 new tests. 2093 green, tsc + next build clean. Committed `29b30a5`. ⚠️ Additive `lib/scheduler.ts` edit — Vijay sync down. Design R19 adds the `/settings` quote UI.
+- **2026-06-22** — **R22 SHIPPED (2089 green) — Cantonese (`yue`) language support.**
+  - `users.language` column + `userQueries.setLanguage`/`getLanguage` (default `'en'`) in `lib/db.ts` (additive, **Vijay FYI**). `GET/PATCH /api/settings/language` (auth + rate-limited via new `languageSetting` key; validates `['en','yue']`). `initiateCall` gains a `language` param — for `'yue'`: transcriber → OpenAI Whisper (`whisper-1`, auto-detect), voice → Azure `zh-HK-WanLungNeural`, system prompt → new `buildCantoneseSystemPrompt` (繁體中文/廣東話, identical tool-calling behaviour), `endCallPhrases` → `['再見','拜拜','多謝','goodbye']`; applied to both the inline-assistant and assistantOverrides payloads. `buildGratitudeSystemPrompt` gains a `language` param with a full Cantonese gratitude variant. `scheduleBriefingCall` + `scheduleOpenCall` (Security file, additive) read `user.language` and pass it through (+ to the gratitude prompt).
+  - Tests: `getLanguage`/`setLanguage` (3), language route (3), `initiateCall` yue payload asserts Whisper + Azure (1). **Drive-by fix:** `lib/factPatterns.test.ts` had a date-bomb (fixed `RECENT='2026-06-16'` aged past the 6.5-day throttle window on 2026-06-22, failing on master) — made `RECENT` relative to now.
+  - 2089/2089 green, tsc + next build clean. Committed `5cc4c2c`. ⚠️ **Additive edits to Security-owned `lib/scheduler.ts` — Vijay sync down after merge.** Design adds the `/settings` language selector.
+- **2026-06-22** — **R20 SHIPPED (2080 green) — Gratitude mode.**
+  - **T1:** `users.gratitude_mode` column + `gratitude_entries` table + `gratitudeQueries` (create/getByDate/getRecent) + `userQueries.setGratitudeMode` in `lib/db.ts` (additive, **Vijay FYI**; `gratitude_entries` in `USER_SCOPED_DELETE_ORDER`). `GET/PATCH /api/settings/gratitude-mode` (auth + rate-limited + boolean validation). `buildGratitudeSystemPrompt(firstName, date, weather)` + `recordGratitude` toolId placeholder in `lib/vapi.ts`; `initiateCall` gains an optional gratitude system-prompt override that swaps the prompt + applies a calm `'office'` `backgroundSound` (briefings stay `'off'`). `recordGratitude` handler in tool-call route → `gratitudeQueries.create`. `scheduleOpenCall` (Security file, additive): when `gratitude_mode=1`, builds the gratitude prompt + weather + warm opener and launches via the override. **Part F (updated per PM):** Vapi `backgroundSound` accepts a URL — on the gratitude call only, passes `<NEXT_PUBLIC_APP_URL||APP_URL>/audio/gratitude-ambient-1.mp3` when an app URL is set, else falls back to the calmest preset (`'office'`); briefings stay `'off'`. `public/audio/README.md` documents the file Derrick drops in. 8 new tests.
+  - **T2:** `lib/proactiveNotifications.ts` (Security file, additive export) `runGratitudeAutoCall()` — for each gratitude-mode user, fires `scheduleOpenCall` once today's Whoop recovery is in, no entry exists yet today, and it's 5–11am local (self-gated, best-effort, dynamic scheduler import avoids a cycle). `lib/scheduler.ts` cron `*/30`→`*/10` + callback runs `runGratitudeAutoCall` after `runProactiveNotifications`.
+  - 2080/2080 green, tsc + next build clean. Committed `884baea` (T1) + `fb2da01` (T2). ⚠️ **Touches Security-owned `lib/scheduler.ts` + `lib/proactiveNotifications.ts` — additive only; Vijay sync down after merge.** ⚠️ **External (Derrick):** create `recordGratitude` Vapi tool (item1/item2/item3) + paste UUID into the `lib/vapi.ts` placeholder. Design R18 adds the `/settings` toggle UI.
 - **2026-06-21** — **R19 SHIPPED (2077 green) — first-call intro + new-user Briefings empty state.**
   - **T1 first-call awareness:** new `briefingQueries.countCompleted(userId)` in `lib/db.ts` (+2 tests). `lib/scheduler.ts` (Security-owned — **Vijay FYI**) now derives `isFirstCall` from `countCompleted(userId) === 0` instead of the fragile "no non-profile memories" proxy (memory extraction can fail silently and cause a re-introduction; a completed call is the true signal). `lib/vapi.ts` injects a one-time `FIRST CALL` block when `isFirstCall`: warm 2-sentence intro ("I'm Edge — I run your morning briefing, manage your calendar, and keep you focused") + invite + optional 30s tour, then the normal briefing, and never re-introduces afterward; OPENER RULE reconciled so it doesn't contradict the intro.
   - **T2 new-user empty state:** `app/dashboard/page.tsx` Briefings tab — when `calendarConnected` but no calls yet, renders a "Your first briefing is on its way" glass-card (scheduled call time + "Change call time →" → profile tab) instead of the generic empty state. Design's skeleton state gates on `loading`; this gates on loaded-and-empty — no conflict.

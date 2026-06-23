@@ -84,3 +84,35 @@ export async function getWeatherForecast(
     return FALLBACK;
   }
 }
+
+/**
+ * Today-only variant for the gratitude call — returns a short one-line phrase or null on failure.
+ * Never includes tomorrow. Returns null (not the FALLBACK string) so the caller can omit weather
+ * cleanly from the prompt rather than having Edge read a failure message.
+ */
+export async function getWeatherToday(
+  coords: { latitude: number; longitude: number; timezone: string } = TORONTO,
+  city = 'Toronto',
+): Promise<string | null> {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}` +
+      `&daily=temperature_2m_max,precipitation_probability_max,weathercode` +
+      `&timezone=${encodeURIComponent(coords.timezone)}&forecast_days=1`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const json = await res.json() as { daily?: OpenMeteoDaily };
+    const daily = json.daily;
+    const highs = daily?.temperature_2m_max;
+    const codes = daily?.weathercode;
+    if (!highs?.length || !codes?.length) return null;
+    const code = codes[0];
+    // Skip weather entirely for unpleasant conditions — not a positive opener.
+    // Rainy (61-67), drizzle (51-57), foggy (45-48), showers (80-82), snow (71-77, 85-86), thunder (95-99)
+    if ((code >= 45 && code <= 86) || code >= 95) return null;
+    const todayHigh = Math.round(highs[0]);
+    const todayDesc = wmoToDescription(code);
+    return `${city}: high ${todayHigh} degrees, ${todayDesc}`;
+  } catch {
+    return null;
+  }
+}

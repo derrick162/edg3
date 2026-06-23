@@ -49,6 +49,163 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 21 — Inbound call badge in call history)
+
+> `git merge master` first. One ticket. **Do before R20 or pillar work.**
+
+---
+
+### T1 — "Inbound call" badge in call history (SMALL — 1h)
+
+**Context:** Core R23 T2 adds inbound call support — when Derrick calls the Twilio number, Edge answers and the call is recorded as a briefing with `is_inbound = 1`. The call history tab already shows "Open call" badges for `is_open_call = 1`. Design owns the visual badge for inbound calls.
+
+**What to change in `app/dashboard/page.tsx`:**
+
+The briefing list already maps over entries to show labels. Find the section that renders the call-type badge (look for the `is_open_call` check that renders "Open call"). Add a parallel check:
+
+```tsx
+{briefing.is_inbound ? (
+  <span className="badge badge-inbound">Inbound</span>
+) : briefing.is_open_call ? (
+  <span className="badge badge-open">Open call</span>
+) : null}
+```
+
+If the briefing is both inbound AND open call (it will always be both), `is_inbound` wins — show "Inbound" not "Open call". An inbound call IS an open call so the label "Inbound" is more informative.
+
+**New CSS class in `app/globals.css`:**
+
+Add alongside the existing `badge-open` styles:
+
+```css
+.badge-inbound {
+  /* Warm amber — distinct from "Open call" indigo, visually distinct but related */
+  background: var(--edg-amber-08, rgba(245, 158, 11, 0.08));
+  color: var(--edg-amber, #f59e0b);
+  border: 1px solid var(--edg-amber-20, rgba(245, 158, 11, 0.2));
+}
+```
+
+Add amber tokens to the token block in `globals.css` if they don't exist yet:
+```css
+--edg-amber: #f59e0b;
+--edg-amber-20: rgba(245, 158, 11, 0.20);
+--edg-amber-08: rgba(245, 158, 11, 0.08);
+```
+
+**TypeScript type (`app/dashboard/page.tsx`):**
+
+The `Briefing` interface in the dashboard file probably has `is_open_call: number`. Add:
+```ts
+is_inbound?: number;
+```
+
+The `/api/briefing` (history) route needs to return this column — coordinate with Core to ensure `is_inbound` is included in the SELECT. If it's not in the API response yet, add `|| 0` as the safe fallback so the badge is simply absent.
+
+**No new API routes needed** — this is purely a presentation-layer change.
+
+---
+
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 20 — Language selector in /settings)
+
+> `git merge master` first. One ticket. **Do this before R19 or pillar work.**
+
+---
+
+### T1 — Language selector in `/settings` (SMALL — 45min)
+
+**Context:** Core R22 adds Cantonese language support. Design owns the settings UI: a simple language picker in `/settings` so users can switch between English and Cantonese.
+
+**Add a new "Language" section to `app/settings/page.tsx`** — place it between Morning ritual and Profile.
+
+**State:**
+```ts
+const [language, setLanguage] = useState('en');
+const [languageSaved, setLanguageSaved] = useState(false);
+```
+
+**On mount:** add `fetch('/api/settings/language').then(r => r.ok ? r.json() : null).then(d => { if (d) setLanguage(d.language); })` to the existing `Promise.all`.
+
+**Section content:**
+
+```
+Language
+[English]  [廣東話]
+```
+
+Two pill buttons (not a dropdown). Active one is highlighted with `--edg-accent` background; inactive is `--edg-fill-04`. On click: optimistic update → `PATCH /api/settings/language` with `{ language: 'en' | 'yue' }` → show "Saved ✓" flash (same pattern as gratitude mode).
+
+**Visual feel:** keep it minimal. The section header is "Language". No sublabel needed. The two pills are `rounded-full px-4 py-1.5 text-sm font-medium` side by side with a small gap.
+
+No new tests needed for UI. Claim `app/settings/page.tsx` in the Status Board before editing.
+
+---
+
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 19 — Daily quote settings UI)
+
+> `git merge master` first. One ticket. **Do this before R18 or pillar work.**
+
+---
+
+### T1 — Daily quote settings in `/settings` Morning ritual section (MEDIUM — 1h)
+
+**Context:** Core R21 adds a daily quote feature for gratitude calls — an optional short quote matched to the user's chosen theme (e.g. "rebuilding"). Design owns the settings UI: a toggle + theme text input inside the existing "Morning ritual" section of `app/settings/page.tsx`.
+
+**What to add inside the Morning ritual `<section>` (after the gratitude mode row):**
+
+Add a second row — only visible when `gratitudeMode` is on — with:
+- A toggle for "Daily quote" (same `.toggle` pill pattern as gratitude mode)
+- A text input for theme — shown only when `quoteEnabled` is true — label "Quote theme", placeholder "e.g. rebuilding, resilience, new beginnings", max 100 chars
+
+**State:**
+```ts
+const [quoteEnabled, setQuoteEnabled] = useState(false);
+const [quoteTheme, setQuoteTheme] = useState('');
+const [quoteSaved, setQuoteSaved] = useState(false);
+```
+
+**On mount:** `fetch('/api/settings/gratitude-quote')` → set `quoteEnabled` and `quoteTheme`.
+
+**On quote toggle change:**
+```ts
+async function handleQuoteToggle() {
+  const next = !quoteEnabled;
+  setQuoteEnabled(next);
+  fetch('/api/settings/gratitude-quote', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: next, theme: quoteTheme }),
+  }).then(r => {
+    if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
+    else setQuoteEnabled(!next);
+  }).catch(() => setQuoteEnabled(!next));
+}
+```
+
+**On theme blur (save on blur, not on every keystroke):**
+```ts
+function handleThemeBlur() {
+  if (!quoteEnabled) return;
+  fetch('/api/settings/gratitude-quote', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: quoteEnabled, theme: quoteTheme }),
+  }).then(r => {
+    if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
+  }).catch(() => {});
+}
+```
+
+**Visual feel:**
+- The daily quote row should feel subordinate to the gratitude mode row — slightly indented, slightly smaller text.
+- When `gratitudeMode` is off, hide the entire quote row (it only makes sense when gratitude mode is on).
+- Theme input: same `input` class from globals.css. Soft placeholder text. Minimal chrome.
+- Reuse the `quoteSaved` state for "Saved ✓" feedback (same green flash pattern as gratitude mode).
+
+Claim `app/settings/page.tsx` in the Status Board before editing.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Gratitude mode toggle in /settings)
 
 > `git merge master` first. One ticket. **Do this before R17 or pillar work.**
@@ -799,6 +956,8 @@ Ship small / green / full preflight (real exit code); log each below.
 - [ ] Mobile pass (users are often on the go / mid-call).
 
 ## Changelog
+- **2026-06-22** — **R20 T1 + R19 T1 — Language selector + daily quote settings.** R20: Language section added to `/settings` between Morning ritual and Profile — two `rounded-full` pill buttons (English / 廣東話), active pill uses `--edg-indigo` background, optimistic PATCH to `/api/settings/language`, "Saved ✓" flash. R19: Daily quote row added inside Morning ritual section — only visible when `gratitudeMode` is on; toggle (same `.toggle` pattern, slightly smaller), theme text `input` (only shown when `quoteEnabled`), save-on-blur PATCH to `/api/settings/gratitude-quote`. Both degrade gracefully when endpoints absent. tsc clean, build clean (1 pre-existing Core test failure in `lib/factPatterns.test.ts` confirmed in master).
+- **2026-06-22** — **R18 T1 — Gratitude mode toggle in /settings.** `app/globals.css`: `.toggle` pill class added (40×22px, hidden `<input>`, `.toggle-track` + `.toggle-thumb`, CSS-only checked state using `--edg-indigo` on and `--edg-border-15` off-state border, 0.2s ease transitions). `app/settings/page.tsx`: `gratitudeMode` boolean state, fetched from `GET /api/settings/gratitude-mode` on mount (alongside existing profile + accounts fetches, degrades gracefully when endpoint absent), `handleGratitudeToggle` with optimistic update + revert on PATCH failure. "Morning ritual" glass-card section inserted as first section on the page — `✦` glyph in `--text-faint`, "Gratitude mode" label, sublabel in `--text-muted`, pill toggle rightmost. 2072/2072 green, preflight clean.
 - **2026-06-21** — **R17 T1+T2 — Dashboard skeleton loading states + /settings account page.** T1: `.skeleton` shimmer class + `@keyframes shimmer` added to `globals.css` (uses `color-mix` on `--surface-card`). Dashboard: `dashboardLoading` state replaces full-screen spinner — skeleton layout shows sidebar next-call card (`skeleton h-10 w-32`), calendar line (`skeleton h-4 w-40`), recovery slot (`skeleton h-16 w-full rounded-lg`), and 3 main content rows (`skeleton h-4 w-48` + `skeleton h-3 w-64`). Briefings tab upgraded from `animate-pulse` inline styles to `.skeleton` rows. Settings link (`<a href="/settings">`) added to sidebar above Sign out. T2: `app/settings/page.tsx` — max-width 540px, 5 glass-card sections: Profile (name + email read-only), Morning call (`fmtTime` + Change link to `/onboarding?step=call-time`), Connections (Google + Whoop status with color dots), Your data (`/api/account/export` download link), Account (delete with two-step confirm dialog wired to `DELETE /api/account` with `{ confirm: "delete my account" }` body, redirects to `/login` on success). 2075/2075 green, preflight clean.
 - **2026-06-21** — **R16 T1+T2 — ScoreSparkline component + onboarding step indicator mobile polish.** T1: `components/ui/ScoreSparkline.tsx` — inline SVG sparkline, null = gap, color ≥70 → `--edg-success` / 45–69 → `--edg-warn` / <45 → `--edg-error`, area fill `opacity:0.12`, end-cap glow+fill dot on last non-null point. Exported from `index.ts`. Wired into `/score` page alongside `FocusScoreCard` (flex row, gap-6) — 7-day Edge Score history from `history[]` in `/api/scores`, padded to 7 nulls when history is short. Also: `NotificationHistoryPanel` repointed to `GET /api/notifications/history` (Security shipped route), type updated to `{ type, title, body, sentAt }` shape. T2: `StepIndicator` in `app/onboarding/page.tsx` — dots `clamp(10px, 2.5vw, 12px)`, active = `--edg-indigo` solid + glow ring, completed = `--edg-success` + inline SVG ✓ checkmark, inactive = `--edg-hairline`, connector = `--edg-hairline`, labels `hidden sm:block`. 2060/2060 green, preflight clean.
 - **2026-06-20** — **R15 T1+T2 — /score live score hero + NotificationHistoryPanel sidebar widget.** T1: `app/score/page.tsx` rewritten as `'use client'` page — `LiveScoreHero` fetches `GET /api/scores`, shows `FocusScoreCard` (score + tier + headline), aligned/total hours detail row, static breakdown weight bars (Recovery 40% green / Schedule 35% indigo / Follow-through 25% amber), and call streak footer. Returns `null` for unauthenticated users (401 → invisible). Marketing explainer content preserved below. T2: `components/ui/NotificationHistoryPanel.tsx` — collapsible "Recent alerts" glass-card, `aria-expanded`/`aria-controls`/`id` pairing, self-fetches `GET /api/notifications` (existing route — `/api/notifications/history` does not exist, noted here), shows up to 10 recent notifications with type icon + title + body + relative age (`fmtAge`). Wired into dashboard sidebar as `<NotificationHistoryPanel defaultCollapsed={true} />` before Sign out. Exported via `components/ui/index.ts`. Specced in DESIGN.md §15. 1956/1956 green, preflight clean.

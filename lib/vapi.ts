@@ -74,6 +74,96 @@ export function checkVapiSecret(provided: string | null): { ok: boolean; status:
     : { ok: true, status: 'mismatch-allowed' };
 }
 
+/**
+ * R20 — gratitude mode system prompt. A warm, unhurried 3-minute check-in that replaces the
+ * morning briefing when gratitude_mode is on. NO task/calendar/priority energy. Weather is
+ * today-only, one brief phrase. Optional daily quote (R21) opens before the greeting.
+ */
+export function buildGratitudeSystemPrompt(
+  firstName: string,
+  dateStr: string,
+  weatherStr: string | null,
+  quoteEnabled: boolean = false,
+  quoteTheme: string = 'resilience',
+  language: string = 'en',
+): string {
+  // R22 — Cantonese gratitude check-in (繁體中文 / 廣東話).
+  if (language === 'yue') {
+    const weatherInstructionYue = weatherStr
+      ? ` 今日天氣：「${weatherStr}」，用一句簡短講一講就夠，唔好講聽日或者長期預報。`
+      : '';
+    const quoteInstructionYue = quoteEnabled
+      ? `\n金句——喺講早晨之前，先講一句同「${quoteTheme}」有關嘅簡短金句，一句就夠，簡單講邊個講過。然後自然停一停，先至開始問候。\n`
+      : '';
+    return `你係 Edge。呢個係清晨感恩分享——唔係工作匯報。保持溫暖、輕鬆、唔好超過三分鐘。全程講廣東話。
+${quoteInstructionYue}
+開場：講「早晨 ${firstName}！今日係 ${dateStr}。${weatherInstructionYue}」然後真誠咁停一停，先至問：「喺今日開始之前——你今日有咩三件事值得感恩？」
+
+聆聽：每一件事，用一到兩句真誠回應點解呢件事有意義——唔好求其講「好嘢」或者「好靚」，要真係聽到佢講乜。語氣要短、要暖，唔好講大道理。
+
+三件都講完之後：call recordGratitude 工具，將三件事原文傳入。然後喺收尾之前，講一兩句點樣將呢啲嘢帶入今日，要貼地、要個人化。最後講：「去創造美好嘅一日，${firstName}。」掛線。
+
+重要：唔好轉去講工作、日曆或者優先事項。呢個係純粹嘅感恩分享。如果 ${firstName} 想講工作，溫柔咁帶返：「呢啲留返早上匯報先講——而家，仲有咩值得感恩？」`;
+  }
+
+  const weatherInstruction = weatherStr
+    ? ` Today's weather: "${weatherStr}". Mention it in ONE brief phrase only — e.g. "It's sunny and 68 degrees." Do NOT mention tomorrow, the forecast, or any extended weather.`
+    : '';
+  const quoteInstruction = quoteEnabled
+    ? `\nQUOTE — Before saying good morning, open with one short meaningful quote related to "${quoteTheme}". Keep it to one sentence; attribute it simply (e.g. the author's name, or "someone once said…"). Then pause naturally before moving to the greeting.\n`
+    : '';
+  return `You are Edge. This is a morning gratitude check-in — NOT a productivity briefing. Warm, personal, unhurried. No tasks, no calendar, no priorities.
+${quoteInstruction}
+OPENER: Say "Good morning ${firstName}! Today is ${dateStr}.${weatherInstruction}" Then ask warmly: "How are you doing this morning?"
+
+SMALL TALK: Actually listen to how they're doing. Respond genuinely in 1-2 sentences — acknowledge what they share, meet them where they are. If they're tired, honour that. If they're good, match the energy. Keep it natural, like catching up with someone you care about. After a brief exchange (1-2 back-and-forths), transition naturally — something like "I love that. Okay — what are three things you're grateful for today?"
+
+LISTENING: For each item, respond in 1-2 sentences that reflect on WHY it's meaningful — not a generic "wonderful" or "beautiful", but something genuine that shows you actually heard them. Examples of the right tone:
+- Freedom / travel / flexibility → "The freedom to work from anywhere — most people spend years chasing that."
+- Health → "Health is everything. Without it, nothing else works."
+- A simple joy (coffee, a person, nature) → "Coffee — that quiet ritual that makes the morning yours before anything else gets in."
+Keep each response short and warm. Never preachy or motivational-poster-y.
+
+After all three items: call the recordGratitude tool with the three items verbatim. Then — before closing — offer 1-2 sentences on how to carry those specific things into today. Make it personal and grounded, not generic. Then close: "Go make it a good one, ${firstName}." End the call.
+
+IMPORTANT: Do not pivot to tasks, calendar, or priorities. This is a pure gratitude check-in. If ${firstName} tries to talk work, gently redirect: "Let's save that for your morning briefing — for now, what else are you grateful for?"`;
+}
+
+/**
+ * R22 — Cantonese (廣東話 / 繁體中文) system prompt for the briefing + open call. Same tool-calling
+ * behaviour as the English prompt — only the language changes. Dynamic context (priorities, Whoop)
+ * is woven in when present. The model speaks Cantonese even if the user replies in English.
+ */
+export function buildCantoneseSystemPrompt(opts: {
+  firstName: string;
+  isOpenCall: boolean;
+  prioritiesText?: string;
+  whoopText?: string;
+}): string {
+  const { firstName, isOpenCall, prioritiesText, whoopText } = opts;
+  const prioritiesBlock = prioritiesText
+    ? `\n${firstName} 嘅本週重點（你已經知道，唔好再問佢重複）：\n${prioritiesText}\n`
+    : '';
+  const whoopBlock = whoopText ? `\n今日身體數據：${whoopText}\n` : '';
+  const modeLine = isOpenCall
+    ? `呢個係 ${firstName} 主動打嚟嘅傾偈電話——冇早上匯報。問下佢有咩想傾，幫佢搞掂任何嘢：日曆、重點，或者只係傾下偈。回覆保持簡短自然。`
+    : `你已經講完早上匯報。唔好重複。等 ${firstName} 回應。`;
+  return `你係 Edge（讀「Edge」），${firstName} 嘅 AI 私人助理。你講廣東話。如果有人問你係邊個，就答「我係 Edge，你嘅私人助理。」永遠叫用戶做 ${firstName}，唔好叫全名。
+
+全部對話都用廣東話（繁體中文），就算 ${firstName} 用英文同你講，你都用廣東話回應。保持自然、溫暖、簡潔——一兩句就夠，先肯定，再帶去行動。
+${modeLine}
+${prioritiesBlock}${whoopBlock}
+問候（GREETING）：開場要短，直接講最重要、最緊要嘅嘢——唔好講早餐、健身、通勤呢啲例行公事。
+
+日曆工具（CALENDAR TOOLS）：當 ${firstName} 叫你加、改、移、刪日曆活動時，即刻用對應嘅工具（createEvent / moveEvent / deleteEvent / editEvent 等等）。工具用法同英文版完全一樣——只係你講嘅語言變咗廣東話。完成之後，用廣東話簡單講番你做咗乜。
+
+果斷（BE DECISIVE）：有齊資料就直接做，唔好不斷問。只係問你真係唔知嘅嘢。做完之後再微調。
+
+唔好作大（NEVER INVENT FACTS）：只可以講數據真係有嘅嘢。唔知就話唔知，唔好作數字、活動或者事實。
+
+收尾要溫暖。呢個人喺度建立緊一啲嘢——記住提醒佢。`;
+}
+
 export async function initiateCall(
   phoneNumber: string,
   briefingContent: string,
@@ -88,6 +178,11 @@ export async function initiateCall(
   energyText: string = '',
   voicePref: 'daniel' | 'aria' = 'daniel',
   voiceSpeedPref: VoiceSpeedPref = 'default',
+  // R20 — when set, this call is a gratitude check-in: the gratitude prompt replaces the
+  // briefing system prompt and a calm ambient background sound is applied. Never set for briefings.
+  gratitudeSystemPrompt: string | null = null,
+  // R22 — call language: 'en' (default) or 'yue' (Cantonese → Whisper STT + Azure voice + 廣東話 prompt).
+  language: string = 'en',
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
@@ -269,6 +364,31 @@ ${isOpenCall ? 'Open call: keep replies short, let it flow. Wrap up only when th
 BEFORE ENDING: When winding down, say "I should let you go — want me to run through my action items real quick?" Wait for response. Yes → summarize. No/dismissive → "Perfect. Have a focused day." After 15 seconds of silence post-close, say "I\'ll take that as a sign you\'re ready to move. Have a focused day."
 Always end with warmth. This person is building something — remind them of that.`;
 
+  // R20 — gratitude mode swaps in the warm gratitude prompt + a calm ambient background.
+  // Briefings keep their normal prompt and 'off' background.
+  // Part F: Vapi's backgroundSound accepts either a preset string or an audio URL. Prefer the
+  // static ambient track Derrick drops in public/audio/ when an app URL is configured; otherwise
+  // fall back to the calmest preset ('office'). The file need not exist yet — we just wire the path.
+  // R22 — Cantonese: swap STT (Whisper auto-detect), TTS (Azure HK Cantonese), prompt + end phrases.
+  // Precedence: a gratitude prompt (already built in the caller's language) wins; else the Cantonese
+  // briefing prompt for 'yue'; else the English prompt.
+  const isCantonese = language === 'yue';
+  const cantoneseSystemPrompt = isCantonese
+    ? buildCantoneseSystemPrompt({ firstName, isOpenCall, prioritiesText, whoopText })
+    : null;
+  const effectiveSystemPrompt = gratitudeSystemPrompt || cantoneseSystemPrompt || systemPrompt;
+  const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
+  const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
+  const effectiveEndCallPhrases = isCantonese
+    ? ['再見', '拜拜', '多謝', 'goodbye']
+    : ['have a focused day', 'have a great day', 'goodbye'];
+
+  const gratitudeBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
+  // Both open calls and gratitude calls use the ambient track when available.
+  // Drop a file at public/audio/ambient-1.mp3 and both call types pick it up.
+  const ambientUrl = gratitudeBaseUrl ? `${gratitudeBaseUrl}/audio/ambient-1.mp3` : null;
+  const effectiveBackgroundSound = ambientUrl || 'office';
+
   const payload: Record<string, unknown> = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
     customer: {
@@ -280,11 +400,12 @@ Always end with warmth. This person is building something — remind them of tha
         url: resolveWebhookUrl(),
         ...(process.env.VAPI_SERVER_SECRET ? { secret: process.env.VAPI_SERVER_SECRET } : {}),
       },
-      voice: voiceConfig,
+      voice: effectiveVoice,
+      ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
-        systemPrompt,
+        systemPrompt: effectiveSystemPrompt,
         toolIds: [
           'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c',
           '4ac1508f-e8b1-46d4-aacf-2e7122f4594e',
@@ -307,8 +428,9 @@ Always end with warmth. This person is building something — remind them of tha
           'f0a3d589-f2f5-4316-a610-333f20ef52a1', // confirmFocus (created via API 2026-06-15)
           'a9b8eb4e-9431-46bd-a4c6-92dfb6772e10', // applyCalendarPlan (created via API 2026-06-15)
           '866ce6ca-5b06-4ea9-9458-2721905ca444', // colorEventsByEnergy (created via API 2026-06-15)
-          // '___searchMemory___', // searchMemory — create in Vapi dashboard: param query (string, required)
-          // '___confirmFact___', // confirmFact — create in Vapi dashboard: param topic (string, required)
+          '8fdd633b-00ba-4fed-85e6-22c12e015061', // searchMemory (created via API 2026-06-22)
+          '70b375a5-551a-44de-ab21-e9c2d6ce4b46', // confirmFact (created via API 2026-06-22)
+          '4a13b099-4255-409e-b274-f9c50848a5e1', // recordGratitude (created via API 2026-06-22)
           '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', // getWeather (R9 T4)
           '78c4d5f0-3968-40a6-8822-ea6140f5c3cb', // batchReschedule (R13 T1)
           'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', // skipRecurringOccurrence (R13 T2)
@@ -335,11 +457,11 @@ Always end with warmth. This person is building something — remind them of tha
       // detection) before Edge stops talking, and denoise the caller's audio — so a cough,
       // a door, or background chatter no longer cuts him off mid-sentence.
       backgroundDenoisingEnabled: true,
-      backgroundSound: 'off',
+      backgroundSound: effectiveBackgroundSound,
       stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
-      // Smart endpointing: start replying as soon as it detects the user is actually done,
-      // rather than always waiting a fixed gap — Edge feels noticeably snappier.
-      startSpeakingPlan: { waitSeconds: 0.4, smartEndpointingPlan: { provider: 'livekit' } },
+      // Natural conversational pause before Edge responds — feels less robotic.
+      // 0.4 was too fast (jumps on any micro-pause); 1.5 gives breathing room.
+      startSpeakingPlan: { waitSeconds: 1.5, smartEndpointingPlan: { provider: 'livekit' } },
       // Idle hold behaviour: reassure on silence instead of going dead and hanging up.
       // ~10s → first check-in · ~20s → second · ~30s → check-in asking if user wants to hold.
       // Then 40s total silence ends the call gracefully.
@@ -356,16 +478,19 @@ Always end with warmth. This person is building something — remind them of tha
       },
       silenceTimeoutSeconds: 40,
       maxDurationSeconds: 1800,
-      endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
+      endCallPhrases: effectiveEndCallPhrases,
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
-      voice: voiceConfig,
+      backgroundSound: effectiveBackgroundSound,
+      endCallPhrases: effectiveEndCallPhrases,
+      voice: effectiveVoice,
+      ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
-        systemPrompt,
+        systemPrompt: effectiveSystemPrompt,
         toolIds: [
           'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c',
           '4ac1508f-e8b1-46d4-aacf-2e7122f4594e',

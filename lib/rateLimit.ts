@@ -74,6 +74,8 @@ export const LIMITS = {
   vapiToolCall:         { limit: 60, windowMs: 60 * 1000 },        // 60 / MIN per user (R11 T2 — runaway Vapi tool-loop guard: cost + calendar-spam protection)
   pushSubscribe:        { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R14 — push subscribe/unsubscribe)
   callFeedback:         { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R17 T2 — post-call 1–5 star rating)
+  gratitudeMode:        { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R20 — gratitude-mode toggle)
+  languageSetting:      { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R22 — call-language toggle)
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

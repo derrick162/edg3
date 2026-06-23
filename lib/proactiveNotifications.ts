@@ -2,11 +2,12 @@
 // Each job SELF-THROTTLES (low-recovery 20h cooldown, priority-gap 7d) and self-gates, so the
 // sweep can safely call them on every 30-min tick. Best-effort throughout: external fetches are
 // wrapped, and a per-user failure never aborts the sweep.
-import { User, priorityQueries, notificationLogQueries, effectiveTimezone, getDb, backgroundJobFailureQueries } from './db';
+import { User, priorityQueries, notificationLogQueries, effectiveTimezone, getDb, backgroundJobFailureQueries, gratitudeQueries } from './db';
 import { sendPushToUser } from './push';
 import { getLatestRecovery } from './whoop';
 import { computeAlignment } from './alignment';
 import { getWeekEvents } from './calendar';
+import { todayInTz, nowParts } from './time';
 
 const LOW_RECOVERY_THRESHOLD = 40; // recovery ≤ 40% is "red" — worth a heads-up
 
@@ -84,5 +85,32 @@ export async function runProactiveNotifications(now: Date = new Date()): Promise
     catch (err) { backgroundJobFailureQueries.record('proactive_notifications', user.id, `low_recovery: ${err}`); }
     try { await maybePriorityGapAlert(user, now); }
     catch (err) { backgroundJobFailureQueries.record('proactive_notifications', user.id, `priority_gap: ${err}`); }
+  }
+}
+
+/**
+ * R20 T2 — auto-trigger the gratitude call when today's Whoop recovery score lands.
+ * For each gratitude-mode user: fire scheduleOpenCall (which branches to the gratitude prompt)
+ * once today's recovery is in, no gratitude entry exists yet today, and it's 5–11am local.
+ * Self-gated + best-effort: a per-user failure never aborts the sweep. Injectable `now` for tests.
+ */
+export async function runGratitudeAutoCall(now: Date = new Date()): Promise<void> {
+  const users = getDb().prepare('SELECT * FROM users WHERE gratitude_mode = 1').all() as User[];
+  if (!users.length) return;
+  // Dynamic import avoids a static cycle (scheduler imports this module).
+  const { scheduleOpenCall } = await import('./scheduler');
+  for (const user of users) {
+    try {
+      const tz = effectiveTimezone(user);
+      const today = todayInTz(tz, now);
+      const rec = await getLatestRecovery(user.id).catch(() => null);
+      if (!rec || rec.date !== today) continue;                 // score not in yet
+      if (gratitudeQueries.getByDate(user.id, today)) continue;  // already checked in today
+      const localHour = nowParts(tz, now).hour;
+      if (localHour < 5 || localHour >= 11) continue;            // morning window only
+      await scheduleOpenCall(user.id);
+    } catch (err) {
+      backgroundJobFailureQueries.record('gratitude_auto_call', user.id, String(err));
+    }
   }
 }
