@@ -30,6 +30,47 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 19 — Quota-error retry cascade fix)
+
+> `git merge master` first. One small ticket. **Do before R18 or pillar work.**
+
+---
+
+### T1 — Don't retry ElevenLabs quota-exceeded pipeline errors (HIGH — 30m)
+
+**Root cause (diagnosed 2026-06-22):** `MISSED_CALL_REASONS` in `app/api/vapi/webhook/route.ts` includes `'pipeline-error'`. When an ElevenLabs quota-exceeded error fires, Vapi sends `endedReason = 'pipeline-error-eleven-labs-quota-exceeded'`, which `.includes('pipeline-error')` matches. The webhook then sets `retry_after` and stamps `retry_attempted = 1` on the current briefing. The scheduler sees `retry_after`, creates a **new** briefing row (with `retry_attempted = 0` reset), and fires another call — which fails again — cascading forever until the quota is manually topped up. On 2026-06-22 this produced 14 consecutive failed briefings before Derrick caught it.
+
+**Fix — `app/api/vapi/webhook/route.ts`:**
+
+Add a quota-error guard before the retry branch:
+
+```ts
+// Quota errors won't self-heal with a retry — skip retry and mark missed.
+const isQuotaError = endedReason.toLowerCase().includes('quota');
+
+if (wasMissed && !briefing.retry_attempted && !isQuotaError) {
+  briefingQueries.update(briefing.id, { status: 'missed' });
+  db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
+  scheduleRetry(db, briefing.id, briefing.user_id);
+  return NextResponse.json({ received: true });
+}
+// Quota error or already retried — just mark missed, no retry.
+if (wasMissed) {
+  briefingQueries.update(briefing.id, { status: 'missed' });
+  if (isQuotaError) console.warn(`[webhook] Quota error — call ${call.id} marked missed, no retry scheduled`);
+  return NextResponse.json({ received: true });
+}
+```
+
+Replace the existing `if (wasMissed && !briefing.retry_attempted)` block with the above two blocks.
+
+**Tests:**
+- `pipeline-error-eleven-labs-quota-exceeded` → status = `missed`, no `retry_after` stamped
+- `pipeline-error` (non-quota) → status = `missed`, `retry_after` stamped (existing behavior preserved)
+- `no-answer` → still retries (unchanged)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Inbound call security)
 
 > `git merge master` first. One ticket. **Do before R17 or pillar work.**
