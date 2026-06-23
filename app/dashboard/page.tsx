@@ -2440,86 +2440,20 @@ export default function Dashboard() {
             ) : (
               // Default for connected AND unknown/loading state — never leave the user with no
               // way to reconnect/disconnect (a null status used to render nothing here).
-              <div className="px-2 py-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{calendarConnected ? 'Calendar connected' : 'Google connection'}</p>
-                </div>
-                {/* R18 T3 — which Google account is linked */}
-                {calendarConnected && calendarEmail && (
-                  <p className="text-xs mb-1 pl-3.5" style={{ color: 'var(--text-faint)' }}>{calendarEmail}</p>
-                )}
-                {/* R13 T2 — Gmail reading indicator (gmail.readonly powers the Focus score + fact learning) */}
-                {calendarConnected && (calendarHasGmailScope ? (
-                  <div className="flex items-center gap-2 mb-1 pl-3.5">
-                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Reading Gmail · <button onClick={switchGoogleAccount} style={{ color: 'var(--text-accent)' }}>Switch account →</button></p>
-                  </div>
-                ) : (
-                  <p className="text-xs mb-1 pl-3.5" style={{ color: 'var(--text-faint)' }}>
-                    Gmail reading inactive — <button onClick={switchGoogleAccount} style={{ color: 'var(--text-accent)' }}>re-authorize →</button>
-                  </p>
-                ))}
-                <div className="flex items-center gap-3 pl-3.5 mb-1">
-                  <button
-                    onClick={connectCalendar}
-                    className="text-xs"
-                    style={{ color: 'var(--text-faint)' }}
-                  >
-                    Reconnect
-                  </button>
-                  <button
-                    onClick={disconnectCalendar}
-                    disabled={disconnectingCalendar}
-                    className="text-xs"
-                    style={{ color: 'var(--edg-danger)' }}
-                  >
-                    {disconnectingCalendar ? 'Disconnecting…' : 'Disconnect'}
-                  </button>
-                </div>
-                <p className="pl-3.5" style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
-                  Reads your calendar and creates events during calls
+              <div className="px-2 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                <p className="font-medium mb-0.5" style={{ color: 'var(--text-body)' }}>
+                  ● Calendar connected
                 </p>
-              </div>
-            )}
-
-            {/* ── Gmail reading indicator ── */}
-            {calendarConnected && (
-              <div className="px-2 py-1">
-                {calendarHasGmailScope ? (
-                  <div className="flex items-center gap-2">
-                    <span style={{ color: 'var(--edg-success)', fontSize: 11 }}>●</span>
-                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                      Reading Gmail ·{' '}
-                      <button onClick={switchGoogleAccount} className="underline" style={{ color: 'var(--text-accent)' }}>
-                        Switch account →
-                      </button>
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                    Gmail reading inactive —{' '}
-                    <button
-                      onClick={switchGoogleAccount}
-                      className="underline"
-                      style={{ color: 'var(--text-accent)' }}
-                    >
-                      re-authorize →
-                    </button>
-                  </p>
+                {calendarEmail && (
+                  <p className="mb-1" style={{ color: 'var(--text-faint)' }}>{calendarEmail}</p>
                 )}
+                <a href="/settings" className="text-xs" style={{ color: 'var(--edg-accent)' }}>
+                  Manage in Settings →
+                </a>
               </div>
             )}
 
-            {whoopConnected === false ? (
-              <button
-                onClick={connectWhoop}
-                className="w-full text-xs py-2 text-left px-2 rounded"
-                style={{ color: 'var(--text-faint)' }}
-              >
-                ⚡ Connect Whoop
-              </button>
-            ) : whoopConnected ? (
+            {whoopConnected === true && (
               <div>
                 {whoopData && whoopData.recoveryScore !== null && whoopData.tier && (
                   <div className="mb-2">
@@ -2550,7 +2484,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-            ) : null}
+            )}
             {briefings.length === 0 && (
               <button
                 onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
@@ -2560,8 +2494,6 @@ export default function Dashboard() {
                 <span style={{ filter: 'hue-rotate(100deg) saturate(2)' }}>📞</span> Get intro call
               </button>
             )}
-            {/* Recent alerts history */}
-            <NotificationHistoryPanel defaultCollapsed={true} />
 
             <a
               href="/settings"
