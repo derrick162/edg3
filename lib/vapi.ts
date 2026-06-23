@@ -312,9 +312,10 @@ Always end with warmth. This person is building something — remind them of tha
   // fall back to the calmest preset ('office'). The file need not exist yet — we just wire the path.
   const effectiveSystemPrompt = gratitudeSystemPrompt || systemPrompt;
   const gratitudeBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
-  const effectiveBackgroundSound = gratitudeSystemPrompt
-    ? (gratitudeBaseUrl ? `${gratitudeBaseUrl}/audio/gratitude-ambient-1.mp3` : 'office')
-    : 'office';
+  // Both open calls and gratitude calls use the ambient track when available.
+  // Drop a file at public/audio/ambient-1.mp3 and both call types pick it up.
+  const ambientUrl = gratitudeBaseUrl ? `${gratitudeBaseUrl}/audio/ambient-1.mp3` : null;
+  const effectiveBackgroundSound = ambientUrl || 'office';
 
   const payload: Record<string, unknown> = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
