@@ -45,7 +45,7 @@ export default function SettingsPage() {
       setAccounts(accts);
       if (gm) setGratitudeMode(!!gm.gratitudeMode);
       if (lang) setLanguage(lang.language ?? 'en');
-      if (quote) { setQuoteEnabled(!!quote.enabled); setQuoteTheme(quote.theme ?? ''); }
+      if (quote) { setQuoteEnabled(!!quote.quoteEnabled); setQuoteTheme(quote.quoteTheme ?? 'resilience'); }
     }).catch(() => router.push('/login'))
       .finally(() => setLoading(false));
   }, [router]);
