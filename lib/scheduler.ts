@@ -685,7 +685,11 @@ export async function scheduleOpenCall(userId: number) {
     : `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
   let gratitudePrompt: string | null = null;
   if (isGratitude) {
-    const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
+    // Build TTS-safe date: "Monday June 22" — no commas (cause Azure pauses), no year (garbles).
+    const _d = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+    const _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dateStr = `${_days[_d.getDay()]} ${_months[_d.getMonth()]} ${_d.getDate()}`;
     // Today-only — no forecast/tomorrow. Returns null on failure so weather is silently omitted.
     const weatherStr = await getWeatherToday().catch(() => null);
     // R21 — optional themed daily quote at the top of the gratitude call. Degrade safely.
