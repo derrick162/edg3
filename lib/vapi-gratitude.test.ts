@@ -15,8 +15,8 @@ describe('buildGratitudeSystemPrompt (R20)', () => {
   it('omits the weather clause when weather is null', () => {
     const p = buildGratitudeSystemPrompt('Sam', 'Tuesday, June 23', null);
     expect(p).toContain('Today is Tuesday, June 23.');
-    // No trailing weather fragment — date is immediately followed by closing quote + pause instruction.
-    expect(p).toContain('Today is Tuesday, June 23." Then take');
+    // No trailing weather fragment — date immediately followed by closing quote.
+    expect(p).toContain('Today is Tuesday, June 23." Then ask warmly');
   });
 
   it('includes quote instruction when quoteEnabled=true', () => {

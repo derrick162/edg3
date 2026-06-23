@@ -700,8 +700,8 @@ export async function scheduleOpenCall(userId: number) {
     gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en');
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = isCantonese
-      ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今日有咩三件事值得感恩？`
-      : `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;
+      ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今朝點呀？`
+      : `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} How are you doing this morning?`;
   }
 
   const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
