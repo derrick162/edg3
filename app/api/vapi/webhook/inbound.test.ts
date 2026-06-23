@@ -15,6 +15,7 @@ vi.mock('@/lib/briefing', async () => await import('../../../../lib/briefing'));
 vi.mock('@/lib/actionSummary', async () => await import('../../../../lib/actionSummary'));
 vi.mock('@/lib/idempotency', async () => await import('../../../../lib/idempotency'));
 vi.mock('@/lib/retry', async () => await import('../../../../lib/retry'));
+vi.mock('@/lib/rateLimit', async () => await import('../../../../lib/rateLimit')); // R18 — inbound rate limit
 
 const { getDb } = await import('../../../../lib/db');
 const { POST } = await import('./route');
@@ -37,7 +38,8 @@ function req(message: unknown) {
 beforeEach(() => {
   const db = getDb();
   db.pragma('foreign_keys = OFF');
-  for (const t of ['briefings', 'users']) { try { db.prepare(`DELETE FROM ${t}`).run(); } catch { /* ignore */ } }
+  for (const t of ['briefings', 'users', 'inbound_call_attempts']) { try { db.prepare(`DELETE FROM ${t}`).run(); } catch { /* ignore */ } }
+  try { db.prepare("DELETE FROM audit_log WHERE action = 'inbound_call_attempt'").run(); } catch { /* ignore */ }
   db.pragma('foreign_keys = ON');
 });
 
@@ -67,5 +69,32 @@ describe('inbound assistant-request (R23 T2)', () => {
     await POST(req({ type: 'call-started', call: { id: 'vapi_call_xyz', customer: { number: '+15551234567' } } }));
     const b = getDb().prepare('SELECT * FROM briefings WHERE user_id = 1').get() as { vapi_call_id: string | null };
     expect(b.vapi_call_id).toBe('vapi_call_xyz');
+  });
+
+  // R18 — inbound rate limit + audit (Security layer over Core's handler)
+  it('rate-limited phone (6th call in 24h) → 8s polite decline + rate_limited audit', async () => {
+    makeUser(1, '+15551234567');
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) {
+      getDb().prepare('INSERT INTO inbound_call_attempts (phone_number, user_id, attempted_at) VALUES (?, 1, ?)').run('+15551234567', now - i * 1000);
+    }
+    const res = await POST(req({ type: 'assistant-request', call: { customer: { number: '+15551234567' } } }));
+    const json = await res.json();
+    expect(json.assistant.maxDurationSeconds).toBe(8);
+    expect(json.assistant.firstMessage).toContain('several calls recently');
+    // no new briefing for the blocked call
+    expect(getDb().prepare('SELECT COUNT(*) AS n FROM briefings WHERE user_id = 1').get()).toMatchObject({ n: 0 });
+    // audit row recorded as rate_limited
+    const audit = getDb().prepare("SELECT user_id, args_json FROM audit_log WHERE action = 'inbound_call_attempt'").get() as { user_id: number; args_json: string };
+    expect(JSON.parse(audit.args_json).outcome).toBe('rate_limited');
+  });
+
+  it('allowed registered call records an inbound_call_attempt + an allowed audit row', async () => {
+    makeUser(1, '+15551234567');
+    await POST(req({ type: 'assistant-request', call: { customer: { number: '+15551234567' } } }));
+    expect(getDb().prepare('SELECT COUNT(*) AS n FROM inbound_call_attempts WHERE phone_number = ?').get('+15551234567')).toMatchObject({ n: 1 });
+    const audit = getDb().prepare("SELECT user_id, args_json FROM audit_log WHERE action = 'inbound_call_attempt'").get() as { user_id: number; args_json: string };
+    expect(audit.user_id).toBe(1);
+    expect(JSON.parse(audit.args_json).outcome).toBe('allowed');
   });
 });

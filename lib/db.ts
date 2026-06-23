@@ -614,6 +614,16 @@ export function initSchema(db: Database.Database) {
       sent_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- R18 — inbound-call rate-limit ledger. One row per ALLOWED inbound attempt; used to cap
+    -- inbound calls per phone number (5 / rolling 24h). user_id is NULLABLE — an inbound call
+    -- can come from an unknown number with no matching account. attempted_at is unix ms.
+    CREATE TABLE IF NOT EXISTS inbound_call_attempts (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone_number TEXT NOT NULL,
+      user_id      INTEGER,
+      attempted_at INTEGER NOT NULL
+    );
+
     -- R20 — gratitude mode: one row per user per day, three free-text gratitude items.
     CREATE TABLE IF NOT EXISTS gratitude_entries (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -660,6 +670,7 @@ export function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_call_attempts_user ON call_attempts(user_id, attempted_at DESC);
     CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
     CREATE INDEX IF NOT EXISTS idx_notification_log_user_type ON notification_log(user_id, type, sent_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_inbound_call_attempts_phone ON inbound_call_attempts(phone_number, attempted_at DESC);
   `);
 
   applyMigrations(db);
@@ -1508,6 +1519,7 @@ export const USER_SCOPED_DELETE_ORDER: readonly string[] = [
   'push_subscriptions',
   'notification_log',
   'gratitude_entries',
+  'inbound_call_attempts',
 ];
 
 // ── Encrypted-column inventory (R11 T3 — key rotation authority) ─────────────────
@@ -1611,6 +1623,32 @@ export const auditLogQueries = {
         ).run();
       }
     } catch { /* never let audit faults disrupt tool calls */ }
+  },
+
+  /**
+   * R18 — audit an inbound call attempt (fires on every `assistant-request` webhook hit).
+   * action = 'inbound_call_attempt'; args_json carries phone/outcome/vapiCallId.
+   * NOTE: audit_log.user_id is NOT NULL, so an UNKNOWN caller (no matching account) is logged
+   * with the sentinel user_id 0 — it never surfaces in any real user's Activity tab (those query
+   * by their own id) but is queryable for security review (`action='inbound_call_attempt'`).
+   */
+  logInboundCallAttempt: (opts: {
+    phoneNumber: string;
+    userId: number | null;
+    outcome: 'allowed' | 'rate_limited' | 'unknown_caller';
+    vapiCallId?: string;
+  }): void => {
+    try {
+      getDb().prepare(`
+        INSERT INTO audit_log (user_id, action, args_json, result_text, ok)
+        VALUES (?, 'inbound_call_attempt', ?, ?, ?)
+      `).run(
+        opts.userId ?? 0,
+        JSON.stringify({ phoneNumber: opts.phoneNumber, outcome: opts.outcome, vapiCallId: opts.vapiCallId ?? null }),
+        `inbound call ${opts.outcome}`,
+        opts.outcome === 'allowed' ? 1 : 0,
+      );
+    } catch { /* best effort — never disrupt the call path */ }
   },
 
   /** Recent actions for a specific user (Core's "Recent Activity" feed). */
@@ -1807,6 +1845,25 @@ export const notificationLogQueries = {
     return getDb().prepare(
       'SELECT type, payload, sent_at FROM notification_log WHERE user_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?'
     ).all(userId, limit) as Array<{ type: string; payload: string | null; sent_at: string }>;
+  },
+};
+
+// R18 — inbound-call rate-limit ledger (phone-keyed; user_id nullable for unknown callers).
+export const inboundCallQueries = {
+  /** Count ALLOWED inbound attempts from this phone since `sinceMs` (unix ms). */
+  countSince: (phoneNumber: string, sinceMs: number): number => {
+    const row = getDb().prepare(
+      'SELECT COUNT(*) AS n FROM inbound_call_attempts WHERE phone_number = ? AND attempted_at > ?'
+    ).get(phoneNumber, sinceMs) as { n: number };
+    return row.n;
+  },
+  /** Record an allowed inbound attempt (counts toward the per-phone 24h cap). */
+  record: (phoneNumber: string, userId: number | null, atMs: number): void => {
+    try {
+      getDb().prepare(
+        'INSERT INTO inbound_call_attempts (phone_number, user_id, attempted_at) VALUES (?, ?, ?)'
+      ).run(phoneNumber, userId, atMs);
+    } catch { /* best effort */ }
   },
 };
 

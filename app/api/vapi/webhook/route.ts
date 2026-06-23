@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb, effectiveTimezone } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb, effectiveTimezone, auditLogQueries } from '@/lib/db';
+import { checkInboundCallRateLimit } from '@/lib/rateLimit';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, type VoiceSpeedPref } from '@/lib/vapi';
@@ -48,9 +49,28 @@ export async function POST(req: NextRequest) {
       if (!callerNumber) {
         return NextResponse.json({ error: 'No caller number provided.' });
       }
+
+      // R18 — anti-abuse: cap a phone at 5 inbound calls / rolling 24h. Checked BEFORE the user
+      // lookup so abuse from unregistered numbers is throttled too. Fails open on a DB fault.
+      const inboundRl = checkInboundCallRateLimit(callerNumber);
+      if (!inboundRl.allowed) {
+        auditLogQueries.logInboundCallAttempt({ phoneNumber: callerNumber, userId: null, outcome: 'rate_limited', vapiCallId: call?.id });
+        return NextResponse.json({
+          assistant: {
+            firstMessage: "You've made several calls recently. Please wait a bit before trying again.",
+            endCallMessage: 'Take care.',
+            maxDurationSeconds: 8,
+            model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt: 'You are Edge. Say the firstMessage and immediately end the call.' },
+            voice: VOICES.daniel,
+            endCallPhrases: ['goodbye'],
+          },
+        });
+      }
+
       const callerUser = userQueries.findByPhoneNumber(callerNumber);
       if (!callerUser) {
         // Unknown caller — polite 15-second decline.
+        auditLogQueries.logInboundCallAttempt({ phoneNumber: callerNumber, userId: null, outcome: 'unknown_caller', vapiCallId: call?.id });
         return NextResponse.json({
           assistant: {
             firstMessage: "Hi there! This number isn't registered with Edg3. Visit edg3.ai to get started.",
@@ -63,6 +83,7 @@ export async function POST(req: NextRequest) {
       }
 
       const userId = callerUser.id;
+      auditLogQueries.logInboundCallAttempt({ phoneNumber: callerNumber, userId, outcome: 'allowed', vapiCallId: call?.id });
       const timezone = effectiveTimezone(callerUser);
       const firstName = callerUser.name.split(' ')[0];
       const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
@@ -82,7 +103,7 @@ export async function POST(req: NextRequest) {
       const voiceSpeedPref: VoiceSpeedPref = (callerUser.voice_speed === 'slow' || callerUser.voice_speed === 'fast') ? callerUser.voice_speed : 'default';
       const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] };
       const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
-      const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'whisper-1' } : undefined;
+      const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
 
       const systemPrompt = buildOpenCallSystemPrompt({
         firstName, userName: callerUser.name, timezone,
