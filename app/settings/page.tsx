@@ -26,17 +26,26 @@ export default function SettingsPage() {
   const [deleteError, setDeleteError] = useState('');
   const [gratitudeMode, setGratitudeMode] = useState(false);
   const [gratitudeSaved, setGratitudeSaved] = useState(false);
+  const [language, setLanguage] = useState('en');
+  const [languageSaved, setLanguageSaved] = useState(false);
+  const [quoteEnabled, setQuoteEnabled] = useState(false);
+  const [quoteTheme, setQuoteTheme] = useState('');
+  const [quoteSaved, setQuoteSaved] = useState(false);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.ok ? r.json() : null),
       fetch('/api/auth/accounts').then(r => r.ok ? r.json() : null),
       fetch('/api/settings/gratitude-mode').then(r => r.ok ? r.json() : null),
-    ]).then(([me, accts, gm]) => {
+      fetch('/api/settings/language').then(r => r.ok ? r.json() : null),
+      fetch('/api/settings/gratitude-quote').then(r => r.ok ? r.json() : null),
+    ]).then(([me, accts, gm, lang, quote]) => {
       if (!me) { router.push('/login'); return; }
       setProfile(me);
       setAccounts(accts);
       if (gm) setGratitudeMode(!!gm.gratitudeMode);
+      if (lang) setLanguage(lang.language ?? 'en');
+      if (quote) { setQuoteEnabled(!!quote.enabled); setQuoteTheme(quote.theme ?? ''); }
     }).catch(() => router.push('/login'))
       .finally(() => setLoading(false));
   }, [router]);
@@ -52,6 +61,42 @@ export default function SettingsPage() {
       if (r.ok) { setGratitudeSaved(true); setTimeout(() => setGratitudeSaved(false), 2000); }
       else setGratitudeMode(!next);
     }).catch(() => setGratitudeMode(!next));
+  }
+
+  function handleLanguageChange(lang: 'en' | 'yue') {
+    setLanguage(lang);
+    fetch('/api/settings/language', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: lang }),
+    }).then(r => {
+      if (r.ok) { setLanguageSaved(true); setTimeout(() => setLanguageSaved(false), 2000); }
+      else setLanguage(lang === 'en' ? 'yue' : 'en');
+    }).catch(() => setLanguage(lang === 'en' ? 'yue' : 'en'));
+  }
+
+  function handleQuoteToggle() {
+    const next = !quoteEnabled;
+    setQuoteEnabled(next);
+    fetch('/api/settings/gratitude-quote', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next, theme: quoteTheme }),
+    }).then(r => {
+      if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
+      else setQuoteEnabled(!next);
+    }).catch(() => setQuoteEnabled(!next));
+  }
+
+  function handleThemeBlur() {
+    if (!quoteEnabled) return;
+    fetch('/api/settings/gratitude-quote', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: quoteEnabled, theme: quoteTheme }),
+    }).then(r => {
+      if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
+    }).catch(() => {});
   }
 
   async function handleDeleteAccount() {
@@ -132,6 +177,56 @@ export default function SettingsPage() {
                 </label>
                 {gratitudeSaved && <span className="text-xs" style={{ color: 'var(--edg-green, #4ade80)' }}>Saved ✓</span>}
               </div>
+            </div>
+            {gratitudeMode && (
+              <div className="pl-2 border-l-2 space-y-3" style={{ borderColor: 'var(--edg-hairline)' }}>
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Daily quote</p>
+                  <div className="flex flex-col items-end gap-1">
+                    <label className="toggle" style={{ width: 34, height: 18 }}>
+                      <input type="checkbox" checked={quoteEnabled} onChange={handleQuoteToggle} />
+                      <span className="toggle-track"><span className="toggle-thumb" /></span>
+                    </label>
+                    {quoteSaved && <span className="text-xs" style={{ color: 'var(--edg-green, #4ade80)' }}>Saved ✓</span>}
+                  </div>
+                </div>
+                {quoteEnabled && (
+                  <div>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-faint)' }}>Quote theme</p>
+                    <input
+                      className="input w-full text-xs"
+                      placeholder="e.g. rebuilding, resilience, new beginnings"
+                      maxLength={100}
+                      value={quoteTheme}
+                      onChange={e => setQuoteTheme(e.target.value)}
+                      onBlur={handleThemeBlur}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Language */}
+          <section className="glass-card p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="label-caps">Language</p>
+              {languageSaved && <span className="text-xs" style={{ color: 'var(--edg-green, #4ade80)' }}>Saved ✓</span>}
+            </div>
+            <div className="flex gap-2">
+              {(['en', 'yue'] as const).map(lang => (
+                <button
+                  key={lang}
+                  onClick={() => handleLanguageChange(lang)}
+                  className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
+                  style={{
+                    background: language === lang ? 'var(--edg-accent, var(--edg-indigo))' : 'var(--edg-fill-04)',
+                    color: language === lang ? '#fff' : 'var(--text-muted)',
+                  }}
+                >
+                  {lang === 'en' ? 'English' : '廣東話'}
+                </button>
+              ))}
             </div>
           </section>
 
