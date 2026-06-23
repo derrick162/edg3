@@ -314,7 +314,7 @@ Always end with warmth. This person is building something — remind them of tha
   const gratitudeBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
   const effectiveBackgroundSound = gratitudeSystemPrompt
     ? (gratitudeBaseUrl ? `${gratitudeBaseUrl}/audio/gratitude-ambient-1.mp3` : 'office')
-    : 'off';
+    : 'office';
 
   const payload: Record<string, unknown> = {
     phoneNumberId: VAPI_PHONE_NUMBER_ID,
