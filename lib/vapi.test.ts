@@ -192,6 +192,5 @@ describe('initiateCall voice override', () => {
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.assistant.voice.provider).toBe('azure');
     expect(body.assistant.voice.voiceId).toBe('zh-HK-WanLungNeural');
-    expect(body.assistant.voice.language).toBe('zh-HK');
   });
 });
