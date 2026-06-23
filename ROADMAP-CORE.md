@@ -31,6 +31,82 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 24 — Onboarding: account linking step)
+
+> `git merge master` first. One ticket. **Do before R23 or pillar work.**
+
+---
+
+### T1 — Add "Connect your tools" step to onboarding (HIGH — 2.5h)
+
+**Context:** Friends are starting to test Edg3. The current onboarding flow walks users through call time, priorities, and profile — but never asks them to connect Google Calendar, Gmail, or Whoop. New users land on the dashboard with nothing connected, and have to discover the sidebar controls themselves. This kills the first-call experience.
+
+**Add a new "Connect" step to `app/onboarding/**`:**
+
+Insert a new step — "Connect your tools" — after the existing call-time/priorities steps and before the final confirmation step. This step is the last gate before "You're ready."
+
+**Step layout:** Single column, max-width 420px, consistent with existing onboarding card style. Title: "Connect your tools". Subtitle: "Edge needs access to your calendar to book and move events during calls."
+
+**Section 1 — Google Calendar + Gmail (required):**
+```
+[Google icon]  Google Calendar + Gmail
+               Read your events, create and move them during calls.
+               Reads email threads so Edge can check if someone replied.
+
+               [Connect Google →]  or  [✓ Connected — {email}]
+```
+
+- Use the existing `connectCalendar()` function / OAuth flow (same as dashboard sidebar).
+- On success: show green checkmark + connected email address.
+- This section is required — the "Continue" button at the bottom stays disabled until Google is connected.
+
+**Section 2 — Whoop (optional):**
+```
+[Whoop icon]   Whoop   OPTIONAL
+               Lets Edge factor in your recovery score during calls.
+
+               [Connect Whoop →]  or  [✓ Connected]  or  [Skip for now]
+```
+
+- Use the existing `connectWhoop()` / OAuth flow.
+- Optional — "Skip for now" link below the button. Connecting Whoop is not required to proceed.
+- Show "✓ Connected" state if Whoop was already connected before reaching this step.
+
+**State to manage in this step:**
+```ts
+const [calendarConnected, setCalendarConnected] = useState(false);
+const [calendarEmail, setCalendarEmail] = useState<string | null>(null);
+const [whoopConnected, setWhoopConnected] = useState(false);
+const [connecting, setConnecting] = useState<'calendar' | 'whoop' | null>(null);
+```
+
+On mount: check `/api/calendar/status` and `/api/whoop/status` to pre-populate connected state (user may have already connected earlier).
+
+**OAuth redirect handling:**
+Both Google and Whoop OAuth flows redirect back to the app after authorization. The current dashboard handles the return redirect. Extend it to detect if the user is mid-onboarding (check `?onboarding=1` param or a session flag) and redirect back to the onboarding step instead of the dashboard. Add `?redirect=/onboarding?step=connect` to the OAuth initiation URLs when called from onboarding.
+
+**"Continue" button:**
+```tsx
+<button
+  onClick={goToNextStep}
+  disabled={!calendarConnected}
+  className="btn-primary w-full"
+>
+  {calendarConnected ? 'Continue →' : 'Connect Google to continue'}
+</button>
+```
+
+Disabled state copy explains WHY it's disabled. Once Google is connected, the button activates regardless of Whoop status.
+
+**Step indicator:** Update the `StepIndicator` (if it exists in onboarding) to include this new step. Place it as step N-1 (second to last, before the confirmation/completion screen).
+
+**Tests:**
+- Mount with no connections: Continue button disabled, Whoop shows optional badge
+- Mount with calendar pre-connected: Continue button enabled, shows green checkmark + email
+- Skip Whoop: proceeds to next step with `whoopConnected = false`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 23 — Rich open call memory + inbound calls)
 
 > `git merge master` first. Two tickets. **Do both before R22 or pillar work.**
