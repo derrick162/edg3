@@ -82,6 +82,8 @@
   --edg-danger-tint:    rgba(239, 68,  68,  0.15);
   --edg-danger-border:  rgba(239, 68,  68,  0.30);
   --edg-danger-80:      rgba(239, 68,  68,  0.80);
+  --edg-amber-20:            rgba(245, 158, 11,  0.20);
+  --edg-amber-08:            rgba(245, 158, 11,  0.08);
   /* amber-300 — brighter than --edg-warning; used for high-energy ENERGY_COLOR */
   --edg-amber-bright:        #fbbf24;
   --edg-amber-bright-tint:   rgba(251, 191, 36,  0.12);
@@ -506,6 +508,7 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
 .badge-pending { background: var(--edg-warning-tint); color: var(--edg-warning); }
 .badge-danger  { background: var(--edg-danger-tint);  color: var(--edg-danger);  }
 .badge-info    { background: var(--edg-accent-15);    color: var(--text-accent); }
+.badge-inbound { background: var(--edg-amber-08);     color: var(--edg-amber);   border: 1px solid var(--edg-amber-20); }
 
 /* ── Whoop recovery component classes ── */
 

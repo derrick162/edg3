@@ -1128,6 +1128,7 @@ interface Briefing {
   edge_promises: string | null;
   tool_actions: string | null;
   is_open_call?: number;
+  is_inbound?: number;
   created_at: string;
 }
 
@@ -2844,9 +2845,11 @@ export default function Dashboard() {
                             <p className="font-semibold text-sm">
                               {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
                             </p>
-                            {b.is_open_call === 1 && (
+                            {b.is_inbound === 1 ? (
+                              <span className="badge badge-inbound text-xs">Inbound</span>
+                            ) : b.is_open_call === 1 ? (
                               <span className="badge badge-info text-xs">Open call</span>
-                            )}
+                            ) : null}
                             {b.transcript && (
                               <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
                                 · {b.transcript.trim().split(/\s+/).length} words
