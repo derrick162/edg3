@@ -201,10 +201,22 @@ export async function POST(req: NextRequest) {
 
       console.log(`[webhook] Call ended. reason="${endedReason}" missed=${wasMissed} transcript_length=${transcript.length}`);
 
-      if (wasMissed && !briefing.retry_attempted) {
+      // Quota errors won't self-heal with a retry — skip retry and mark missed.
+      // (e.g. 'pipeline-error-eleven-labs-quota-exceeded' matches MISSED_CALL_REASONS
+      //  via 'pipeline-error', but retrying just burns more failed calls until the
+      //  quota is topped up — 14 consecutive failures on 2026-06-22.)
+      const isQuotaError = endedReason.toLowerCase().includes('quota');
+
+      if (wasMissed && !briefing.retry_attempted && !isQuotaError) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
         scheduleRetry(db, briefing.id, briefing.user_id);
+        return NextResponse.json({ received: true });
+      }
+      // Quota error or already retried — just mark missed, no retry.
+      if (wasMissed) {
+        briefingQueries.update(briefing.id, { status: 'missed' });
+        if (isQuotaError) console.warn(`[webhook] Quota error — call ${call.id} marked missed, no retry scheduled`);
         return NextResponse.json({ received: true });
       }
 
