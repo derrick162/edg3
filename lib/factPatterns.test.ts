@@ -33,7 +33,9 @@ import { runHistoricalPatternDetection, getHistoricalPatterns } from './factPatt
 import type { Fact } from './db';
 
 const WEEK_AGO = new Date(Date.parse('2026-06-09T10:00:00Z')).toISOString();
-const RECENT = new Date(Date.parse('2026-06-16T10:00:00Z')).toISOString();
+// Relative to now (1h ago) so the "run recently" throttle window (6.5 days) never expires as the
+// wall clock advances — a fixed date here was a date-bomb that started failing on 2026-06-22.
+const RECENT = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
 function makeFact(overrides: Partial<Fact> = {}): Fact {
   return {

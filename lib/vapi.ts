@@ -85,7 +85,27 @@ export function buildGratitudeSystemPrompt(
   weatherStr: string | null,
   quoteEnabled: boolean = false,
   quoteTheme: string = 'resilience',
+  language: string = 'en',
 ): string {
+  // R22 — Cantonese gratitude check-in (繁體中文 / 廣東話).
+  if (language === 'yue') {
+    const weatherInstructionYue = weatherStr
+      ? ` 今日天氣：「${weatherStr}」，用一句簡短講一講就夠，唔好講聽日或者長期預報。`
+      : '';
+    const quoteInstructionYue = quoteEnabled
+      ? `\n金句——喺講早晨之前，先講一句同「${quoteTheme}」有關嘅簡短金句，一句就夠，簡單講邊個講過。然後自然停一停，先至開始問候。\n`
+      : '';
+    return `你係 Edge。呢個係清晨感恩分享——唔係工作匯報。保持溫暖、輕鬆、唔好超過三分鐘。全程講廣東話。
+${quoteInstructionYue}
+開場：講「早晨 ${firstName}！今日係 ${dateStr}。${weatherInstructionYue}」然後真誠咁停一停，先至問：「喺今日開始之前——你今日有咩三件事值得感恩？」
+
+聆聽：每一件事，用一到兩句真誠回應點解呢件事有意義——唔好求其講「好嘢」或者「好靚」，要真係聽到佢講乜。語氣要短、要暖，唔好講大道理。
+
+三件都講完之後：call recordGratitude 工具，將三件事原文傳入。然後喺收尾之前，講一兩句點樣將呢啲嘢帶入今日，要貼地、要個人化。最後講：「去創造美好嘅一日，${firstName}。」掛線。
+
+重要：唔好轉去講工作、日曆或者優先事項。呢個係純粹嘅感恩分享。如果 ${firstName} 想講工作，溫柔咁帶返：「呢啲留返早上匯報先講——而家，仲有咩值得感恩？」`;
+  }
+
   const weatherInstruction = weatherStr
     ? ` Today's weather: "${weatherStr}". Mention it in ONE brief phrase only — e.g. "It's sunny and 68 degrees." Do NOT mention tomorrow, the forecast, or any extended weather.`
     : '';
@@ -107,6 +127,41 @@ After all three items: call the recordGratitude tool with the three items verbat
 IMPORTANT: Do not pivot to tasks, calendar, or priorities. This is a pure gratitude check-in. If ${firstName} tries to talk work, gently redirect: "Let's save that for your morning briefing — for now, what else are you grateful for?"`;
 }
 
+/**
+ * R22 — Cantonese (廣東話 / 繁體中文) system prompt for the briefing + open call. Same tool-calling
+ * behaviour as the English prompt — only the language changes. Dynamic context (priorities, Whoop)
+ * is woven in when present. The model speaks Cantonese even if the user replies in English.
+ */
+export function buildCantoneseSystemPrompt(opts: {
+  firstName: string;
+  isOpenCall: boolean;
+  prioritiesText?: string;
+  whoopText?: string;
+}): string {
+  const { firstName, isOpenCall, prioritiesText, whoopText } = opts;
+  const prioritiesBlock = prioritiesText
+    ? `\n${firstName} 嘅本週重點（你已經知道，唔好再問佢重複）：\n${prioritiesText}\n`
+    : '';
+  const whoopBlock = whoopText ? `\n今日身體數據：${whoopText}\n` : '';
+  const modeLine = isOpenCall
+    ? `呢個係 ${firstName} 主動打嚟嘅傾偈電話——冇早上匯報。問下佢有咩想傾，幫佢搞掂任何嘢：日曆、重點，或者只係傾下偈。回覆保持簡短自然。`
+    : `你已經講完早上匯報。唔好重複。等 ${firstName} 回應。`;
+  return `你係 Edge（讀「Edge」），${firstName} 嘅 AI 私人助理。你講廣東話。如果有人問你係邊個，就答「我係 Edge，你嘅私人助理。」永遠叫用戶做 ${firstName}，唔好叫全名。
+
+全部對話都用廣東話（繁體中文），就算 ${firstName} 用英文同你講，你都用廣東話回應。保持自然、溫暖、簡潔——一兩句就夠，先肯定，再帶去行動。
+${modeLine}
+${prioritiesBlock}${whoopBlock}
+問候（GREETING）：開場要短，直接講最重要、最緊要嘅嘢——唔好講早餐、健身、通勤呢啲例行公事。
+
+日曆工具（CALENDAR TOOLS）：當 ${firstName} 叫你加、改、移、刪日曆活動時，即刻用對應嘅工具（createEvent / moveEvent / deleteEvent / editEvent 等等）。工具用法同英文版完全一樣——只係你講嘅語言變咗廣東話。完成之後，用廣東話簡單講番你做咗乜。
+
+果斷（BE DECISIVE）：有齊資料就直接做，唔好不斷問。只係問你真係唔知嘅嘢。做完之後再微調。
+
+唔好作大（NEVER INVENT FACTS）：只可以講數據真係有嘅嘢。唔知就話唔知，唔好作數字、活動或者事實。
+
+收尾要溫暖。呢個人喺度建立緊一啲嘢——記住提醒佢。`;
+}
+
 export async function initiateCall(
   phoneNumber: string,
   briefingContent: string,
@@ -124,6 +179,8 @@ export async function initiateCall(
   // R20 — when set, this call is a gratitude check-in: the gratitude prompt replaces the
   // briefing system prompt and a calm ambient background sound is applied. Never set for briefings.
   gratitudeSystemPrompt: string | null = null,
+  // R22 — call language: 'en' (default) or 'yue' (Cantonese → Whisper STT + Azure voice + 廣東話 prompt).
+  language: string = 'en',
 ): Promise<VapiCallResponse> {
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
@@ -310,7 +367,20 @@ Always end with warmth. This person is building something — remind them of tha
   // Part F: Vapi's backgroundSound accepts either a preset string or an audio URL. Prefer the
   // static ambient track Derrick drops in public/audio/ when an app URL is configured; otherwise
   // fall back to the calmest preset ('office'). The file need not exist yet — we just wire the path.
-  const effectiveSystemPrompt = gratitudeSystemPrompt || systemPrompt;
+  // R22 — Cantonese: swap STT (Whisper auto-detect), TTS (Azure HK Cantonese), prompt + end phrases.
+  // Precedence: a gratitude prompt (already built in the caller's language) wins; else the Cantonese
+  // briefing prompt for 'yue'; else the English prompt.
+  const isCantonese = language === 'yue';
+  const cantoneseSystemPrompt = isCantonese
+    ? buildCantoneseSystemPrompt({ firstName, isOpenCall, prioritiesText, whoopText })
+    : null;
+  const effectiveSystemPrompt = gratitudeSystemPrompt || cantoneseSystemPrompt || systemPrompt;
+  const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
+  const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'whisper-1' } : undefined;
+  const effectiveEndCallPhrases = isCantonese
+    ? ['再見', '拜拜', '多謝', 'goodbye']
+    : ['have a focused day', 'have a great day', 'goodbye'];
+
   const gratitudeBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
   // Both open calls and gratitude calls use the ambient track when available.
   // Drop a file at public/audio/ambient-1.mp3 and both call types pick it up.
@@ -328,7 +398,8 @@ Always end with warmth. This person is building something — remind them of tha
         url: resolveWebhookUrl(),
         ...(process.env.VAPI_SERVER_SECRET ? { secret: process.env.VAPI_SERVER_SECRET } : {}),
       },
-      voice: voiceConfig,
+      voice: effectiveVoice,
+      transcriber: cantoneseTranscriber,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
@@ -405,13 +476,15 @@ Always end with warmth. This person is building something — remind them of tha
       },
       silenceTimeoutSeconds: 40,
       maxDurationSeconds: 1800,
-      endCallPhrases: ['have a focused day', 'have a great day', 'goodbye'],
+      endCallPhrases: effectiveEndCallPhrases,
     },
     assistantId: VAPI_ASSISTANT_ID || undefined,
     assistantOverrides: VAPI_ASSISTANT_ID ? {
       firstMessage: briefingContent,
       backgroundSound: effectiveBackgroundSound,
-      voice: voiceConfig,
+      endCallPhrases: effectiveEndCallPhrases,
+      voice: effectiveVoice,
+      transcriber: cantoneseTranscriber,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',

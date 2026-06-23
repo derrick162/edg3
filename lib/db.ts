@@ -715,6 +715,11 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE calendar_tokens ADD COLUMN email TEXT",
   // R20 — gratitude mode: when on, the open call becomes a warm 3-min gratitude check-in.
   "ALTER TABLE users ADD COLUMN gratitude_mode INTEGER NOT NULL DEFAULT 0",
+  // R22 — call language: 'en' (default) or 'yue' (Cantonese). Drives STT/TTS/prompt selection.
+  "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en'",
+  // R21 — optional daily quote at the top of the gratitude call, themed to what the user's going through.
+  "ALTER TABLE users ADD COLUMN gratitude_quote_enabled INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE users ADD COLUMN gratitude_quote_theme TEXT NOT NULL DEFAULT 'resilience'",
   // Multi-account: oauth_state.flow CHECK was ('calendar','whoop') — recreate to allow 'gmail'.
   // Rows are ephemeral CSRF tokens (minutes TTL), so dropping non-matching rows on rebuild is fine.
   "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
@@ -781,6 +786,29 @@ export const userQueries = {
   // R20 — toggle gratitude mode on/off (the open call becomes a gratitude check-in when on).
   setGratitudeMode: (id: number, enabled: boolean) => {
     return getDb().prepare("UPDATE users SET gratitude_mode = ? WHERE id = ?").run(enabled ? 1 : 0, id);
+  },
+  // R22 — set the user's call language ('en' | 'yue').
+  setLanguage: (id: number, language: string) => {
+    return getDb().prepare("UPDATE users SET language = ? WHERE id = ?").run(language, id);
+  },
+  // R22 — read the user's call language; defaults to 'en' when absent.
+  getLanguage: (id: number): string => {
+    const row = getDb().prepare("SELECT language FROM users WHERE id = ?").get(id) as { language?: string } | undefined;
+    return row?.language || 'en';
+  },
+  // R21 — set the gratitude-call daily-quote toggle + theme in one statement.
+  setGratitudeQuote: (id: number, enabled: boolean, theme: string) => {
+    return getDb().prepare("UPDATE users SET gratitude_quote_enabled = ?, gratitude_quote_theme = ? WHERE id = ?")
+      .run(enabled ? 1 : 0, theme, id);
+  },
+  // R21 — read the gratitude-call quote settings; defaults when the row/columns are absent.
+  getGratitudeQuote: (id: number): { quoteEnabled: boolean; quoteTheme: string } => {
+    const row = getDb().prepare("SELECT gratitude_quote_enabled, gratitude_quote_theme FROM users WHERE id = ?")
+      .get(id) as { gratitude_quote_enabled?: number; gratitude_quote_theme?: string } | undefined;
+    return {
+      quoteEnabled: !!row?.gratitude_quote_enabled,
+      quoteTheme: row?.gratitude_quote_theme || 'resilience',
+    };
   },
 };
 
@@ -1957,6 +1985,11 @@ export interface User {
   voice_speed?: 'slow' | 'default' | 'fast' | null;
   // R20 — when 1, the open call becomes a warm gratitude check-in instead of a briefing.
   gratitude_mode?: number;
+  // R22 — call language: 'en' (default) or 'yue' (Cantonese).
+  language?: string;
+  // R21 — optional themed daily quote at the top of the gratitude call.
+  gratitude_quote_enabled?: number;
+  gratitude_quote_theme?: string;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,

@@ -630,7 +630,7 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'));
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), null, user.language || 'en');
       console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -684,7 +684,12 @@ export async function scheduleOpenCall(userId: number) {
     const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
     // Today-only — no forecast/tomorrow. Returns null on failure so weather is silently omitted.
     const weatherStr = await getWeatherToday().catch(() => null);
-    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr);
+    // R21 — optional themed daily quote at the top of the gratitude call. Degrade safely.
+    const { quoteEnabled, quoteTheme } = (() => {
+      try { return userQueries.getGratitudeQuote(userId); }
+      catch { return { quoteEnabled: false, quoteTheme: 'resilience' }; }
+    })();
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en');
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;
   }
@@ -705,7 +710,7 @@ export async function scheduleOpenCall(userId: number) {
 
     try {
       console.log(isGratitude ? `[scheduler] Gratitude call for ${user.name}` : `[scheduler] Initiating OPEN call for ${user.name}...`);
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt);
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt, user.language || 'en');
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
