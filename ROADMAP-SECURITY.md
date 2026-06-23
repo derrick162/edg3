@@ -864,6 +864,9 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-22** — **R18 T1 COMPLETE — webhook wiring landed after Core R23 T2 merged (2113 green).** _(synced master first)_
+  - Layered the (additive) Security calls into Core's `assistant-request` handler (`app/api/vapi/webhook/route.ts`): `checkInboundCallRateLimit(callerNumber)` runs **right after the caller number is parsed, BEFORE the user lookup** (so unregistered abusers are throttled too) → on breach: `logInboundCallAttempt('rate_limited')` + return the **8s polite-decline** assistant config (no briefing created). Unknown caller → `logInboundCallAttempt('unknown_caller')` + existing 15s decline. Registered caller → `logInboundCallAttempt('allowed', userId, vapiCallId)` + the normal personalized open call.
+  - +2 integration tests in Core's `inbound.test.ts` (rate-limited → 8s decline + no briefing + rate_limited audit; allowed → attempt recorded + allowed audit). Added the `@/lib/rateLimit` mock mapping + inbound_call_attempts/audit cleanup to its `beforeEach`. 128 files / 2113 green. **R18 fully shipped.**
 - **2026-06-22** — **R18 T1 — inbound-call rate limit + audit (helpers shipped standalone; webhook wiring pending Core R23 T2) (2103 green).** _(synced master first)_
   - `inbound_call_attempts` table (`lib/db.ts`) — phone-keyed ledger, `user_id` **nullable** (unknown callers), `attempted_at` unix ms; index on `(phone_number, attempted_at)`; registered in `USER_SCOPED_DELETE_ORDER` (drift guard green). `inboundCallQueries.countSince/record`.
   - `checkInboundCallRateLimit(phoneNumber, userId?)` (`lib/rateLimit.ts`) — **5 inbound calls / rolling 24h per phone**; blocked → `{ allowed:false, reason:'rate_limit' }` (records nothing); pass → records the attempt → `{ allowed:true }`. Fails OPEN on DB fault.
