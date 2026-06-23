@@ -71,6 +71,8 @@ vi.mock('./db', () => ({
 
 vi.mock('./backup', () => ({ maybeDailyBackup: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./vapi', () => ({ initiateCall: h.initiateCall }));
+// R23 T1 — open calls inject rich memory via currentOpenCallMemoryText (own module).
+vi.mock('./callMemory', () => ({ currentOpenCallMemoryText: () => 'RICH_MEMORY_BLOCK' }));
 
 // Stub global fetch so pingVapiHealth returns true (healthy) by default in all tests.
 vi.stubGlobal('fetch', h.fetchMock);
@@ -271,13 +273,11 @@ describe('preference injection into initiateCall', () => {
     expect(preferencesArg.split('\n')).toHaveLength(10);
   });
 
-  it('also injects preferences on open calls', async () => {
-    (factQueries.getByCategory as ReturnType<typeof vi.fn>).mockReturnValue([
-      { id: 1, user_id: 1, category: 'preference', statement: 'Vegetarian restaurants only', entity: null, learned_at: '2026-06-13' },
-    ]);
+  it('R23 T1: injects rich open-call memory (not just preferences) on open calls', async () => {
     await scheduleOpenCall(1);
     const callArgs = (h.initiateCall as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[7]).toContain('Vegetarian restaurants only');
+    // 8th arg (index 7) = the memory text built by currentOpenCallMemoryText.
+    expect(callArgs[7]).toBe('RICH_MEMORY_BLOCK');
   });
 });
 
