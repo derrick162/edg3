@@ -105,13 +105,10 @@ export async function getWeatherToday(
     const highs = daily?.temperature_2m_max;
     const codes = daily?.weathercode;
     if (!highs?.length || !codes?.length) return null;
-    const precip = daily?.precipitation_probability_max ?? [];
     const todayHigh = Math.round(highs[0]);
     const todayDesc = wmoToDescription(codes[0]);
-    const todayRain = typeof precip[0] === 'number' ? precip[0] : null;
-    let out = `${city}: high ${todayHigh}°C, ${todayDesc}`;
-    if (todayRain != null && todayRain >= 10) out += `, ${todayRain}% chance of rain`;
-    return out;
+    // No °C symbol (causes TTS/STT artifacts) and no rain mention (not a positive gratitude opener)
+    return `${city}: high ${todayHigh} degrees, ${todayDesc}`;
   } catch {
     return null;
   }
