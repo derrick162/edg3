@@ -49,6 +49,95 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 22 — Briefings UX + score trust signals)
+
+> `git merge master` first. Two tickets. **Do both before R21 or pillar work.**
+
+---
+
+### T1 — Briefings tab: date grouping + transcript polish (HIGH — 2h)
+
+**Context:** The briefings list is now the most-used history surface — Derrick checks it after every call. It currently renders entries in reverse chronological order with no date context, making it hard to scan. The transcript display was just fixed (scrollable box, first AI bubble skipped) — now polish the section to feel finished.
+
+**Part A — Date group headers in the briefings list (`app/dashboard/page.tsx`)**
+
+Insert section dividers between briefing entries based on the `scheduled_for` field. Group logic:
+- "Today" — same calendar date as today (in user's timezone, use JS `new Date().toLocaleDateString`)
+- "Yesterday" — one day before today
+- Day name ("Monday", "Tuesday", …) — within the last 7 days
+- "Earlier" — everything older
+
+Implementation: before the `.map()` over `briefings`, compute a `groupedBriefings` structure that inserts a group-header marker between entries whenever the date group changes. Render the header as:
+
+```tsx
+<p className="text-xs font-semibold px-1 pt-2 pb-0.5 select-none"
+   style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>
+  {groupLabel}
+</p>
+```
+
+No border, no divider line — just the quiet label text above the first entry in each group.
+
+**Part B — Transcript section visual polish (`app/dashboard/page.tsx` + `app/globals.css`)**
+
+1. **Empty transcript placeholder:** when `b.status === 'completed'` but `!b.transcript` (call completed but transcript empty — rare but happens on very short calls), show inside the expanded section:
+   ```tsx
+   <p className="text-xs mt-4" style={{ color: 'var(--text-faint)' }}>
+     No transcript recorded for this call.
+   </p>
+   ```
+
+2. **Copy button prominence:** the Copy button is currently `color: var(--text-faint)` making it nearly invisible. Change to `color: var(--text-muted)` (one step up) with a hover state of `color: var(--text-body)`. No border change needed.
+
+3. **Transcript container refinement:** the `max-h-96 overflow-y-auto` box is functional but bare. Add:
+   - `scrollbar-thin` custom scrollbar (add `.scrollbar-thin` to `app/globals.css` using the `::-webkit-scrollbar` pattern — 4px width, `var(--card-border)` track, `var(--edg-accent-20)` thumb). Apply to the transcript container div.
+
+Claim `app/dashboard/page.tsx` in the Status Board before editing.
+
+---
+
+### T2 — Score trust signals: "as of last call" label + /score page header (MEDIUM — 1h)
+
+**Context:** Derrick saw his Edge score show 35 on a call and 54 on the dashboard. The reason: the briefing generates the score at call time; the dashboard recalculates it when the page loads. The numbers are legitimately different depending on calendar changes since the call. A single label removes all the mystery.
+
+**Part A — Dashboard Home tab score display (`app/dashboard/page.tsx`)**
+
+Find the section that renders the Edge score on the Home tab (look for `edgeScore` or `calendarFit` rendering). Directly below the score number, add:
+
+```tsx
+<p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
+  Recalculates on page load
+</p>
+```
+
+Keep it one line, no icon, no tooltip. The plain copy is enough — it instantly explains why the call score and dashboard score can differ.
+
+**Part B — `/score` page header copy (`app/score/page.tsx`)**
+
+The score page shows the Edge score with explanation. Add a subtitle line below the main score heading:
+
+```tsx
+<p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+  Reflects your calendar as of right now — recalculates each time you visit.
+</p>
+```
+
+This makes the page self-explanatory for any user who lands here after a call and sees a different number than Edge mentioned.
+
+**Part C — Score colour tokens in `app/globals.css`** (if not already present)
+
+Confirm (or add if missing) three semantic score-colour classes used by the score display:
+```css
+.score-high   { color: var(--edg-success); }
+.score-medium { color: var(--edg-warning); }
+.score-low    { color: var(--edg-error);   }
+```
+Score ≥ 70 = high (green), 40–69 = medium (amber), < 40 = low (red). Apply to wherever the raw score number is rendered if not already using these tokens.
+
+Claim `app/score/page.tsx` in the Status Board if editing it.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 21 — Inbound call badge in call history)
 
 > `git merge master` first. One ticket. **Do before R20 or pillar work.**
