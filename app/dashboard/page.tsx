@@ -2897,10 +2897,12 @@ export default function Dashboard() {
                                   {copiedTranscriptId === b.id ? 'Copied ✓' : 'Copy'}
                                 </button>
                               </div>
-                              <div className="space-y-2">
+                              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
                                 {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
                                   const isUser = line.startsWith('User:') || line.startsWith('Customer:');
                                   const isAI = line.startsWith('Assistant:') || line.startsWith('Bot:') || line.startsWith('AI:');
+                                  // For regular briefings, skip the first AI turn — it's already shown as BRIEFING CONTENT above.
+                                  if (b.is_open_call !== 1 && i === 0 && isAI) return null;
                                   const rawText = line.replace(/^(User:|Customer:|Assistant:|Bot:|AI:)\s*/, '');
                                   const text = correctName(rawText, (user?.name || '').split(' ')[0]);
                                   return (
