@@ -190,8 +190,8 @@ describe('initiateCall voice override', () => {
     // positional: …voicePref, voiceSpeed, gratitudeSystemPrompt(null), language('yue')
     await call('+15551234567', '早晨', 'Test User', false, 'Asia/Hong_Kong', false, '', '', '', '', '', 'daniel', 'default', null, 'yue');
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.assistant.transcriber.provider).toBe('openai');
     expect(body.assistant.voice.provider).toBe('azure');
     expect(body.assistant.voice.voiceId).toBe('zh-HK-WanLungNeural');
+    expect(body.assistant.voice.language).toBe('zh-HK');
   });
 });

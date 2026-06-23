@@ -375,8 +375,7 @@ Always end with warmth. This person is building something — remind them of tha
     ? buildCantoneseSystemPrompt({ firstName, isOpenCall, prioritiesText, whoopText })
     : null;
   const effectiveSystemPrompt = gratitudeSystemPrompt || cantoneseSystemPrompt || systemPrompt;
-  const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
-  const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'whisper-1' } : undefined;
+  const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural', language: 'zh-HK' } : voiceConfig;
   const effectiveEndCallPhrases = isCantonese
     ? ['再見', '拜拜', '多謝', 'goodbye']
     : ['have a focused day', 'have a great day', 'goodbye'];
@@ -399,7 +398,6 @@ Always end with warmth. This person is building something — remind them of tha
         ...(process.env.VAPI_SERVER_SECRET ? { secret: process.env.VAPI_SERVER_SECRET } : {}),
       },
       voice: effectiveVoice,
-      transcriber: cantoneseTranscriber,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
@@ -484,7 +482,6 @@ Always end with warmth. This person is building something — remind them of tha
       backgroundSound: effectiveBackgroundSound,
       endCallPhrases: effectiveEndCallPhrases,
       voice: effectiveVoice,
-      transcriber: cantoneseTranscriber,
       model: {
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
