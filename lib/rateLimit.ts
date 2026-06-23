@@ -21,7 +21,13 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { rateLimitQueries } from './db';
+import { rateLimitQueries, inboundCallQueries } from './db';
+
+// ── Inbound call rate limit (R18) ───────────────────────────────────────────────
+// Phone-keyed (not user/IP): cap inbound calls to the Twilio number at 5 per rolling 24h
+// per phone number, so a single caller can't rack up Vapi/LLM cost or abuse the line.
+const INBOUND_CALL_LIMIT = 5;
+const INBOUND_CALL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // ── Limits ────────────────────────────────────────────────────────────────────
 
@@ -147,4 +153,27 @@ export function rateLimitResponse(resetAt: number): NextResponse {
       },
     }
   );
+}
+
+/**
+ * R18 — inbound call rate limit. Caps a phone number at 5 inbound calls / rolling 24h.
+ *  - On breach: returns `{ allowed: false, reason: 'rate_limit' }` and records nothing.
+ *  - On pass:   records the attempt (so it counts toward the window) and returns `{ allowed: true }`.
+ * `userId` is stored with the recorded attempt when the caller maps to a known account (else null).
+ * Synchronous (better-sqlite3) — safe to `await` from the webhook either way. Fails OPEN on a DB
+ * fault so a transient error never blocks a legitimate inbound call.
+ */
+export function checkInboundCallRateLimit(
+  phoneNumber: string,
+  userId: number | null = null,
+): { allowed: boolean; reason?: string } {
+  try {
+    const count = inboundCallQueries.countSince(phoneNumber, Date.now() - INBOUND_CALL_WINDOW_MS);
+    if (count >= INBOUND_CALL_LIMIT) return { allowed: false, reason: 'rate_limit' };
+    inboundCallQueries.record(phoneNumber, userId, Date.now());
+    return { allowed: true };
+  } catch (err) {
+    console.error('[rateLimit] inbound-call check DB fault — failing open for', phoneNumber, err);
+    return { allowed: true };
+  }
 }
