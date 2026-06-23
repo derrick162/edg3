@@ -32,9 +32,9 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.theme !== 'string') {
     return NextResponse.json({ error: 'theme must be a string' }, { status: 400 });
   }
-  const theme = body.theme.trim();
-  if (!theme || theme.length > 100) {
-    return NextResponse.json({ error: 'theme must be 1–100 characters' }, { status: 400 });
+  const theme = body.theme.trim() || 'resilience';
+  if (theme.length > 100) {
+    return NextResponse.json({ error: 'theme must be 100 characters or fewer' }, { status: 400 });
   }
 
   userQueries.setGratitudeQuote(user.id, body.enabled, theme);

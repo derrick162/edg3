@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const [language, setLanguage] = useState('en');
   const [languageSaved, setLanguageSaved] = useState(false);
   const [quoteEnabled, setQuoteEnabled] = useState(false);
-  const [quoteTheme, setQuoteTheme] = useState('');
+  const [quoteTheme, setQuoteTheme] = useState('resilience');
   const [quoteSaved, setQuoteSaved] = useState(false);
 
   useEffect(() => {

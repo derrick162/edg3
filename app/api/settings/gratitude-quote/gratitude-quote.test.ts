@@ -41,15 +41,20 @@ describe('GET/PATCH /api/settings/gratitude-quote (R21)', () => {
     expect(await (await GET()).json()).toEqual({ quoteEnabled: true, quoteTheme: 'rebuilding' });
   });
 
-  it('PATCH accepts valid input and rejects bad enabled / empty / over-long theme', async () => {
+  it('PATCH accepts valid input and rejects bad enabled / over-long theme', async () => {
     const ok = await PATCH(patchReq({ enabled: true, theme: 'rebuilding' }));
     expect(ok.status).toBe(200);
     expect(h.setCalls).toEqual([[7, true, 'rebuilding']]);
 
     h.setCalls = [];
     expect((await PATCH(patchReq({ enabled: 'yes', theme: 'x' }))).status).toBe(400);     // bad enabled
-    expect((await PATCH(patchReq({ enabled: true, theme: '   ' }))).status).toBe(400);     // empty theme
     expect((await PATCH(patchReq({ enabled: true, theme: 'a'.repeat(101) }))).status).toBe(400); // too long
     expect(h.setCalls).toHaveLength(0);
+  });
+
+  it('PATCH whitespace theme defaults to resilience', async () => {
+    const res = await PATCH(patchReq({ enabled: true, theme: '   ' }));
+    expect(res.status).toBe(200);
+    expect(h.setCalls).toEqual([[7, true, 'resilience']]);
   });
 });
