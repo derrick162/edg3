@@ -2,7 +2,18 @@
 // every live call (not just 10 preference facts). Lives here (not in scheduler) so the Vapi webhook
 // can import it without dragging in scheduler's cron side-effects. Best-effort: each section degrades
 // to nothing on failure, never throwing.
-import { factQueries, openLoopQueries, briefingQueries } from './db';
+import { factQueries, openLoopQueries, briefingQueries, priorityQueries } from './db';
+import { getWeekOf } from './briefing';
+
+// R23 T2 — the user's current top priorities as prompt text. Lives here (not just in scheduler) so
+// the inbound-call webhook can build a personalized prompt without importing scheduler's cron module.
+export function currentPrioritiesText(userId: number): string {
+  try {
+    const prios = priorityQueries.getThisWeek(userId, getWeekOf());
+    const eff = prios.length ? prios : priorityQueries.getMostRecent(userId);
+    return eff.length ? eff.map((p, i) => `${i + 1}. ${p.text}`).join('\n') : '';
+  } catch { return ''; }
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   goal: 'Goals',

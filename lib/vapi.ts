@@ -45,9 +45,35 @@ export const VOICES = {
 export const SPEED_MAP = { slow: 0.75, default: 0.9, fast: 1.1 } as const;
 export type VoiceSpeedPref = keyof typeof SPEED_MAP;
 
+// R23 T2 — the live Vapi tool IDs available on calls. Exported so the inbound-call webhook can
+// build the same tool surface as outbound calls. Keep in sync with the inline arrays in initiateCall.
+export const CALENDAR_TOOL_IDS: string[] = [
+  'cb7f9a73-49eb-47a8-8124-b9d593a6ad2c', '4ac1508f-e8b1-46d4-aacf-2e7122f4594e',
+  '734cc748-4604-4637-80df-f760b1ca5707', 'c45c579a-3b6a-4587-a134-7e271d3bc601',
+  '22d56b6f-5e86-4eaf-bebf-4067d9db6005', '057c20b1-32ec-4956-b1cc-908b60238a90',
+  '782462ad-1c4d-4c82-ac3c-02576aeb2622', '44037a74-6488-4239-b354-a7075b673b6a',
+  '0eef82fe-1e92-4ea9-92bc-b12340152acc', '45fbcfe4-ac83-49ad-80a4-13c251cd4e68',
+  'a27bc95c-6f4e-4c16-808d-865ee80387d2', '07bcbdab-c4fb-4219-a468-4b7afd48fcfa',
+  '69615e5d-90e2-4f5f-8293-ad9c00e5794c', '2c1c3ad9-da5f-4c61-b6ba-b2233be72e29',
+  '9c8adb6d-af86-4628-8313-d28b23c4a255', '54e47823-ad97-4624-9fef-6f95e96b2ff1',
+  '5606ea96-ca20-4c9d-9ac8-0f4f113ddd6e', '8aac93a3-74bd-40ce-b08b-6a6843917209',
+  'f0a3d589-f2f5-4316-a610-333f20ef52a1', 'a9b8eb4e-9431-46bd-a4c6-92dfb6772e10',
+  '866ce6ca-5b06-4ea9-9458-2721905ca444', '8fdd633b-00ba-4fed-85e6-22c12e015061',
+  '70b375a5-551a-44de-ab21-e9c2d6ce4b46', '4a13b099-4255-409e-b274-f9c50848a5e1',
+  '0b6f96ed-abc2-44c9-817e-9d5ab0628c2d', '78c4d5f0-3968-40a6-8822-ea6140f5c3cb',
+  'b01eefbc-ebfa-493f-a4e6-2b74552ae07f', '8de65c6d-513b-4469-ace6-df7cdef165b1',
+  'd18135ff-645f-4fcd-b965-879f1887e2a2', '6b27b6ce-3158-410f-b4da-8de926ed3af2',
+  'ee225796-83c6-4aa0-a653-e70f09bb2a51', 'e25a8d73-dd1f-4751-9a7e-e2531c8e36e7',
+  '3287533b-7953-4569-91d6-e3b9a33d9201', '3b9c9db8-86fc-4db8-b308-c31c3e38b8d7',
+  '1ee5ce8b-01d5-4886-886e-c8d27414cd92', 'ad8beae1-2713-4195-8543-90744a8c6019',
+  'bea8ea33-79b0-4217-bf92-950e74a01504', '7e3a631b-34a8-4598-887c-996ef090f766',
+  '92708964-3c5b-412f-b9cb-eb2bd716645e', '6e1263e0-9155-413f-a1c7-231323cd5704',
+  '3bda7770-65db-4a5f-89cd-684c7111ba22', '29898c32-3823-4a29-820d-7cacbc4427d8',
+];
+
 // Public URL Vapi calls back when a call starts/ends. Must be a real https domain —
 // a localhost value (e.g. in local dev) is unreachable by Vapi, so fall back to prod.
-function resolveWebhookUrl(): string {
+export function resolveWebhookUrl(): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
   const base = appUrl.startsWith('https://') ? appUrl : 'https://www.edg3.ai';
   return `${base.replace(/\/$/, '')}/api/vapi/webhook`;
@@ -162,6 +188,50 @@ ${prioritiesBlock}${whoopBlock}
 唔好作大（NEVER INVENT FACTS）：只可以講數據真係有嘅嘢。唔知就話唔知，唔好作數字、活動或者事實。
 
 收尾要溫暖。呢個人喺度建立緊一啲嘢——記住提醒佢。`;
+}
+
+/**
+ * R23 T2 — open / inbound call system prompt. A focused open-call prompt (identity + rich MEMORY +
+ * priorities + calendar tools with TOOL CALL DISCIPLINE + decisiveness + honesty). Used by the
+ * inbound-call webhook so a caller gets a personalized Edge with full memory. `memoryText` is the
+ * rich block from currentOpenCallMemoryText. Supports English + Cantonese.
+ */
+export function buildOpenCallSystemPrompt(opts: {
+  firstName: string;
+  userName: string;
+  timezone: string;
+  prioritiesText: string;
+  memoryText: string;
+  language: string;
+}): string {
+  const { firstName, prioritiesText, memoryText, language } = opts;
+
+  if (language === 'yue') {
+    const memBlockYue = memoryText ? `\n你對 ${firstName} 嘅記憶（自然咁用，唔好逐句讀返出嚟）：\n${memoryText}\n` : '';
+    const prioBlockYue = prioritiesText ? `\n${firstName} 嘅重點：\n${prioritiesText}\n` : '';
+    return `你係 Edge，${firstName} 嘅 AI 私人助理，講廣東話。${firstName} 主動打嚟——問下佢有咩想傾，幫佢搞掂任何嘢：日曆、重點，或者只係傾下偈。全部用廣東話，簡短自然。
+${memBlockYue}${prioBlockYue}
+工具紀律（TOOL CALL DISCIPLINE）——做咗先可以講做咗：
+- 喺收到工具成功回應之前，絕對唔好講「搞掂」「加咗」「改咗」「刪咗」呢類完成嘅說話。
+- 正確次序：(1) call 工具，(2) 收到回應，(3) 根據回應先至口頭確認。
+- 如果你話「我幫你加」——就一定要喺同一個回合 call createEvent（或相關工具）先。
+- 工具出錯就老實講：「我試咗加但撞到問題——要唔要再試？」
+- 每一個日曆改動都一定要經工具，淨係講說話唔算數。
+日曆工具：${firstName} 叫你加／改／移／刪，即刻 call 對應工具，完成之後用廣東話講番做咗乜。果斷啲，唔好作大——唔知就話唔知。`;
+  }
+
+  const memBlock = memoryText ? `\nMEMORY — what you know about ${firstName} (use naturally, never read back verbatim):\n${memoryText}\n` : '';
+  const prioBlock = prioritiesText ? `\n${firstName}'S CURRENT PRIORITIES:\n${prioritiesText}\n` : '';
+  return `You are Edge (pronounced "Edge"), ${firstName}'s AI chief of staff. ${firstName} called you — find out what's on their mind and help with whatever comes up: calendar, priorities, or just talking it through. Keep replies short and natural. Always call them ${firstName}.
+${memBlock}${prioBlock}
+TOOL CALL DISCIPLINE — NEVER CLAIM AN ACTION IS DONE UNLESS YOU DID IT:
+- NEVER say "Done", "Locked in", "Created", "Added", "Moved", "Deleted", or any completion language before you have received a successful tool response.
+- The only correct sequence: (1) call the tool, (2) receive the response, (3) confirm verbally based on what came back.
+- If you say "I'll lock that in" or "let me add that" — you MUST call createEvent (or the relevant tool) in that same turn, BEFORE saying it's done.
+- If the tool returns an error, be honest: "I tried to add that but hit a snag — want me to try again?"
+- Every calendar change — creation, move, delete — must go through a tool call. Natural language alone is never the action.
+CALENDAR TOOLS: when ${firstName} asks to add/move/delete/edit an event, call the matching tool, then confirm based on the response.
+BE DECISIVE: act on a clear request, then report; ask only what you genuinely don't know. NEVER INVENT FACTS — only state what the data gives you; if you don't know, say so. End warm.`;
 }
 
 export async function initiateCall(
