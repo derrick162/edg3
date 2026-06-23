@@ -385,9 +385,9 @@ Always end with warmth. This person is building something — remind them of tha
       backgroundDenoisingEnabled: true,
       backgroundSound: effectiveBackgroundSound,
       stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
-      // Smart endpointing: start replying as soon as it detects the user is actually done,
-      // rather than always waiting a fixed gap — Edge feels noticeably snappier.
-      startSpeakingPlan: { waitSeconds: 0.4, smartEndpointingPlan: { provider: 'livekit' } },
+      // Natural conversational pause before Edge responds — feels less robotic.
+      // 0.4 was too fast (jumps on any micro-pause); 1.5 gives breathing room.
+      startSpeakingPlan: { waitSeconds: 1.5, smartEndpointingPlan: { provider: 'livekit' } },
       // Idle hold behaviour: reassure on silence instead of going dead and hanging up.
       // ~10s → first check-in · ~20s → second · ~30s → check-in asking if user wants to hold.
       // Then 40s total silence ends the call gracefully.
