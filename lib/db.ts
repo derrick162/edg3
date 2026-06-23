@@ -731,6 +731,8 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // R21 — optional daily quote at the top of the gratitude call, themed to what the user's going through.
   "ALTER TABLE users ADD COLUMN gratitude_quote_enabled INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE users ADD COLUMN gratitude_quote_theme TEXT NOT NULL DEFAULT 'resilience'",
+  // R23 T2 — inbound calls: flag briefings created by an inbound (caller-initiated) Vapi call.
+  "ALTER TABLE briefings ADD COLUMN is_inbound INTEGER NOT NULL DEFAULT 0",
   // Multi-account: oauth_state.flow CHECK was ('calendar','whoop') — recreate to allow 'gmail'.
   // Rows are ephemeral CSRF tokens (minutes TTL), so dropping non-matching rows on rebuild is fine.
   "ALTER TABLE oauth_state RENAME TO oauth_state_old; CREATE TABLE oauth_state (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), flow TEXT NOT NULL CHECK(flow IN ('calendar','whoop','gmail')), expires_at TEXT NOT NULL); INSERT OR IGNORE INTO oauth_state SELECT state, user_id, flow, expires_at FROM oauth_state_old WHERE flow IN ('calendar','whoop'); DROP TABLE oauth_state_old",
@@ -768,6 +770,10 @@ export const userQueries = {
   },
   findById: (id: number) => {
     return getDb().prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
+  },
+  // R23 T2 — resolve an inbound caller's number to a registered user (exact match).
+  findByPhoneNumber: (phone: string): User | undefined => {
+    return getDb().prepare('SELECT * FROM users WHERE phone_number = ?').get(phone) as User | undefined;
   },
   updateProfile: (id: number, profileSummary: string) => {
     return getDb().prepare('UPDATE users SET profile_summary = ? WHERE id = ?').run(profileSummary, id);
@@ -1043,6 +1049,10 @@ export const briefingQueries = {
   // R12 T4 — set the open-call flag (called by scheduleOpenCall right after insert).
   markOpenCall: (id: number): void => {
     getDb().prepare('UPDATE briefings SET is_open_call = 1 WHERE id = ?').run(id);
+  },
+  // R23 T2 — flag a briefing row as created by an inbound (caller-initiated) call.
+  markInbound: (id: number): void => {
+    getDb().prepare('UPDATE briefings SET is_inbound = 1 WHERE id = ?').run(id);
   },
   // Strictly owner-gated: the AND user_id = ? ensures a user can never read another's transcript.
   getByIdForUser: (id: number, userId: number) => {
@@ -2101,6 +2111,7 @@ export interface Briefing {
   tool_actions: string | null;
   error_code: string | null;
   is_open_call?: number;
+  is_inbound?: number;
   created_at: string;
 }
 

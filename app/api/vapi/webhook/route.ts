@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb } from '@/lib/db';
+import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb, effectiveTimezone } from '@/lib/db';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
-import { extractUserResponseFromTranscript, checkVapiSecret } from '@/lib/vapi';
+import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, type VoiceSpeedPref } from '@/lib/vapi';
+import { currentOpenCallMemoryText, currentPrioritiesText } from '@/lib/callMemory';
 import { claimWebhookEvent } from '@/lib/idempotency';
 import { withRetry } from '@/lib/retry';
 import Anthropic from '@anthropic-ai/sdk';
@@ -39,12 +40,103 @@ export async function POST(req: NextRequest) {
     const payload = body.message || body;
     const { type, call } = payload;
 
+    // R23 T2 — inbound call: Vapi fires `assistant-request` when someone dials our number.
+    // We respond synchronously with a personalized Edge assistant config (no call.id / briefing
+    // exists yet, so this MUST run before the by-call-id lookup below).
+    if (type === 'assistant-request') {
+      const callerNumber = payload.call?.customer?.number as string | undefined;
+      if (!callerNumber) {
+        return NextResponse.json({ error: 'No caller number provided.' });
+      }
+      const callerUser = userQueries.findByPhoneNumber(callerNumber);
+      if (!callerUser) {
+        // Unknown caller — polite 15-second decline.
+        return NextResponse.json({
+          assistant: {
+            firstMessage: "Hi there! This number isn't registered with Edg3. Visit edg3.ai to get started.",
+            endCallMessage: 'Take care.',
+            maxDurationSeconds: 15,
+            model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt: 'You are Edge. This caller is not registered. Say the firstMessage and end the call immediately.' },
+            voice: VOICES.daniel,
+          },
+        });
+      }
+
+      const userId = callerUser.id;
+      const timezone = effectiveTimezone(callerUser);
+      const firstName = callerUser.name.split(' ')[0];
+      const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
+      const greet = hour >= 18 ? 'evening' : hour >= 12 ? 'afternoon' : 'morning';
+      const opener = `Hey, it's Edge — ${firstName}, good ${greet}. How can I help?`;
+
+      // Track the inbound call in history (call-started later links the Vapi call.id).
+      const result = briefingQueries.create(userId, `[Inbound call] ${opener}`, new Date().toISOString()) as { lastInsertRowid: number };
+      const briefingId = result.lastInsertRowid;
+      try { briefingQueries.markOpenCall(briefingId); } catch { /* non-fatal */ }
+      try { briefingQueries.markInbound(briefingId); } catch { /* non-fatal */ }
+      briefingQueries.update(briefingId, { status: 'calling' });
+
+      const language = callerUser.language || 'en';
+      const isCantonese = language === 'yue';
+      const voicePref = callerUser.voice_preference === 'aria' ? 'aria' : 'daniel';
+      const voiceSpeedPref: VoiceSpeedPref = (callerUser.voice_speed === 'slow' || callerUser.voice_speed === 'fast') ? callerUser.voice_speed : 'default';
+      const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] };
+      const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
+      const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'whisper-1' } : undefined;
+
+      const systemPrompt = buildOpenCallSystemPrompt({
+        firstName, userName: callerUser.name, timezone,
+        prioritiesText: currentPrioritiesText(userId),
+        memoryText: currentOpenCallMemoryText(userId),
+        language,
+      });
+      const ambientBase = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+      const assistantConfig = {
+        firstMessage: isCantonese ? `${hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨'}，${firstName}！我係 Edge——有咩想傾？` : opener,
+        voice: effectiveVoice,
+        ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
+        backgroundSound: ambientBase ? `${ambientBase}/audio/ambient-1.mp3` : 'office',
+        model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt, toolIds: CALENDAR_TOOL_IDS },
+        endCallPhrases: isCantonese ? ['再見', '拜拜', '多謝', 'goodbye'] : ['have a focused day', 'have a great day', 'goodbye'],
+        silenceTimeoutSeconds: 40,
+        maxDurationSeconds: 1800,
+        messagePlan: {
+          idleMessages: ['Still here — take your time.', "No rush, I'm still on the line."],
+          idleTimeoutSeconds: 10,
+          idleMessageMaxSpokenCount: 2,
+        },
+      };
+
+      if (process.env.VAPI_ASSISTANT_ID) {
+        return NextResponse.json({ assistantId: process.env.VAPI_ASSISTANT_ID, assistantOverrides: assistantConfig });
+      }
+      return NextResponse.json({ assistant: { name: 'EDG3', server: { url: resolveWebhookUrl() }, ...assistantConfig } });
+    }
+
     if (!call?.id) return NextResponse.json({ received: true });
 
     // Find the briefing with this call ID
     const dbmod = await import('@/lib/db');
     const db = dbmod.getDb();
     const briefingRaw = db.prepare('SELECT * FROM briefings WHERE vapi_call_id = ?').get(call.id) as (Briefing & { retry_attempted: number }) | undefined;
+
+    // R23 T2 — inbound calls: the briefing was created at assistant-request without a call.id, so the
+    // lookup above misses it. On call-started, link this Vapi call.id to the caller's most recent
+    // unlinked inbound 'calling' briefing so the call-ended pipeline finds it normally afterward.
+    if (!briefingRaw && (type === 'call-started' || type === 'assistant.started')) {
+      const callerNum = call?.customer?.number as string | undefined;
+      const inboundUser = callerNum ? userQueries.findByPhoneNumber(callerNum) : undefined;
+      if (inboundUser) {
+        const pending = db.prepare(
+          "SELECT * FROM briefings WHERE user_id = ? AND is_inbound = 1 AND vapi_call_id IS NULL AND status = 'calling' ORDER BY id DESC LIMIT 1",
+        ).get(inboundUser.id) as Briefing | undefined;
+        if (pending) {
+          briefingQueries.update(pending.id, { vapi_call_id: call.id });
+          console.log(`[webhook] Linked inbound call ${call.id} to briefing ${pending.id} (user ${inboundUser.id})`);
+        }
+      }
+      return NextResponse.json({ received: true });
+    }
 
     if (!briefingRaw) return NextResponse.json({ received: true });
     // Decrypt PII columns at rest (transcript / user_response) before any use.
