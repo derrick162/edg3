@@ -242,6 +242,8 @@ describe('preference injection into initiateCall', () => {
       expect.any(Boolean), expect.any(String), false, expect.any(String), '', '', expect.any(String), expect.any(String),
       expect.stringMatching(/^(daniel|aria)$/),
       expect.stringMatching(/^(slow|default|fast)$/), // R12 T6 — voiceSpeedPref
+      null,                  // R20 — gratitudeSystemPrompt (null for briefings)
+      expect.any(String),    // R22 — language ('en' by default)
     );
   });
 
