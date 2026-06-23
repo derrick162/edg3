@@ -105,9 +105,12 @@ export async function getWeatherToday(
     const highs = daily?.temperature_2m_max;
     const codes = daily?.weathercode;
     if (!highs?.length || !codes?.length) return null;
+    const code = codes[0];
+    // Skip weather entirely for unpleasant conditions — not a positive opener.
+    // Rainy (61-67), drizzle (51-57), foggy (45-48), showers (80-82), snow (71-77, 85-86), thunder (95-99)
+    if ((code >= 45 && code <= 86) || code >= 95) return null;
     const todayHigh = Math.round(highs[0]);
-    const todayDesc = wmoToDescription(codes[0]);
-    // No °C symbol (causes TTS/STT artifacts) and no rain mention (not a positive gratitude opener)
+    const todayDesc = wmoToDescription(code);
     return `${city}: high ${todayHigh} degrees, ${todayDesc}`;
   } catch {
     return null;
