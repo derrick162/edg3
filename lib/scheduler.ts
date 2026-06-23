@@ -684,7 +684,12 @@ export async function scheduleOpenCall(userId: number) {
     const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
     // Today-only — no forecast/tomorrow. Returns null on failure so weather is silently omitted.
     const weatherStr = await getWeatherToday().catch(() => null);
-    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, false, 'resilience', user.language || 'en');
+    // R21 — optional themed daily quote at the top of the gratitude call. Degrade safely.
+    const { quoteEnabled, quoteTheme } = (() => {
+      try { return userQueries.getGratitudeQuote(userId); }
+      catch { return { quoteEnabled: false, quoteTheme: 'resilience' }; }
+    })();
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en');
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;
   }

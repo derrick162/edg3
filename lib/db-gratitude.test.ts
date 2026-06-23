@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 const ORIGINAL_DB_PATH = process.env.DB_PATH;
 process.env.DB_PATH = ':memory:';
 
-const { getDb, gratitudeQueries } = await import('./db');
+const { getDb, gratitudeQueries, userQueries } = await import('./db');
 
 afterAll(() => {
   if (ORIGINAL_DB_PATH === undefined) delete process.env.DB_PATH;
@@ -48,5 +48,16 @@ describe('gratitudeQueries (R20)', () => {
     expect(recent).toHaveLength(2);
     expect(recent[0].entry_date).toBe('2026-06-22');
     expect(recent[1].entry_date).toBe('2026-06-21');
+  });
+});
+
+describe('userQueries gratitude quote (R21)', () => {
+  it('returns defaults (off, resilience) for a new user', () => {
+    expect(userQueries.getGratitudeQuote(1)).toEqual({ quoteEnabled: false, quoteTheme: 'resilience' });
+  });
+
+  it('persists the enabled flag + theme after setGratitudeQuote', () => {
+    userQueries.setGratitudeQuote(1, true, 'rebuilding');
+    expect(userQueries.getGratitudeQuote(1)).toEqual({ quoteEnabled: true, quoteTheme: 'rebuilding' });
   });
 });
