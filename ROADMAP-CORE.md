@@ -31,6 +31,86 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 22 — Cantonese language support)
+
+> `git merge master` first. One ticket. **Do this before R21 or pillar work.**
+
+---
+
+### T1 — Cantonese language support (HIGH — 3h)
+
+**Context:** Derrick wants to onboard his dad who speaks Cantonese. When a user's language is set to `yue` (Cantonese), all calls — morning briefing, open call, gratitude — should use a Cantonese STT transcriber, a Cantonese TTS voice, and a Cantonese system prompt. English users are completely unaffected.
+
+**Part A — Schema (`lib/db.ts`):**
+
+Add to the `users` table (additive):
+```sql
+language TEXT NOT NULL DEFAULT 'en'
+```
+
+Add to `userQueries`:
+- `setLanguage(userId: number, language: string): void`
+- `getLanguage(userId: number): string` — reads `findById`, returns `'en'` when absent
+
+**Part B — API route (`app/api/settings/language/route.ts`):**
+
+- `GET` — session-gated, returns `{ language: string }`
+- `PATCH` — session-gated, rate-limited. Accepts `{ language: string }`. Validate: must be one of `['en', 'yue']`. Returns `{ ok: true }`.
+
+**Part C — Call stack (`lib/vapi.ts` + `lib/scheduler.ts`):**
+
+In `initiateCall`, add a `language: string = 'en'` parameter (after `voiceSpeed`). When `language === 'yue'`:
+
+**Transcriber override** — Cantonese STT via OpenAI Whisper (auto-detects language, handles Cantonese well):
+```ts
+transcriber: {
+  provider: 'openai',
+  model: 'whisper-1',
+}
+```
+Include in both the inline `assistant` block and `assistantOverrides`.
+
+**Voice override** — Azure Hong Kong Cantonese TTS (replaces the 11labs voices for this user):
+```ts
+voice: {
+  provider: 'azure',
+  voiceId: 'zh-HK-WanLungNeural',  // natural male Cantonese voice
+}
+```
+
+**System prompt** — when `language === 'yue'`, replace the English system prompt with a Cantonese one. Write it in Traditional Chinese (繁體中文). Core should write this prompt — here is the shape:
+
+```
+你是 Edge。你是一個有智慧、熱心的個人助理，說廣東話。你的任務是幫助用戶每天早上做好準備——了解他們的行程、提醒他們的重點，並在需要時幫他們管理日曆。
+
+保持對話自然、溫暖、簡潔。用廣東話回覆所有內容。如果用戶用英文說話，也用廣東話回應。
+```
+
+Then adapt the full briefing/open call prompt structure into Cantonese. Key sections to translate: GREETING, CALENDAR TOOLS guidance, BE DECISIVE, NEVER INVENT FACTS. Keep the tool-calling behavior identical — only the language of the prompt changes, not the logic.
+
+**`endCallPhrases`** for Cantonese — add `['再見', '拜拜', '多謝', 'goodbye']` when `language === 'yue'`.
+
+In `scheduleBriefingCall` and `scheduleOpenCall` in `lib/scheduler.ts`: read `user.language` and pass it to `initiateCall`.
+
+**Part D — Wire language into the gratitude prompt:**
+
+In `scheduleOpenCall`, when building a gratitude call for a Cantonese user, pass `language` to `buildGratitudeSystemPrompt` and write the gratitude prompt in Cantonese:
+
+```
+你是 Edge。這是一個清晨感恩分享——不是工作匯報。保持溫暖、輕鬆、不超過三分鐘。
+
+開場：「早晨 ${firstName}！今日係 ${dateStr}。${weatherInstruction} 喺今日開始之前——你今日有咩三件事值得感恩？」
+
+聆聽每一個分享，用一到兩句話真誠回應為什麼這件事有意義。三件都講完之後，call recordGratitude 工具。然後分享一兩句今日可以如何珍惜這些東西，最後說：「去創造美好的一天，${firstName}。」掛線。
+```
+
+**Tests:**
+- 2 tests for `getLanguage`/`setLanguage`: default `'en'`, persists `'yue'`
+- 2 tests for the API route: GET returns `{ language }`, PATCH rejects invalid language
+- 1 test: `initiateCall` called with `language='yue'` — payload includes `transcriber.provider === 'openai'` and `voice.provider === 'azure'`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 21 — Daily quote in gratitude call)
 
 > `git merge master` first. One ticket. **Do this before R20 or pillar work.**

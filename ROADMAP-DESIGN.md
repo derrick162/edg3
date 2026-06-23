@@ -49,6 +49,41 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 20 — Language selector in /settings)
+
+> `git merge master` first. One ticket. **Do this before R19 or pillar work.**
+
+---
+
+### T1 — Language selector in `/settings` (SMALL — 45min)
+
+**Context:** Core R22 adds Cantonese language support. Design owns the settings UI: a simple language picker in `/settings` so users can switch between English and Cantonese.
+
+**Add a new "Language" section to `app/settings/page.tsx`** — place it between Morning ritual and Profile.
+
+**State:**
+```ts
+const [language, setLanguage] = useState('en');
+const [languageSaved, setLanguageSaved] = useState(false);
+```
+
+**On mount:** add `fetch('/api/settings/language').then(r => r.ok ? r.json() : null).then(d => { if (d) setLanguage(d.language); })` to the existing `Promise.all`.
+
+**Section content:**
+
+```
+Language
+[English]  [廣東話]
+```
+
+Two pill buttons (not a dropdown). Active one is highlighted with `--edg-accent` background; inactive is `--edg-fill-04`. On click: optimistic update → `PATCH /api/settings/language` with `{ language: 'en' | 'yue' }` → show "Saved ✓" flash (same pattern as gratitude mode).
+
+**Visual feel:** keep it minimal. The section header is "Language". No sublabel needed. The two pills are `rounded-full px-4 py-1.5 text-sm font-medium` side by side with a small gap.
+
+No new tests needed for UI. Claim `app/settings/page.tsx` in the Status Board before editing.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 19 — Daily quote settings UI)
 
 > `git merge master` first. One ticket. **Do this before R18 or pillar work.**
