@@ -107,8 +107,8 @@ export async function getWeatherToday(
     if (!highs?.length || !codes?.length) return null;
     const code = codes[0];
     // Skip weather entirely for unpleasant conditions — not a positive opener.
-    // Rainy (61-67), drizzle (51-57), foggy (45-48), showers (80-82), snow (71-77, 85-86), thunder (95-99)
-    if ((code >= 45 && code <= 86) || code >= 95) return null;
+    // Overcast (3), foggy (45-48), drizzle (51-57), rainy (61-67), showers (80-82), snow (71-77, 85-86), thunder (95-99)
+    if (code === 3 || (code >= 45 && code <= 86) || code >= 95) return null;
     const todayHigh = Math.round(highs[0]);
     const todayDesc = wmoToDescription(code);
     return `${city}: high ${todayHigh} degrees, ${todayDesc}`;
