@@ -674,11 +674,15 @@ export async function scheduleOpenCall(userId: number) {
 
   const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
   const greet = hour >= 18 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning';
+  const greetYue = hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨';
   const firstName = user.name.split(' ')[0];
+  const isCantonese = (user.language || 'en') === 'yue';
 
   // R20 — gratitude mode: the open call becomes a warm 3-minute gratitude check-in.
   const isGratitude = user.gratitude_mode === 1;
-  let opener = `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
+  let opener = isCantonese
+    ? `${greetYue}，${firstName}！我係 Edge——有咩想傾？`
+    : `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
   let gratitudePrompt: string | null = null;
   if (isGratitude) {
     const dateStr = new Date().toLocaleDateString('en-US', { timeZone: timezone, weekday: 'long', month: 'long', day: 'numeric' });
@@ -691,7 +695,9 @@ export async function scheduleOpenCall(userId: number) {
     })();
     gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en');
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
-    opener = `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;
+    opener = isCantonese
+      ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今日有咩三件事值得感恩？`
+      : `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} What are three things you're grateful for today?`;
   }
 
   const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
