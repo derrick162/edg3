@@ -194,4 +194,15 @@ describe('initiateCall voice override', () => {
     expect(body.assistant.voice.provider).toBe('azure');
     expect(body.assistant.voice.voiceId).toBe('zh-HK-WanLungNeural');
   });
+
+  it('R23 hotfix: system prompt enforces TOOL CALL DISCIPLINE', async () => {
+    vi.stubEnv('VAPI_API_KEY', 'test-key');
+    vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
+    const spy = mockFetch({ id: 'call-disc', status: 'queued', phoneNumber: '+1' });
+    const { initiateCall: call } = await importFresh();
+    await call('+15551234567', 'Hello', 'Test User');
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.assistant.model.systemPrompt).toContain('TOOL CALL DISCIPLINE');
+  });
 });
