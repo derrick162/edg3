@@ -62,7 +62,7 @@ function classifyVapiError(err: unknown): CallError {
     );
   }
   return new CallError(
-    `Could not reach the calling service: ${String(err instanceof Error ? err.message : err).slice(0, 300)}`,
+    'Could not reach the calling service. Please try again in a moment.',
     'vapi_error',
   );
 }
