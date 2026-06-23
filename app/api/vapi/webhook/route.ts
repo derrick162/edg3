@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       const voiceSpeedPref: VoiceSpeedPref = (callerUser.voice_speed === 'slow' || callerUser.voice_speed === 'fast') ? callerUser.voice_speed : 'default';
       const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] };
       const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
-      const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'whisper-1' } : undefined;
+      const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
 
       const systemPrompt = buildOpenCallSystemPrompt({
         firstName, userName: callerUser.name, timezone,
