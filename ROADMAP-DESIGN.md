@@ -49,6 +49,63 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 21 — Inbound call badge in call history)
+
+> `git merge master` first. One ticket. **Do before R20 or pillar work.**
+
+---
+
+### T1 — "Inbound call" badge in call history (SMALL — 1h)
+
+**Context:** Core R23 T2 adds inbound call support — when Derrick calls the Twilio number, Edge answers and the call is recorded as a briefing with `is_inbound = 1`. The call history tab already shows "Open call" badges for `is_open_call = 1`. Design owns the visual badge for inbound calls.
+
+**What to change in `app/dashboard/page.tsx`:**
+
+The briefing list already maps over entries to show labels. Find the section that renders the call-type badge (look for the `is_open_call` check that renders "Open call"). Add a parallel check:
+
+```tsx
+{briefing.is_inbound ? (
+  <span className="badge badge-inbound">Inbound</span>
+) : briefing.is_open_call ? (
+  <span className="badge badge-open">Open call</span>
+) : null}
+```
+
+If the briefing is both inbound AND open call (it will always be both), `is_inbound` wins — show "Inbound" not "Open call". An inbound call IS an open call so the label "Inbound" is more informative.
+
+**New CSS class in `app/globals.css`:**
+
+Add alongside the existing `badge-open` styles:
+
+```css
+.badge-inbound {
+  /* Warm amber — distinct from "Open call" indigo, visually distinct but related */
+  background: var(--edg-amber-08, rgba(245, 158, 11, 0.08));
+  color: var(--edg-amber, #f59e0b);
+  border: 1px solid var(--edg-amber-20, rgba(245, 158, 11, 0.2));
+}
+```
+
+Add amber tokens to the token block in `globals.css` if they don't exist yet:
+```css
+--edg-amber: #f59e0b;
+--edg-amber-20: rgba(245, 158, 11, 0.20);
+--edg-amber-08: rgba(245, 158, 11, 0.08);
+```
+
+**TypeScript type (`app/dashboard/page.tsx`):**
+
+The `Briefing` interface in the dashboard file probably has `is_open_call: number`. Add:
+```ts
+is_inbound?: number;
+```
+
+The `/api/briefing` (history) route needs to return this column — coordinate with Core to ensure `is_inbound` is included in the SELECT. If it's not in the API response yet, add `|| 0` as the safe fallback so the badge is simply absent.
+
+**No new API routes needed** — this is purely a presentation-layer change.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 20 — Language selector in /settings)
 
 > `git merge master` first. One ticket. **Do this before R19 or pillar work.**

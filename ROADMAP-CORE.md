@@ -31,6 +31,205 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-22 (ROUND 23 — Rich open call memory + inbound calls)
+
+> `git merge master` first. Two tickets. **Do both before R22 or pillar work.**
+
+---
+
+### T1 — Enrich open call memory context (HIGH — 2h)
+
+**Problem:** Open calls get a thin slice of memory — 10 preference facts and priorities. Morning briefings get everything: all fact categories, open loops, recent call context, episode memory. This makes Edge feel forgetful on open calls. Fix it.
+
+**What to change:**
+
+Add a new helper in `lib/scheduler.ts`:
+
+```ts
+function currentOpenCallMemoryText(userId: number): string
+```
+
+This builds a rich multi-section memory block:
+
+**Section 1 — All facts** (not just preferences):
+```
+WHAT EDGE KNOWS ABOUT YOU:
+Goals: [goal facts]
+Projects: [project facts]
+People: [people facts]
+Preferences: [preference facts]
+Other: [general facts]
+```
+Use `factQueries.getAll(userId)` (or equivalent). Group by `category`. Cap at 5 per category to stay within token budget. Skip empty categories.
+
+**Section 2 — Open loops** (commitments from recent calls):
+```
+OPEN COMMITMENTS (things you said you'd do — bring these up naturally if relevant):
+• [commitment text] (from [date])
+```
+Use `openLoopQueries.getOpen(userId)` — filter to non-resolved, most recent 5, format each as a bullet. Return empty string if none.
+
+**Section 3 — Recent call context** (what was on your mind lately):
+```
+RECENT CALL NOTES (last 2 calls — use for continuity, don't repeat back verbatim):
+[call date]: [user_response or first 150 chars of transcript summary]
+```
+Fetch last 2 completed briefings via `briefingQueries.getRecentForUser(userId, 2)`. Use `user_response` if present, else first 150 chars of `content`. Skip calls with no content.
+
+Combine all three sections into one string. Pass it as `preferencesText` to `initiateCall` in `scheduleOpenCall`. The existing system prompt already renders `preferencesText` under `KNOWN PREFERENCES` — no change to `initiateCall` signature needed.
+
+**Tests:** 3–4 unit tests for `currentOpenCallMemoryText` — verifies all three sections appear, degrades cleanly when facts/loops/recent calls are absent.
+
+---
+
+### T2 — Inbound call handler (HIGH — 2.5h)
+
+**Goal:** When Derrick (or his dad) calls the Twilio number, Vapi fires an `assistant-request` webhook. We respond with a personalized Edge assistant config. The call starts immediately — no app needed.
+
+**Schema (`lib/db.ts`):**
+
+Add to SCHEMA_MIGRATIONS (additive):
+```sql
+ALTER TABLE briefings ADD COLUMN is_inbound INTEGER NOT NULL DEFAULT 0
+```
+
+Add to `userQueries`:
+```ts
+findByPhoneNumber: (phone: string): User | undefined =>
+  getDb().prepare("SELECT * FROM users WHERE phone_number = ?").get(phone) as User | undefined
+```
+
+Add to `briefingQueries`:
+```ts
+markInbound: (id: number) => getDb().prepare("UPDATE briefings SET is_inbound = 1 WHERE id = ?").run(id)
+```
+
+**Webhook handler (`app/api/vapi/webhook/route.ts`):**
+
+Add handling for `message.type === 'assistant-request'` **before** the existing `call-ended` branch. This is an additive edit to a Security-owned file — keep the diff minimal.
+
+```ts
+if (type === 'assistant-request') {
+  const callerNumber = payload.call?.customer?.number as string | undefined;
+  // Unknown caller — politely decline
+  if (!callerNumber) {
+    return NextResponse.json({ error: 'No caller number provided.' });
+  }
+  const callerUser = userQueries.findByPhoneNumber(callerNumber);
+  if (!callerUser) {
+    return NextResponse.json({
+      assistant: {
+        firstMessage: "Hi there! This number isn't registered with Edg3. Visit edg3.ai to get started.",
+        endCallMessage: "Take care.",
+        maxDurationSeconds: 15,
+        model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt: 'You are Edge. This caller is not registered. Say the firstMessage and end the call immediately.' },
+        voice: VOICES.daniel,
+      }
+    });
+  }
+
+  // Registered user — build a full open call
+  const userId = callerUser.id;
+  const timezone = effectiveTimezone(callerUser);
+  const firstName = callerUser.name.split(' ')[0];
+  const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
+  const greet = hour >= 18 ? 'evening' : hour >= 12 ? 'afternoon' : 'morning';
+  const opener = `Hey, it's Edge — ${firstName}, good ${greet}. How can I help?`;
+  const scheduledFor = new Date().toISOString();
+
+  // Create briefing record for tracking + call history
+  const result = briefingQueries.create(userId, `[Inbound call] ${opener}`, scheduledFor) as { lastInsertRowid: number };
+  const briefingId = result.lastInsertRowid;
+  try { briefingQueries.markOpenCall(briefingId); } catch {}
+  try { briefingQueries.markInbound(briefingId); } catch {}
+  briefingQueries.update(briefingId, { status: 'calling' });
+
+  // Build personalized assistant config — same pattern as initiateCall's assistantOverrides block
+  const language = callerUser.language || 'en';
+  const isCantonese = language === 'yue';
+  const voicePref = callerUser.voice_preference === 'aria' ? 'aria' : 'daniel';
+  const voiceSpeedPref: VoiceSpeedPref = (callerUser.voice_speed === 'slow' || callerUser.voice_speed === 'fast') ? callerUser.voice_speed : 'default';
+  const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] };
+  const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
+  const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
+
+  const memoryText = currentOpenCallMemoryText(userId);  // T1
+  const systemPrompt = buildOpenCallSystemPrompt({       // see below
+    firstName, userName: callerUser.name, timezone,
+    prioritiesText: currentPrioritiesText(userId),
+    memoryText,
+    language,
+  });
+
+  const assistantConfig = {
+    firstMessage: isCantonese ? `${hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨'}，${firstName}！我係 Edge——有咩想傾？` : opener,
+    voice: effectiveVoice,
+    ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
+    backgroundSound: (() => {
+      const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+      return base ? `${base}/audio/ambient-1.mp3` : 'office';
+    })(),
+    model: {
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      systemPrompt,
+      toolIds: [ /* same toolIds array as in initiateCall */ ],
+    },
+    endCallPhrases: isCantonese ? ['再見', '拜拜', '多謝', 'goodbye'] : ['have a focused day', 'have a great day', 'goodbye'],
+    silenceTimeoutSeconds: 40,
+    maxDurationSeconds: 1800,
+    messagePlan: {
+      idleMessages: ['Still here — take your time.', "No rush, I'm still on the line."],
+      idleTimeoutSeconds: 10,
+      idleMessageMaxSpokenCount: 2,
+    },
+  };
+
+  if (VAPI_ASSISTANT_ID) {
+    return NextResponse.json({ assistantId: VAPI_ASSISTANT_ID, assistantOverrides: assistantConfig });
+  }
+  return NextResponse.json({ assistant: { name: 'EDG3', server: { url: resolveWebhookUrl() }, ...assistantConfig } });
+}
+```
+
+**`buildOpenCallSystemPrompt` helper in `lib/vapi.ts`:**
+
+Extract the current open-call system prompt building out of `initiateCall` into a standalone exported function so both `initiateCall` and the webhook handler share the same logic. Signature:
+
+```ts
+export function buildOpenCallSystemPrompt(opts: {
+  firstName: string;
+  userName: string;
+  timezone: string;
+  prioritiesText: string;
+  memoryText: string;
+  language: string;
+}): string
+```
+
+The body is the same as the current `initiateCall` system prompt for open calls, with `preferencesText` replaced by `memoryText`. The KNOWN PREFERENCES section label should change to "MEMORY" for open calls to reflect the richer context.
+
+**`call-started` handler — link inbound call ID:**
+
+In the existing `call-started` / `assistant.started` branch, after finding the briefing, if it has no `vapi_call_id` yet and `payload.call?.id` is present, update it:
+```ts
+if (call.id && !briefing.vapi_call_id) {
+  briefingQueries.update(briefing.id, { vapi_call_id: call.id });
+}
+```
+For inbound calls the briefing is created in `assistant-request` so the call ID arrives later via `call-started`.
+
+**Imports needed in webhook route:** `VOICES`, `SPEED_MAP`, `VoiceSpeedPref`, `resolveWebhookUrl`, `buildOpenCallSystemPrompt` from `lib/vapi.ts`; `currentPrioritiesText`, `currentOpenCallMemoryText` from wherever they live (move to `lib/scheduler.ts` exports if needed, or inline in webhook).
+
+**⚠️ External step (Derrick):** In the Vapi dashboard, go to the phone number settings and set the inbound call handler to point to `https://www.edg3.ai/api/vapi/webhook`. This routes inbound calls through our `assistant-request` flow.
+
+**Tests:** 
+- `assistant-request` with unknown number → returns polite decline config
+- `assistant-request` with registered number → returns valid assistant config with correct firstName
+- `call-started` for inbound → updates briefing with call ID
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 22 — Cantonese language support)
 
 > `git merge master` first. One ticket. **Do this before R21 or pillar work.**
