@@ -33,7 +33,7 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 25 — Memory gap + gratitude call UX fixes)
 
-> `git merge master` first. Four tickets. **Do before R24 or pillar work.**
+> `git merge master` first. Seven tickets. **Do before R24 or pillar work.**
 
 ---
 
@@ -138,6 +138,86 @@ const events = weekEvents
 
 ---
 
+### T5 — "From your morning call" label wrong for open/gratitude calls (LOW — 30m)
+
+**Root cause (observed 2026-06-24):** `app/dashboard/page.tsx` line 1174 hardcodes `"from your morning call"` for any fact with a `source_briefing_id`:
+```ts
+if (f.source_briefing_id) {
+  return { text: `learned ${date} · from your morning call`, ... };
+}
+```
+Facts extracted from gratitude calls and open calls also have a `source_briefing_id`, so they're mislabeled. Derrick's gratitude call this morning extracted a "runway" goal and it showed as "from your morning call."
+
+**Fix — two parts:**
+
+**Part A — `app/api/memory/route.ts`:** When returning facts, join with the `briefings` table to include the source briefing's `is_open_call` flag. Add a `source_is_open_call` field to each fact that has a `source_briefing_id`:
+```ts
+const briefingFlagMap = new Map<number, number>();
+try {
+  const rows = getDb().prepare(
+    `SELECT id, is_open_call FROM briefings WHERE id IN (${facts.filter(f => f.source_briefing_id).map(() => '?').join(',') || 'NULL'})`
+  ).all(...facts.filter(f => f.source_briefing_id).map(f => f.source_briefing_id)) as Array<{ id: number; is_open_call: number }>;
+  rows.forEach(r => briefingFlagMap.set(r.id, r.is_open_call ?? 0));
+} catch { /* non-fatal */ }
+const factsWithHistory = facts.map(f => ({
+  ...f,
+  last_updated_at: latestTs[f.id] ?? null,
+  source_is_open_call: f.source_briefing_id ? (briefingFlagMap.get(f.source_briefing_id) ?? 0) : null,
+}));
+```
+
+**Part B — `app/dashboard/page.tsx`:** Update `provenance()` to use `source_is_open_call`:
+```ts
+if (f.source_briefing_id) {
+  const label = f.source_is_open_call ? 'from your open call' : 'from your morning call';
+  return { text: `learned ${date} · ${label}`, href: `/dashboard?briefing=${f.source_briefing_id}` };
+}
+```
+
+**Tests:**
+- Fact with `source_briefing_id` pointing to `is_open_call=1` briefing → label is "from your open call"
+- Fact with `source_briefing_id` pointing to `is_open_call=0` briefing → label is "from your morning call"
+- Fact with no `source_briefing_id` → unchanged behavior
+
+---
+
+### T6 — Goal re-learn shows today's date instead of original learned date (LOW — 20m)
+
+**Root cause (observed 2026-06-24):** In `lib/facts.ts` `consolidateFacts`, the `reduceGroup` function sorts candidates by recency (newest first) and keeps the newest as the winner. When a gratitude call re-extracts a known goal, the new fact wins (it's newest + longest statement), and its `learned_at = today` replaces the older date. The goal appears as "learned Jun 24" even though Edge has known it since Jun 11.
+
+**Fix — `lib/facts.ts` `reduceGroup`:** After picking the winner, update its `learned_at` to the OLDEST date in the group so the "when Edge first learned this" date is preserved:
+
+```ts
+function reduceGroup(group: typeof allFacts): void {
+  if (group.length <= 1) return;
+  const sorted = [...group].sort(...); // existing sort
+  const keep = sorted[0];
+  
+  // Preserve the oldest learned_at across all group members.
+  const oldestLearnedAt = group.reduce((oldest, f) =>
+    !oldest || (f.learned_at ?? '') < oldest ? (f.learned_at ?? '') : oldest,
+    group[0].learned_at ?? ''
+  );
+  if (oldestLearnedAt && oldestLearnedAt !== keep.learned_at) {
+    factQueries.updateLearnedAt(userId, keep.id, oldestLearnedAt); // add this helper
+  }
+  
+  // ... rest of existing code (bestStatement, delete dups)
+}
+```
+
+Add `updateLearnedAt(userId: number, id: number, learnedAt: string)` to `factQueries` in `lib/db.ts`:
+```ts
+updateLearnedAt: (userId: number, id: number, learnedAt: string) =>
+  getDb().prepare('UPDATE facts SET learned_at = ? WHERE id = ? AND user_id = ?').run(learnedAt, id, userId),
+```
+
+**Tests:**
+- Two goals merged (newer has longer statement, older has earlier date) → winner keeps older `learned_at`
+- Single fact in group → no change to `learned_at`
+
+---
+
 ### T4 — Nightly score computation: export `computeAndSaveScore` (MEDIUM — 45m)
 
 **Problem (observed 2026-06-24):** The Edg3 Score sparkline only gets a data point when the user loads the Priorities tab. Days the user doesn't open the dashboard (travel, busy days) show as gaps in the trend. Security can add a nightly cron to fill these in, but first needs a server-callable function from Core.
@@ -165,6 +245,59 @@ The existing `GET /api/scores` route can import and call this function (no behav
 - `computeAndSaveScore` with valid user → score row upserted in `calendar_scores`
 - `computeAndSaveScore` with Google failure → degrades silently, no throw
 - `computeAndSaveScore` with no events → no upsert (focusReliable = false)
+
+---
+
+### T7 — Edge Score rise: notification + animation don't fire on page load (LOW — 45m)
+
+**Root cause (observed 2026-06-24):** Two separate gaps when the score rises naturally (not via confirm-focus):
+
+**Gap A — Bell notification (`lib/notifications.ts`):** `maybeCreateScoreChangeNotif` computes `yesterday` (today − 1 day) and calls `calendarScoreQueries.getRange(userId, yesterday, yesterday)`. If yesterday has no score row (user didn't open dashboard), `rows.length = 0` → early return → no notification. Derrick's score rose from 54 → 60 but he got no bell because Mon/Tue had no saved scores to compare against.
+
+The `getRange` call should be replaced with `calendarScoreQueries.getPrior(userId, todayDate)` (already used in `app/api/scores/route.ts` line 184) so it finds the most recent prior score regardless of how many days have passed.
+
+**Gap B — Score-rise animation (`app/dashboard/page.tsx`):** The `edgeScoreCelebrating` state (line 1592) is only set to `true` inside `handleConfirmFocus` (line 1773). It never fires on page load when the score naturally improved. The CSS animation and styling already exist — they just need a trigger on load.
+
+**Fix — both in the same ticket:**
+
+**Part A — `lib/notifications.ts`:** Replace yesterday-specific lookup:
+```ts
+// Before:
+const yesterdayMs = new Date(todayDate + 'T12:00:00Z').getTime() - 86400000;
+const yesterday = new Date(yesterdayMs).toISOString().slice(0, 10);
+const rows = calendarScoreQueries.getRange(userId, yesterday, yesterday);
+if (!rows.length) return;
+const prevScore = rows[0].edge_score as number | null;
+if (prevScore === null || prevScore === undefined) return;
+
+// After:
+const prior = calendarScoreQueries.getPrior(userId, todayDate);
+if (!prior || prior.edge_score == null) return;
+const prevScore = prior.edge_score as number;
+```
+
+**Part B — `app/dashboard/page.tsx`:** Wire `edgeScoreCelebrating` to also fire on page load when the score rose since the last stored score. In `loadData` (or wherever `calendarFit` is set after the scores API call), after setting `calendarFit`:
+
+```ts
+// After setting calendarFit from the API response:
+if (calendarFitData?.edgeScore != null && calendarFitData?.priorScore != null) {
+  const delta = calendarFitData.edgeScore - calendarFitData.priorScore;
+  const lastSeen = parseInt(localStorage.getItem('edg3_last_seen_score') ?? '0', 10);
+  if (delta >= 3 && calendarFitData.edgeScore > lastSeen) {
+    setEdgeScoreCelebrating(true);
+    localStorage.setItem('edg3_last_seen_score', String(calendarFitData.edgeScore));
+  }
+}
+```
+
+Note: `priorScore` must be returned by `GET /api/scores` — check if it's already there. If not, add it: the route already computes `prior` at line 184; just include `priorScore: prior?.edge_score ?? null` in the response.
+
+**Tests:**
+- `maybeCreateScoreChangeNotif`: yesterday has no row, but prior row 3 days ago exists with lower score → notification created
+- `maybeCreateScoreChangeNotif`: no prior row at all → no notification (unchanged)
+- `maybeCreateScoreChangeNotif`: delta < 3 → no notification (unchanged)
+- Dashboard `loadData`: score rose ≥3 pts and higher than localStorage value → `edgeScoreCelebrating` set to true
+- Dashboard `loadData`: score rose < 3 pts → `edgeScoreCelebrating` stays false
 
 ---
 
