@@ -31,6 +31,37 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 25 — Briefing call memory gap + person facts)
+
+> `git merge master` first. One ticket. **Do before R24 or pillar work.**
+
+---
+
+### T1 — Briefing calls don't know about people not on today's calendar (HIGH — 1h)
+
+**Root cause (diagnosed 2026-06-23):** `buildBriefingContextPack` in `lib/briefing.ts` filters person facts to only those whose entity name appears in today's calendar event titles (`calendarPeopleFacts`). Non-calendar people facts (`nonPeopleFacts` excludes all `category === 'person'` facts entirely). So the pre-generated briefing content never mentions Patrick unless he's in a calendar event title.
+
+Additionally, `scheduleBriefingCall` in `lib/scheduler.ts` passes `currentPreferencesText(userId)` as the system prompt memory block — which only includes preference-category facts. It does NOT pass `currentOpenCallMemoryText`, so person facts have no injection path at all during briefing calls.
+
+**Fix — two parts:**
+
+**Part A — `lib/scheduler.ts` `scheduleBriefingCall`:** Replace `currentPreferencesText(userId)` with `currentOpenCallMemoryText(userId)` in the `initiateCall` call for briefing calls. This gives Edge the same rich memory block (all facts + open loops + recent call notes) as open calls, available as live context during the call.
+
+```ts
+// Before (line ~634):
+const call = await initiateCall(..., currentPreferencesText(userId), ...);
+// After:
+const call = await initiateCall(..., currentOpenCallMemoryText(userId), ...);
+```
+
+**Part B — `lib/briefing.ts` `buildBriefingContextPack`:** Include non-calendar person facts in the briefing context (not just calendar-matched ones). Cap at 5 non-calendar people to avoid noise. Inject as a compact block: "PEOPLE EDGE KNOWS ABOUT (not on today's calendar): Patrick: Derrick's friend, bachelor party in Vegas."
+
+**Tests:**
+- Person fact for someone NOT on today's calendar → appears in briefing context pack
+- `scheduleBriefingCall` passes `currentOpenCallMemoryText` (not `currentPreferencesText`)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-23 (ROUND 24 — Onboarding: account linking step)
 
 > `git merge master` first. One ticket. **Do before R23 or pillar work.**
