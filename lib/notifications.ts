@@ -7,13 +7,12 @@ import { notificationQueries, calendarScoreQueries } from './db';
 export function maybeCreateScoreChangeNotif(userId: number, todayScore: number, todayDate: string): void {
   try {
     if (notificationQueries.existsToday(userId, 'score_change')) return;
-    // Use noon-UTC anchor to safely compute yesterday's YYYY-MM-DD without DST concerns.
-    const yesterdayMs = new Date(todayDate + 'T12:00:00Z').getTime() - 86400000;
-    const yesterday = new Date(yesterdayMs).toISOString().slice(0, 10);
-    const rows = calendarScoreQueries.getRange(userId, yesterday, yesterday);
-    if (!rows.length) return;
-    const prevScore = rows[0].edge_score as number | null;
-    if (prevScore === null || prevScore === undefined) return;
+    // R19 T6: compare against the most recent PRIOR score, not strictly yesterday's. On days
+    // the user didn't load the dashboard there's no yesterday row, so a yesterday-only lookup
+    // returned nothing and the notification never fired (e.g. 54 → 60 over a gap went unnoticed).
+    const prior = calendarScoreQueries.getPrior(userId, todayDate);
+    if (!prior || prior.edge_score == null) return;
+    const prevScore = prior.edge_score as number;
     const delta = todayScore - prevScore;
     if (Math.abs(delta) < 3) return;
     const arrow = delta > 0 ? '▲' : '▼';
