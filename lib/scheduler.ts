@@ -260,6 +260,35 @@ export async function runNightlyContextPacks(now: Date = new Date()): Promise<vo
   console.log(`[scheduler] Nightly context packs: ${built}/${users.length} built${empty ? `, ${empty} empty (skipped)` : ''}`);
 }
 
+// ── Nightly Edg3 Score computation (R19 T5) ──────────────────────────────────
+// The score sparkline shows gaps on days the user never loads the dashboard (the score
+// is computed lazily on page load). This job computes + persists the score for every
+// active user nightly so the trend is continuous regardless of page loads.
+//
+// Dynamic import + runtime function-check so this stays a safe no-op until Core exports
+// computeAndSaveScore from lib/scores.ts (same activation pattern as runNightlyContextPacks).
+export async function runNightlyScores(): Promise<void> {
+  const ScoresLib = await import('./scores');
+  const computeAndSaveScore = (ScoresLib as Record<string, unknown>)['computeAndSaveScore'] as
+    ((userId: number) => Promise<void>) | undefined;
+
+  if (typeof computeAndSaveScore !== 'function') {
+    console.log('[scheduler] computeAndSaveScore not yet exported from lib/scores — skipping nightly score computation');
+    return;
+  }
+
+  const users = getDb().prepare('SELECT id FROM users WHERE onboarding_complete = 1').all() as Array<{ id: number }>;
+  let done = 0;
+  for (const { id } of users) {
+    try { await computeAndSaveScore(id); done++; }
+    catch (e) {
+      console.error(`[scheduler] nightly score failed for user ${id}:`, e);
+      backgroundJobFailureQueries.record('nightly_scores', id, String(e));
+    }
+  }
+  console.log(`[scheduler] Nightly scores: ${done}/${users.length} computed`);
+}
+
 // ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────
 // Decays confidence_score on active facts by category tier. Facts that decay below
 // 0.3 surface to Core's reconfirmation trigger during the next morning briefing.
@@ -427,6 +456,12 @@ export function startScheduler() {
   // cheap on the 23 non-matching hours. Activates once Core exports buildBriefingContextPack.
   cron.schedule('0 * * * *', () => {
     runNightlyContextPacks().catch(e => console.error('[scheduler] runNightlyContextPacks failed:', e));
+  });
+
+  // Daily at 11pm UTC: compute + persist the Edg3 Score for every active user so the
+  // sparkline trend stays continuous even on days they don't open the dashboard (R19 T5).
+  cron.schedule('0 23 * * *', () => {
+    runNightlyScores().catch(e => console.error('[scheduler] runNightlyScores failed:', e));
   });
 
   // Weekly at 4am UTC every Sunday: decay confidence scores on active facts.

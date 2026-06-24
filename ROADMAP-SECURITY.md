@@ -1093,6 +1093,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **R19 T5 COMPLETE — nightly Edg3 Score computation cron (2172 green). R19 fully done (T1–T6).** _(synced master first; Core's `lib/scores.ts` landed in this sync)_
+  - **Problem:** the score sparkline shows gaps on days the user never opens the dashboard (the score is computed lazily on page load).
+  - **Fix (`lib/scheduler.ts`):** new exported `runNightlyScores()` — loops all `onboarding_complete = 1` users and calls `computeAndSaveScore(id)` once each; per-user `try/catch` records `nightly_scores` job failures without aborting the sweep. Wired a `'0 23 * * *'` cron in `startScheduler()` alongside the existing nightly crons. Dynamic `import('./scores')` + runtime function-check so it degrades to a logged no-op if the export is ever absent (same activation pattern as `runNightlyContextPacks`).
+  - **Tests:** new `lib/nightly-scores.test.ts` — once-per-active-user; a mid-sweep failure is recorded + the sweep continues; empty user set is a clean no-op. 138 files / 2172 green.
+  - **R19 complete:** T1 (quota retry) + T2 (gratitude re-fire) + T3 (greeting boundary) + T4 (open-call briefing block) + T5 (nightly score cron) + T6 (score-change notif getPrior) all shipped.
 - **2026-06-24** — **R19 T6 COMPLETE — score-change notification uses `getPrior` not yesterday-only (2148 green).** _(synced master first)_
   - **Root cause:** `maybeCreateScoreChangeNotif` (`lib/notifications.ts`) looked up *only* yesterday's score via `getRange(userId, yesterday, yesterday)`. On a day with no yesterday row (user didn't load the dashboard) it returned 0 rows → early return → no notification, even though the score had genuinely moved (54 → 60 across a gap went unnoticed 2026-06-24).
   - **Fix:** swapped to `calendarScoreQueries.getPrior(userId, todayDate)` (strictly `date < today`, most-recent-first — already used by the scores route), so the baseline is the most recent saved score regardless of gaps. Delta threshold (≥3) and once-per-day dedup unchanged.
