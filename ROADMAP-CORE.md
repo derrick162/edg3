@@ -31,6 +31,47 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 28 — Explicit "please remember" not saving to memory)
+
+> `git merge master` first. Two tickets. **Do before R27 or pillar work.**
+
+---
+
+### T1 — "Please remember" requests not saved mid-call (HIGH — 45m)
+
+**Root cause (observed 2026-06-24):** Derrick said "please remember that Patrick grew up in Dallas, and we met in New York" on an open call — nothing was saved. The `rememberPreference` prompt guidance in `lib/vapi.ts` only tells Edge to call the tool when the user states a *self-preference* ("I prefer boutique gyms", "no meetings before 9"). It has no instruction covering explicit "please remember [fact about another person]" requests. Edge skipped the tool call, and post-call `extractAndUpsertFacts` didn't catch it either.
+
+**Fix A — `lib/vapi.ts`:** Add a REMEMBER REQUESTS block near the existing `rememberPreference` guidance:
+
+```
+REMEMBER REQUESTS: When ${firstName} says "please remember", "remember that", "make a note that", or any equivalent explicit memory request — call rememberPreference IMMEDIATELY, no exceptions. Do not wait for post-call extraction.
+- For facts about the user → category: 'preference' or 'fact'
+- For facts about another person → category: 'person', topic: that person's name (e.g. topic: 'Patrick')
+- Confirm in one short sentence: "Got it — I'll remember that Patrick grew up in Dallas."
+This rule applies on ALL call types: open calls, morning briefings, and gratitude calls.
+```
+
+**Fix B — `lib/facts.ts` `extractAndUpsertFacts` Haiku prompt:** Add a priority rule — any statement preceded by "please remember", "remember that", or "make a note" must be treated as a mandatory high-confidence fact. Extract it regardless of inferred durability. These are explicit user instructions, not model inferences.
+
+**Tests:**
+- Prompt contains REMEMBER REQUESTS block with `rememberPreference` call instruction
+- Prompt rule applies for person facts (category: 'person') and self-facts (category: 'fact')  
+- `extractAndUpsertFacts`: transcript with "please remember that Patrick grew up in Dallas" → person fact extracted for Patrick
+- `extractAndUpsertFacts`: transcript with "remember that I prefer morning calls" → preference fact extracted
+- `extractAndUpsertFacts`: no "please remember" phrase → normal extraction behavior unchanged
+
+---
+
+### T2 — Verify "please remember" works on gratitude calls too (LOW — 15m)
+
+Check that `buildGratitudeSystemPrompt` either includes the REMEMBER REQUESTS block from T1 or explicitly references it. The gratitude system prompt is separate from the main open-call prompt — confirm the rule is present in both.
+
+If missing, add the same REMEMBER REQUESTS block to the gratitude prompt.
+
+**Test:** `buildGratitudeSystemPrompt` output contains "please remember" / "remember that" handling instruction.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 26 — Fact edit/delete + extraction misattribution fix)
 
 > `git merge master` first. Two tickets. **Do before R25 or pillar work.**
