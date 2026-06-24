@@ -2249,6 +2249,10 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R25 T2 SHIPPED (2128 green) — gratitude high-recovery opener + natural conversation.**
+  - **Fix A:** `buildGratitudeSystemPrompt` (`lib/vapi.ts`) gains a `recoveryScore` param; when ≥ 80, injects a `WHOOP ACKNOWLEDGMENT` block celebrating the score in one line. `lib/scheduler.ts` (Security file, additive — **Vijay sync down**) gratitude branch fetches `getLatestRecovery` and passes `recoveryScore`.
+  - **Fix B:** replaced the `LISTENING` block + the hard "Do not pivot…" line with `LISTENING` (natural 2–3 exchange mini-conversation; answer questions about what the user shared, e.g. "do you know about Patrick?"), `STEERING` (acknowledge then guide to the next item), and `WHAT TO DEFLECT` (only work/calendar/priority pivots — not natural questions about people/feelings/topics the user raised).
+  - 4 new tests. 2128/2128 green, tsc + next build clean. Committed `2e263a2`.
 - **2026-06-23** — **R25 SHIPPED (2124 green) — calls know people who aren't on today's calendar.**
   - **Part A** (`lib/scheduler.ts`, Security file, additive — Vijay sync down): `scheduleBriefingCall` now passes `currentOpenCallMemoryText(userId)` instead of `currentPreferencesText` → briefing calls get the same rich live memory block (all facts + open loops + recent call notes) as open calls. Removed the now-dead `currentPreferencesText` helper (prefs already in the memory block).
   - **Part B** (`lib/briefing.ts`): the calendar-people filter in `buildBriefingContext` dropped all non-calendar person facts. New exported pure `selectNonCalendarPeopleFacts` (category='person', entity not among today's calendar people, capped 5) → injects a "PEOPLE EDGE KNOWS ABOUT (not on today's calendar)" block (e.g. Patrick's Vegas bachelor party). `buildBriefingContextPack` already surfaced person facts via its category-grouped STRUCTURED FACTS.
