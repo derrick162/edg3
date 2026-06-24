@@ -2311,6 +2311,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R25 T4 SHIPPED (2133 green) — server-callable `computeAndSaveScore`.**
+  - New `lib/scores.ts` exporting `computeAndSaveScore(userId): Promise<void>` — mirrors the compute+persist path of `GET /api/scores` (priorities/daily_focus → weekEvents/recovery/sleep → `computeAlignment` + `computeCalendarFit` → upsert when Focus reliable). Never throws; skips the upsert on degraded compute so a transient 0 can't corrupt the trend. Lets Security add a `'0 23 * * *'` cron to fill sparkline gaps on days the user never opens the dashboard. Self-contained (loads user by id) — the GET route is left untouched (zero page-load behavior change; the duplicated compute is deliberate to avoid double-computing per request). 3 tests. 2133/2133 green. Committed `2210f71`.
 - **2026-06-24** — **R25 T3 SHIPPED (2130 green) — alignment excludes all-day events.**
   - `lib/alignment.ts`: added `.filter(e => !!e.start?.dateTime)` before the `.map()` so all-day events (hotel stays, travel, OOO — `start.date` not `start.dateTime`) never reach the LLM classifier. They were capped to 8h and surfaced as the biggest unaligned time sink ("Conrad Las Vegas (8.0h)") — context, not work hours. 3 new tests + updated the 2 prior tests that asserted the old "all-day = 8h" behavior. 2130/2130 green. Committed `554ea6b`.
 - **2026-06-24** — **R25 T2 SHIPPED (2128 green) — gratitude high-recovery opener + natural conversation.**
