@@ -31,6 +31,110 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 31 — Score mismatch: briefing says 41, dashboard says 56)
+
+> `git merge master` first. One ticket. **Do before R30 or any other work — score integrity is a trust issue.**
+
+---
+
+### T1 — Briefing uses incomplete score formula, showing wrong number on calls (HIGH — 45m)
+
+**Root cause (observed 2026-06-24):** Edge said "Your Edge Score is 41 out of 100" during a morning briefing call; the dashboard showed 56 for the same day.
+
+`computeCalendarFit` blends four components: Focus 30% + Energy 30% + Clarity 20% + Momentum 20%.
+
+In `lib/briefing.ts` line 1115, the briefing calls:
+```ts
+const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
+// ← only 4 args; clarityInputs and momentumInputs are MISSING
+```
+
+Without `clarityInputs` and `momentumInputs`, the Clarity and Momentum components are absent — the formula renormalizes on only 60% of the weight and produces a systematically lower score (~41). The dashboard (`app/api/scores/route.ts` line 112) builds all four inputs and passes them all, producing the correct score (56).
+
+**Fix — `lib/briefing.ts`:**
+
+1. Import `ClarityInputs`, `MomentumInputs` from `@/lib/calendarScore` (already imported in scores route).
+2. Import `computeCallStreak` from `@/lib/streak`, `calendarQueries`, `whoopQueries`, `factQueries`, `memoryQueries` from `@/lib/db` if not already present.
+3. Build `clarityInputs` and `momentumInputs` using the same logic as `app/api/scores/route.ts` lines 60-109:
+
+```ts
+const clarityInputs: ClarityInputs = (() => {
+  try {
+    const calToken   = calendarQueries.get(userId);
+    const calScope   = calToken?.scope ?? '';
+    const whoopToken = whoopQueries.get(userId);
+    const facts      = factQueries.getAll(userId);
+    const memories   = memoryQueries.getRecent(userId, 50);
+    return {
+      calendarConnected:  !!calToken,
+      gmailReadGranted:   calScope.includes('gmail'),
+      whoopConnected:     !!whoopToken,
+      factsCount:         facts.length,
+      memoriesCount:      memories.length,
+      prioritiesCount:    priorities.length,
+    };
+  } catch {
+    return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 };
+  }
+})();
+
+const momentumInputs: MomentumInputs = (() => {
+  try {
+    const briefings14d = recentBriefings.slice(0, 30); // recentBriefings already fetched
+    const now = new Date();
+    const cut14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const cut7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    const completedAll = briefings14d.filter(b => b.status === 'completed');
+    const c14 = completedAll.filter(b => new Date(b.scheduled_for) >= cut14);
+    const localDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: userTimezone });
+    const morningC14 = c14.filter(b => !b.is_open_call);
+    const morningCallDays14d = new Set(morningC14.map(b => localDay(b.scheduled_for))).size;
+    const morningCallDays7d  = new Set(morningC14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => localDay(b.scheduled_for))).size;
+    const openCallCount14d = c14.filter(b => !!b.is_open_call).length;
+    const streakDays = computeCallStreak(briefings14d, userTimezone);
+    const cut14Str = cut14.toISOString().slice(0, 10);
+    const confirmedRow = getDb().prepare(
+      "SELECT COUNT(DISTINCT date) AS n FROM daily_focus WHERE user_id = ? AND confirmed = 1 AND date >= ?"
+    ).get(userId, cut14Str) as { n: number };
+    return { morningCallDays14d, morningCallDays7d, openCallCount14d, confirmedFocusDays14d: confirmedRow.n, streakDays, confirmedToday: !!dailyFocus?.confirmed };
+  } catch {
+    return { morningCallDays14d: 0, morningCallDays7d: 0, openCallCount14d: 0, confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: false };
+  }
+})();
+```
+
+4. Update the `computeCalendarFit` call (line 1115):
+```ts
+// Before:
+const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
+// After:
+const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep, 45, clarityInputs, momentumInputs);
+```
+
+5. Also call `calendarScoreQueries.upsert` after computing (same as dashboard), so the briefing's fresh computation becomes the authoritative stored value for today:
+```ts
+if (alignment !== null && weekEvents.length > 0) {
+  try {
+    calendarScoreQueries.upsert(userId, today, {
+      edgeScore:     calendarFit.edgeScore,
+      focusScore:    calendarFit.focusScore.score,
+      energyScore:   calendarFit.energyScore.score,
+      focusDrivers:  calendarFit.focusScore.drivers,
+      energyDrivers: calendarFit.energyScore.drivers,
+    });
+  } catch { /* non-fatal */ }
+}
+```
+
+**Note:** Check what variables are already in scope in `generateDailyBriefing`. `recentBriefings`, `priorities`, `alignment`, `weekEvents`, `userTimezone`, and `userId` should already exist. `getDb()`, `computeCallStreak`, and the query objects may need imports.
+
+**Tests:**
+- `computeCalendarFit` called with 7 args in briefing (not 4)
+- Score returned by briefing computation matches score returned by `/api/scores` when given same inputs
+- Briefing upserts the fresh score to `calendar_scores` table
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 30 — Call me now: lag + missing notification)
 
 > `git merge master` first. Two tickets. **Do before R29 or pillar work.**
