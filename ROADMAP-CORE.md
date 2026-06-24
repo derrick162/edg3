@@ -2946,6 +2946,18 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R29 Part D SHIPPED (2233 green) — structured grounding contract for call memory.**
+  - `currentOpenCallMemoryText` (`lib/callMemory.ts`) restructured from a flat prose blob into labelled
+    ALL-CAPS sections — **PEOPLE / GOALS / PREFERENCES / OPEN COMMITMENTS / PROJECTS / OTHER / CONSTRAINTS**
+    — one item per line (dash-prefixed), each person's full fact set on ONE line (never truncated), empty
+    sections omitted, soft ~600-char budget (PEOPLE + GOALS always kept; lower-priority sections drop when
+    over budget). OPEN COMMITMENTS now draws from R34 `commitment` facts (+ open loops as fallback);
+    CONSTRAINTS surfaces the user's work hours (R33) and rides along only when real learned memory exists
+    (never work-hours-alone). Format-only — no new data sources. 3 callMemory tests updated/added (labelled
+    sections, Patrick's Vegas+Dallas+New York on one line, constraints present with memory).
+  - **Note:** the dispatch's "apply the same format to `currentPreferencesText`" is already satisfied —
+    `currentPreferencesText` was removed in R25 T1; both briefing and open calls use
+    `currentOpenCallMemoryText`, so this single change covers both call types.
 - **2026-06-24** — **R34 SHIPPED (2232 green) — accountability + memory depth + briefing hygiene + continuity.**
   - **T1 — commitment tracking.** New `commitment` fact category (`lib/db.ts` `Fact` type, `lib/facts.ts`
     `VALID_CATEGORIES` + extraction prompt — captures "I'm going to tackle X today" as `category:'commitment'`,

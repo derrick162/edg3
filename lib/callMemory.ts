@@ -2,8 +2,10 @@
 // every live call (not just 10 preference facts). Lives here (not in scheduler) so the Vapi webhook
 // can import it without dragging in scheduler's cron side-effects. Best-effort: each section degrades
 // to nothing on failure, never throwing.
-import { factQueries, openLoopQueries, briefingQueries, priorityQueries } from './db';
+import { format } from 'date-fns';
+import { factQueries, openLoopQueries, briefingQueries, priorityQueries, userQueries } from './db';
 import { getWeekOf } from './briefing';
+import { parseWorkSchedule, formatWorkHours } from './workHours';
 
 // R23 T2 — the user's current top priorities as prompt text. Lives here (not just in scheduler) so
 // the inbound-call webhook can build a personalized prompt without importing scheduler's cron module.
@@ -15,46 +17,76 @@ export function currentPrioritiesText(userId: number): string {
   } catch { return ''; }
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  goal: 'Goals',
-  project: 'Projects',
-  person: 'People',
-  preference: 'Preferences',
-  fact: 'Other',
-};
-const CATEGORY_ORDER = ['goal', 'project', 'person', 'preference', 'fact'];
-const MAX_PER_CATEGORY = 5;
+// R29 Part D — structured grounding contract. A labelled, ALL-CAPS-sectioned block lets the model
+// index into memory far more reliably than a flat prose blob. One item per line; a person's full
+// fact set on ONE line; empty sections omitted; soft-capped so the prompt stays tight.
+const KNOW_CHAR_BUDGET = 600;
 
 export function currentOpenCallMemoryText(userId: number): string {
   const sections: string[] = [];
 
-  // Section 1 — all fact categories (not just preferences), capped per category.
+  // Section 1 — "WHAT EDGE KNOWS ABOUT YOU" as labelled sections, in priority order.
   try {
-    const byCat = new Map<string, string[]>();
-    for (const f of factQueries.getAll(userId)) {
-      if (!CATEGORY_ORDER.includes(f.category)) continue;
-      const arr = byCat.get(f.category) ?? [];
-      if (arr.length < MAX_PER_CATEGORY) {
-        arr.push(f.entity ? `${f.entity}: ${f.statement}` : f.statement);
-        byCat.set(f.category, arr);
-      }
+    const facts = factQueries.getAll(userId);
+
+    // PEOPLE: one line per person, ALL their facts joined (never truncate a person's line).
+    const peopleByEntity = new Map<string, string[]>();
+    for (const f of facts) {
+      if (f.category !== 'person' || !f.entity?.trim()) continue;
+      const arr = peopleByEntity.get(f.entity) ?? [];
+      arr.push(f.statement);
+      peopleByEntity.set(f.entity, arr);
     }
-    const lines = CATEGORY_ORDER
-      .filter(cat => byCat.get(cat)?.length)
-      .map(cat => `${CATEGORY_LABELS[cat]}: ${byCat.get(cat)!.join('; ')}`);
-    if (lines.length) sections.push(`WHAT EDGE KNOWS ABOUT YOU:\n${lines.join('\n')}`);
+    const peopleLines = [...peopleByEntity.entries()].slice(0, 6)
+      .map(([entity, statements]) => `- ${entity}: ${statements.join('; ')}`);
+
+    // GOALS / PROJECTS / PREFERENCES / OTHER — one item per line, dash-prefixed.
+    const simpleLines = (cat: string, cap: number) =>
+      facts.filter(f => f.category === cat).slice(0, cap)
+        .map(f => `- ${f.entity?.trim() ? `${f.entity}: ` : ''}${f.statement}`);
+
+    // OPEN COMMITMENTS — recent stated intentions (R34 commitment facts), open loops as fallback.
+    const commitmentLines = facts.filter(f => f.category === 'commitment')
+      .sort((a, b) => Date.parse(b.learned_at) - Date.parse(a.learned_at))
+      .slice(0, 2)
+      .map(f => `- Said on ${(() => { try { return format(new Date(f.learned_at), 'EEE'); } catch { return 'recently'; } })()}: "${f.statement}"`);
+    let loopLines: string[] = [];
+    try { loopLines = openLoopQueries.list(userId, 'open').slice(0, 2).map(l => `- ${l.description}`); } catch { /* skip */ }
+    const commitBlock = [...commitmentLines, ...loopLines].slice(0, 3);
+
+    // CONSTRAINTS — work hours (so the model never proposes work outside them).
+    let constraintsBlock: string | null = null;
+    try {
+      const sched = parseWorkSchedule(userQueries.getWorkSchedule(userId));
+      constraintsBlock = `CONSTRAINTS:\n- Work hours: ${formatWorkHours(sched)}\n- No work scheduling suggestions outside work hours`;
+    } catch { /* skip */ }
+
+    // Assemble in priority order, accumulating under a soft char budget (people/goals always win).
+    const ordered: Array<[string, string[]]> = [
+      ['PEOPLE', peopleLines],
+      ['GOALS', simpleLines('goal', 5)],
+      ['PREFERENCES', simpleLines('preference', 5)],
+      ['OPEN COMMITMENTS', commitBlock],
+      ['PROJECTS', simpleLines('project', 4)],
+      ['OTHER', simpleLines('fact', 4)],
+    ];
+    const blocks: string[] = [];
+    let used = 0;
+    for (const [header, lines] of ordered) {
+      if (!lines.length) continue;
+      const block = `${header}:\n${lines.join('\n')}`;
+      // Always include the top two sections; otherwise stop once over budget.
+      if (blocks.length >= 2 && used + block.length > KNOW_CHAR_BUDGET) continue;
+      blocks.push(block);
+      used += block.length;
+    }
+    // Constraints ride along only when there's real learned memory — never surface work hours alone
+    // (they always have a default, which would otherwise make an empty profile look non-empty).
+    if (constraintsBlock && blocks.length) blocks.push(constraintsBlock);
+    if (blocks.length) sections.push(`WHAT EDGE KNOWS ABOUT YOU:\n\n${blocks.join('\n\n')}`);
   } catch { /* skip section */ }
 
-  // Section 2 — open commitments (things the user said they'd do).
-  try {
-    const loops = openLoopQueries.list(userId, 'open').slice(0, 5);
-    if (loops.length) {
-      const bullets = loops.map(l => `• ${l.description}${l.createdAt ? ` (from ${l.createdAt.slice(0, 10)})` : ''}`);
-      sections.push(`OPEN COMMITMENTS (things you said you'd do — bring these up naturally if relevant):\n${bullets.join('\n')}`);
-    }
-  } catch { /* skip section */ }
-
-  // Section 3 — recent call context (last 2 completed calls, for continuity).
+  // Section 2 — recent call context (last 2 completed calls, for continuity).
   try {
     const recent = briefingQueries.getRecent(userId, 8).filter(b => b.status === 'completed').slice(0, 2);
     const lines: string[] = [];
