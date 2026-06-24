@@ -33,7 +33,7 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 25 — Memory gap + gratitude call UX fixes)
 
-> `git merge master` first. Four tickets. **Do before R24 or pillar work.**
+> `git merge master` first. Six tickets. **Do before R24 or pillar work.**
 
 ---
 
@@ -135,6 +135,86 @@ const events = weekEvents
 - Event with only `start.date` (all-day) → excluded from `events` array before LLM call
 - Event with `start.dateTime` → included as before
 - Mixed week (timed + all-day) → only timed events reach the classifier
+
+---
+
+### T5 — "From your morning call" label wrong for open/gratitude calls (LOW — 30m)
+
+**Root cause (observed 2026-06-24):** `app/dashboard/page.tsx` line 1174 hardcodes `"from your morning call"` for any fact with a `source_briefing_id`:
+```ts
+if (f.source_briefing_id) {
+  return { text: `learned ${date} · from your morning call`, ... };
+}
+```
+Facts extracted from gratitude calls and open calls also have a `source_briefing_id`, so they're mislabeled. Derrick's gratitude call this morning extracted a "runway" goal and it showed as "from your morning call."
+
+**Fix — two parts:**
+
+**Part A — `app/api/memory/route.ts`:** When returning facts, join with the `briefings` table to include the source briefing's `is_open_call` flag. Add a `source_is_open_call` field to each fact that has a `source_briefing_id`:
+```ts
+const briefingFlagMap = new Map<number, number>();
+try {
+  const rows = getDb().prepare(
+    `SELECT id, is_open_call FROM briefings WHERE id IN (${facts.filter(f => f.source_briefing_id).map(() => '?').join(',') || 'NULL'})`
+  ).all(...facts.filter(f => f.source_briefing_id).map(f => f.source_briefing_id)) as Array<{ id: number; is_open_call: number }>;
+  rows.forEach(r => briefingFlagMap.set(r.id, r.is_open_call ?? 0));
+} catch { /* non-fatal */ }
+const factsWithHistory = facts.map(f => ({
+  ...f,
+  last_updated_at: latestTs[f.id] ?? null,
+  source_is_open_call: f.source_briefing_id ? (briefingFlagMap.get(f.source_briefing_id) ?? 0) : null,
+}));
+```
+
+**Part B — `app/dashboard/page.tsx`:** Update `provenance()` to use `source_is_open_call`:
+```ts
+if (f.source_briefing_id) {
+  const label = f.source_is_open_call ? 'from your open call' : 'from your morning call';
+  return { text: `learned ${date} · ${label}`, href: `/dashboard?briefing=${f.source_briefing_id}` };
+}
+```
+
+**Tests:**
+- Fact with `source_briefing_id` pointing to `is_open_call=1` briefing → label is "from your open call"
+- Fact with `source_briefing_id` pointing to `is_open_call=0` briefing → label is "from your morning call"
+- Fact with no `source_briefing_id` → unchanged behavior
+
+---
+
+### T6 — Goal re-learn shows today's date instead of original learned date (LOW — 20m)
+
+**Root cause (observed 2026-06-24):** In `lib/facts.ts` `consolidateFacts`, the `reduceGroup` function sorts candidates by recency (newest first) and keeps the newest as the winner. When a gratitude call re-extracts a known goal, the new fact wins (it's newest + longest statement), and its `learned_at = today` replaces the older date. The goal appears as "learned Jun 24" even though Edge has known it since Jun 11.
+
+**Fix — `lib/facts.ts` `reduceGroup`:** After picking the winner, update its `learned_at` to the OLDEST date in the group so the "when Edge first learned this" date is preserved:
+
+```ts
+function reduceGroup(group: typeof allFacts): void {
+  if (group.length <= 1) return;
+  const sorted = [...group].sort(...); // existing sort
+  const keep = sorted[0];
+  
+  // Preserve the oldest learned_at across all group members.
+  const oldestLearnedAt = group.reduce((oldest, f) =>
+    !oldest || (f.learned_at ?? '') < oldest ? (f.learned_at ?? '') : oldest,
+    group[0].learned_at ?? ''
+  );
+  if (oldestLearnedAt && oldestLearnedAt !== keep.learned_at) {
+    factQueries.updateLearnedAt(userId, keep.id, oldestLearnedAt); // add this helper
+  }
+  
+  // ... rest of existing code (bestStatement, delete dups)
+}
+```
+
+Add `updateLearnedAt(userId: number, id: number, learnedAt: string)` to `factQueries` in `lib/db.ts`:
+```ts
+updateLearnedAt: (userId: number, id: number, learnedAt: string) =>
+  getDb().prepare('UPDATE facts SET learned_at = ? WHERE id = ? AND user_id = ?').run(learnedAt, id, userId),
+```
+
+**Tests:**
+- Two goals merged (newer has longer statement, older has earlier date) → winner keeps older `learned_at`
+- Single fact in group → no change to `learned_at`
 
 ---
 
