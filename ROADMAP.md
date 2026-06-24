@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R27 SHIPPED (2176 green) — merged to master.** Gratitude prompt injects rich memory so Edge knows people mid-call (Patrick fix). Greeting bug also resolved in combination with Security hotfix. Idle.)_ | `lib/vapi.ts`, `lib/scheduler.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2180 green).** T3-followup: gratitude call greeting now uses wall-clock time. Repo hygiene: untracked stray root `edg3.db` + gitignored `*.db`. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts`, `.gitignore` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R27 + greeting hotfix merged 2026-06-24. Patrick memory + time-of-day greeting both fixed.**)_ | `ROADMAP.md` | 2026-06-24 |
+| 🛠️ Core | `core` | _(🚨 **R31 T1 dispatched 2026-06-24. Score mismatch: briefing calls `computeCalendarFit` with 4 args (missing `clarityInputs`/`momentumInputs`) → shows 41. Dashboard uses all 7 → shows 56. Fix: build clarity+momentum inputs in `lib/briefing.ts` and pass through. Do before R30.**)_ | `lib/briefing.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2180 green).** T3-followup: gratitude call greeting now uses wall-clock time. Repo hygiene: untracked stray root `edg3.db` + gitignored `*.db` (committed `a5a34fa`, ready for merge). Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts`, `.gitignore` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R31 dispatched 2026-06-24. Score mismatch root cause found: briefing missing Clarity+Momentum score components. Dispatch written to ROADMAP-CORE.md.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---

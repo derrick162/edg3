@@ -31,6 +31,256 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 31 — Score mismatch: briefing says 41, dashboard says 56)
+
+> `git merge master` first. One ticket. **Do before R30 or any other work — score integrity is a trust issue.**
+
+---
+
+### T1 — Briefing uses incomplete score formula, showing wrong number on calls (HIGH — 45m)
+
+**Root cause (observed 2026-06-24):** Edge said "Your Edge Score is 41 out of 100" during a morning briefing call; the dashboard showed 56 for the same day.
+
+`computeCalendarFit` blends four components: Focus 30% + Energy 30% + Clarity 20% + Momentum 20%.
+
+In `lib/briefing.ts` line 1115, the briefing calls:
+```ts
+const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
+// ← only 4 args; clarityInputs and momentumInputs are MISSING
+```
+
+Without `clarityInputs` and `momentumInputs`, the Clarity and Momentum components are absent — the formula renormalizes on only 60% of the weight and produces a systematically lower score (~41). The dashboard (`app/api/scores/route.ts` line 112) builds all four inputs and passes them all, producing the correct score (56).
+
+**Fix — `lib/briefing.ts`:**
+
+1. Import `ClarityInputs`, `MomentumInputs` from `@/lib/calendarScore` (already imported in scores route).
+2. Import `computeCallStreak` from `@/lib/streak`, `calendarQueries`, `whoopQueries`, `factQueries`, `memoryQueries` from `@/lib/db` if not already present.
+3. Build `clarityInputs` and `momentumInputs` using the same logic as `app/api/scores/route.ts` lines 60-109:
+
+```ts
+const clarityInputs: ClarityInputs = (() => {
+  try {
+    const calToken   = calendarQueries.get(userId);
+    const calScope   = calToken?.scope ?? '';
+    const whoopToken = whoopQueries.get(userId);
+    const facts      = factQueries.getAll(userId);
+    const memories   = memoryQueries.getRecent(userId, 50);
+    return {
+      calendarConnected:  !!calToken,
+      gmailReadGranted:   calScope.includes('gmail'),
+      whoopConnected:     !!whoopToken,
+      factsCount:         facts.length,
+      memoriesCount:      memories.length,
+      prioritiesCount:    priorities.length,
+    };
+  } catch {
+    return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 };
+  }
+})();
+
+const momentumInputs: MomentumInputs = (() => {
+  try {
+    const briefings14d = recentBriefings.slice(0, 30); // recentBriefings already fetched
+    const now = new Date();
+    const cut14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const cut7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    const completedAll = briefings14d.filter(b => b.status === 'completed');
+    const c14 = completedAll.filter(b => new Date(b.scheduled_for) >= cut14);
+    const localDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: userTimezone });
+    const morningC14 = c14.filter(b => !b.is_open_call);
+    const morningCallDays14d = new Set(morningC14.map(b => localDay(b.scheduled_for))).size;
+    const morningCallDays7d  = new Set(morningC14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => localDay(b.scheduled_for))).size;
+    const openCallCount14d = c14.filter(b => !!b.is_open_call).length;
+    const streakDays = computeCallStreak(briefings14d, userTimezone);
+    const cut14Str = cut14.toISOString().slice(0, 10);
+    const confirmedRow = getDb().prepare(
+      "SELECT COUNT(DISTINCT date) AS n FROM daily_focus WHERE user_id = ? AND confirmed = 1 AND date >= ?"
+    ).get(userId, cut14Str) as { n: number };
+    return { morningCallDays14d, morningCallDays7d, openCallCount14d, confirmedFocusDays14d: confirmedRow.n, streakDays, confirmedToday: !!dailyFocus?.confirmed };
+  } catch {
+    return { morningCallDays14d: 0, morningCallDays7d: 0, openCallCount14d: 0, confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: false };
+  }
+})();
+```
+
+4. Update the `computeCalendarFit` call (line 1115):
+```ts
+// Before:
+const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
+// After:
+const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep, 45, clarityInputs, momentumInputs);
+```
+
+5. Also call `calendarScoreQueries.upsert` after computing (same as dashboard), so the briefing's fresh computation becomes the authoritative stored value for today:
+```ts
+if (alignment !== null && weekEvents.length > 0) {
+  try {
+    calendarScoreQueries.upsert(userId, today, {
+      edgeScore:     calendarFit.edgeScore,
+      focusScore:    calendarFit.focusScore.score,
+      energyScore:   calendarFit.energyScore.score,
+      focusDrivers:  calendarFit.focusScore.drivers,
+      energyDrivers: calendarFit.energyScore.drivers,
+    });
+  } catch { /* non-fatal */ }
+}
+```
+
+**Note:** Check what variables are already in scope in `generateDailyBriefing`. `recentBriefings`, `priorities`, `alignment`, `weekEvents`, `userTimezone`, and `userId` should already exist. `getDb()`, `computeCallStreak`, and the query objects may need imports.
+
+**Tests:**
+- `computeCalendarFit` called with 7 args in briefing (not 4)
+- Score returned by briefing computation matches score returned by `/api/scores` when given same inputs
+- Briefing upserts the fresh score to `calendar_scores` table
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 30 — Call me now: lag + missing notification)
+
+> `git merge master` first. Two tickets. **Do before R29 or pillar work.**
+
+---
+
+### T1 — "Call me now" has a 5-10s lag before Edge calls (HIGH — 1h)
+
+**Root cause:** `scheduleBriefingCall` runs `generateDailyBriefing(userId)` synchronously at `lib/scheduler.ts` lines 643-652 — calendar fetch + LLM call — before `initiateCall` is invoked. The user clicks the button, sees "Calling…", and waits in silence while all that runs.
+
+**Fix:** Use the nightly pre-warmed context pack when it exists; only fall back to on-demand generation when it doesn't.
+
+In `scheduleBriefingCall` (or in `generateDailyBriefing`), check if a fresh context pack was already computed for today (nightly run stores it). If yes, build the briefing from that pack directly — no new calendar fetch, no new LLM call. If no fresh pack exists (user calls before midnight cron, or cron failed), fall back to the current on-demand path.
+
+If the context pack approach is complex, a simpler interim fix: show per-step feedback on the dashboard ("Preparing your briefing..." → "Calling you now...") via SSE or polling so the user isn't staring at a silent spinner.
+
+**Tests:**
+- Fresh context pack exists for today → briefing call initiates faster (no calendar/LLM fetch)
+- No context pack → falls back to on-demand generation, no regression
+
+---
+
+### T2 — No in-app notification when "Call me now" succeeds (MEDIUM — 30m)
+
+**Root cause:** `app/api/briefing/call/route.ts` success path has no `notificationQueries.create()` call. The dashboard shows a browser `alert()` on success — which is dismissible and easy to miss, and doesn't appear at all if the user navigates away. There's also no notification for the post-open-call path.
+
+**Fix — two parts:**
+
+**Part A — `lib/notifications.ts`:** Add:
+```ts
+export function createCallInitiatedNotif(userId: number): void {
+  try {
+    notificationQueries.create(
+      userId, 'call_initiated',
+      'Edge is calling you',
+      'Your briefing call is being placed — answer when it rings.',
+    );
+  } catch { /* non-fatal */ }
+}
+```
+
+**Part B — `app/api/briefing/call/route.ts`:** After `scheduleBriefingCall` succeeds, call `createCallInitiatedNotif(user.id)`. Also remove or downgrade the `alert()` on the dashboard — the in-app notification panel handles this now.
+
+**Tests:**
+- `POST /api/briefing/call` success → `call_initiated` notification row created
+- Notification appears in the dashboard notification panel
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 29 — All memory facts should enrich, not overwrite)
+
+> `git merge master` first. One ticket. **Do before R28 or pillar work.**
+
+---
+
+### T1 — New fact always replaces old instead of enriching it — applies to ALL categories (HIGH — 1.5h)
+
+**Root cause (observed 2026-06-24):** Derrick said "remember that Patrick grew up in Dallas and we met in New York." `rememberPreference` found the existing Patrick fact ("friend, bachelor party in Vegas"), saw a different statement, and called `factQueries.updateFact()` — which overwrites. The bachelor party was lost from active memory.
+
+**Scope expansion (PM directive):** This is not just a person-fact problem. The same overwrite behavior affects every category — goals, projects, preferences, places, experiences. Memory should be **universally cumulative** across all categories. New information should enrich what already exists, never silently discard it.
+
+**The invariant:** When new info is **additive** (different facts about the same subject) → merge. When new info **contradicts** (old: "lives in Toronto", new: "lives in New York now") → new claim wins for that specific point, but everything else in the old statement is preserved.
+
+**Fix — three places, all categories:**
+
+**Part A — `app/api/vapi/tool-call/route.ts` `rememberPreference` handler:**
+Replace the `updateFact` overwrite with a merge:
+
+```ts
+if (isUpdate && existing) {
+  // Before: updateFact(userId, existing.id, statement, ent)  ← overwrites, loses info
+  // After:
+  const merged = await enrichFact(existing.statement, statement);
+  factQueries.updateFact(userId, existing.id, merged, ent);
+}
+```
+
+**Part B — `lib/facts.ts` `extractAndUpsertFacts`:**
+When post-call extraction produces a fact for an entity that already has an active fact (any category), call `enrichFact(old, new)` before upserting. Never discard existing knowledge when adding new knowledge.
+
+**Part C — `lib/db.ts` `factQueries.upsertFact`:**
+The `high-confidence` guard rejects new facts entirely if the old is high-confidence. Change this for ALL categories: instead of rejecting, merge the new info into the existing statement via `enrichFact`.
+
+**`enrichFact(oldStatement, newStatement)` — new pure helper in `lib/facts.ts`:**
+Use a Haiku call (cheap, ~100 tokens) to merge the two statements intelligently:
+```
+Merge these two facts about the same subject into one concise statement.
+Preserve ALL information from both. If they contradict on a specific claim,
+the second statement wins for just that claim. Keep the result under 400 chars.
+Old: "${oldStatement}"
+New: "${newStatement}"
+Return only the merged statement, nothing else.
+```
+Fallback if Haiku fails: simple concatenation `"${old} ${new}"`, capped at 500 chars.
+
+**Tests:**
+- Person: Patrick has "friend, bachelor party in Vegas"; add "grew up in Dallas, met in New York" → merged contains ALL four facts
+- Preference: has "prefers morning calls"; add "also likes to work Saturdays" → merged contains both
+- Goal: has "wants to reach 135 lbs"; add "targeting by September" → merged contains weight AND deadline
+- Contradiction: has "lives in Toronto"; add "lives in New York now" → "New York" wins, other facts preserved
+- Haiku failure → falls back to concatenation, no throw
+- Merged result ≤ 500 chars
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 28 — Explicit "please remember" not saving to memory)
+
+> `git merge master` first. Two tickets. **Do before R27 or pillar work.**
+
+---
+
+### T1 — "Please remember" requests not saved mid-call (HIGH — 45m)
+
+**Root cause (observed 2026-06-24):** Derrick said "please remember that Patrick grew up in Dallas, and we met in New York" on an open call — nothing was saved. The `rememberPreference` prompt guidance in `lib/vapi.ts` only tells Edge to call the tool when the user states a *self-preference* ("I prefer boutique gyms", "no meetings before 9"). It has no instruction covering explicit "please remember [fact about another person]" requests. Edge skipped the tool call, and post-call `extractAndUpsertFacts` didn't catch it either.
+
+**Fix A — `lib/vapi.ts`:** Add a REMEMBER REQUESTS block near the existing `rememberPreference` guidance:
+
+```
+REMEMBER REQUESTS: When ${firstName} says "please remember", "remember that", "make a note that", or any equivalent explicit memory request — call rememberPreference IMMEDIATELY, no exceptions. Do not wait for post-call extraction.
+- For facts about the user → category: 'preference' or 'fact'
+- For facts about another person → category: 'person', topic: that person's name (e.g. topic: 'Patrick')
+- Confirm in one short sentence: "Got it — I'll remember that Patrick grew up in Dallas."
+This rule applies on ALL call types: open calls, morning briefings, and gratitude calls.
+```
+
+**Fix B — `lib/facts.ts` `extractAndUpsertFacts` Haiku prompt:** Add a priority rule — any statement preceded by "please remember", "remember that", or "make a note" must be treated as a mandatory high-confidence fact. Extract it regardless of inferred durability. These are explicit user instructions, not model inferences.
+
+**Tests:**
+- Prompt contains REMEMBER REQUESTS block with `rememberPreference` call instruction
+- Prompt rule applies for person facts (category: 'person') and self-facts (category: 'fact')  
+- `extractAndUpsertFacts`: transcript with "please remember that Patrick grew up in Dallas" → person fact extracted for Patrick
+- `extractAndUpsertFacts`: transcript with "remember that I prefer morning calls" → preference fact extracted
+- `extractAndUpsertFacts`: no "please remember" phrase → normal extraction behavior unchanged
+
+---
+
+### T2 — Verify "please remember" works on gratitude calls too (LOW — 15m)
+
+Check that `buildGratitudeSystemPrompt` either includes the REMEMBER REQUESTS block from T1 or explicitly references it. The gratitude system prompt is separate from the main open-call prompt — confirm the rule is present in both.
+
+If missing, add the same REMEMBER REQUESTS block to the gratitude prompt.
+
+**Test:** `buildGratitudeSystemPrompt` output contains "please remember" / "remember that" handling instruction.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 26 — Fact edit/delete + extraction misattribution fix)
 
 > `git merge master` first. Two tickets. **Do before R25 or pillar work.**
