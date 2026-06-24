@@ -9,6 +9,7 @@ import { computeCallStreak } from '@/lib/streak';
 import { factDisplayStatement } from '@/lib/factDisplay';
 import { factSourceLabel } from '@/lib/factSourceLabel';
 import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
+import { pickTimezoneUpdate } from '@/lib/timezoneDetect';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
@@ -1828,6 +1829,24 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // R35 — auto-detect & persist the browser timezone on dashboard load so no user ever silently
+  // runs on the wrong zone (an unset tz fell back to LA, putting every time feature hours behind).
+  // Silent + fire-and-forget; targets the current-timezone override (where the user actually is).
+  useEffect(() => {
+    let detected: string | null = null;
+    try { detected = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { detected = null; }
+    if (!detected) return;
+    fetch('/api/profile').then(r => r.ok ? r.json() : null).then(d => {
+      const next = pickTimezoneUpdate(d?.current_timezone, detected);
+      if (!next) return;
+      fetch('/api/profile/timezone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_timezone: next }),
+      }).catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   // R12 T5: when the user returns to the tab (e.g. after finishing a call), silently
   // refetch the Edge Score. If it rose, trigger the celebrate animation. Registered once;

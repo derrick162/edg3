@@ -2981,6 +2981,17 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R35 T1 SHIPPED (2243 green) — browser timezone auto-detect on dashboard load.**
+  - Closes the failure class behind today's incident (unset `current_timezone` → `effectiveTimezone` fell
+    back to LA → every time feature ran 3h behind). A mount `useEffect` in the main `Dashboard()` reads
+    `Intl.DateTimeFormat().resolvedOptions().timeZone` and silently persists it when the stored
+    current-timezone is empty or differs. Decision extracted to pure `lib/timezoneDetect.ts`
+    (`pickTimezoneUpdate(stored, detected)` → tz-to-POST or null; null when Intl is unavailable). 4 tests.
+  - **Correction to the spec:** the dispatch said `POST /api/profile {timezone}`, but that route only
+    accepts `profile_summary`/`voice_preference` (it would 400). Used the existing, correct
+    `POST /api/profile/timezone {current_timezone}` endpoint (already used by the manual tz selector).
+  - Placed the effect in `Dashboard()` (always runs on load), NOT in `ProfileTab` (only mounts when the
+    Profile tab is opened — would never fire for most users). Fire-and-forget; Intl failure → no-op.
 - **2026-06-24** — **M4-5 SHIPPED (2239 green) — hierarchical memory synthesis (weekly + lifetime) [PILLAR-MEMORY].**
   - Dispatch queue (R28–R34 + R29 Part D) exhausted → picked up the next Memory-pillar item.
   - **Tier 2 — `runWeeklySynthesis(userId)` (`lib/facts.ts`):** gate ≥3 completed calls in the last 7 days →
