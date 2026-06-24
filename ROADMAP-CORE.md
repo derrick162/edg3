@@ -31,48 +31,59 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-24 (ROUND 29 — Person facts overwrite instead of merge)
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 29 — All memory facts should enrich, not overwrite)
 
 > `git merge master` first. One ticket. **Do before R28 or pillar work.**
 
 ---
 
-### T1 — New person fact replaces old instead of enriching it (HIGH — 1h)
+### T1 — New fact always replaces old instead of enriching it — applies to ALL categories (HIGH — 1.5h)
 
-**Root cause (observed 2026-06-24):** Derrick said "remember that Patrick grew up in Dallas and we met in New York." `rememberPreference` found the existing Patrick fact ("friend, bachelor party in Vegas"), saw a different statement, called `factQueries.updateFact()` — which snapshots the old statement to `fact_history` and overwrites. On the next call, active memory only had the newest statement. Edge knew about the bachelor party when asked because it was still in the live Vapi session context, not from persistent memory.
+**Root cause (observed 2026-06-24):** Derrick said "remember that Patrick grew up in Dallas and we met in New York." `rememberPreference` found the existing Patrick fact ("friend, bachelor party in Vegas"), saw a different statement, and called `factQueries.updateFact()` — which overwrites. The bachelor party was lost from active memory.
 
-**The invariant that should hold:** a person's memory is **cumulative**. New facts about Patrick should enrich what Edge already knows, not replace it.
+**Scope expansion (PM directive):** This is not just a person-fact problem. The same overwrite behavior affects every category — goals, projects, preferences, places, experiences. Memory should be **universally cumulative** across all categories. New information should enrich what already exists, never silently discard it.
 
-**Fix — two places:**
+**The invariant:** When new info is **additive** (different facts about the same subject) → merge. When new info **contradicts** (old: "lives in Toronto", new: "lives in New York now") → new claim wins for that specific point, but everything else in the old statement is preserved.
+
+**Fix — three places, all categories:**
 
 **Part A — `app/api/vapi/tool-call/route.ts` `rememberPreference` handler:**
-When `category = 'person'` (or any category) and an existing fact is found with a DIFFERENT statement, don't call `updateFact` (which overwrites). Instead, merge:
+Replace the `updateFact` overwrite with a merge:
 
 ```ts
 if (isUpdate && existing) {
-  // Before: updateFact(userId, existing.id, statement, ent)  ← overwrites, loses old info
-  // After: merge old + new into one enriched statement
-  const merged = await mergePersonFact(existing.statement, statement);
+  // Before: updateFact(userId, existing.id, statement, ent)  ← overwrites, loses info
+  // After:
+  const merged = await enrichFact(existing.statement, statement);
   factQueries.updateFact(userId, existing.id, merged, ent);
 }
 ```
 
-`mergePersonFact(oldStatement, newStatement)` — a small helper (can be a Haiku call OR simple string logic):
-- If old and new are clearly additive (different facts about the same person) → combine: `"${oldStatement} ${newStatement}"`
-- Cap at 500 chars; trim gracefully if over
-- If new statement *contradicts* old (e.g. old: "lives in Toronto", new: "lives in New York") → new wins for that specific claim only; keep the rest of old
-
 **Part B — `lib/facts.ts` `extractAndUpsertFacts`:**
-Same principle — when post-call extraction produces a person fact for an entity that already has an active fact, pass both statements to `mergePersonFact` before upserting. Never discard existing person knowledge when adding new knowledge.
+When post-call extraction produces a fact for an entity that already has an active fact (any category), call `enrichFact(old, new)` before upserting. Never discard existing knowledge when adding new knowledge.
 
 **Part C — `lib/db.ts` `factQueries.upsertFact`:**
-The `high-confidence` guard (rejects new facts if old is high-confidence) also loses new info for person facts. For `category = 'person'`, skip the rejection path and always merge instead.
+The `high-confidence` guard rejects new facts entirely if the old is high-confidence. Change this for ALL categories: instead of rejecting, merge the new info into the existing statement via `enrichFact`.
+
+**`enrichFact(oldStatement, newStatement)` — new pure helper in `lib/facts.ts`:**
+Use a Haiku call (cheap, ~100 tokens) to merge the two statements intelligently:
+```
+Merge these two facts about the same subject into one concise statement.
+Preserve ALL information from both. If they contradict on a specific claim,
+the second statement wins for just that claim. Keep the result under 400 chars.
+Old: "${oldStatement}"
+New: "${newStatement}"
+Return only the merged statement, nothing else.
+```
+Fallback if Haiku fails: simple concatenation `"${old} ${new}"`, capped at 500 chars.
 
 **Tests:**
-- Patrick already has "friend, bachelor party in Vegas"; new fact "grew up in Dallas, met in New York" → merged statement contains BOTH the bachelor party AND Dallas/New York
-- Patrick already has "lives in Toronto"; new fact "lives in New York" → new location wins, but other Patrick facts are preserved
-- Non-person categories (preference, goal) → existing overwrite behavior unchanged (corrections should still replace)
-- Merged statement stays ≤ 500 chars
+- Person: Patrick has "friend, bachelor party in Vegas"; add "grew up in Dallas, met in New York" → merged contains ALL four facts
+- Preference: has "prefers morning calls"; add "also likes to work Saturdays" → merged contains both
+- Goal: has "wants to reach 135 lbs"; add "targeting by September" → merged contains weight AND deadline
+- Contradiction: has "lives in Toronto"; add "lives in New York now" → "New York" wins, other facts preserved
+- Haiku failure → falls back to concatenation, no throw
+- Merged result ≤ 500 chars
 
 ---
 
