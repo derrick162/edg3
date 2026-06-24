@@ -2479,6 +2479,20 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R26 T1 (already shipped) + T2 SHIPPED (2146 green) — fact edit/delete + extraction attribution fix.**
+  - **T1 — NO ACTION NEEDED, already in production.** The Memory-tab fact edit/delete feature the
+    dispatch asked for already exists end-to-end: `app/api/memory/facts/[id]/route.ts` has user-scoped
+    `PATCH` (validates non-empty, ≤500 chars, 404 cross-user, audit-logged, returns updated fact) and
+    `DELETE` (404 cross-user, 409 for `priority-sync` facts, audit-logged) with 24 route tests; the
+    dashboard "What Edge knows" section already renders per-fact Edit (inline `<input>` via
+    `editingFactId` + `updateFact`) and Remove (`deleteFact` w/ confirm) buttons. Verified, not rebuilt.
+  - **T2 — extractor no longer reads Edge's words as the user's preferences.** Root cause: during a
+    gratitude call Edge said "let's save that for another time" (a deflection) and the Haiku fact
+    extractor stored it as a user preference ("prefers to keep gratitude conversations focused on
+    himself"). Fix (`lib/facts.ts` extraction prompt): added an explicit **ATTRIBUTION** rule — only
+    extract preferences/goals/beliefs/facts the USER stated; never attribute the assistant's
+    deflections/suggestions as a user preference; when unsure who spoke, don't extract. 1 test asserts
+    the rule is present in the prompt. 2146/2146 green.
 - **2026-06-24** — **R25 T7 Part B SHIPPED (2145 green) — Edge Score rise celebrates on page load.**
   - The `edgeScoreCelebrating` animation only ever fired after an explicit confirm-focus action; a
     natural score rise (calendar improved overnight / nightly cron re-scored) got no visual ack.

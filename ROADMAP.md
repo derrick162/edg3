@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(🚨 **R26 T1+T2 dispatched 2026-06-24.** T1: edit/delete facts in Memory tab. T2: fix extractor misattributing Edge's words as user preferences.)_ | `app/api/memory/facts/[id]/route.ts`, `app/dashboard/page.tsx`, `lib/briefing.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R19 FULLY DONE (T1–T6, 2172 green) — committed, ready for PM merge; idle.** T3: greeting boundary 5 PM (`5b5b74f`). T4 [HIGH]: open/gratitude call no longer suppresses morning briefing — `is_open_call` guard + `findTodaysBlockingBriefing` helper (`39e83a2`). T6: score-change notif uses `getPrior` — `lib/notifications.ts` + 5 tests (`1d2e4ef`). T5: nightly Edg3 Score cron — `runNightlyScores()` + `'0 23 * * *'` in `startScheduler()`, 3 tests (`e9543a4`). **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + volume + `DATA_ENCRYPTION_KEY` backup + restore drill.)_ | `lib/scheduler.ts`, `lib/greeting.ts`, `lib/notifications.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R26 dispatched 2026-06-24 (fact edit/delete + extraction misattribution). R25 merged to master. Security R19 T3-T6 pending Vijay.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R26 T1+T2 DONE (2146 green) — ready for PM merge.** T1: fact edit/delete already fully shipped (route PATCH/DELETE + dashboard UI + 24 tests — verified). T2: ATTRIBUTION rule added to extractor so Edge's deflections aren't stored as user preferences. Idle, awaiting next dispatch.)_ | `lib/facts.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R19 FULLY DONE (2172 green) — merged to master.** T3: greeting boundary 5 PM. T4 [HIGH]: gratitude/open call no longer blocks morning briefing. T5: nightly score cron. T6: score-change notif uses getPrior. Idle.)_ | `lib/scheduler.ts`, `lib/greeting.ts`, `lib/notifications.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R26 + R19 all merged 2026-06-24. R26 T1+T2 + R19 T3-T6 all green and live on master.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---
