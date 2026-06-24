@@ -31,6 +31,182 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 34 — Accountability + memory depth + briefing hygiene)
+
+> `git merge master` first. Four tickets. **Do after R33.**
+
+---
+
+### T1 — Commitment tracking: capture what you say you'll do + surface it next call (HIGH — 1.5h)
+
+**Context:** Derrick says "I'm going to tackle the Railway fix today" on a call. Currently nothing captures that as a commitment. The next morning, Edge has no way to ask "did you do it?" unless it happened to be extracted as a task. This is the accountability hook that makes Edge feel like it knows you.
+
+**Fix — two parts:**
+
+**Part A — Extraction (`lib/facts.ts` `extractAndUpsertFacts`):**
+Add a second extraction pass for "stated intentions." Prompt Haiku to also extract any sentences where the user stated what they will do ("I'm going to", "I'll", "I plan to", "I want to tackle", "I need to get to"). Store these as `category: 'commitment'` facts with `topic: 'open'`. Mark them resolved (delete or update to `topic: 'resolved'`) when the user confirms they did it on a future call.
+
+**Part B — Briefing injection (`lib/briefing.ts`):**
+At the start of the USER PROMPT, before the calendar section, add:
+```
+OPEN COMMITMENTS (from recent calls — check in on these first, before any calendar talk):
+${openCommitmentsText}
+```
+Format: "You said on [day]: '[exact quote or paraphrase]' — did that happen?"
+Cap at 2 commitments per briefing. Only surface commitments < 72 hours old. If resolved, skip.
+
+**Tests:**
+- Transcript with "I'm going to tackle X today" → commitment fact extracted, category: 'commitment'
+- Briefing prompt includes OPEN COMMITMENTS block when commitments < 72h exist
+- Resolved commitments don't appear in briefing
+
+---
+
+### T2 — Memory depth prompting: invite more when Edge only has thin facts (MEDIUM — 45m)
+
+**Context:** Edge knows "Patrick — bachelor party in Vegas." That's all. But Derrick mentions Patrick regularly. Edge should naturally invite more detail over time so person facts compound.
+
+**Fix — `lib/vapi.ts`:** Add a PEOPLE DEEPENING block near the PREFERENCES/MEMORY guidance:
+
+```
+PEOPLE DEEPENING: When the user mentions a person you know about and you only have 1–2 facts about them, AND the conversation flow supports it (not mid-task, not during a commitment or calendar action), ask ONE natural follow-up to learn more:
+- "You mentioned Patrick — how's he doing these days?"
+- "I know Patrick has the Vegas trip coming up — how do you two know each other?"
+Keep it one question, keep it warm. Never interrogate. Only ask once per person per call. If the user answers, call rememberPreference immediately with what they share.
+```
+
+Same instruction should be added to `buildGratitudeSystemPrompt` in `lib/vapi.ts`.
+
+**Tests:**
+- Prompt contains PEOPLE DEEPENING block
+- Gratitude prompt also contains the block
+- Block specifies: one question max, natural flow only, rememberPreference on answer
+
+---
+
+### T3 — Briefing opener hygiene: never open on meals, gym, or daily habits (MEDIUM — 30m)
+
+**Context:** Edge still occasionally opens with "you've got breakfast at 8" or leads with a gym block. The opener is the most valuable sentence of the briefing — it must anchor on something meaningful.
+
+**Fix — `lib/briefing.ts` system prompt GREETING instruction:**
+The instruction already excludes routine events (shipped 2026-06-11). Strengthen it:
+
+```
+OPENER RULE (hard): Your opening hook after the greeting MUST be a priority-relevant event, deadline, relationship, or health signal worth noting. NEVER open with: meals (breakfast, lunch, dinner, coffee), gym, workout, yoga, daily habits, commute, or any recurring personal routine. If nothing meaningful is on today's calendar, open with the most important priority instead: "Nothing urgent on the calendar today — that's actually your window to push on [priority]."
+```
+
+**Test:** Briefing system prompt contains the hard OPENER RULE with explicit exclusion list.
+
+---
+
+### T4 — Prior-call continuity: "Last call you mentioned X — how did that go?" (MEDIUM — 45m)
+
+**Context:** Between calls, Edge should remember the thread of conversation — not just facts and tasks, but the texture of recent calls. "You mentioned you were stressed about fundraising on Tuesday — how's that feeling now?" This is what makes Edge feel like it knows you over time.
+
+**Fix — `lib/briefing.ts`:**
+After the current `callNotesSummary`, add a CONTINUITY block drawn from the 2 most recent briefing transcripts:
+- Extract 1–2 notable emotional signals or open questions from the last call (Haiku pass over recent transcript)
+- Inject as: `CONTINUITY — FROM YOUR LAST CALL:\n${continuityText}`
+- Briefing instruction: "In your closing question, weave in one callback to the last call's open thread — not as a report, but naturally: 'You mentioned X last time — where does that stand?'"
+
+Cap at 1 callback per briefing. Only if last call was < 48 hours ago.
+
+**Tests:**
+- `buildBriefingContextPack` includes CONTINUITY block when recent transcript exists
+- Block is omitted when last call > 48h ago
+- System prompt includes instruction to weave in one callback
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 33 — Work hours setting + Edge respects work hours)
+
+> `git merge master` first. Two tickets. **Do after R32.**
+
+---
+
+### T1 — Add work hours to user settings (HIGH — 1.5h)
+
+**Context (observed 2026-06-24):** Edge suggested blocking calendar time at 6:14 PM — outside Derrick's work hours. There's no way for users to set their work hours, so Edge has no signal for this.
+
+**Fix — three parts:**
+
+**Part A — DB schema (`lib/db.ts`):**
+Add `work_hours_start` (integer, default 9) and `work_hours_end` (integer, default 18) and `work_days` (text, default '1,2,3,4,5' = Mon–Fri) to the `users` table. Or store as a JSON column `work_schedule TEXT`. JSON column is simpler: `{"start": 9, "end": 18, "days": [1,2,3,4,5]}` where days are ISO weekday numbers (1=Mon, 7=Sun). Default: 9–18 Mon–Fri.
+
+**Part B — Settings API + UI:**
+- `app/api/profile/work-hours/route.ts` — `GET` returns current work schedule; `PATCH` validates + saves. Validation: start 0–23, end 1–24, end > start, days is non-empty subset of 1–7.
+- Settings screen (wherever preferences/profile is shown in the dashboard) — add a "Work hours" row: start time, end time, days of week (checkboxes Mon–Fri). Save on blur or via a Save button.
+
+**Part C — Briefing + call awareness (`lib/briefing.ts`, `lib/vapi.ts`):**
+- Inject work hours into the briefing system prompt: `USER'S WORK HOURS: 9 AM – 6 PM, Monday–Friday. Current time: ${localTime}.`
+- Add to the WORKING HOURS block in `lib/vapi.ts`: "Current time is ${localTime}. If it is outside the user's work hours (${workHoursStr}), do NOT suggest booking work-related calendar blocks today. Instead, push them to the next work day: say 'That's outside your work hours — want me to book that for tomorrow morning instead?'"
+
+**Tests:**
+- `PATCH /api/profile/work-hours` with valid hours → saved
+- `PATCH` with end ≤ start → 400
+- Briefing system prompt includes work hours block when set
+- `buildGratitudeSystemPrompt` / briefing prompt: current time outside work hours → scheduling suggestions defer to next business day
+
+---
+
+### T2 — Edge defers work-related scheduling suggestions when outside work hours (MEDIUM — 30m)
+
+This is the prompt/logic side of T1. Once work hours are in the DB and injected into the briefing context, verify the WORKING HOURS block in `lib/vapi.ts` correctly gates scheduling suggestions.
+
+Current block (from 2026-06-13 changelog): "When today is Sat/Sun, prompt explicitly tells Edge never to suggest 'do it tonight'/this weekend — always 'when you're back at it Monday.'"
+
+**Extend this block:**
+- Pull `work_hours_start`, `work_hours_end`, `work_days` from user profile.
+- If current local time is before `work_hours_start` OR after `work_hours_end`, or today is not a work day → treat exactly like a weekend: suggest the NEXT work day at a time within work hours.
+- Example at 6:14 PM: "That's after your work hours — want me to put that on tomorrow at 9 AM instead?"
+
+**Test:** Prompt includes guard for after-hours time → scheduling language defers to next business day.
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 32 — Edge confirmed a calendar booking it didn't make)
+
+> `git merge master` first. One ticket. **Do before R31 and before anything else — this is a direct trust violation.**
+
+---
+
+### T1 — Edge said "Done" for a calendar event it never created (CRITICAL — 1h)
+
+**What happened (observed 2026-06-24):** Derrick asked Edge to book 90 minutes tomorrow at 11 AM for a Railway fix. Edge responded: "Done. Locked in 90 minutes tomorrow at 11 AM for the railway crash fix." The event was NOT created in Google Calendar.
+
+This is the worst kind of failure — Edge made a false confirmation. Derrick thought the meeting was blocked. It wasn't.
+
+**Root cause (two possibilities — investigate first):**
+
+**Path A — tool call made, Google API silently failed:** `createEvent` was called by Edge during the call → webhook handler got a Google error (403, 500, rate limit) → returned an error message to Vapi → but Edge confirmed "Done" anyway instead of reading the tool result. This would be an HONEST FAILURE prompt gap.
+
+**Path B — Edge hallucinated the tool call:** Edge never called `createEvent` at all — it said "Done" based on intent alone. This is a Vapi/LLM-level gap where the model doesn't enforce tool calls before confirming.
+
+**Investigation:** Check Railway logs for the call timestamp (~6:14 PM today). Look for:
+- A webhook POST to `/api/vapi/tool-call` with `createEvent` — did it happen?
+- If it did, what did the response say?
+- If it didn't — Edge hallucinated.
+
+**Fixes regardless of path:**
+
+**Fix A — Prompt hardening (`lib/vapi.ts`):** Add to the HONEST FAILURE block:
+```
+CRITICAL: Never say "Done", "Booked", "Locked in", "Created", "Deleted", or any confirmation of a calendar action UNLESS the tool has returned a success result in this conversation turn. If you intend to make a change but haven't called the tool yet, say "I'll book that now" — then call the tool — then say "Done" only after the tool confirms success. If the tool returns an error, report the error honestly. Never confirm a tool action you didn't make.
+```
+
+**Fix B — `app/api/vapi/tool-call/route.ts` `createEvent` handler:** Ensure the response body on failure is explicit and non-recoverable:
+```ts
+return NextResponse.json({ result: 'ERROR: Event was NOT created. Do not confirm this booking. Tell the user: "I ran into an error creating that — I didn\'t get it locked in. Want me to try again?"' });
+```
+Make the same change for `deleteEvent`, `moveEvent`, `editEvent` — any mutation that can fail silently.
+
+**Tests:**
+- Prompt contains hard rule: only confirm after tool success
+- `createEvent` handler on Google failure → returns explicit NOT-CREATED message
+- Same for `deleteEvent`, `moveEvent`, `editEvent`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 31 — Score mismatch: briefing says 41, dashboard says 56)
 
 > `git merge master` first. One ticket. **Do before R30 or any other work — score integrity is a trust issue.**
