@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R25 T1+T2 SHIPPED (2128 green) — ready for PM merge.** T1: calls know people off today's calendar (`currentOpenCallMemoryText` on briefing calls + `selectNonCalendarPeopleFacts` block). T2: gratitude high-recovery `WHOOP ACKNOWLEDGMENT` (≥80) + natural per-item conversation (LISTENING/STEERING/WHAT TO DEFLECT replaces the hard "Do not pivot" rule). `buildGratitudeSystemPrompt` `recoveryScore` param; `scheduleOpenCall` passes it. 7 tests total. ⚠️ **Additive edits to Security-owned `lib/scheduler.ts` — Vijay sync down.** Idle, awaiting next dispatch.)_ | `lib/scheduler.ts`, `lib/briefing.ts`, `lib/vapi.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R19 FULLY SHIPPED (2120 green) — merged to master.** T1: quota-error retry cascade fix. T2: gratitude re-fire loop fix. **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + volume + `DATA_ENCRYPTION_KEY` backup + restore drill.)_ | `app/api/vapi/webhook/route.ts`, `lib/proactiveNotifications.ts`, `lib/db.ts` | 2026-06-23 |
-| 🔧 PM/CoS | `master` | _(📋 **All R22/R23/R24/R19 merged to master 2026-06-23. Engineers idle, awaiting next dispatch.**)_ | `ROADMAP.md` | 2026-06-23 |
+| 🛠️ Core | `core` | _(🔨 **R25 T1+T2 SHIPPED (2128 green); T3 IN PROGRESS.** T1: calls know people off today's calendar. T2: gratitude high-recovery `WHOOP ACKNOWLEDGMENT` + natural per-item conversation. T3: `lib/alignment.ts` — exclude all-day events from the LLM classifier (Conrad Las Vegas false positive). ⚠️ **Additive edits to Security-owned `lib/scheduler.ts` — Vijay sync down.**)_ | `lib/scheduler.ts`, `lib/briefing.ts`, `lib/vapi.ts`, `lib/alignment.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(🚨 **R19 T3+T4 dispatched 2026-06-24.** T3: evening greeting threshold (`>= 18` → `>= 17`). T4 [HIGH]: gratitude completed call blocking morning briefing — add `is_open_call = 0` guard to both `alreadyCalled` queries in `lib/scheduler.ts`.)_ | `lib/scheduler.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R19 T4 dispatched 2026-06-24 (morning briefing blocked by gratitude call). Core R25 T1+T2 dispatched to Darren. Vijay: T3+T4 active.**)_ | `ROADMAP.md`, `ROADMAP-SECURITY.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---

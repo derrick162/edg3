@@ -106,6 +106,38 @@ Also remove the current `IMPORTANT: Do not pivot to tasks...` line at the bottom
 
 ---
 
+### T3 — Alignment analysis: exclude all-day events (LOW — 20m)
+
+**Root cause (observed 2026-06-24):** `lib/alignment.ts` passes all-day events to the LLM classifier. Hotel stays, travel blocks, OOO markers — anything with `start.date` instead of `start.dateTime` — get mapped to a capped 8h value and show up as `"Conrad Las Vegas (8.0h)"` in the event list. The LLM correctly sees this as unaligned with priorities and flags it as the biggest time sink, which is confusing and wrong. The existing comment even says all-day events are "context, not countable work hours" — but the filter doesn't exclude them.
+
+**Fix — `lib/alignment.ts`:** Add a `.filter(e => !!e.start?.dateTime)` before the `.map()` at line 77, so only timed events reach the LLM:
+
+```ts
+// Before (line 77):
+const events = weekEvents
+  .slice(0, 40)
+  .map(e => ({
+    ...
+  }))
+  .filter(e => e.hours > 0);
+
+// After:
+const events = weekEvents
+  .slice(0, 40)
+  .filter(e => !!e.start?.dateTime) // exclude all-day events (hotel stays, travel, OOO — context, not work hours)
+  .map(e => ({
+    ...
+  }))
+  .filter(e => e.hours > 0);
+```
+
+**Tests:**
+- Event with only `start.date` (all-day) → excluded from `events` array before LLM call
+- Event with `start.dateTime` → included as before
+- Mixed week (timed + all-day) → only timed events reach the classifier
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-23 (ROUND 24 — Onboarding: account linking step)
 
 > `git merge master` first. One ticket. **Do before R23 or pillar work.**
