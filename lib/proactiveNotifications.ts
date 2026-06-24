@@ -108,6 +108,11 @@ export async function runGratitudeAutoCall(now: Date = new Date()): Promise<void
       if (gratitudeQueries.getByDate(user.id, today)) continue;  // already checked in today
       const localHour = nowParts(tz, now).hour;
       if (localHour < 5 || localHour >= 11) continue;            // morning window only
+      // Reserve today's slot BEFORE calling — prevents re-firing every 10 min if the
+      // call fails or hangs up before the user speaks (e.g. ElevenLabs quota). On a
+      // successful call recordGratitude inserts a second row with the real items;
+      // getByDate returns the most-recent row, so the real items always win.
+      try { gratitudeQueries.create(user.id, today, null, null, null); } catch { /* best-effort */ }
       await scheduleOpenCall(user.id);
     } catch (err) {
       backgroundJobFailureQueries.record('gratitude_auto_call', user.id, String(err));
