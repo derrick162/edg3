@@ -1969,7 +1969,9 @@ export const gratitudeQueries = {
   },
   getByDate: (userId: number, date: string): GratitudeEntry | undefined => {
     return getDb().prepare(
-      'SELECT * FROM gratitude_entries WHERE user_id = ? AND entry_date = ? ORDER BY created_at DESC LIMIT 1'
+      // id DESC tiebreaks within the same created_at second so the latest-inserted row
+      // always wins (real recordGratitude items over the reserved null-item row).
+      'SELECT * FROM gratitude_entries WHERE user_id = ? AND entry_date = ? ORDER BY created_at DESC, id DESC LIMIT 1'
     ).get(userId, date) as GratitudeEntry | undefined;
   },
   getRecent: (userId: number, limit = 30): GratitudeEntry[] => {
