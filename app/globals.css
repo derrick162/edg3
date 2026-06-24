@@ -267,6 +267,20 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--edg-accent-20) var(--card-border);
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--card-border);
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--edg-accent-20);
+  border-radius: 2px;
+}
 
 body {
   background: var(--background);
@@ -509,6 +523,11 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
 .badge-danger  { background: var(--edg-danger-tint);  color: var(--edg-danger);  }
 .badge-info    { background: var(--edg-accent-15);    color: var(--text-accent); }
 .badge-inbound { background: var(--edg-amber-08);     color: var(--edg-amber);   border: 1px solid var(--edg-amber-20); }
+
+/* ── Score colour classes — score ≥70 high, 40–69 medium, <40 low ── */
+.score-high   { color: var(--edg-success); }
+.score-medium { color: var(--edg-warning); }
+.score-low    { color: var(--edg-error);   }
 
 /* ── Whoop recovery component classes ── */
 

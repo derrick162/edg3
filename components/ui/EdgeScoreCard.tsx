@@ -576,6 +576,10 @@ export function EdgeScoreCard({
             </p>
           )}
 
+          <p className="text-xs mb-1" style={{ color: 'var(--text-faint)' }}>
+            Recalculates on page load
+          </p>
+
           {/* Breakdown toggle */}
           <button
             onClick={() => setExpanded(v => !v)}

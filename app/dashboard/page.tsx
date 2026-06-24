@@ -2143,6 +2143,18 @@ export default function Dashboard() {
     pending: 'badge-info',
   };
 
+  function getBriefingGroup(scheduledFor: string): string {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString();
+    const yestStr = new Date(now.getTime() - 86400000).toLocaleDateString();
+    const d = new Date(scheduledFor);
+    const ds = d.toLocaleDateString();
+    if (ds === todayStr) return 'Today';
+    if (ds === yestStr) return 'Yesterday';
+    if (now.getTime() - d.getTime() < 7 * 86400000) return d.toLocaleDateString('en-US', { weekday: 'long' });
+    return 'Earlier';
+  }
+
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--surface-page)' }}>
       <div className="orb orb-1" />
@@ -2765,7 +2777,16 @@ export default function Dashboard() {
                 )
               ) : (
                 <div className="space-y-3">
-                  {briefings.map(b => (
+                  {briefings.reduce<React.ReactNode[]>((acc, b, idx) => {
+                    const grp = getBriefingGroup(b.scheduled_for);
+                    const prevGrp = idx > 0 ? getBriefingGroup(briefings[idx - 1].scheduled_for) : '';
+                    if (grp !== prevGrp) {
+                      acc.push(
+                        <p key={`grp-${b.id}`} className="text-xs font-semibold px-1 pt-2 pb-0.5 select-none"
+                          style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>{grp}</p>
+                      );
+                    }
+                    acc.push(
                     <div
                       key={b.id}
                       className="glass-card glass-card-hover p-5 cursor-pointer"
@@ -2810,6 +2831,12 @@ export default function Dashboard() {
                             </>
                           )}
 
+                          {b.status === 'completed' && !b.transcript && (
+                            <p className="text-xs mt-4" style={{ color: 'var(--text-faint)' }}>
+                              No transcript recorded for this call.
+                            </p>
+                          )}
+
                           {b.transcript && (
                             <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}>
                               <div className="flex items-center justify-between mb-3">
@@ -2824,12 +2851,12 @@ export default function Dashboard() {
                                     }).catch(() => {});
                                   }}
                                   className="text-xs px-2 py-0.5 rounded"
-                                  style={{ color: copiedTranscriptId === b.id ? 'var(--edg-success)' : 'var(--text-faint)', border: '1px solid var(--card-border)' }}
+                                  style={{ color: copiedTranscriptId === b.id ? 'var(--edg-success)' : 'var(--text-muted)', border: '1px solid var(--card-border)' }}
                                 >
                                   {copiedTranscriptId === b.id ? 'Copied ✓' : 'Copy'}
                                 </button>
                               </div>
-                              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                              <div className="space-y-2 max-h-96 overflow-y-auto scrollbar-thin pr-1">
                                 {b.transcript.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
                                   const isUser = line.startsWith('User:') || line.startsWith('Customer:');
                                   const isAI = line.startsWith('Assistant:') || line.startsWith('Bot:') || line.startsWith('AI:');
@@ -2933,7 +2960,9 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                    return acc;
+                  }, [])}
                 </div>
               )}
             </div>

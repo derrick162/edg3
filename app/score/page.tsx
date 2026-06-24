@@ -153,6 +153,9 @@ export default function ScorePage() {
             <p className="text-lg leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               A single number that tells you if you&apos;re spending your time on what actually matters.
             </p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              Reflects your calendar as of right now — recalculates each time you visit.
+            </p>
           </div>
 
           {/* Section 1 — What it is */}
