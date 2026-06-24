@@ -2295,9 +2295,22 @@ export const factQueries = {
 
     if (existingId !== undefined) {
       const sameStatement = existingStatement!.toLowerCase() === statement.toLowerCase();
-      // User-corrected facts (confidence='high') are not overwritten by new extractions.
       if (existingConfidence === 'high') {
-        // Refresh learned_at so facts seen again don't drift toward "stale".
+        // R29 — universally cumulative memory. A DIFFERING new HIGH-confidence assertion genuinely
+        // adds information, so it must ENRICH the fact, never be discarded. db.ts is synchronous (no
+        // Haiku here), so merge by smart concatenation; the async callers (rememberPreference,
+        // post-call extraction) already do the Haiku-quality merge before they reach this path.
+        const newContained = existingStatement!.toLowerCase().includes(statement.toLowerCase());
+        if (confidence === 'high' && !sameStatement && !newContained) {
+          const merged = `${existingStatement} ${statement}`.trim().slice(0, 500);
+          snapshotFactToHistory(existingId, userId, 'enrich-merge');
+          db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=? AND user_id=?")
+            .run(encryptField(merged), existingId, userId);
+          return;
+        }
+        // Otherwise — same statement, already-contained, or a LOW-confidence re-extraction (which has
+        // nothing authoritative to add) — keep the user-corrected fact intact and just refresh
+        // freshness so it doesn't drift toward "stale".
         if (sameStatement) db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
         return;
       }

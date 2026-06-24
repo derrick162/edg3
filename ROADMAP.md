@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R27 SHIPPED (2176 green) — merged to master.** Gratitude prompt injects rich memory so Edge knows people mid-call (Patrick fix). Greeting bug also resolved in combination with Security hotfix. Idle.)_ | `lib/vapi.ts`, `lib/scheduler.ts` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R29 + R28 SHIPPED (2193 green) — ready for PM merge.** R29: memory enriches not overwrites — new `enrichFact` (Haiku + concat fallback) wired into `rememberPreference`, `extractAndUpsertFacts`, and `upsertFact` high-conf path (hybrid: low-conf re-extraction still can't pollute corrections — flagged). R28: explicit "please remember" now always saves — REMEMBER REQUESTS block in `lib/vapi.ts` (open-call + gratitude EN/廣東話) + EXPLICIT REMEMBER rule in extraction prompt. ⚠️ **Additive to Shared `lib/db.ts` + Security `lib/vapi.ts` — Vijay sync down.** FYI: tracked `edg3.db` should be gitignored. Idle.)_ | `lib/facts.ts`, `lib/db.ts`, `lib/vapi.ts`, `app/api/vapi/tool-call/route.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2177+ green).** T3-followup: gratitude call greeting now uses wall-clock time. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts` | 2026-06-24 || 🔧 PM/CoS | `master` | _(📋 **R27 + greeting hotfix merged 2026-06-24. Patrick memory + time-of-day greeting both fixed.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 

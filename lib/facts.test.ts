@@ -196,6 +196,16 @@ describe('extractFactsFromTranscript — userName injection', () => {
     expect(promptContent).toMatch(/assistant.*NOT a user preference|NOT a user preference/);
   });
 
+  // R28 T1 — explicit "please remember" requests must be treated as mandatory facts.
+  it('includes an EXPLICIT REMEMBER REQUESTS rule in the extraction prompt (R28)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    await extractFactsFromTranscript('User: please remember that Patrick grew up in Dallas.');
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).toContain('EXPLICIT REMEMBER REQUESTS');
+    expect(promptContent).toMatch(/please remember/);
+    expect(promptContent).toMatch(/mandatory/i);
+  });
+
   it('maps model confidence:"low" to ExtractedFact confidence:"low"', async () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([
       { category: 'person', statement: 'Sarah is an investor', entity: 'Sarah', confidence: 'low' },
@@ -334,6 +344,79 @@ describe('factQueries.deleteFact', () => {
     // User 2 attempts to delete id=1 — mock splice guard (f.user_id === userId) blocks it.
     vi.mocked(factQueries.deleteFact)(2, 1);
     expect(factQueries.deleteFact).toHaveBeenCalledWith(2, 1);
+  });
+});
+
+// ── enrichFact (R29 — universally cumulative memory) ─────────────────────────
+
+describe('enrichFact (R29)', () => {
+  it('returns the Haiku-merged statement preserving all info (person: 4 facts)', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockResolvedValue(textResponse(
+      'Patrick is a friend whose bachelor party is in Vegas; he grew up in Dallas and Derrick met him in New York.',
+    ));
+    const merged = await enrichFact(
+      'Patrick is a friend whose bachelor party is in Vegas',
+      'Patrick grew up in Dallas and Derrick met him in New York',
+    );
+    expect(merged).toContain('bachelor party');
+    expect(merged).toContain('Vegas');
+    expect(merged).toContain('Dallas');
+    expect(merged).toContain('New York');
+  });
+
+  it('merges a preference (both retained)', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockResolvedValue(textResponse('Prefers morning calls and also likes to work Saturdays.'));
+    const merged = await enrichFact('prefers morning calls', 'also likes to work Saturdays');
+    expect(merged).toContain('morning calls');
+    expect(merged).toContain('Saturdays');
+  });
+
+  it('on contradiction the NEW claim wins but other facts are preserved', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockResolvedValue(textResponse('Lives in New York; works in fintech and has two kids.'));
+    const merged = await enrichFact('lives in Toronto, works in fintech and has two kids', 'lives in New York now');
+    expect(merged).toContain('New York');
+    expect(merged).not.toContain('Toronto');
+    expect(merged).toContain('fintech');
+  });
+
+  it('strips wrapping quotes the model sometimes adds', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockResolvedValue(textResponse('"Patrick is a friend in Vegas and Dallas."'));
+    const merged = await enrichFact('Patrick is a friend in Vegas', 'Patrick is from Dallas');
+    expect(merged.startsWith('"')).toBe(false);
+    expect(merged.endsWith('"')).toBe(false);
+  });
+
+  it('falls back to concatenation when Haiku fails (never throws)', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockRejectedValue(new Error('haiku down'));
+    const merged = await enrichFact('prefers morning calls', 'likes Saturdays');
+    expect(merged).toBe('prefers morning calls likes Saturdays');
+  });
+
+  it('falls back to concatenation when Haiku returns empty output', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockResolvedValue(textResponse('   '));
+    const merged = await enrichFact('a fact', 'another fact');
+    expect(merged).toBe('a fact another fact');
+  });
+
+  it('caps the merged result at 500 chars', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockRejectedValue(new Error('down')); // force concat fallback
+    const merged = await enrichFact('x'.repeat(400), 'y'.repeat(400));
+    expect(merged.length).toBeLessThanOrEqual(500);
+  });
+
+  it('skips the Haiku call entirely when the new info is already in the old statement', async () => {
+    const { enrichFact } = await import('./facts');
+    h.create.mockClear();
+    const merged = await enrichFact('Patrick is a friend whose bachelor party is in Vegas', 'bachelor party is in Vegas');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(merged).toBe('Patrick is a friend whose bachelor party is in Vegas');
   });
 });
 

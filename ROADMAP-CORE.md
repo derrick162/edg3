@@ -2576,6 +2576,31 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R29 + R28 SHIPPED (2193 green) — memory enriches not overwrites + "please remember" always saves.**
+  - **R29 — universally cumulative memory.** New `enrichFact(old, new)` pure-ish helper in `lib/facts.ts`:
+    one cheap Haiku call merges two statements about the same subject preserving ALL info (on a direct
+    contradiction the new claim wins for that point only); falls back to concatenation on any failure,
+    capped 500 chars, never throws, skips the call when the new info is already contained in the old.
+    Wired at all three sites: **(A)** `rememberPreference` (`tool-call/route.ts`) now `enrichFact`s before
+    `updateFact` so an update never drops earlier details (Patrick's "bachelor party in Vegas" survives
+    "grew up in Dallas"); **(B)** `extractAndUpsertFacts` enriches an existing entity-keyed fact (via
+    Haiku) instead of overwriting; **(C)** `factQueries.upsertFact` (`lib/db.ts`) — a DIFFERING
+    **high-confidence** statement now enriches (sync concat merge, since db.ts can't call async Haiku;
+    the async callers do the smart merge first). 11 tests.
+    - **⚠️ Deviation from literal spec (flagged for PM):** Part C is a **hybrid**, not "always merge."
+      A *low-confidence* re-extraction still does NOT overwrite/merge a user-corrected (high-conf) fact —
+      this preserves the existing protection against extraction noise polluting corrections. Genuine new
+      info arrives as high-confidence (explicit "remember" → high-conf via R28, or user PATCH) and DOES
+      merge. Net effect matches the Patrick intent without letting garbled re-extractions append noise.
+  - **R28 — explicit "please remember" always triggers a save.** `lib/vapi.ts`: added a **REMEMBER
+    REQUESTS** block to the open-call/briefing tool guidance AND to the gratitude prompt (EN + 廣東話) —
+    "please remember / remember that / make a note that / don't forget" → call `rememberPreference`
+    immediately on ALL call types, routing person facts to `category:'person', topic:<name>`. `lib/facts.ts`
+    extraction prompt: added an **EXPLICIT REMEMBER REQUESTS** rule making any "please remember …" a
+    mandatory high-confidence fact (so post-call extraction is a backstop). 3 tests.
+  - **⚠️ Additive edits to Shared `lib/db.ts` + Security-owned `lib/vapi.ts` — Vijay sync down.**
+  - **FYI to PM:** `edg3.db` (a binary SQLite file) is tracked on master and arrived via the last merge —
+    it should almost certainly be `git rm --cached`'d and gitignored; left untouched here (not my change).
 - **2026-06-24** — **R27 SHIPPED (2176 green) — gratitude calls now know people (memory injection gap).**
   - **Symptom (live transcript):** Derrick mentioned Patrick on a gratitude call; Edge said "I don't have
     details about Patrick stored" — even though the fact was in the DB and `scheduleOpenCall` already

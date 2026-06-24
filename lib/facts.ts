@@ -75,6 +75,7 @@ Categories:
 
 Rules:
 - ATTRIBUTION: Only extract preferences, goals, beliefs, or facts that the USER stated about themselves. NEVER attribute anything the assistant (Edge/Edg3) said as a user preference or belief. The assistant deflecting, redirecting, or suggesting (e.g. "let's save that for another time", "let's keep focused") is the ASSISTANT's behavior, NOT a user preference — ignore it entirely. When unsure who said something, do not extract it.
+- EXPLICIT REMEMBER REQUESTS (highest priority): Any statement the user prefaces with "please remember", "remember that", "make a note that", or "don't forget" is a MANDATORY high-confidence fact — always extract it regardless of how durable it seems; it's an explicit instruction, not an inference. Use the right category and entity: a fact about another person → "person" with that person's name as the entity (e.g. "remember that Patrick grew up in Dallas" → {"category":"person","entity":"Patrick","statement":"Patrick grew up in Dallas","confidence":"high"}); a fact about the user → "preference"/"goal"/"fact" as fits.
 - "statement" must be a timeless sentence (not "today" / "yesterday").
 - "entity" = the name or identifier this fact is about (person, company, project). null if none.
 - "confidence": set to "low" if the entity is a name or address that speech-to-text may have garbled (unknown spelling, unusual name, street address). Set "high" for everything else.
@@ -116,6 +117,54 @@ ${transcript.slice(0, 2000)}`,
       }));
   } catch {
     return [];
+  }
+}
+
+// R29 — universally cumulative memory. Merged facts are capped so a fact can't grow unbounded.
+const ENRICH_MAX = 500;
+
+/**
+ * R29 — merge two facts about the same subject into ONE statement that preserves ALL information.
+ * Additive details combine; on a direct contradiction the NEW statement wins for that point only,
+ * everything else is kept. Uses one cheap Haiku call; on ANY failure (or empty output) it falls
+ * back to a simple concatenation. Never throws. Used by `rememberPreference` and post-call
+ * extraction so re-stating something about a known subject enriches rather than overwrites.
+ */
+export async function enrichFact(oldStatement: string, newStatement: string): Promise<string> {
+  const oldS = (oldStatement ?? '').trim();
+  const newS = (newStatement ?? '').trim();
+  if (!oldS) return newS.slice(0, ENRICH_MAX);
+  if (!newS) return oldS.slice(0, ENRICH_MAX);
+  // Nothing to add — the new statement is already contained in the old one.
+  if (oldS.toLowerCase().includes(newS.toLowerCase())) return oldS.slice(0, ENRICH_MAX);
+
+  const concatFallback = () => `${oldS} ${newS}`.trim().slice(0, ENRICH_MAX);
+
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Merge these two facts about the same subject into one concise statement.
+Preserve ALL information from both. If they contradict on a specific claim, the second statement wins for just that claim. Keep the result under 400 chars.
+Old: "${oldS}"
+New: "${newS}"
+Return only the merged statement, nothing else.`,
+      }],
+    });
+    const merged = res.content
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text?: string }) => b.text ?? '')
+      .join('')
+      .trim()
+      .replace(/^["']+|["']+$/g, '') // strip wrapping quotes the model sometimes adds
+      .trim();
+    return merged ? merged.slice(0, ENRICH_MAX) : concatFallback();
+  } catch {
+    return concatFallback();
   }
 }
 
@@ -203,6 +252,16 @@ export async function extractAndUpsertFacts(
     // Pass allCanonical (not just knownNames) so the Haiku model uses exact event-title
     // spellings when a transcribed name is a near-miss (e.g. event "1:1 Jim" → prefer "Jim").
     const facts = await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts);
+
+    // R29 — universally cumulative memory: when extraction surfaces new info about a subject we
+    // already have an active fact for, ENRICH (merge) it rather than overwrite. Entity-keyed facts
+    // (person/project/goal-with-topic) merge via Haiku here; null-entity facts fall through to
+    // upsertFact, whose high-confidence path now merges by concatenation.
+    const activeByKey = new Map<string, Fact>();
+    for (const sf of storedFacts) {
+      if (sf.entity && sf.entity.trim()) activeByKey.set(`${sf.category}|${sf.entity.trim().toLowerCase()}`, sf);
+    }
+
     let stored = 0;
     for (const f of facts) {
       // Anti-hallucination: never store a health/body measurement whose number the
@@ -225,7 +284,17 @@ export async function extractAndUpsertFacts(
           if (!isKnown) continue;
         }
       }
-      factQueries.upsertFact(userId, f.category, f.statement.slice(0, 500), f.entity, f.confidence ?? 'high', sourceBriefingId);
+      // R29 — enrich an existing entity-keyed fact instead of overwriting it.
+      const existingActive = f.entity?.trim()
+        ? activeByKey.get(`${f.category}|${f.entity.trim().toLowerCase()}`)
+        : undefined;
+      if (existingActive && existingActive.statement.trim().toLowerCase() !== f.statement.trim().toLowerCase()) {
+        const merged = await enrichFact(existingActive.statement, f.statement);
+        factQueries.updateFact(userId, existingActive.id, merged.slice(0, 500), f.entity ?? existingActive.entity ?? null);
+        existingActive.statement = merged; // keep the map current if another extracted fact targets the same subject
+      } else {
+        factQueries.upsertFact(userId, f.category, f.statement.slice(0, 500), f.entity, f.confidence ?? 'high', sourceBriefingId);
+      }
       stored++;
     }
     if (stored > 0) {

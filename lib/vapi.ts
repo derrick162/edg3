@@ -280,6 +280,8 @@ ${memBlockYue}${quoteInstructionYue}
 
 
 
+記低要求：如果 ${firstName} 講「幫我記住」、「記住」、「唔好唔記得」——就算喺感恩分享中途——即刻 call rememberPreference（topic 填返關於邊個人或者邊個地方），用一句簡短確認（「收到，我會記住」），然後返返去感恩嘅話題。呢個係唯一一樣同工作有關、但你永遠唔會押後嘅嘢。
+
 重要：唔好轉去講工作、日曆或者優先事項。呢個係純粹嘅感恩分享。如果 ${firstName} 想講工作，溫柔咁帶返：「呢啲留返早上匯報先講——而家，仲有咩值得感恩？」`;
 
   }
@@ -327,6 +329,8 @@ STEERING: After 2-3 exchanges on a given item, guide naturally to the next one. 
 After all three items: call the recordGratitude tool with the three items verbatim. Then — before closing — offer 1-2 sentences on how to carry those specific things into today. Make it personal and grounded, not generic. Then close: "Go make it a good one, ${firstName}." End the call.
 
 
+
+REMEMBER REQUESTS: If ${firstName} says "please remember", "remember that", "make a note that", or "don't forget" — even mid-gratitude — call rememberPreference IMMEDIATELY (topic = the person/place it's about), confirm in one short sentence ("Got it — I'll remember that"), then return to the gratitude flow. This is the one work-adjacent action you never defer.
 
 WHAT TO DEFLECT (only this): Pivots to work tasks, calendar bookings, or priorities. Redirect these gently: "Let's save that for your morning briefing — for now, what else are you grateful for?" Don't deflect questions about people, feelings, or topics ${firstName} raises naturally within the gratitude conversation.`;
 
@@ -757,6 +761,8 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 
 
 - rememberPreference(statement, topic?, category?) — call this the moment ${firstName} states a preference ("I prefer boutique gyms", "no meetings before 9", "vegetarian only"). Saves it immediately so it persists across all future calls. Always call it when a new preference is expressed — don't rely solely on post-call extraction. Pass topic (the subject, e.g. "gym schedule", "morning call time") when the preference is an update to a known area — this triggers an immediate overwrite so the next briefing is correct right away. Pass category only when clearly not a preference (e.g. 'goal' for a new target).
+
+- REMEMBER REQUESTS: When ${firstName} says "please remember", "remember that", "make a note that", "don't forget", or any equivalent explicit memory request — call rememberPreference IMMEDIATELY, no exceptions. Do not wait for post-call extraction; this applies even if it isn't about ${firstName}'s own preferences. For a fact about ${firstName} → category 'fact' (or 'preference'/'goal' if it clearly is one). For a fact about another person → category 'person' and topic = that person's name (e.g. topic 'Patrick' for "remember that Patrick grew up in Dallas"). For a place → topic = the place name. Then confirm in one short sentence: "Got it — I'll remember that Patrick grew up in Dallas." This rule applies on ALL call types: open calls, morning briefings, and gratitude calls.
 
 - setEnergyLevel(level, source) — call immediately when ${firstName} states or confirms their energy: level 'red'|'yellow'|'green', source 'manual' (unprompted) or 'override' (overriding Whoop). Source 'override' when they correct a Whoop-derived tier ("I'm actually feeling great today"). Source 'manual' when no Whoop signal exists and they answer the opening energy check.
 

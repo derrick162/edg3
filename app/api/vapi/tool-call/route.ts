@@ -19,6 +19,7 @@ import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries } from '@/lib/db';
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
+import { enrichFact } from '@/lib/facts';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -1510,9 +1511,12 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
     const isUpdate = !!(existing && existing.statement.toLowerCase() !== statement.trim().toLowerCase());
 
     if (isUpdate && existing) {
-      // User explicitly said to update — always write even if the old fact was high-confidence.
-      // updateFact snapshots to fact_history (reason='user-edit') before overwriting.
-      factQueries.updateFact(userId, existing.id, statement.trim().slice(0, 500), ent);
+      // R29 — universally cumulative memory: ENRICH the existing fact instead of overwriting it, so
+      // earlier details survive (e.g. Patrick's "bachelor party in Vegas" isn't lost when "grew up in
+      // Dallas" is added). enrichFact merges via Haiku (concat fallback); never throws.
+      const merged = await enrichFact(existing.statement, statement.trim());
+      // updateFact snapshots to fact_history (reason='user-edit') before writing the merged statement.
+      factQueries.updateFact(userId, existing.id, merged.slice(0, 500), ent);
       // Undo = rollback to the history entry just created (most recent for this fact).
       try {
         const hist = factHistoryQueries.getForFact(existing.id, userId);
