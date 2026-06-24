@@ -31,6 +31,95 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 33 — Work hours setting + Edge respects work hours)
+
+> `git merge master` first. Two tickets. **Do after R32.**
+
+---
+
+### T1 — Add work hours to user settings (HIGH — 1.5h)
+
+**Context (observed 2026-06-24):** Edge suggested blocking calendar time at 6:14 PM — outside Derrick's work hours. There's no way for users to set their work hours, so Edge has no signal for this.
+
+**Fix — three parts:**
+
+**Part A — DB schema (`lib/db.ts`):**
+Add `work_hours_start` (integer, default 9) and `work_hours_end` (integer, default 18) and `work_days` (text, default '1,2,3,4,5' = Mon–Fri) to the `users` table. Or store as a JSON column `work_schedule TEXT`. JSON column is simpler: `{"start": 9, "end": 18, "days": [1,2,3,4,5]}` where days are ISO weekday numbers (1=Mon, 7=Sun). Default: 9–18 Mon–Fri.
+
+**Part B — Settings API + UI:**
+- `app/api/profile/work-hours/route.ts` — `GET` returns current work schedule; `PATCH` validates + saves. Validation: start 0–23, end 1–24, end > start, days is non-empty subset of 1–7.
+- Settings screen (wherever preferences/profile is shown in the dashboard) — add a "Work hours" row: start time, end time, days of week (checkboxes Mon–Fri). Save on blur or via a Save button.
+
+**Part C — Briefing + call awareness (`lib/briefing.ts`, `lib/vapi.ts`):**
+- Inject work hours into the briefing system prompt: `USER'S WORK HOURS: 9 AM – 6 PM, Monday–Friday. Current time: ${localTime}.`
+- Add to the WORKING HOURS block in `lib/vapi.ts`: "Current time is ${localTime}. If it is outside the user's work hours (${workHoursStr}), do NOT suggest booking work-related calendar blocks today. Instead, push them to the next work day: say 'That's outside your work hours — want me to book that for tomorrow morning instead?'"
+
+**Tests:**
+- `PATCH /api/profile/work-hours` with valid hours → saved
+- `PATCH` with end ≤ start → 400
+- Briefing system prompt includes work hours block when set
+- `buildGratitudeSystemPrompt` / briefing prompt: current time outside work hours → scheduling suggestions defer to next business day
+
+---
+
+### T2 — Edge defers work-related scheduling suggestions when outside work hours (MEDIUM — 30m)
+
+This is the prompt/logic side of T1. Once work hours are in the DB and injected into the briefing context, verify the WORKING HOURS block in `lib/vapi.ts` correctly gates scheduling suggestions.
+
+Current block (from 2026-06-13 changelog): "When today is Sat/Sun, prompt explicitly tells Edge never to suggest 'do it tonight'/this weekend — always 'when you're back at it Monday.'"
+
+**Extend this block:**
+- Pull `work_hours_start`, `work_hours_end`, `work_days` from user profile.
+- If current local time is before `work_hours_start` OR after `work_hours_end`, or today is not a work day → treat exactly like a weekend: suggest the NEXT work day at a time within work hours.
+- Example at 6:14 PM: "That's after your work hours — want me to put that on tomorrow at 9 AM instead?"
+
+**Test:** Prompt includes guard for after-hours time → scheduling language defers to next business day.
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 32 — Edge confirmed a calendar booking it didn't make)
+
+> `git merge master` first. One ticket. **Do before R31 and before anything else — this is a direct trust violation.**
+
+---
+
+### T1 — Edge said "Done" for a calendar event it never created (CRITICAL — 1h)
+
+**What happened (observed 2026-06-24):** Derrick asked Edge to book 90 minutes tomorrow at 11 AM for a Railway fix. Edge responded: "Done. Locked in 90 minutes tomorrow at 11 AM for the railway crash fix." The event was NOT created in Google Calendar.
+
+This is the worst kind of failure — Edge made a false confirmation. Derrick thought the meeting was blocked. It wasn't.
+
+**Root cause (two possibilities — investigate first):**
+
+**Path A — tool call made, Google API silently failed:** `createEvent` was called by Edge during the call → webhook handler got a Google error (403, 500, rate limit) → returned an error message to Vapi → but Edge confirmed "Done" anyway instead of reading the tool result. This would be an HONEST FAILURE prompt gap.
+
+**Path B — Edge hallucinated the tool call:** Edge never called `createEvent` at all — it said "Done" based on intent alone. This is a Vapi/LLM-level gap where the model doesn't enforce tool calls before confirming.
+
+**Investigation:** Check Railway logs for the call timestamp (~6:14 PM today). Look for:
+- A webhook POST to `/api/vapi/tool-call` with `createEvent` — did it happen?
+- If it did, what did the response say?
+- If it didn't — Edge hallucinated.
+
+**Fixes regardless of path:**
+
+**Fix A — Prompt hardening (`lib/vapi.ts`):** Add to the HONEST FAILURE block:
+```
+CRITICAL: Never say "Done", "Booked", "Locked in", "Created", "Deleted", or any confirmation of a calendar action UNLESS the tool has returned a success result in this conversation turn. If you intend to make a change but haven't called the tool yet, say "I'll book that now" — then call the tool — then say "Done" only after the tool confirms success. If the tool returns an error, report the error honestly. Never confirm a tool action you didn't make.
+```
+
+**Fix B — `app/api/vapi/tool-call/route.ts` `createEvent` handler:** Ensure the response body on failure is explicit and non-recoverable:
+```ts
+return NextResponse.json({ result: 'ERROR: Event was NOT created. Do not confirm this booking. Tell the user: "I ran into an error creating that — I didn\'t get it locked in. Want me to try again?"' });
+```
+Make the same change for `deleteEvent`, `moveEvent`, `editEvent` — any mutation that can fail silently.
+
+**Tests:**
+- Prompt contains hard rule: only confirm after tool success
+- `createEvent` handler on Google failure → returns explicit NOT-CREATED message
+- Same for `deleteEvent`, `moveEvent`, `editEvent`
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 31 — Score mismatch: briefing says 41, dashboard says 56)
 
 > `git merge master` first. One ticket. **Do before R30 or any other work — score integrity is a trust issue.**
