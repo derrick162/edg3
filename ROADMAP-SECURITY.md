@@ -30,6 +30,35 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 20 — Open call says "Good afternoon" at 7:37 PM)
+
+> `git merge master` first. One ticket. **Do before any pillar work.**
+
+---
+
+### T1 — Non-gratitude open call greeting is still wrong at evening hours (HIGH — 20m)
+
+**Observed 2026-06-24:** Derrick did an open call at 7:37 PM. Edge said "Good afternoon." At hour=19, the R19 T3 fix (`hour >= 17 ? 'Good evening'`) should have already covered this — which means either:
+- **Path A:** R19 T3 landed in `lib/scheduler.ts` but the computed `greet` variable doesn't actually reach the system prompt / Vapi `firstMessage` for non-gratitude open calls.
+- **Path B:** The non-gratitude open call system prompt (in `lib/vapi.ts` or inline in `scheduleOpenCall`) has a hardcoded "Good afternoon" phrase that was never updated.
+
+**Investigation first — check both in `lib/scheduler.ts` `scheduleOpenCall`:**
+1. Confirm R19 T3 landed: does the non-gratitude path compute `greet = hour >= 17 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning'`?
+2. Trace where `greet` goes after that — does it reach `initiateCall`? Does it get injected into the Vapi `firstMessage` or system prompt? Or does it go unused?
+3. Check `lib/vapi.ts` for any hardcoded "Good afternoon" or "Good morning" in the non-gratitude open call prompt.
+
+**Fix (whichever path applies):**
+- If `greet` isn't injected: pass it through to `initiateCall` and use it in the `firstMessage` and/or system prompt, same pattern as the gratitude hotfix.
+- If there's a hardcoded string: replace with `${greet}` / `${period}` from the computed variables.
+- Apply the same fix to `app/api/vapi/webhook/route.ts` `assistant-request` handler (inbound open calls) if the same issue exists there.
+
+**Tests:**
+- `scheduleOpenCall` at hour=19 → Vapi `firstMessage` / system prompt contains "Good evening", not "Good afternoon" or "Good morning"
+- hour=14 → "Good afternoon"
+- hour=8 → "Good morning"
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-23 (ROUND 19 — Quota-error retry cascade fix + gratitude re-call fix + greeting time fix)
 
 > `git merge master` first. Three small tickets. **Do before R18 or pillar work.**
