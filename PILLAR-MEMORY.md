@@ -132,6 +132,36 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 - Briefing builder: when a person appears on tomorrow's calendar, inject their model into context
 - Test: mention a person on 3 consecutive calls with different context, verify their model updates each time
 
+### M4-5 — Hierarchical call summarization: per-call → weekly synthesis → lifetime profile (Core)
+
+**Why (from production RAG research, 2026):** Flat per-call extraction destroys causal chains. When Edge extracts facts from each call independently, "because of what we decided last week" context — the thread connecting decisions across multiple calls — gets lost. A tree structure (turn-level → episode-level → session-level summaries) preserves those chains. Production systems running this pattern show 96.3% fact coherence vs 81.2% with flat extraction.
+
+**The three tiers for Edge:**
+
+**Tier 1 — Per-call extraction (already live):** `extractAndUpsertFacts` runs after every call. This is the leaf level. Already shipping — no changes needed here except the enrichFact upgrade (R29).
+
+**Tier 2 — Weekly synthesis (new):** Every Sunday at 4am UTC (alongside the confidence decay job), run a weekly synthesis pass over the last 7 days of transcripts. One Haiku call that takes the raw transcript summaries as input and produces:
+- A 3–5 sentence "week narrative" (`category: 'weekly_summary'`, stored as a special fact)
+- Any cross-call patterns not caught by per-call extraction (e.g., "Derrick mentioned Railway three times this week with increasing frustration")
+- Resolution of `(unknown)` entities that got named later in the week
+
+Store as `category: 'weekly_summary'`, `entity: week_of_YYYY-MM-DD`. Cap at 3 active weekly summaries before retiring the oldest.
+
+**Tier 3 — Lifetime profile (new):** Once a user has 10+ weekly summaries, run a monthly synthesis (first Sunday of each month). One Haiku call over all active weekly summaries → a 150-word "who this person is" profile. Store as `category: 'lifetime_profile'`. Replace (retire + insert) on each run. Inject into briefings as the first item in the memory block — it's the highest-signal, most-stable context Edge has.
+
+**Implementation notes:**
+- Both weekly + lifetime jobs run in `lib/scheduler.ts` alongside existing cron jobs
+- New helper `runWeeklySynthesis(userId)` in `lib/facts.ts`
+- New helper `runLifetimeSynthesis(userId)` in `lib/facts.ts`
+- Gate: weekly synthesis requires ≥ 3 calls that week; lifetime requires ≥ 10 weekly summaries
+- Both degrade silently (catch → log, never throw)
+
+**Tests:**
+- 4+ calls in a week → weekly synthesis produces a `weekly_summary` fact
+- Fewer than 3 calls → no synthesis, no error
+- 10+ weekly summaries → lifetime synthesis produces a `lifetime_profile` fact
+- Lifetime profile is the first item injected in `currentOpenCallMemoryText`
+
 ---
 
 ## QA Checklist — run when pillar backlog is exhausted

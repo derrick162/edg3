@@ -30,6 +30,90 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 21 — R32 route errors + R33 DB schema + Trust QA)
+
+> `git merge master` first. Three tickets. **Do after R20.**
+
+---
+
+### T1 — R32 Part B: tool-call route handlers must return explicit failure strings (HIGH — 30m)
+
+**Context:** Core (Darren) owns R32 Part A (prompt hardening in `lib/vapi.ts`). Security owns the route handler integrity side — `app/api/vapi/tool-call/route.ts`.
+
+**The bug (observed 2026-06-24):** Edge said "Done. Locked in 90 minutes tomorrow at 11 AM" for a calendar event that was never created. Either the Google API failed and Edge ignored the error, or Edge hallucinated the tool call. Regardless, the route handler must make failures unmistakable.
+
+**Fix — `app/api/vapi/tool-call/route.ts`:**
+
+For `createEvent`, `deleteEvent`, `moveEvent`, `editEvent` — in every catch block and every Google API error path, replace vague or recoverable-sounding messages with explicit, unambiguous failure strings the model cannot interpret as success:
+
+```ts
+// createEvent failure:
+return NextResponse.json({ result: 'ERROR: Event was NOT created. Tell the user honestly: "I tried to book that but ran into an error — it did not get added. Want me to try again?"' });
+
+// deleteEvent failure:
+return NextResponse.json({ result: 'ERROR: Event was NOT deleted. Tell the user: "I could not remove that — it is still on your calendar."' });
+
+// moveEvent failure:
+return NextResponse.json({ result: 'ERROR: Event was NOT moved. Tell the user: "I ran into an issue moving that — the time did not change."' });
+
+// editEvent failure:
+return NextResponse.json({ result: 'ERROR: Event was NOT updated. Tell the user: "The edit did not go through."' });
+```
+
+Rules:
+- Every error path for these four handlers must return one of these strings — no exceptions
+- The word `ERROR:` must be at the start so it's unambiguous
+- The model is instructed to read tool results before confirming — these strings make silent failure impossible
+- Do NOT change success paths — only error/catch paths
+
+**Tests:**
+- `createEvent` handler: Google throws 500 → response contains "ERROR: Event was NOT created"
+- `deleteEvent` handler: Google throws 403 → response contains "ERROR: Event was NOT deleted"
+- `moveEvent` handler: Google throws any error → response contains "ERROR: Event was NOT moved"
+- `editEvent` handler: Google throws any error → response contains "ERROR: Event was NOT updated"
+
+---
+
+### T2 — R33 DB schema: add work_schedule column to users table (LOW — 20m)
+
+**Context:** Core (Darren) will build the R33 settings API and UI. This schema change unblocks him.
+
+**Fix — `lib/db.ts`:**
+
+Add `work_schedule TEXT` column to the `users` table. Store as JSON. Default: `'{"start":9,"end":18,"days":[1,2,3,4,5]}'` (9am–6pm Mon–Fri, ISO weekday 1=Mon).
+
+```sql
+ALTER TABLE users ADD COLUMN work_schedule TEXT DEFAULT '{"start":9,"end":18,"days":[1,2,3,4,5]}';
+```
+
+Add a helper to `lib/db.ts` alongside other user query helpers:
+
+```ts
+export function getWorkSchedule(user: User): { start: number; end: number; days: number[] } {
+  try {
+    return user.work_schedule ? JSON.parse(user.work_schedule) : { start: 9, end: 18, days: [1,2,3,4,5] };
+  } catch {
+    return { start: 9, end: 18, days: [1,2,3,4,5] };
+  }
+}
+```
+
+**Tests:**
+- `users` table has `work_schedule` column
+- `getWorkSchedule` returns default when column is null
+- `getWorkSchedule` parses stored JSON correctly
+- Invalid JSON in column → returns default (no throw)
+
+---
+
+### T3 — Trust QA checklist: run every item, log results (MEDIUM — 1h)
+
+Both Trust and Daily-Call pillars are code-complete. No one has run the end-to-end QA checklist yet. Work through every item in `PILLAR-TRUST.md` QA Checklist + `PILLAR-DAILY-CALL.md` QA Checklist.
+
+For each item: test it manually or via a targeted script. Log pass / fail / partial in `content/qa-log.md` with date and a one-line note on what you verified. If anything fails: fix it inline (it should be small — these are verification steps, not new features) and note the fix.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 20 — Open call says "Good afternoon" at 7:37 PM)
 
 > `git merge master` first. One ticket. **Do before any pillar work.**
