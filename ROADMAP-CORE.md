@@ -33,7 +33,7 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 25 — Memory gap + gratitude call UX fixes)
 
-> `git merge master` first. Two tickets. **Do before R24 or pillar work.**
+> `git merge master` first. Four tickets. **Do before R24 or pillar work.**
 
 ---
 
@@ -135,6 +135,36 @@ const events = weekEvents
 - Event with only `start.date` (all-day) → excluded from `events` array before LLM call
 - Event with `start.dateTime` → included as before
 - Mixed week (timed + all-day) → only timed events reach the classifier
+
+---
+
+### T4 — Nightly score computation: export `computeAndSaveScore` (MEDIUM — 45m)
+
+**Problem (observed 2026-06-24):** The Edg3 Score sparkline only gets a data point when the user loads the Priorities tab. Days the user doesn't open the dashboard (travel, busy days) show as gaps in the trend. Security can add a nightly cron to fill these in, but first needs a server-callable function from Core.
+
+**Fix — `lib/scores.ts` (new file):**
+
+Extract the core score computation + persistence logic from `app/api/scores/route.ts` into an exported function:
+
+```ts
+export async function computeAndSaveScore(userId: number): Promise<void>
+```
+
+This function should:
+1. Load user (timezone, priorities, daily_focus) from DB
+2. Fetch `getWeekEvents`, `getRecoveryHistory`, `getLastSleep` in parallel
+3. Run `computeAlignment`, `computeCalendarFit`, `computeFocusScore`
+4. If `focusReliable` (alignment non-null + events exist) → `calendarScoreQueries.upsert`
+5. Degrade silently on any error (never throw — it's a background job)
+
+The existing `GET /api/scores` route can import and call this function (no behavior change for page loads — just a refactor to share the logic).
+
+**Coordination note for Security:** Once this is exported, Security should add a `'0 23 * * *'` cron in `startScheduler()` that loops all active users and calls `computeAndSaveScore(userId)` — same pattern as `runNightlyContextPacks`. That cron activates automatically when this function is available.
+
+**Tests:**
+- `computeAndSaveScore` with valid user → score row upserted in `calendar_scores`
+- `computeAndSaveScore` with Google failure → degrades silently, no throw
+- `computeAndSaveScore` with no events → no upsert (focusReliable = false)
 
 ---
 
