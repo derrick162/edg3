@@ -31,6 +31,93 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 34 — Accountability + memory depth + briefing hygiene)
+
+> `git merge master` first. Four tickets. **Do after R33.**
+
+---
+
+### T1 — Commitment tracking: capture what you say you'll do + surface it next call (HIGH — 1.5h)
+
+**Context:** Derrick says "I'm going to tackle the Railway fix today" on a call. Currently nothing captures that as a commitment. The next morning, Edge has no way to ask "did you do it?" unless it happened to be extracted as a task. This is the accountability hook that makes Edge feel like it knows you.
+
+**Fix — two parts:**
+
+**Part A — Extraction (`lib/facts.ts` `extractAndUpsertFacts`):**
+Add a second extraction pass for "stated intentions." Prompt Haiku to also extract any sentences where the user stated what they will do ("I'm going to", "I'll", "I plan to", "I want to tackle", "I need to get to"). Store these as `category: 'commitment'` facts with `topic: 'open'`. Mark them resolved (delete or update to `topic: 'resolved'`) when the user confirms they did it on a future call.
+
+**Part B — Briefing injection (`lib/briefing.ts`):**
+At the start of the USER PROMPT, before the calendar section, add:
+```
+OPEN COMMITMENTS (from recent calls — check in on these first, before any calendar talk):
+${openCommitmentsText}
+```
+Format: "You said on [day]: '[exact quote or paraphrase]' — did that happen?"
+Cap at 2 commitments per briefing. Only surface commitments < 72 hours old. If resolved, skip.
+
+**Tests:**
+- Transcript with "I'm going to tackle X today" → commitment fact extracted, category: 'commitment'
+- Briefing prompt includes OPEN COMMITMENTS block when commitments < 72h exist
+- Resolved commitments don't appear in briefing
+
+---
+
+### T2 — Memory depth prompting: invite more when Edge only has thin facts (MEDIUM — 45m)
+
+**Context:** Edge knows "Patrick — bachelor party in Vegas." That's all. But Derrick mentions Patrick regularly. Edge should naturally invite more detail over time so person facts compound.
+
+**Fix — `lib/vapi.ts`:** Add a PEOPLE DEEPENING block near the PREFERENCES/MEMORY guidance:
+
+```
+PEOPLE DEEPENING: When the user mentions a person you know about and you only have 1–2 facts about them, AND the conversation flow supports it (not mid-task, not during a commitment or calendar action), ask ONE natural follow-up to learn more:
+- "You mentioned Patrick — how's he doing these days?"
+- "I know Patrick has the Vegas trip coming up — how do you two know each other?"
+Keep it one question, keep it warm. Never interrogate. Only ask once per person per call. If the user answers, call rememberPreference immediately with what they share.
+```
+
+Same instruction should be added to `buildGratitudeSystemPrompt` in `lib/vapi.ts`.
+
+**Tests:**
+- Prompt contains PEOPLE DEEPENING block
+- Gratitude prompt also contains the block
+- Block specifies: one question max, natural flow only, rememberPreference on answer
+
+---
+
+### T3 — Briefing opener hygiene: never open on meals, gym, or daily habits (MEDIUM — 30m)
+
+**Context:** Edge still occasionally opens with "you've got breakfast at 8" or leads with a gym block. The opener is the most valuable sentence of the briefing — it must anchor on something meaningful.
+
+**Fix — `lib/briefing.ts` system prompt GREETING instruction:**
+The instruction already excludes routine events (shipped 2026-06-11). Strengthen it:
+
+```
+OPENER RULE (hard): Your opening hook after the greeting MUST be a priority-relevant event, deadline, relationship, or health signal worth noting. NEVER open with: meals (breakfast, lunch, dinner, coffee), gym, workout, yoga, daily habits, commute, or any recurring personal routine. If nothing meaningful is on today's calendar, open with the most important priority instead: "Nothing urgent on the calendar today — that's actually your window to push on [priority]."
+```
+
+**Test:** Briefing system prompt contains the hard OPENER RULE with explicit exclusion list.
+
+---
+
+### T4 — Prior-call continuity: "Last call you mentioned X — how did that go?" (MEDIUM — 45m)
+
+**Context:** Between calls, Edge should remember the thread of conversation — not just facts and tasks, but the texture of recent calls. "You mentioned you were stressed about fundraising on Tuesday — how's that feeling now?" This is what makes Edge feel like it knows you over time.
+
+**Fix — `lib/briefing.ts`:**
+After the current `callNotesSummary`, add a CONTINUITY block drawn from the 2 most recent briefing transcripts:
+- Extract 1–2 notable emotional signals or open questions from the last call (Haiku pass over recent transcript)
+- Inject as: `CONTINUITY — FROM YOUR LAST CALL:\n${continuityText}`
+- Briefing instruction: "In your closing question, weave in one callback to the last call's open thread — not as a report, but naturally: 'You mentioned X last time — where does that stand?'"
+
+Cap at 1 callback per briefing. Only if last call was < 48 hours ago.
+
+**Tests:**
+- `buildBriefingContextPack` includes CONTINUITY block when recent transcript exists
+- Block is omitted when last call > 48h ago
+- System prompt includes instruction to weave in one callback
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 33 — Work hours setting + Edge respects work hours)
 
 > `git merge master` first. Two tickets. **Do after R32.**
