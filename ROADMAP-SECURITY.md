@@ -30,9 +30,9 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-23 (ROUND 19 — Quota-error retry cascade fix)
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 19 — Quota-error retry cascade fix + gratitude re-call fix)
 
-> `git merge master` first. One small ticket. **Do before R18 or pillar work.**
+> `git merge master` first. Two small tickets. **Do before R18 or pillar work.**
 
 ---
 
@@ -68,6 +68,29 @@ Replace the existing `if (wasMissed && !briefing.retry_attempted)` block with th
 - `pipeline-error-eleven-labs-quota-exceeded` → status = `missed`, no `retry_after` stamped
 - `pipeline-error` (non-quota) → status = `missed`, `retry_after` stamped (existing behavior preserved)
 - `no-answer` → still retries (unchanged)
+
+---
+
+### T2 — Gratitude call re-fires every 10 min after a missed/hung-up call (HIGH — 30m)
+
+**Root cause (diagnosed 2026-06-23):** `runGratitudeAutoCall()` in `lib/proactiveNotifications.ts` self-gates on `gratitudeQueries.getByDate(user.id, today)`. A gratitude entry is only written when the `recordGratitude` Vapi tool fires — i.e., when the user actually says their three items. If a call connects but immediately hangs up (e.g. ElevenLabs quota), no entry is written, so the self-gate never fires. The job re-calls every 10 minutes for the entire 5–11am window (~36 attempts).
+
+**Fix — `lib/proactiveNotifications.ts`, inside `runGratitudeAutoCall`, just before `await scheduleOpenCall`:**
+
+Pre-insert a null-item gratitude entry before placing the call so the self-gate fires on the next tick regardless of outcome. When the call completes normally, `recordGratitude` inserts a second row with the actual items; `getByDate` uses `ORDER BY created_at DESC LIMIT 1` so it always returns the most-recent (real) row.
+
+```ts
+// Reserve today's slot BEFORE calling — prevents re-firing if call fails/hangs up.
+// recordGratitude inserts the real items on success; getByDate picks the latest row.
+try { gratitudeQueries.create(user.id, today, null, null, null); } catch { /* best-effort */ }
+await scheduleOpenCall(user.id);
+```
+
+**Tests:**
+- First auto-call fires → null row inserted → `getByDate` returns the null row → next 10-min tick skips (no second call)
+- `scheduleOpenCall` throws → null row already inserted → still no re-call that day
+- `recordGratitude` fires on a successful call → second row inserted with real items → `getByDate` returns the real-items row (latest created_at)
+- No gratitude entry at all → auto-call fires normally (unchanged behavior for first call each day)
 
 ---
 

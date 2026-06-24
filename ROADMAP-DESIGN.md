@@ -49,6 +49,110 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 23 — Sidebar cleanup + score sparkline fix)
+
+> `git merge master` first. Two tickets. **Do both BEFORE R22.**
+
+---
+
+### T1 — Dashboard sidebar: clean up connections + remove clutter (HIGH — 1.5h)
+
+**Context:** Friends are about to start testing. The sidebar currently shows two separate "Reading Gmail · Switch account →" blocks (duplicate), inline Reconnect/Disconnect buttons that belong in Settings, and a `<NotificationHistoryPanel>` widget that's redundant with the notification bell. Whoop also shows a "Connect Whoop" button even when the user has no Whoop — clutters the sidebar for non-Whoop users.
+
+**Changes in `app/dashboard/page.tsx`:**
+
+**A — Remove duplicate Gmail indicator block (lines ~2486–2512):**
+The block labelled `{/* ── Gmail reading indicator ── */}` is a complete duplicate of the inline Gmail line already shown inside the Calendar connected section. Delete it entirely — one mention of Gmail is enough.
+
+**B — Simplify the Google Calendar connection section:**
+The current Calendar connected section shows the email, Gmail status, Reconnect, and Disconnect all inline. Replace with a clean two-line display:
+
+```tsx
+{calendarConnected ? (
+  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+    <p className="font-medium mb-0.5" style={{ color: 'var(--text-body)' }}>
+      ● Calendar connected
+    </p>
+    {calendarEmail && (
+      <p className="mb-1" style={{ color: 'var(--text-faint)' }}>{calendarEmail}</p>
+    )}
+    <a href="/settings" className="text-xs" style={{ color: 'var(--edg-accent)' }}>
+      Manage in Settings →
+    </a>
+  </div>
+) : (
+  <button onClick={connectCalendar} className="btn-secondary text-xs w-full">
+    Connect Google Calendar
+  </button>
+)}
+```
+
+The email address (`calendarEmail`) anchors which account is connected. Move Reconnect/Disconnect to the `/settings` page — the sidebar just shows status + a link. Keep the "Connect" button only when not connected (the user needs it here).
+
+**C — Hide Whoop section entirely when not connected:**
+Currently when `whoopConnected === false` the sidebar renders a "⚡ Connect Whoop" button. For testing with friends who don't have Whoop, this is noise. Change the condition so the Whoop section only renders when `whoopConnected === true`:
+
+```tsx
+{whoopConnected === true && (
+  <div>
+    {/* RecoveryCard + Disconnect */}
+  </div>
+)}
+{/* Remove the whoopConnected === false → Connect Whoop button block entirely */}
+```
+
+Users who want to connect Whoop can do it from Settings. Don't remove the Whoop section from Settings — just hide the "Connect Whoop" button from the sidebar.
+
+**D — Remove NotificationHistoryPanel:**
+Line ~2563: `<NotificationHistoryPanel defaultCollapsed={true} />`. Delete this line. The notification bell in the header already handles notification history. The collapsible "RECENT ALERTS" panel in the sidebar is redundant and confusing.
+
+Claim `app/dashboard/page.tsx` in the Status Board.
+
+---
+
+### T2 — Score sparkline: continuous line to today + date labels (HIGH — 1h)
+
+**Problem (screenshot provided by PM):** The `EdgeTrendSparkline` in `components/ui/EdgeScoreCard.tsx` shows a line that ends abruptly partway across the chart with a large empty region on the right. The issue: days with no completed call are `null` in the history array, and the chart simply doesn't draw those slots — the line stops at the last real data point instead of extending to today. The "52 today" label is shown as text on the right but is not plotted on the line.
+
+**Fix in `components/ui/EdgeScoreCard.tsx` — `EdgeTrendSparkline` function:**
+
+**Part A — Extend the line to today's live score:**
+
+The parent component passes the current live score (`todayScore` or equivalent — check what prop the component already receives or what variable from the parent scope is in reach). When building the `filteredPoints` array, ensure the rightmost slot always has today's live score:
+
+```ts
+// After building the raw data array (nulls for missing days, real scores otherwise),
+// replace the last null (or add if the last slot is null) with today's live score:
+const extendedData = [...historyData];
+if (todayScore !== null && todayScore !== undefined) {
+  // Replace from the right: find the last slot and set it to today's score
+  extendedData[extendedData.length - 1] = todayScore;
+}
+// Then filter/plot extendedData instead of historyData
+```
+
+This guarantees the green line always reaches the right edge of the chart (today), regardless of how many recent calls were missed.
+
+**Part B — Date labels on the x-axis:**
+
+Below the sparkline SVG, add a row of date labels corresponding to each x slot. Use the dates from the history array (or compute them as `today - (n - 1 - i) days`). Display as short day names: "Mon", "Tue", "Wed", etc.
+
+```tsx
+<div className="flex justify-between mt-1 px-1">
+  {labels.map((label, i) => (
+    <span key={i} className="text-[9px]" style={{ color: 'var(--text-faint)' }}>
+      {label}
+    </span>
+  ))}
+</div>
+```
+
+Where `labels` is computed from the date slots — for each slot `i`, compute the date as `new Date(today - (n - 1 - i) * 86400000)` and format as a 3-letter day name (`date.toLocaleDateString('en-US', { weekday: 'short' })`).
+
+The leftmost label aligns with the first data point, the rightmost label is always "Today" (or today's day name).
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-23 (ROUND 22 — Briefings UX + score trust signals)
 
 > `git merge master` first. Two tickets. **Do both before R21 or pillar work.**
