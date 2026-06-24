@@ -7,6 +7,8 @@ import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
 import { factDisplayStatement } from '@/lib/factDisplay';
+import { factSourceLabel } from '@/lib/factSourceLabel';
+import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
@@ -1158,24 +1160,11 @@ interface Fact {
   source_briefing_id?: number | null;
   source?: string | null;
   last_updated_at?: string | null;
+  // R25 T5 — 1 when the source call was an open/gratitude call, 0 for a morning briefing, null if no call source.
+  source_is_open_call?: number | null;
 }
 
-// ── Fact source label ─────────────────────────────────────────────────────────
-
-function factSourceLabel(f: Fact): { text: string; href: string | null } {
-  const date = format(new Date(f.learned_at), 'MMM d');
-  if (f.source === 'email') {
-    return { text: `learned ${date} · from your inbox`, href: null };
-  }
-  if (f.source === 'priority-sync') {
-    return { text: `learned ${date} · from your priorities`, href: null };
-  }
-  // briefing source (source_briefing_id set, or default for call-originated facts)
-  if (f.source_briefing_id) {
-    return { text: `learned ${date} · from your morning call`, href: `/dashboard?briefing=${f.source_briefing_id}` };
-  }
-  return { text: `learned ${date}`, href: null };
-}
+// ── Fact source label (R25 T5 — extracted to lib/factSourceLabel.ts, pure + tested) ──
 
 // ── Focus Scoreboard ──────────────────────────────────────────────────────────
 
@@ -1645,7 +1634,18 @@ export default function Dashboard() {
     fetch('/api/briefing/today-status').then(r => r.ok ? r.json() : null).then(d => { if (d) setTodayCallStatus(d); }).catch(() => {});
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     setCalendarFitLoading(true);
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => { if (d) setCalendarFit(d); }).catch(() => {}).finally(() => setCalendarFitLoading(false));
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => {
+      if (!d) return;
+      setCalendarFit(d);
+      // R25 T7 Part B — celebrate a natural score rise on page load (not just after confirm-focus).
+      try {
+        const lastSeen = parseInt(localStorage.getItem(LAST_SEEN_SCORE_KEY) ?? '0', 10) || 0;
+        if (shouldCelebrateScoreRise({ edgeScore: d.edgeScore, priorScore: d.priorScore, lastSeen })) {
+          setEdgeScoreCelebrating(true);
+          localStorage.setItem(LAST_SEEN_SCORE_KEY, String(d.edgeScore));
+        }
+      } catch { /* localStorage unavailable — skip celebration, non-fatal */ }
+    }).catch(() => {}).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     // Check if already confirmed today — show locked state, prevent re-confirm.

@@ -76,6 +76,10 @@ export async function computeAlignment(
 
     const events = weekEvents
       .slice(0, 40) // cap to avoid oversized prompts
+      // R25 T3 — exclude all-day events (hotel stays, travel, OOO): they carry start.date, not
+      // start.dateTime, get capped to 8h, and the LLM flags them as the biggest unaligned sink
+      // (e.g. "Conrad Las Vegas (8.0h)"). They're context, not countable work hours.
+      .filter(e => !!e.start?.dateTime)
       .map(e => ({
         title: sanitize(e.summary || 'Untitled', 100),
         // Include the event description so user-added context ("- Edg3 MVP", agendas, notes)

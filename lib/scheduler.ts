@@ -97,13 +97,8 @@ function currentPrioritiesText(userId: number): string {
   return eff.length ? eff.map((p, i) => `${i + 1}. ${p.text}`).join('\n') : '';
 }
 
-// Up to 10 most-recent stored preference facts as bullet lines for the KNOWN PREFERENCES
-// section of the live-call system prompt. Returns '' when none are stored.
-function currentPreferencesText(userId: number): string {
-  const prefs = factQueries.getByCategory(userId, 'preference');
-  if (!prefs.length) return '';
-  return prefs.slice(0, 10).map(p => `- ${p.statement}`).join('\n');
-}
+// R25 T1 — currentPreferencesText removed: both briefing and open calls now use the richer
+// currentOpenCallMemoryText (from ./callMemory), which already includes preference facts.
 
 // Today's Whoop snapshot as a compact string for the live-call system prompt, so recovery/sleep/
 // strain are available on ANY call (briefing OR open), not just the briefing. '' if unavailable.
@@ -631,7 +626,9 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     // Guard Vapi call — classify the error (daily cap vs service failure) for the dashboard.
     try {
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
-      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentPreferencesText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), null, user.language || 'en');
+      // R25 T1 — briefing calls get the same rich live memory block as open calls (all facts +
+      // open loops + recent call notes), so Edge knows people who aren't on today's calendar.
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), null, user.language || 'en');
       console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -698,7 +695,10 @@ export async function scheduleOpenCall(userId: number) {
       try { return userQueries.getGratitudeQuote(userId); }
       catch { return { quoteEnabled: false, quoteTheme: 'resilience' }; }
     })();
-    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en');
+    // R25 T2 — celebrate a strong recovery/sleep score at the top of the gratitude call.
+    const rec = await getLatestRecovery(userId).catch(() => null);
+    const recoveryScore = rec?.recoveryScore ?? null;
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore);
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = isCantonese
       ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今朝點呀？`

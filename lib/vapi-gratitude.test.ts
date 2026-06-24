@@ -31,3 +31,29 @@ describe('buildGratitudeSystemPrompt (R20)', () => {
     expect(p).not.toContain('QUOTE');
   });
 });
+
+describe('buildGratitudeSystemPrompt — R25 T2 (recovery opener + natural conversation)', () => {
+  // positional: firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, language, recoveryScore
+  const build = (recovery: number | null) =>
+    buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null, false, 'resilience', 'en', recovery);
+
+  it('includes the Whoop acknowledgment when recovery ≥ 80', () => {
+    const p = build(86);
+    expect(p).toContain('WHOOP ACKNOWLEDGMENT');
+    expect(p).toContain('86%');
+  });
+
+  it('omits the Whoop acknowledgment when recovery is below 80', () => {
+    expect(build(60)).not.toContain('WHOOP ACKNOWLEDGMENT');
+  });
+
+  it('omits the Whoop acknowledgment when recovery is null', () => {
+    expect(build(null)).not.toContain('WHOOP ACKNOWLEDGMENT');
+  });
+
+  it('replaces the hard "Do not pivot" block with WHAT TO DEFLECT (natural conversation allowed)', () => {
+    const p = build(null);
+    expect(p).not.toContain('Do not pivot');
+    expect(p).toContain('WHAT TO DEFLECT');
+  });
+});

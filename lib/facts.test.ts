@@ -45,6 +45,10 @@ vi.mock('./db', async (importOriginal) => {
         const fact = store.find(f => f.id === id && f.user_id === userId);
         if (fact) { fact.statement = statement; fact.entity = entity; fact.learned_at = new Date().toISOString(); }
       }),
+      updateLearnedAt: vi.fn((userId: number, id: number, learnedAt: string) => {
+        const fact = store.find(f => f.id === id && f.user_id === userId);
+        if (fact) fact.learned_at = learnedAt;
+      }),
       deleteFact: vi.fn((userId: number, id: number) => {
         const idx = store.findIndex(f => f.id === id && f.user_id === userId);
         if (idx !== -1) store.splice(idx, 1);
@@ -449,6 +453,28 @@ describe('consolidateFacts', () => {
     expect(removed).toBe(1);
     // id=2 is longer (>20 char diff) → kept; id=1 deleted
     expect(factQueries.deleteFact).toHaveBeenCalledWith(1, 1);
+  });
+
+  // R25 T6 — a goal re-stated on a later call merges into the keeper; the "learned" stamp must
+  // stay anchored to the ORIGINAL date, not jump forward to the re-statement date.
+  it('preserves the original (oldest) learned_at when a re-stated goal merges into a newer keeper', () => {
+    // id=2 is the keeper (longer statement) but was learned LATER than id=1.
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'goal', 'Series A', 'Wants to close Series A', '2026-06-01'),
+      makeFact(2, 'goal', 'series a', 'Wants to close Series A by September 2026 at a $3M valuation', '2026-06-20'),
+    ]);
+    consolidateFacts(1);
+    expect(factQueries.updateLearnedAt).toHaveBeenCalledWith(1, 2, '2026-06-01');
+  });
+
+  it('does not touch learned_at when the keeper is already the oldest in the group', () => {
+    // id=1 is the keeper (longer) AND the oldest → no re-anchor needed.
+    vi.mocked(factQueries.getAll).mockReturnValueOnce([
+      makeFact(1, 'goal', 'Series A', 'Wants to close Series A by September 2026 at a $3M valuation', '2026-06-01'),
+      makeFact(2, 'goal', 'series a', 'Wants to close Series A', '2026-06-20'),
+    ]);
+    consolidateFacts(1);
+    expect(factQueries.updateLearnedAt).not.toHaveBeenCalled();
   });
 });
 

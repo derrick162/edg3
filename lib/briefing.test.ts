@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock, pickTopCommitment, isRoutineEvent } from './briefing';
+import { buildFallbackBriefing, buildWhoopSection, buildEnergyMatchingBlock, buildBaselineContext, buildPersonalizationPromptBlock, buildBriefingContext, buildPeopleModelBlock, pickTopCommitment, isRoutineEvent, selectNonCalendarPeopleFacts } from './briefing';
 import type { Fact, PeopleModel, Task } from './db';
 
 function makePref(statement: string, id = 1): Fact {
@@ -441,13 +441,16 @@ describe('buildBriefingContext — regression', () => {
     expect(ctx).toContain('Tier 1 VC');
   });
 
-  it('does not inject people context for people absent from today\'s calendar', () => {
+  // R25 T1 — people NOT on today's calendar are now surfaced (capped) under a dedicated block,
+  // so Edge can reference friends/contacts who aren't in a calendar event today.
+  it('injects people NOT on today\'s calendar under a dedicated block', () => {
     const factsWithMarcus = [
       ...FACTS,
       { category: 'person', entity: 'Marcus', statement: 'CFO at Acme', confidence_score: 0.9, learned_at: bcDaysAgo(2), last_confirmed_at: null },
     ];
     const ctx = buildBriefingContext(USER, { facts: factsWithMarcus, priorities: PRIORITIES, calendar: CALENDAR, tasks: [] }, BC_TODAY);
-    expect(ctx).not.toContain('Marcus');
+    expect(ctx).toContain('Marcus');
+    expect(ctx).toContain("PEOPLE EDGE KNOWS ABOUT (not on today's calendar)");
   });
 
   it('injects fill-the-gap question when fewer than 3 personalization signals', () => {
@@ -552,5 +555,31 @@ describe('buildPeopleModelBlock (M4-4)', () => {
 
   it('skips a matched model with no usable fields', () => {
     expect(buildPeopleModelBlock([ev('1:1 Sarah Chen')], [model({ person_name: 'Sarah Chen' })])).toBe('');
+  });
+});
+
+describe('selectNonCalendarPeopleFacts (R25 T1)', () => {
+  const f = (entity: string | null, statement: string, category = 'person') =>
+    ({ category, entity, statement } as { category: string; entity: string | null; statement: string });
+
+  it('includes a person fact NOT on today\'s calendar', () => {
+    const active = [
+      f('Patrick', "Derrick's friend, bachelor party in Vegas"),
+      f('Sarah', 'lead investor'),
+    ];
+    const calendarPeople = [f('Sarah', 'lead investor')]; // Sarah is on today's calendar
+    const out = selectNonCalendarPeopleFacts(active, calendarPeople);
+    expect(out.map(x => x.entity)).toContain('Patrick');
+    expect(out.map(x => x.entity)).not.toContain('Sarah'); // already covered by calendar block
+  });
+
+  it('excludes non-person facts and caps the result', () => {
+    const active = [
+      ...Array.from({ length: 8 }, (_, i) => f(`Person${i}`, `note ${i}`)),
+      f(null, 'a preference', 'preference'),
+    ];
+    const out = selectNonCalendarPeopleFacts(active, [], 5);
+    expect(out).toHaveLength(5);
+    expect(out.every(x => x.category === 'person')).toBe(true);
   });
 });

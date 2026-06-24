@@ -2340,6 +2340,14 @@ export const factQueries = {
     ).run(encryptField(statement), entity, id, userId);
   },
 
+  // R25 T6 — re-anchor a fact's learn date to the original (oldest) when a re-stated goal merges
+  // into it, so the "learned MMM d" provenance stamp doesn't jump forward to today.
+  updateLearnedAt: (userId: number, id: number, learnedAt: string): void => {
+    getDb().prepare(
+      'UPDATE facts SET learned_at = ? WHERE id = ? AND user_id = ?'
+    ).run(learnedAt, id, userId);
+  },
+
   getById: (userId: number, id: number): Fact | undefined => {
     const row = getDb().prepare(
       'SELECT * FROM facts WHERE id = ? AND user_id = ?'
