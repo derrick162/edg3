@@ -2444,6 +2444,19 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R25 T7 Part B SHIPPED (2145 green) — Edge Score rise celebrates on page load.**
+  - The `edgeScoreCelebrating` animation only ever fired after an explicit confirm-focus action; a
+    natural score rise (calendar improved overnight / nightly cron re-scored) got no visual ack.
+  - **`GET /api/scores`** now returns `priorScore` (the most-recent prior `edge_score` via the
+    already-computed `getPrior`, lifted out of the `change`-summary try block) so the client can
+    compute the delta. Additive — no existing field changed.
+  - **`app/dashboard/page.tsx`**: the `/api/scores` load handler now fires `setEdgeScoreCelebrating(true)`
+    when the score genuinely rose, gated by new pure helper `shouldCelebrateScoreRise` and a
+    `localStorage` high-water mark (`edg3_last_seen_score`) so a refresh later in the day doesn't replay.
+  - **`lib/scoreCelebration.ts`** (new, pure): `shouldCelebrateScoreRise({edgeScore, priorScore, lastSeen})`
+    — true when both scores present, rise ≥ 3 pts, and current > last-celebrated. 6 tests. 2145/2145 green.
+  - **⚠️ Part A (`lib/notifications.ts` yesterday→`getPrior` fix) is Security's R19 T6 — Core did NOT
+    touch `lib/notifications.ts`** (PM split the same root cause across lanes).
 - **2026-06-24** — **R25 T5 + T6 SHIPPED (2139 green) — correct call-source labels + original learn date in Memory tab.**
   - **T5 — "From your morning call" was wrong for open/gratitude calls.** Open/gratitude calls also write
     a `source_briefing_id`, so every call-sourced fact was labeled "from your morning call" regardless of

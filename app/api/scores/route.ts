@@ -180,8 +180,12 @@ export async function GET() {
 
   // Score change summary — diff vs most-recent prior snapshot for transparency.
   let change = null;
+  // R25 T7 Part B — expose the most-recent prior edge score so the dashboard can fire the
+  // score-rise celebration animation on page load (not just after confirm-focus).
+  let priorScore: number | null = null;
   try {
     const prior = calendarScoreQueries.getPrior(user.id, today);
+    priorScore = (prior?.edge_score ?? null) as number | null;
     change = summarizeScoreChange(fit.edgeScore, { focusScore: fit.focusScore, energyScore: fit.energyScore }, prior ?? null, today);
   } catch {
     // Non-fatal — change is additive context only.
@@ -213,5 +217,5 @@ export async function GET() {
     } catch { return null; }
   })();
 
-  return NextResponse.json({ ...fit, history, dailyFocusScore, ...(change ? { change } : {}) });
+  return NextResponse.json({ ...fit, history, dailyFocusScore, priorScore, ...(change ? { change } : {}) });
 }

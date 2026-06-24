@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(🔨 **R25 T1–T6 SHIPPED (2139 green); T7 Part B IN PROGRESS.** T7: score-rise animation on page load + `/api/scores` returns `priorScore`. **Part A (`lib/notifications.ts` getPrior fix) is Security's R19 T6 — Core does NOT touch notifications.ts.**)_ | `app/api/scores/route.ts`, `app/dashboard/page.tsx`, `lib/scoreCelebration.ts` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R25 T1–T7 ALL SHIPPED (2145 green) — ready for PM merge.** T7 Part B: score-rise animation now fires on page load (`/api/scores` returns `priorScore`; pure `lib/scoreCelebration.ts` + `localStorage` high-water mark). **Part A (`lib/notifications.ts` getPrior fix) is Security's R19 T6 — Core did NOT touch notifications.ts.** Idle, awaiting next dispatch.)_ | `app/api/scores/route.ts`, `app/dashboard/page.tsx`, `lib/scoreCelebration.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(🚨 **R19 T3+T4+T5+T6 dispatched 2026-06-24.** T3: evening greeting threshold. T4 [HIGH]: gratitude call blocking morning briefing. T5: nightly score cron. T6: score change notification uses `getPrior` not yesterday.)_ | `lib/scheduler.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R25 T7 + R19 T6 added 2026-06-24 (score-rise notification + animation gap). All Core R25 T1-T7 and Security R19 T3-T6 dispatched.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
