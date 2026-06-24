@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R24 SHIPPED (2117 green) — merged to master.** Onboarding "Connect your tools" step: Google Calendar+Gmail required, Whoop optional. Idle, awaiting next dispatch.)_ | `app/onboarding/page.tsx`, `lib/onboardingConnect.ts` | 2026-06-23 |
+| 🛠️ Core | `core` | _(✅ **R25 SHIPPED (2124 green) — ready for PM merge.** Calls now know people off today's calendar: `scheduleBriefingCall` uses `currentOpenCallMemoryText` (rich block) instead of preferences-only (`lib/scheduler.ts`, additive — **Vijay sync down**); `buildBriefingContext` injects a "PEOPLE EDGE KNOWS ABOUT (not on today's calendar)" block via new pure `selectNonCalendarPeopleFacts`. 3 tests. (R24 onboarding Connect step already merged.) Idle, awaiting next dispatch.)_ | `lib/scheduler.ts`, `lib/briefing.ts` | 2026-06-23 |
 | 🔒 Security | `security` | _(✅ **R19 FULLY SHIPPED (2120 green) — merged to master.** T1: quota-error retry cascade fix. T2: gratitude re-fire loop fix. **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + volume + `DATA_ENCRYPTION_KEY` backup + restore drill.)_ | `app/api/vapi/webhook/route.ts`, `lib/proactiveNotifications.ts`, `lib/db.ts` | 2026-06-23 |
 | 🔧 PM/CoS | `master` | _(📋 **All R22/R23/R24/R19 merged to master 2026-06-23. Engineers idle, awaiting next dispatch.**)_ | `ROADMAP.md` | 2026-06-23 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
