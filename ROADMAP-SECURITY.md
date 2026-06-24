@@ -198,6 +198,37 @@ const existing = getDb().prepare(
 
 ---
 
+### T5 — Nightly score computation cron (MEDIUM — 30m)
+
+**Depends on:** Core R25 T4 exporting `computeAndSaveScore` from `lib/scores.ts`.
+
+**Problem:** Edg3 Score sparkline shows gaps on days the user doesn't load the dashboard. The score should be computed and saved nightly regardless of page loads.
+
+**Fix — `lib/scheduler.ts` `startScheduler()`:**
+
+Add a nightly cron alongside the existing `0 3 * * *` retention cron:
+
+```ts
+// Nightly Edg3 Score computation — fills the sparkline trend for all active users
+// even on days they don't load the dashboard.
+cron.schedule('0 23 * * *', async () => {
+  const { computeAndSaveScore } = await import('./scores');
+  const users = db.prepare(`
+    SELECT id FROM users WHERE onboarding_complete = 1
+  `).all() as Array<{ id: number }>;
+  for (const { id } of users) {
+    try { await computeAndSaveScore(id); }
+    catch (e) { console.error(`[scheduler] nightly score failed for user ${id}:`, e); }
+  }
+});
+```
+
+Dynamic import so the cron is a no-op (logs a warning) until Core exports the function — same activation pattern as `runNightlyContextPacks`.
+
+**Tests:** active user → `computeAndSaveScore` called once per user in cron tick.
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Inbound call security)
 
 > `git merge master` first. One ticket. **Do before R17 or pillar work.**
