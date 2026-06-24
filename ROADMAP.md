@@ -108,7 +108,8 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ **R27 SHIPPED (2176 green) — merged to master.** Gratitude prompt injects rich memory so Edge knows people mid-call (Patrick fix). Greeting bug also resolved in combination with Security hotfix. Idle.)_ | `lib/vapi.ts`, `lib/scheduler.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2177+ green).** T3-followup: gratitude call greeting now uses wall-clock time. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts` | 2026-06-24 || 🔧 PM/CoS | `master` | _(📋 **R27 + greeting hotfix merged 2026-06-24. Patrick memory + time-of-day greeting both fixed.**)_ | `ROADMAP.md` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2180 green).** T3-followup: gratitude call greeting now uses wall-clock time. Repo hygiene: untracked stray root `edg3.db` + gitignored `*.db`. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts`, `.gitignore` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R27 + greeting hotfix merged 2026-06-24. Patrick memory + time-of-day greeting both fixed.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---
