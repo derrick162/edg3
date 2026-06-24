@@ -2818,6 +2818,22 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R32 SHIPPED (2204 green, CRITICAL) — Edge can no longer false-confirm a calendar action.**
+  - **Trust violation:** Edge said "Done. Locked in 90 minutes tomorrow at 11 AM…" for an event Google
+    never created. Two-layer fix so neither path (Google silently failed / model confirmed on intent alone)
+    can recur:
+  - **Fix A — prompt (`lib/vapi.ts`):** added a CRITICAL "NEVER FALSE-CONFIRM" rule to the HONEST FAILURE
+    block — never say Done/Booked/Locked in/Created/Moved/Deleted unless the matching tool returned SUCCESS
+    in this turn; if the result starts with "ERROR" or reports it didn't go through, say so and offer to retry.
+  - **Fix B — handler (`app/api/vapi/tool-call/route.ts`):** the `createEvent` `cal.events.insert` (timed +
+    all-day) had NO try/catch — a Google throw fell through to the top-level catch. Wrapped both with an
+    explicit "ERROR: Event was NOT created. Do not confirm this booking…" return. `friendlyError` extracted
+    to pure **`lib/calendarToolErrors.ts`** and every branch now leads with "ERROR — that did NOT go through
+    … Do not say it's done" (covers moveEvent/editEvent/deleteEvent/all mutations that throw to the funnel).
+    `moveEvent` + `deleteEvent` local failure returns hardened to the same explicit standard. `FAILURE_RE`
+    updated so leading "ERROR" classifies as a failure in the activity log. 6 tests on the extracted module.
+  - **⚠️ Shared `app/api/vapi/tool-call/route.ts` + Security-owned `lib/vapi.ts` — additive/behavioral on the
+    Core-owned tool side; Vijay sync down. R33 (work hours) is next.**
 - **2026-06-24** — **R31 + R30 SHIPPED (2198 green) — briefing score mismatch fixed + "Call me now" notification & staged feedback.**
   - **R31 — briefing Edge Score now matches the dashboard.** Root cause: `lib/briefing.ts` called
     `computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep)` with only **4 args** — Clarity

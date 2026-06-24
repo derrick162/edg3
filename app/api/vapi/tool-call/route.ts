@@ -20,6 +20,7 @@ import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQ
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
 import { enrichFact } from '@/lib/facts';
+import { friendlyError } from '@/lib/calendarToolErrors';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -159,19 +160,13 @@ function resolveEvent(matches: { event: calendar_v3.Schema$Event; calId: string 
 }
 
 // Translate an exception into something Edge can read out to the user.
-function friendlyError(err: unknown): string {
-  const msg = String(err);
-  if (msg.includes('No calendar connected')) return "I can't access your calendar right now — it may need to be reconnected in the dashboard.";
-  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — the event may be on a read-only calendar or organized by someone else. Want me to draft a message to the organizer instead?";
-  if (msg.includes('notFound') || msg.includes('404')) return "I couldn't find that event to modify it.";
-  if (msg.includes('rateLimitExceeded') || msg.includes('429')) return "Google Calendar is temporarily rate-limiting requests — try again in a moment.";
-  if (msg.includes('timeout') || msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED')) return "The request timed out — want me to try again?";
-  return "Something went wrong on my end — want me to try again or take a different approach?";
-}
+// R32 — calendar-tool failure messaging extracted to lib/calendarToolErrors.ts (unit-tested).
 
 // Result strings that indicate the action did NOT succeed (used for the activity log status).
 // Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
-const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
+// R32: leading "ERROR" (createEvent's explicit not-created returns + friendlyError's "ERROR —")
+// must classify as a failure here too, so it never shows as a successful action in the activity log.
+const FAILURE_RE = /^(ERROR|Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
 
 // Research notes Edge attaches are wrapped in these delimiters so a later research call can
 // REPLACE the prior block (not stack on it) while leaving the user's own typed notes intact.
@@ -398,14 +393,21 @@ Query: ${query}` }],
         const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
         return `All-day "${title}" ${span} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
       }
-      const insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
-        summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
-        ...(description ? { description } : {}),
-        ...(location ? { location } : {}),
-        ...(recur ? { recurrence: [recur] } : {}),
-        ...(attendeeList.length ? { attendees: attendeeList } : {}),
-      } });
-      if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
+      let insAllDay;
+      try {
+        insAllDay = await cal.events.insert({ calendarId: 'primary', requestBody: {
+          summary: `⚡ ${title}`, start: { date: startOnly }, end: { date: nextDay(lastDay) }, colorId: color ? getColorId(color) : '9',
+          ...(description ? { description } : {}),
+          ...(location ? { location } : {}),
+          ...(recur ? { recurrence: [recur] } : {}),
+          ...(attendeeList.length ? { attendees: attendeeList } : {}),
+        } });
+      } catch (createErr) {
+        // R32 — never let a Google failure surface as a false "Done". Explicit, non-recoverable signal.
+        console.error('[createEvent] all-day Google insert failed:', createErr instanceof Error ? createErr.message : createErr);
+        return `ERROR: The all-day "${title}" was NOT created. Do not confirm this booking. Tell the user: "I ran into an error creating that — I didn't get it locked in. Want me to try again?"`;
+      }
+      if (!insAllDay.data.id) return `ERROR: Could not confirm the all-day "${title}" was created — do NOT tell the user it's booked. Offer to try again.`;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
       const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
       return `Created and confirmed all-day "${title}" ${span}.`;
@@ -465,8 +467,15 @@ Query: ${query}` }],
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}), ...(attendeeList.length ? { attendees: attendeeList } : {}) };
-    const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
-    if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
+    let insTimed;
+    try {
+      insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
+    } catch (createErr) {
+      // R32 — a Google insert failure must never reach the user as "Done". Explicit not-created signal.
+      console.error('[createEvent] timed Google insert failed:', createErr instanceof Error ? createErr.message : createErr);
+      return `ERROR: Event was NOT created. Do not confirm this booking. Tell the user: "I ran into an error creating that — I didn't get it locked in. Want me to try again?"`;
+    }
+    if (!insTimed.data.id) return `ERROR: Could not confirm "${title}" was created — do NOT tell the user it's booked. Offer to try again.`;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
     const inviteNote = attendeeList.length ? ` Invited ${attendeeList.length} ${attendeeList.length === 1 ? 'person' : 'people'}.` : '';
     return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
@@ -593,7 +602,7 @@ Query: ${query}` }],
     if (recreates.length) recordUndo(userId, `deleted ${describeDeleteTargets(toDelete, recurringScope, tz)}`, recreates);
     if (!deleted.length) {
       return failedDel.length
-        ? `I hit a snag removing ${failedDel.join(', ')} — couldn't clear ${failedDel.length > 1 ? 'those' : 'that one'} from here.`
+        ? `ERROR: Nothing was deleted — I hit a snag removing ${failedDel.join(', ')}. Do NOT tell the user ${failedDel.length > 1 ? 'they were' : 'it was'} removed. Want me to try again?`
         : `No event matching "${title}" on ${date}.`;
     }
     return failedDel.length
@@ -696,7 +705,7 @@ Query: ${query}` }],
       console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'} rb=${JSON.stringify(rb)}:`, moveErr instanceof Error ? moveErr.message : moveErr);
       return null;
     });
-    if (!patched || !patched.data.id) return `Couldn't get that shift through for "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — want me to draft a message to the organizer requesting a different time?`;
+    if (!patched || !patched.data.id) return `ERROR: That did NOT move — I couldn't get the shift through for "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}". Do NOT tell the user it's rescheduled. Want me to draft a message to the organizer requesting a different time?`;
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
