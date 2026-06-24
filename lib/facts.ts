@@ -17,13 +17,13 @@ import type { EmailSignal } from './gmail';
 import { isLikelySpam } from './emailActivityFilter';
 
 export type ExtractedFact = {
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'commitment';
   statement: string;
   entity?: string | null;
   confidence?: 'high' | 'low';
 };
 
-const VALID_CATEGORIES = new Set(['person', 'project', 'goal', 'preference', 'fact']);
+const VALID_CATEGORIES = new Set(['person', 'project', 'goal', 'preference', 'fact', 'commitment']);
 
 /**
  * ONE Haiku call: parse up to 10 durable structured facts from a transcript.
@@ -72,6 +72,7 @@ Categories:
 - "goal"       — a stated goal, aspiration, or deadline
 - "preference" — how the user likes to work, communicate, or make decisions
 - "fact"       — any other durable fact about the user's life or business
+- "commitment" — something the user said THEY WILL DO, especially near-term ("I'm going to tackle the Railway fix today", "I'll call the bank tomorrow", "I plan to finish the deck this week", "I need to get to the gym"). Capture the action as the statement, entity null. These are NOT timeless — they're for next-call accountability, so do extract them even though they're time-bound (this overrides the "timeless only" rule for commitments). One commitment per distinct intention.
 
 Rules:
 - ATTRIBUTION: Only extract preferences, goals, beliefs, or facts that the USER stated about themselves. NEVER attribute anything the assistant (Edge/Edg3) said as a user preference or belief. The assistant deflecting, redirecting, or suggesting (e.g. "let's save that for another time", "let's keep focused") is the ASSISTANT's behavior, NOT a user preference — ignore it entirely. When unsure who said something, do not extract it.

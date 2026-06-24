@@ -2163,7 +2163,7 @@ export interface GmailDraftLog {
 export interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern' | 'commitment';
   statement: string;
   entity: string | null;
   learned_at: string;

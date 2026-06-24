@@ -2905,6 +2905,28 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R34 SHIPPED (2232 green) — accountability + memory depth + briefing hygiene + continuity.**
+  - **T1 — commitment tracking.** New `commitment` fact category (`lib/db.ts` `Fact` type, `lib/facts.ts`
+    `VALID_CATEGORIES` + extraction prompt — captures "I'm going to tackle X today" as `category:'commitment'`,
+    entity null, overriding the timeless-only rule). New pure `buildOpenCommitmentsBlock(facts, now)` in
+    `lib/briefing.ts` surfaces active commitments < 72h old (cap 2, most recent first) as
+    "You said on [day]: '…' — did that happen?", injected at the top of the briefing user-prompt before the
+    calendar section. Resolution rides the existing retire path (retired commitments never reach
+    `getByCategory`). Category-weight maps in `factConfidence.ts`/`memorySalience.ts` extended. 7 tests.
+  - **T2 — PEOPLE DEEPENING.** Prompt block in `lib/vapi.ts` (main open-call/briefing prompt + gratitude
+    prompt): when the user mentions a person Edge knows only 1–2 facts about and flow allows, ask ONE warm
+    follow-up (once per person), then `rememberPreference` on the answer. 1 test (gratitude).
+  - **T3 — hard OPENER RULE.** Briefing system prompt now forbids opening on meals/gym/workout/daily
+    routine/commute and requires a priority-relevant event/deadline/relationship/health hook (falls back to
+    the top priority when the calendar is quiet).
+  - **T4 — prior-call continuity.** New pure `pickContinuitySource(briefings, now)` (most recent COMPLETED
+    transcript < 48h, else null) + guarded Haiku `extractContinuitySignal` → `CONTINUITY — FROM YOUR LAST
+    CALL` section in `buildBriefingContextPack`; system-prompt instruction to weave ONE natural callback
+    into the closing question. 4 tests (the 48h gate).
+  - **⚠️ Additive to Shared `lib/db.ts` (Fact type) + Security-owned `lib/vapi.ts` (prompt content) — Vijay
+    sync down.** Note: the inline briefing system-prompt rules (T3 OPENER, T4/T1 instructions) aren't
+    unit-tested (the prompt isn't an exported builder) — verified via tsc/build; the pure helpers + extraction
+    + gratitude prompts are tested.
 - **2026-06-24** — **R33 SHIPPED (2221 green) — work-hours setting + Edge defers after-hours scheduling.**
   - **Context:** Edge offered to block work time at 6:14 PM — there was no way for a user to tell it their hours.
   - **Part A — schema (`lib/db.ts`, Shared):** added `users.work_schedule TEXT` (JSON

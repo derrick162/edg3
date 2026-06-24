@@ -133,3 +133,12 @@ describe('buildGratitudeSystemPrompt — R28 T2 (please-remember works on gratit
     expect(p).toContain('記住');
   });
 });
+
+describe('buildGratitudeSystemPrompt — R34 T2 (people deepening)', () => {
+  it('includes a PEOPLE DEEPENING instruction (one warm question, rememberPreference on answer)', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null);
+    expect(p).toContain('PEOPLE DEEPENING');
+    expect(p).toContain('rememberPreference');
+    expect(p.toLowerCase()).toContain('once per person');
+  });
+});

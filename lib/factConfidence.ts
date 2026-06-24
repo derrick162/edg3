@@ -89,6 +89,9 @@ const CATEGORY_PRIORITY: Record<Fact['category'], number> = {
   // Patterns are DERIVED (observed behavior), not user-stated facts you'd reconfirm aloud
   // ("are you still doing X?" doesn't apply) — lowest reconfirmation priority.
   pattern: 5,
+  // R34 — commitments are time-bound accountability prompts surfaced by their own briefing block,
+  // not reconfirmed via the "is that still true?" path. Lowest priority here.
+  commitment: 6,
 };
 
 /**

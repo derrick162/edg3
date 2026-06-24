@@ -26,6 +26,7 @@ const CATEGORY_WEIGHTS: Record<Fact['category'], number> = {
   pattern:    0.6,  // derived behavioral insight — meaningful signal, below directly-stated facts
   fact:       0.5,
   preference: 0.4,
+  commitment: 0.3,  // R34 — time-bound; surfaced by its own briefing block, not general salience
 };
 
 // Bonus for facts that touch high-stakes domains, regardless of category.

@@ -243,6 +243,70 @@ export function pickTopCommitment(tasks: Task[]): Task | null {
   })[0];
 }
 
+/**
+ * R34 T1 — accountability hook. From the user's active 'commitment' facts ("I'm going to tackle the
+ * Railway fix today"), surface the most recent ones so the next briefing can ask "did that happen?".
+ * Only commitments learned within `maxHours` (default 72h), most recent first, capped (default 2).
+ * Resolved commitments are simply retired (valid_until set) so they never reach `getByCategory` — the
+ * caller passes ACTIVE facts only, which is why no explicit "resolved" filter is needed here.
+ * Pure; returns null when there's nothing to surface. Exported for unit tests.
+ */
+export function buildOpenCommitmentsBlock(
+  facts: Array<{ statement: string; learned_at: string; category: string }>,
+  now: Date = new Date(),
+  maxHours = 72,
+  cap = 2,
+): string | null {
+  const cutoff = now.getTime() - maxHours * 3_600_000;
+  const open = facts
+    .filter(f => f.category === 'commitment')
+    .filter(f => { const t = Date.parse(f.learned_at); return Number.isFinite(t) && t >= cutoff; })
+    .sort((a, b) => Date.parse(b.learned_at) - Date.parse(a.learned_at))
+    .slice(0, cap);
+  if (!open.length) return null;
+  return open.map(f => `You said on ${format(new Date(f.learned_at), 'EEEE')}: "${f.statement}" — did that happen?`).join('\n');
+}
+
+/**
+ * R34 T4 — prior-call continuity. Pick the transcript to draw a "last call" callback from: the most
+ * recent COMPLETED call with real content, only if it happened within `maxHours` (default 48). Pure;
+ * returns the transcript text or null. The Haiku continuity extraction runs only when this is non-null.
+ * Exported for unit tests.
+ */
+export function pickContinuitySource(
+  briefings: Array<{ scheduled_for?: string | null; status?: string | null; transcript?: string | null }>,
+  now: Date = new Date(),
+  maxHours = 48,
+): string | null {
+  const cutoff = now.getTime() - maxHours * 3_600_000;
+  const candidate = [...briefings]
+    .filter(b => (b.status ?? 'completed') === 'completed' && (b.transcript ?? '').trim().length > 0)
+    .filter(b => { const t = Date.parse(b.scheduled_for ?? ''); return Number.isFinite(t) && t >= cutoff; })
+    .sort((a, b) => Date.parse(b.scheduled_for ?? '') - Date.parse(a.scheduled_for ?? ''))[0];
+  return candidate ? (candidate.transcript ?? '').trim() : null;
+}
+
+/**
+ * R34 T4 — one Haiku pass over the last call's transcript to surface 1–2 notable emotional signals or
+ * open questions worth a gentle callback next time. Guarded: returns null on any failure or "NONE".
+ */
+async function extractContinuitySignal(transcript: string): Promise<string | null> {
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 150,
+      messages: [{
+        role: 'user',
+        content: `From this call transcript, pull 1-2 notable emotional signals or open questions the user raised that are worth a gentle follow-up next call (e.g. "stressed about fundraising", "waiting to hear back on the apartment offer"). Return ONE short line, no preamble. If nothing notable, return exactly "NONE".\n\n${transcript.slice(0, 2000)}`,
+      }],
+    });
+    const text = res.content.filter((b: { type: string }) => b.type === 'text').map((b: { type: string; text?: string }) => b.text ?? '').join('').trim();
+    return (!text || /^NONE/i.test(text)) ? null : text;
+  } catch { return null; }
+}
+
 // R17 T1 — events that shouldn't lead the opener (the user already knows them).
 const ALWAYS_ROUTINE_KEYWORDS = [
   'breakfast', 'lunch', 'dinner', 'brunch', 'meal prep', 'mealprep', 'coffee',
@@ -613,6 +677,21 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
       .join('\n');
     sections.push(`MEMORY & PRIOR CONVERSATIONS:\n${memoriesText}`);
   }
+
+  // R34 T4 — prior-call continuity: a callback to the last call's open emotional thread (< 48h).
+  try {
+    const continuitySource = pickContinuitySource(
+      briefingQueries.getRecent(userId, 8).map(b => ({
+        scheduled_for: b.scheduled_for,
+        status: b.status,
+        transcript: (b.user_response || b.content || ''),
+      })),
+    );
+    if (continuitySource) {
+      const signal = await extractContinuitySignal(continuitySource);
+      if (signal) sections.push(`CONTINUITY — FROM YOUR LAST CALL:\n${signal}`);
+    }
+  } catch { /* continuity is additive — never block the pack */ }
 
   return sections.join('\n\n');
 }
@@ -1234,13 +1313,22 @@ IMPORTANT — NO FALSE HEDGING (UX-4): State facts from the calendar, priorities
 IMPORTANT: Write times naturally as they would be spoken. "1:30 PM" → "one thirty PM". "9:00 AM" → "nine AM". "10:53 AM" → "ten fifty-three AM". Never round times — say the exact time. Never spell out time digits individually. For money: "two hundred fifty thousand dollars". For percentages: "thirty percent". For weights: "lbs" → "pounds", "kg" → "kilograms". For other numbers: spell out fully. Never write bare digits or abbreviations that won't be spoken correctly.
 IMPORTANT: Always write full day names — never abbreviate. "Mon" → "Monday", "Tue" → "Tuesday", "Wed" → "Wednesday", "Thu" → "Thursday", "Fri" → "Friday", "Sat" → "Saturday", "Sun" → "Sunday".
 IMPORTANT: Use memory context to make the briefing relevant and personal, but do NOT open with references to previous calls or what was said last time. Get straight to today.
+OPENER RULE (hard): Your opening hook after the greeting MUST be a priority-relevant event, deadline, relationship, or health signal worth noting. NEVER open with meals (breakfast, lunch, dinner, coffee), gym, workout, yoga, daily habits, commute, or any recurring personal routine — the user already knows about those. If nothing meaningful is on today's calendar, open on the most important priority instead: "Nothing urgent on the calendar today — that's actually your window to push on [priority]."
+CONTINUITY: If the context includes a "CONTINUITY — FROM YOUR LAST CALL" block, weave ONE natural callback to that open thread into your closing question — not as a report, but warmly: "You mentioned you were stressed about fundraising last time — where does that stand?" One callback only, and only when the block is present.
+COMMITMENTS: If the context includes an "OPEN COMMITMENTS" block, check in on those first — right after the opener, before calendar detail — naturally and without nagging: "You said you'd tackle the Railway fix — did that happen?"
 IMPORTANT — MEMORY: You have full memory of every previous conversation with this person. It is provided to you in the briefing data. Never say you "don't have memory", "start fresh", or "can't remember" previous calls. If asked, say "I have everything from our previous calls — it's all here." You remember everything they've told you.
 IMPORTANT — CALENDAR CAPABILITIES: You can read, create, edit, move, and delete calendar events. When the user asks you to make calendar changes during the call, confirm you'll handle it and it will be done after the call. Never say you "can't edit" or "don't have access" to their calendar. You have full calendar access.
 IMPORTANT: The user's name is ${user.name.split(' ')[0]} — always address them by this name and no other.
 IMPORTANT: The product is spelled "Edg3" but should be pronounced "Edge" — always write it as "Edge" in the text so it is spoken correctly.`;
 
+  // R34 T1 — recent commitments to check in on, before any calendar talk.
+  const openCommitmentsBlock = (() => {
+    try { return buildOpenCommitmentsBlock(factQueries.getByCategory(userId, 'commitment'), now); }
+    catch { return null; }
+  })();
+
   const userPrompt = `Generate today's (${todayLabel}) morning briefing for ${user.name}.
-${focusScoreLine ? `\nFOCUS SCORE (anchor the opener on this — say the number + the one-line reason naturally in Part 1, then move on):\n${focusScoreLine}\n` : ''}
+${openCommitmentsBlock ? `\nOPEN COMMITMENTS (from recent calls — check in on these first, before any calendar talk):\n${openCommitmentsBlock}\n` : ''}${focusScoreLine ? `\nFOCUS SCORE (anchor the opener on this — say the number + the one-line reason naturally in Part 1, then move on):\n${focusScoreLine}\n` : ''}
 USER PROFILE:
 ${user.profile_summary || 'No profile summary available.'}
 

@@ -196,6 +196,24 @@ describe('extractFactsFromTranscript — userName injection', () => {
     expect(promptContent).toMatch(/assistant.*NOT a user preference|NOT a user preference/);
   });
 
+  // R34 T1 — commitments ("I'm going to tackle X today") are a first-class extraction category.
+  it('includes the commitment category in the extraction prompt (R34)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    await extractFactsFromTranscript('User: I am going to tackle the Railway fix today.');
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).toContain('"commitment"');
+    expect(promptContent).toMatch(/will do/i);
+  });
+
+  it('accepts a commitment-category fact from the model (R34)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([
+      { category: 'commitment', statement: 'tackle the Railway fix today', entity: null, confidence: 'high' },
+    ])));
+    const facts = await extractFactsFromTranscript('transcript');
+    expect(facts).toHaveLength(1);
+    expect(facts[0].category).toBe('commitment');
+  });
+
   // R28 T1 — explicit "please remember" requests must be treated as mandatory facts.
   it('includes an EXPLICIT REMEMBER REQUESTS rule in the extraction prompt (R28)', async () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([])));
