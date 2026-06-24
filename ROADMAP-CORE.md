@@ -31,6 +31,51 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 29 — Person facts overwrite instead of merge)
+
+> `git merge master` first. One ticket. **Do before R28 or pillar work.**
+
+---
+
+### T1 — New person fact replaces old instead of enriching it (HIGH — 1h)
+
+**Root cause (observed 2026-06-24):** Derrick said "remember that Patrick grew up in Dallas and we met in New York." `rememberPreference` found the existing Patrick fact ("friend, bachelor party in Vegas"), saw a different statement, called `factQueries.updateFact()` — which snapshots the old statement to `fact_history` and overwrites. On the next call, active memory only had the newest statement. Edge knew about the bachelor party when asked because it was still in the live Vapi session context, not from persistent memory.
+
+**The invariant that should hold:** a person's memory is **cumulative**. New facts about Patrick should enrich what Edge already knows, not replace it.
+
+**Fix — two places:**
+
+**Part A — `app/api/vapi/tool-call/route.ts` `rememberPreference` handler:**
+When `category = 'person'` (or any category) and an existing fact is found with a DIFFERENT statement, don't call `updateFact` (which overwrites). Instead, merge:
+
+```ts
+if (isUpdate && existing) {
+  // Before: updateFact(userId, existing.id, statement, ent)  ← overwrites, loses old info
+  // After: merge old + new into one enriched statement
+  const merged = await mergePersonFact(existing.statement, statement);
+  factQueries.updateFact(userId, existing.id, merged, ent);
+}
+```
+
+`mergePersonFact(oldStatement, newStatement)` — a small helper (can be a Haiku call OR simple string logic):
+- If old and new are clearly additive (different facts about the same person) → combine: `"${oldStatement} ${newStatement}"`
+- Cap at 500 chars; trim gracefully if over
+- If new statement *contradicts* old (e.g. old: "lives in Toronto", new: "lives in New York") → new wins for that specific claim only; keep the rest of old
+
+**Part B — `lib/facts.ts` `extractAndUpsertFacts`:**
+Same principle — when post-call extraction produces a person fact for an entity that already has an active fact, pass both statements to `mergePersonFact` before upserting. Never discard existing person knowledge when adding new knowledge.
+
+**Part C — `lib/db.ts` `factQueries.upsertFact`:**
+The `high-confidence` guard (rejects new facts if old is high-confidence) also loses new info for person facts. For `category = 'person'`, skip the rejection path and always merge instead.
+
+**Tests:**
+- Patrick already has "friend, bachelor party in Vegas"; new fact "grew up in Dallas, met in New York" → merged statement contains BOTH the bachelor party AND Dallas/New York
+- Patrick already has "lives in Toronto"; new fact "lives in New York" → new location wins, but other Patrick facts are preserved
+- Non-person categories (preference, goal) → existing overwrite behavior unchanged (corrections should still replace)
+- Merged statement stays ≤ 500 chars
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 28 — Explicit "please remember" not saving to memory)
 
 > `git merge master` first. Two tickets. **Do before R27 or pillar work.**
