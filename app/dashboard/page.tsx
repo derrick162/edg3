@@ -7,6 +7,7 @@ import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
 import { factDisplayStatement } from '@/lib/factDisplay';
+import { factSourceLabel } from '@/lib/factSourceLabel';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
@@ -1158,24 +1159,11 @@ interface Fact {
   source_briefing_id?: number | null;
   source?: string | null;
   last_updated_at?: string | null;
+  // R25 T5 — 1 when the source call was an open/gratitude call, 0 for a morning briefing, null if no call source.
+  source_is_open_call?: number | null;
 }
 
-// ── Fact source label ─────────────────────────────────────────────────────────
-
-function factSourceLabel(f: Fact): { text: string; href: string | null } {
-  const date = format(new Date(f.learned_at), 'MMM d');
-  if (f.source === 'email') {
-    return { text: `learned ${date} · from your inbox`, href: null };
-  }
-  if (f.source === 'priority-sync') {
-    return { text: `learned ${date} · from your priorities`, href: null };
-  }
-  // briefing source (source_briefing_id set, or default for call-originated facts)
-  if (f.source_briefing_id) {
-    return { text: `learned ${date} · from your morning call`, href: `/dashboard?briefing=${f.source_briefing_id}` };
-  }
-  return { text: `learned ${date}`, href: null };
-}
+// ── Fact source label (R25 T5 — extracted to lib/factSourceLabel.ts, pure + tested) ──
 
 // ── Focus Scoreboard ──────────────────────────────────────────────────────────
 

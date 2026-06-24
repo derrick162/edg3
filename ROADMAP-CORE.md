@@ -2391,6 +2391,21 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R25 T5 + T6 SHIPPED (2139 green) — correct call-source labels + original learn date in Memory tab.**
+  - **T5 — "From your morning call" was wrong for open/gratitude calls.** Open/gratitude calls also write
+    a `source_briefing_id`, so every call-sourced fact was labeled "from your morning call" regardless of
+    call type. **Part A** (`app/api/memory/route.ts`): join facts back to `briefings` (single `WHERE id IN (…)`
+    over the distinct source ids, non-fatal try/catch) to add `source_is_open_call` (1 = open/gratitude,
+    0 = morning, null = no call source) to each returned fact. **Part B**: extracted the provenance label
+    out of `app/dashboard/page.tsx` into a pure, exported `lib/factSourceLabel.ts` — `source_is_open_call`
+    now picks "from your open call" vs "from your morning call"; email/priority-sync sources unchanged.
+    4 tests for the label logic (no React-render infra in repo → tested the extracted pure fn). 
+  - **T6 — Goal re-learn reset the "learned" date to today.** When a goal is re-stated on a later call it
+    merges into the kept fact via `consolidateFacts`; the keeper isn't always the oldest row, so the
+    "learned MMM d" stamp could jump forward. `reduceGroup` (`lib/facts.ts`) now re-anchors the keeper's
+    `learned_at` to the **oldest** `learned_at` across the merged group via new additive
+    `factQueries.updateLearnedAt(userId, id, learnedAt)` (`lib/db.ts`, no-op when the keeper is already
+    oldest). 2 tests. **⚠️ `lib/db.ts` is Shared — additive only, Vijay FYI.** 2139/2139 green.
 - **2026-06-24** — **R25 T4 SHIPPED (2133 green) — server-callable `computeAndSaveScore`.**
   - New `lib/scores.ts` exporting `computeAndSaveScore(userId): Promise<void>` — mirrors the compute+persist path of `GET /api/scores` (priorities/daily_focus → weekEvents/recovery/sleep → `computeAlignment` + `computeCalendarFit` → upsert when Focus reliable). Never throws; skips the upsert on degraded compute so a transient 0 can't corrupt the trend. Lets Security add a `'0 23 * * *'` cron to fill sparkline gaps on days the user never opens the dashboard. Self-contained (loads user by id) — the GET route is left untouched (zero page-load behavior change; the duplicated compute is deliberate to avoid double-computing per request). 3 tests. 2133/2133 green. Committed `2210f71`.
 - **2026-06-24** — **R25 T3 SHIPPED (2130 green) — alignment excludes all-day events.**
