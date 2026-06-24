@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb, effectiveTimezone, auditLogQueries } from '@/lib/db';
 import { checkInboundCallRateLimit } from '@/lib/rateLimit';
+import { dayPeriod, greetingYue } from '@/lib/greeting';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, type VoiceSpeedPref } from '@/lib/vapi';
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
       const timezone = effectiveTimezone(callerUser);
       const firstName = callerUser.name.split(' ')[0];
       const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
-      const greet = hour >= 18 ? 'evening' : hour >= 12 ? 'afternoon' : 'morning';
+      const greet = dayPeriod(hour);
       const opener = `Hey, it's Edge — ${firstName}, good ${greet}. How can I help?`;
 
       // Track the inbound call in history (call-started later links the Vapi call.id).
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
       });
       const ambientBase = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
       const assistantConfig = {
-        firstMessage: isCantonese ? `${hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨'}，${firstName}！我係 Edge——有咩想傾？` : opener,
+        firstMessage: isCantonese ? `${greetingYue(hour)}，${firstName}！我係 Edge——有咩想傾？` : opener,
         voice: effectiveVoice,
         ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
         backgroundSound: ambientBase ? `${ambientBase}/audio/ambient-1.mp3` : 'office',

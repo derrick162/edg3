@@ -965,6 +965,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-23** — **R19 T3 COMPLETE — greeting time boundary fix (2137 green).** _(synced master first)_
+  - **Issue:** evening greeting started at `hour >= 18` (6 PM); correct boundary is 5 PM. The same `hour >= 18` ternary was copy-pasted across **4 sites** (scheduler EN + Cantonese, inbound webhook EN + Cantonese) — the duplication is how it drifted.
+  - **Fix:** new pure `lib/greeting.ts` as the single source of truth — `dayPeriod(hour)` (0–11 morning · 12–16 afternoon · 17+ evening) + `greetingEn` / `greetingYue`. Rewired all 4 sites (`lib/scheduler.ts` `scheduleOpenCall`, `app/api/vapi/webhook/route.ts` inbound handler) through it, so the boundary now lives in exactly one place.
+  - **Tests:** new `lib/greeting.test.ts` (13 cases incl. the spec boundaries: 17→evening, 16→afternoon, 11/0→morning). Added `@/lib/greeting` mock mapping to `inbound.test.ts` + `quota-retry.test.ts` (those suites resolve `@/lib/*` via explicit vi.mock, no vitest alias). 132 files / 2137 green.
 - **2026-06-23** — **R19 T2 COMPLETE — gratitude auto-call re-fire guard (2120 green).** _(synced master first)_
   - **Root cause:** `runGratitudeAutoCall()` self-gated on `gratitudeQueries.getByDate(user, today)`, but a gratitude row is only written when the `recordGratitude` Vapi tool fires (user actually speaks their items). A call that connected then hung up (e.g. quota error) left no row → the gate never tripped → the job re-called every 10 min for the whole 5–11am window (~36 attempts).
   - **Fix (`lib/proactiveNotifications.ts`):** pre-insert a null-item reservation row immediately before `scheduleOpenCall` — `gratitudeQueries.create(user.id, today, null, null, null)` wrapped in try/catch (best-effort). The gate now trips on the next tick regardless of call outcome. On a successful call `recordGratitude` inserts a second row with the real items.

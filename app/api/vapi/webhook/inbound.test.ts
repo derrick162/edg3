@@ -16,6 +16,7 @@ vi.mock('@/lib/actionSummary', async () => await import('../../../../lib/actionS
 vi.mock('@/lib/idempotency', async () => await import('../../../../lib/idempotency'));
 vi.mock('@/lib/retry', async () => await import('../../../../lib/retry'));
 vi.mock('@/lib/rateLimit', async () => await import('../../../../lib/rateLimit')); // R18 — inbound rate limit
+vi.mock('@/lib/greeting', async () => await import('../../../../lib/greeting')); // R19 T3 — greeting boundary
 
 const { getDb } = await import('../../../../lib/db');
 const { POST } = await import('./route');

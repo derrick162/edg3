@@ -9,6 +9,7 @@ import { currentOpenCallMemoryText } from './callMemory';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
+import { greetingEn, greetingYue } from './greeting';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
 
@@ -674,8 +675,8 @@ export async function scheduleOpenCall(userId: number) {
   const scheduledFor = new Date().toISOString();
 
   const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
-  const greet = hour >= 18 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning';
-  const greetYue = hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨';
+  const greet = greetingEn(hour);
+  const greetYue = greetingYue(hour);
   const firstName = user.name.split(' ')[0];
   const isCantonese = (user.language || 'en') === 'yue';
 
