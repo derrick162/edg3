@@ -323,6 +323,17 @@ export function consolidateFacts(userId: number): number {
       factQueries.updateFact(userId, keep.id, bestStatement, keep.entity ?? null);
     }
 
+    // R25 T6 — preserve the ORIGINAL learn date. When a goal/fact is re-stated on a later call
+    // it merges into the kept row; the kept row may not be the earliest, so the "learned MMM d"
+    // stamp could jump forward to today. Anchor it to the oldest learned_at across the group.
+    const oldestLearnedAt = group.reduce(
+      (oldest, f) => (f.learned_at && f.learned_at < oldest ? f.learned_at : oldest),
+      keep.learned_at,
+    );
+    if (oldestLearnedAt && oldestLearnedAt !== keep.learned_at) {
+      factQueries.updateLearnedAt(userId, keep.id, oldestLearnedAt);
+    }
+
     for (const dup of sorted.slice(1)) {
       factQueries.deleteFact(userId, dup.id);
       removed++;

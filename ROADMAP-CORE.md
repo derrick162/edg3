@@ -252,31 +252,13 @@ The existing `GET /api/scores` route can import and call this function (no behav
 
 **Root cause (observed 2026-06-24):** Two separate gaps when the score rises naturally (not via confirm-focus):
 
-**Gap A — Bell notification (`lib/notifications.ts`):** `maybeCreateScoreChangeNotif` computes `yesterday` (today − 1 day) and calls `calendarScoreQueries.getRange(userId, yesterday, yesterday)`. If yesterday has no score row (user didn't open dashboard), `rows.length = 0` → early return → no notification. Derrick's score rose from 54 → 60 but he got no bell because Mon/Tue had no saved scores to compare against.
-
-The `getRange` call should be replaced with `calendarScoreQueries.getPrior(userId, todayDate)` (already used in `app/api/scores/route.ts` line 184) so it finds the most recent prior score regardless of how many days have passed.
+**Gap A — Bell notification (`lib/notifications.ts`):** Owned by Security as R19 T6. `maybeCreateScoreChangeNotif` used yesterday-only lookup — fix is `getPrior`. Vijay shipped this on the `security` branch.
 
 **Gap B — Score-rise animation (`app/dashboard/page.tsx`):** The `edgeScoreCelebrating` state (line 1592) is only set to `true` inside `handleConfirmFocus` (line 1773). It never fires on page load when the score naturally improved. The CSS animation and styling already exist — they just need a trigger on load.
 
-**Fix — both in the same ticket:**
+**Fix — `app/dashboard/page.tsx` only (Part A is Security's):**
 
-**Part A — `lib/notifications.ts`:** Replace yesterday-specific lookup:
-```ts
-// Before:
-const yesterdayMs = new Date(todayDate + 'T12:00:00Z').getTime() - 86400000;
-const yesterday = new Date(yesterdayMs).toISOString().slice(0, 10);
-const rows = calendarScoreQueries.getRange(userId, yesterday, yesterday);
-if (!rows.length) return;
-const prevScore = rows[0].edge_score as number | null;
-if (prevScore === null || prevScore === undefined) return;
-
-// After:
-const prior = calendarScoreQueries.getPrior(userId, todayDate);
-if (!prior || prior.edge_score == null) return;
-const prevScore = prior.edge_score as number;
-```
-
-**Part B — `app/dashboard/page.tsx`:** Wire `edgeScoreCelebrating` to also fire on page load when the score rose since the last stored score. In `loadData` (or wherever `calendarFit` is set after the scores API call), after setting `calendarFit`:
+Wire `edgeScoreCelebrating` to also fire on page load when the score rose since the last stored score. In `loadData` (or wherever `calendarFit` is set after the scores API call), after setting `calendarFit`:
 
 ```ts
 // After setting calendarFit from the API response:
@@ -293,11 +275,11 @@ if (calendarFitData?.edgeScore != null && calendarFitData?.priorScore != null) {
 Note: `priorScore` must be returned by `GET /api/scores` — check if it's already there. If not, add it: the route already computes `prior` at line 184; just include `priorScore: prior?.edge_score ?? null` in the response.
 
 **Tests:**
-- `maybeCreateScoreChangeNotif`: yesterday has no row, but prior row 3 days ago exists with lower score → notification created
-- `maybeCreateScoreChangeNotif`: no prior row at all → no notification (unchanged)
-- `maybeCreateScoreChangeNotif`: delta < 3 → no notification (unchanged)
 - Dashboard `loadData`: score rose ≥3 pts and higher than localStorage value → `edgeScoreCelebrating` set to true
 - Dashboard `loadData`: score rose < 3 pts → `edgeScoreCelebrating` stays false
+- Dashboard `loadData`: score equal to localStorage high-water mark → no celebration (already seen this score)
+- `GET /api/scores` response includes `priorScore` field
+- `lib/scoreCelebration.ts` pure helper: rise ≥3 AND above high-water → true; else false
 
 ---
 
@@ -2444,6 +2426,46 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R25 T7 Part B SHIPPED (2145 green) — Edge Score rise celebrates on page load.**
+  - The `edgeScoreCelebrating` animation only ever fired after an explicit confirm-focus action; a
+    natural score rise (calendar improved overnight / nightly cron re-scored) got no visual ack.
+  - **`GET /api/scores`** now returns `priorScore` (the most-recent prior `edge_score` via the
+    already-computed `getPrior`, lifted out of the `change`-summary try block) so the client can
+    compute the delta. Additive — no existing field changed.
+  - **`app/dashboard/page.tsx`**: the `/api/scores` load handler now fires `setEdgeScoreCelebrating(true)`
+    when the score genuinely rose, gated by new pure helper `shouldCelebrateScoreRise` and a
+    `localStorage` high-water mark (`edg3_last_seen_score`) so a refresh later in the day doesn't replay.
+  - **`lib/scoreCelebration.ts`** (new, pure): `shouldCelebrateScoreRise({edgeScore, priorScore, lastSeen})`
+    — true when both scores present, rise ≥ 3 pts, and current > last-celebrated. 6 tests. 2145/2145 green.
+  - **⚠️ Part A (`lib/notifications.ts` yesterday→`getPrior` fix) is Security's R19 T6 — Core did NOT
+    touch `lib/notifications.ts`** (PM split the same root cause across lanes).
+- **2026-06-24** — **R25 T5 + T6 SHIPPED (2139 green) — correct call-source labels + original learn date in Memory tab.**
+  - **T5 — "From your morning call" was wrong for open/gratitude calls.** Open/gratitude calls also write
+    a `source_briefing_id`, so every call-sourced fact was labeled "from your morning call" regardless of
+    call type. **Part A** (`app/api/memory/route.ts`): join facts back to `briefings` (single `WHERE id IN (…)`
+    over the distinct source ids, non-fatal try/catch) to add `source_is_open_call` (1 = open/gratitude,
+    0 = morning, null = no call source) to each returned fact. **Part B**: extracted the provenance label
+    out of `app/dashboard/page.tsx` into a pure, exported `lib/factSourceLabel.ts` — `source_is_open_call`
+    now picks "from your open call" vs "from your morning call"; email/priority-sync sources unchanged.
+    4 tests for the label logic (no React-render infra in repo → tested the extracted pure fn). 
+  - **T6 — Goal re-learn reset the "learned" date to today.** When a goal is re-stated on a later call it
+    merges into the kept fact via `consolidateFacts`; the keeper isn't always the oldest row, so the
+    "learned MMM d" stamp could jump forward. `reduceGroup` (`lib/facts.ts`) now re-anchors the keeper's
+    `learned_at` to the **oldest** `learned_at` across the merged group via new additive
+    `factQueries.updateLearnedAt(userId, id, learnedAt)` (`lib/db.ts`, no-op when the keeper is already
+    oldest). 2 tests. **⚠️ `lib/db.ts` is Shared — additive only, Vijay FYI.** 2139/2139 green.
+- **2026-06-24** — **R25 T4 SHIPPED (2133 green) — server-callable `computeAndSaveScore`.**
+  - New `lib/scores.ts` exporting `computeAndSaveScore(userId): Promise<void>` — mirrors the compute+persist path of `GET /api/scores` (priorities/daily_focus → weekEvents/recovery/sleep → `computeAlignment` + `computeCalendarFit` → upsert when Focus reliable). Never throws; skips the upsert on degraded compute so a transient 0 can't corrupt the trend. Lets Security add a `'0 23 * * *'` cron to fill sparkline gaps on days the user never opens the dashboard. Self-contained (loads user by id) — the GET route is left untouched (zero page-load behavior change; the duplicated compute is deliberate to avoid double-computing per request). 3 tests. 2133/2133 green. Committed `2210f71`.
+- **2026-06-24** — **R25 T3 SHIPPED (2130 green) — alignment excludes all-day events.**
+  - `lib/alignment.ts`: added `.filter(e => !!e.start?.dateTime)` before the `.map()` so all-day events (hotel stays, travel, OOO — `start.date` not `start.dateTime`) never reach the LLM classifier. They were capped to 8h and surfaced as the biggest unaligned time sink ("Conrad Las Vegas (8.0h)") — context, not work hours. 3 new tests + updated the 2 prior tests that asserted the old "all-day = 8h" behavior. 2130/2130 green. Committed `554ea6b`.
+- **2026-06-24** — **R25 T2 SHIPPED (2128 green) — gratitude high-recovery opener + natural conversation.**
+  - **Fix A:** `buildGratitudeSystemPrompt` (`lib/vapi.ts`) gains a `recoveryScore` param; when ≥ 80, injects a `WHOOP ACKNOWLEDGMENT` block celebrating the score in one line. `lib/scheduler.ts` (Security file, additive — **Vijay sync down**) gratitude branch fetches `getLatestRecovery` and passes `recoveryScore`.
+  - **Fix B:** replaced the `LISTENING` block + the hard "Do not pivot…" line with `LISTENING` (natural 2–3 exchange mini-conversation; answer questions about what the user shared, e.g. "do you know about Patrick?"), `STEERING` (acknowledge then guide to the next item), and `WHAT TO DEFLECT` (only work/calendar/priority pivots — not natural questions about people/feelings/topics the user raised).
+  - 4 new tests. 2128/2128 green, tsc + next build clean. Committed `2e263a2`.
+- **2026-06-23** — **R25 SHIPPED (2124 green) — calls know people who aren't on today's calendar.**
+  - **Part A** (`lib/scheduler.ts`, Security file, additive — Vijay sync down): `scheduleBriefingCall` now passes `currentOpenCallMemoryText(userId)` instead of `currentPreferencesText` → briefing calls get the same rich live memory block (all facts + open loops + recent call notes) as open calls. Removed the now-dead `currentPreferencesText` helper (prefs already in the memory block).
+  - **Part B** (`lib/briefing.ts`): the calendar-people filter in `buildBriefingContext` dropped all non-calendar person facts. New exported pure `selectNonCalendarPeopleFacts` (category='person', entity not among today's calendar people, capped 5) → injects a "PEOPLE EDGE KNOWS ABOUT (not on today's calendar)" block (e.g. Patrick's Vegas bachelor party). `buildBriefingContextPack` already surfaced person facts via its category-grouped STRUCTURED FACTS.
+  - Tests: 2 for `selectNonCalendarPeopleFacts`; scheduler briefing test asserts the rich memory block; flipped the old "does not inject absent people" regression; removed 3 obsolete `currentPreferencesText` tests. 2124/2124 green, tsc + next build clean. Committed `9468256`.
 - **2026-06-23** — **R24 SHIPPED (2117 green) — onboarding "Connect your tools" step.**
   - New `'connect'` step in `app/onboarding/page.tsx`, placed second-to-last (final gate before the dashboard). **Google Calendar + Gmail required:** Connect button → existing OAuth popup flow; on success ✓ + connected email (`/api/auth/accounts`); Continue disabled until connected ("Connect Google to continue"). **Whoop optional:** Connect + "Skip for now"; ✓ if already linked. On mount pre-checks `/api/auth/accounts` + `/api/whoop/status` so prior connections show ✓ immediately; listens for `calendar_connected`/`whoop_connected` postMessage. Added to `STEPS` + `StepIndicator` ("Connect").
   - Gating + pre-check mapping extracted to pure `lib/onboardingConnect.ts` (`deriveConnectState`/`canContinue`) + 4 unit tests (no React-render infra in the repo, so the logic is tested directly). 2117 green, tsc + next build clean. Committed `ad172f3`.
