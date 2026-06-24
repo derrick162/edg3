@@ -501,6 +501,43 @@ describe('computeCalendarFit -- edgeScore', () => {
   });
 });
 
+// ─── R31 — briefing must pass Clarity + Momentum (score-mismatch root cause) ───
+
+describe('computeCalendarFit — R31 (Clarity + Momentum must be passed)', () => {
+  it('omitting clarity+momentum yields a DIFFERENT headline than including them', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5); // focus 50
+    const recov = [makeRecovDay('2026-06-14', 80)];
+    const sleep = makeSleep(80); // energy 80
+
+    // 4-arg = the OLD briefing call. Clarity (20%) + Momentum (20%) absent → blend over 60% weight.
+    const fourArg = computeCalendarFit(alignment, priorities, recov, sleep, 45);
+    // 7-arg = the dashboard / fixed-briefing call, with strong clarity + momentum.
+    const clarity  = makeClarity({ calendarConnected: true, whoopConnected: true, factsCount: 40, memoriesCount: 50, prioritiesCount: 3 });
+    const momentum = makeMomentum({ morningCallDays14d: 12, morningCallDays7d: 6, streakDays: 10, confirmedFocusDays14d: 10 });
+    const sevenArg = computeCalendarFit(alignment, priorities, recov, sleep, 45, clarity, momentum);
+
+    expect(fourArg.clarityScore).toBeUndefined();
+    expect(fourArg.momentumScore).toBeUndefined();
+    expect(sevenArg.clarityScore).toBeDefined();
+    expect(sevenArg.momentumScore).toBeDefined();
+    // The bug: the two paths produced different headline numbers for the same day (briefing 41 vs dashboard 56).
+    expect(sevenArg.edgeScore).not.toBe(fourArg.edgeScore);
+  });
+
+  it('identical 7 inputs are deterministic → briefing and dashboard agree', () => {
+    const priorities = [makeP(1, 'Build', 1)];
+    const alignment  = makeAlign([{ priority: 'Build', hours: 22.5 }], 22.5);
+    const recov = [makeRecovDay('2026-06-14', 80)];
+    const sleep = makeSleep(80);
+    const clarity  = makeClarity({ calendarConnected: true, whoopConnected: true, factsCount: 40, memoriesCount: 50, prioritiesCount: 3 });
+    const momentum = makeMomentum({ morningCallDays14d: 12, morningCallDays7d: 6, streakDays: 10, confirmedFocusDays14d: 10 });
+    const a = computeCalendarFit(alignment, priorities, recov, sleep, 45, clarity, momentum);
+    const b = computeCalendarFit(alignment, priorities, recov, sleep, 45, clarity, momentum);
+    expect(a.edgeScore).toBe(b.edgeScore);
+  });
+});
+
 // ─── colorByEnergy ───────────────────────────────────────────────────────────
 
 describe('colorByEnergy', () => {

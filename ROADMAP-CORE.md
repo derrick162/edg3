@@ -2729,6 +2729,30 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R31 + R30 SHIPPED (2198 green) — briefing score mismatch fixed + "Call me now" notification & staged feedback.**
+  - **R31 — briefing Edge Score now matches the dashboard.** Root cause: `lib/briefing.ts` called
+    `computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep)` with only **4 args** — Clarity
+    (20%) + Momentum (20%) absent, so the blend renormalized over 60% weight and produced a systematically
+    lower number (Edge said 41 on the call; dashboard showed 56). Fix: build the same `clarityInputs` +
+    `momentumInputs` the dashboard builds (`app/api/scores/route.ts`) and pass all 7 args; also
+    `calendarScoreQueries.upsert` the fresh score (same `alignment!==null && weekEvents>0` guard) so the
+    call's computation becomes today's authoritative stored value. New imports in `lib/briefing.ts`:
+    `calendarQueries`, `whoopQueries`, `getDb`, `ClarityInputs`, `MomentumInputs`. 2 tests (4-arg vs 7-arg
+    divergence + determinism).
+  - **R30 T2 — "Call me now" now confirms in-app.** New `createCallInitiatedNotif(userId)` in
+    `lib/notifications.ts`; `app/api/briefing/call/route.ts` calls it on success; dashboard drops the
+    dismissible success `alert()` and refreshes the notification panel instead (`loadNotifs()`). 3 tests.
+  - **R30 T1 — interim staged feedback (full backend deferred, flagged).** The "Call me now" button now
+    shows "Preparing your briefing…" → "Placing your call…" instead of a silent spinner (pure frontend,
+    reversible). **⚠️ The dispatched backend fix ("build the briefing from the nightly context pack, skip
+    fetch/LLM") is NOT a drop-in:** `generateDailyBriefing` already *consumes* the context pack as LLM
+    *input* (briefing.ts:632) — the pack is context text, not a finished briefing, and generation makes
+    several live LLM calls + a live calendar fetch. Truly skipping them means caching a *finished* briefing
+    nightly, which risks stale time-of-day greetings ("this morning") + a stale calendar on a live call and
+    needs changes to Security-owned `lib/scheduler.ts`. Recommend a dedicated Security-coordinated ticket;
+    the dispatch explicitly sanctioned this interim. The staged-feedback + R30 T2 notification together
+    materially improve the perceived wait now.
+  - **⚠️ Additive edit to `lib/notifications.ts` (also touched by Vijay's R19 T6) — new `createCallInitiatedNotif`, no existing function changed. `lib/scheduler.ts` left untouched (R30 T1 backend deferred). Vijay sync down.**
 - **2026-06-24** — **R29 + R28 SHIPPED (2193 green) — memory enriches not overwrites + "please remember" always saves.**
   - **R29 — universally cumulative memory.** New `enrichFact(old, new)` pure-ish helper in `lib/facts.ts`:
     one cheap Haiku call merges two statements about the same subject preserving ALL info (on a direct

@@ -18,8 +18,10 @@ import { topFacts } from './memorySalience';
 import { selectReconfirmationFact, buildReconfirmationPromptBlock } from './factConfidence';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries, dailyFocusQueries } from './db';
+// R31 — Clarity + Momentum score inputs (the briefing was computing Edge Score on only Focus+Energy).
+import { calendarQueries, whoopQueries, getDb } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
-import { computeCalendarFit } from './calendarScore';
+import { computeCalendarFit, type ClarityInputs, type MomentumInputs } from './calendarScore';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
@@ -1111,8 +1113,70 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
   const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
-  // Calendar Fit scores: Focus (alignment) + Energy (Whoop sleep + recovery).
-  const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
+  // Calendar Fit scores: Focus (alignment) + Energy (Whoop) + Clarity + Momentum.
+  // R31 — the briefing previously passed only 4 args, so Clarity (20%) + Momentum (20%) were absent
+  // and the formula renormalized on 60% of the weight → a systematically LOWER score than the
+  // dashboard (which passes all 7). Build the same Clarity/Momentum inputs the dashboard does so the
+  // number Edge speaks matches the dashboard exactly.
+  const clarityInputs: ClarityInputs = (() => {
+    try {
+      const calToken   = calendarQueries.get(userId);
+      const calScope   = calToken?.scope ?? '';
+      const whoopToken = whoopQueries.get(userId);
+      const facts      = factQueries.getAll(userId);
+      const memories   = memoryQueries.getRecent(userId, 50);
+      return {
+        calendarConnected:  !!calToken,
+        gmailReadGranted:   calScope.includes('gmail'),
+        whoopConnected:     !!whoopToken,
+        factsCount:         facts.length,
+        memoriesCount:      memories.length,
+        prioritiesCount:    priorities.length,
+      };
+    } catch {
+      return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 };
+    }
+  })();
+  const momentumInputs: MomentumInputs = (() => {
+    const dailyFocusToday = (() => { try { return dailyFocusQueries.getToday(userId, today); } catch { return null; } })();
+    try {
+      const briefings14d = recentBriefings; // already fetched (getRecent 30)
+      const now = new Date();
+      const cut14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      const cut7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+      const completedAll = briefings14d.filter(b => b.status === 'completed');
+      const c14 = completedAll.filter(b => new Date(b.scheduled_for) >= cut14);
+      const localDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: userTimezone });
+      const morningC14 = c14.filter(b => !b.is_open_call);
+      const morningCallDays14d = new Set(morningC14.map(b => localDay(b.scheduled_for))).size;
+      const morningCallDays7d  = new Set(morningC14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => localDay(b.scheduled_for))).size;
+      const openCallCount14d = c14.filter(b => !!b.is_open_call).length;
+      const streakDays = computeCallStreak(briefings14d, userTimezone);
+      const cut14Str = cut14.toISOString().slice(0, 10);
+      const confirmedRow = getDb().prepare(
+        "SELECT COUNT(DISTINCT date) AS n FROM daily_focus WHERE user_id = ? AND confirmed = 1 AND date >= ?"
+      ).get(userId, cut14Str) as { n: number };
+      return { morningCallDays14d, morningCallDays7d, openCallCount14d, confirmedFocusDays14d: confirmedRow.n, streakDays, confirmedToday: !!dailyFocusToday?.confirmed };
+    } catch {
+      return { morningCallDays14d: 0, morningCallDays7d: 0, openCallCount14d: 0, confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: !!dailyFocusToday?.confirmed };
+    }
+  })();
+  const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep, 45, clarityInputs, momentumInputs);
+
+  // R31 — persist the briefing's fresh (and now complete) computation as today's authoritative score,
+  // so the dashboard and any score-change notification agree with what Edge just said on the call.
+  // Same reliability guard the dashboard uses: only store when Focus is trustworthy.
+  if (alignment !== null && weekEvents.length > 0) {
+    try {
+      calendarScoreQueries.upsert(userId, today, {
+        edgeScore:     calendarFit.edgeScore,
+        focusScore:    calendarFit.focusScore.score,
+        energyScore:   calendarFit.energyScore.score,
+        focusDrivers:  calendarFit.focusScore.drivers,
+        energyDrivers: calendarFit.energyScore.drivers,
+      });
+    } catch { /* non-fatal — score persistence is additive */ }
+  }
 
   // Focus Scoreboard: per-area progress + milestone celebrations.
   const allMilestones = (() => { try { return focusMilestoneQueries.listForUser(userId); } catch { return []; } })();
