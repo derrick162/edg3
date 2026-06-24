@@ -740,6 +740,9 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE briefings ADD COLUMN is_open_call INTEGER DEFAULT 0",
   // Backfill historical open calls (scheduleOpenCall prefixes their content with '[Open call]').
   "UPDATE briefings SET is_open_call = 1 WHERE is_open_call = 0 AND content LIKE '[Open call]%'",
+  // R33 — user work hours so Edge never suggests booking work blocks outside them. JSON:
+  // {"start":<0-23>,"end":<1-24>,"days":[1..7]} (ISO weekdays, 1=Mon). Constant default = 9-18 Mon-Fri.
+  "ALTER TABLE users ADD COLUMN work_schedule TEXT NOT NULL DEFAULT '{\"start\":9,\"end\":18,\"days\":[1,2,3,4,5]}'",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -812,6 +815,15 @@ export const userQueries = {
   getLanguage: (id: number): string => {
     const row = getDb().prepare("SELECT language FROM users WHERE id = ?").get(id) as { language?: string } | undefined;
     return row?.language || 'en';
+  },
+  // R33 — read the user's work schedule JSON (raw string; parse with parseWorkSchedule from lib/workHours).
+  getWorkSchedule: (id: number): string | null => {
+    const row = getDb().prepare("SELECT work_schedule FROM users WHERE id = ?").get(id) as { work_schedule?: string | null } | undefined;
+    return row?.work_schedule ?? null;
+  },
+  // R33 — persist a validated work schedule (caller validates with validateWorkSchedule first).
+  setWorkSchedule: (id: number, scheduleJson: string) => {
+    return getDb().prepare("UPDATE users SET work_schedule = ? WHERE id = ?").run(scheduleJson, id);
   },
   // R21 — set the gratitude-call daily-quote toggle + theme in one statement.
   setGratitudeQuote: (id: number, enabled: boolean, theme: string) => {

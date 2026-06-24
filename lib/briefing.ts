@@ -22,6 +22,7 @@ import { focusMilestoneQueries, dailyFocusQueries } from './db';
 import { calendarQueries, whoopQueries, getDb } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
 import { computeCalendarFit, type ClarityInputs, type MomentumInputs } from './calendarScore';
+import { parseWorkSchedule, isWithinWorkHours, formatWorkHours, nextWorkDayName } from './workHours';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
@@ -1213,8 +1214,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     return parts.join(', ');
   })();
 
+  // R33 — work hours so the briefing never suggests blocking work time outside the user's day.
+  const workSchedule = parseWorkSchedule((() => { try { return userQueries.getWorkSchedule(userId); } catch { return null; } })());
+  const withinWorkHours = isWithinWorkHours(workSchedule, now, userTimezone);
+  const workHoursLine = `USER'S WORK HOURS: ${formatWorkHours(workSchedule)}. Current time: ${localTime}.${withinWorkHours ? '' : ` It is currently OUTSIDE work hours — do not suggest blocking work time today; defer any work-block offers to the next work day (${nextWorkDayName(workSchedule, now, userTimezone)}) within work hours.`}`;
+
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
+${workHoursLine}
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.
 ${isFirstCall ? 'IMPORTANT: This is the first briefing. Lead with and address every stated weekly priority directly — do not substitute your own judgment for what matters most.' : ''}
 You speak like Jarvis from Iron Man — confident, sharp, and always one step ahead. You are a trusted advisor, not a critic.

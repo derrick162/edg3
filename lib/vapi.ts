@@ -1,6 +1,7 @@
 // Vapi integration for outbound voice calls
 
 import { timingSafeEqual } from 'crypto';
+import { parseWorkSchedule, isWithinWorkHours, formatWorkHours, nextWorkDayName } from './workHours';
 
 
 
@@ -534,6 +535,9 @@ export async function initiateCall(
 
   language: string = 'en',
 
+  // R33 — the user's work-schedule JSON ('' → default 9–6 Mon–Fri). Gates after-hours work suggestions.
+  workScheduleJson: string = '',
+
 ): Promise<VapiCallResponse> {
 
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
@@ -606,6 +610,14 @@ export async function initiateCall(
 
   const thisWeekDays = Array.from({length: 7}, (_, i) => `${dayNames[(userDay + i) % 7]}: ${toDateStr(new Date(todayD.getTime() + i*86400000))}`).join(' · ');
 
+  // R33 — the user's actual work hours, with a live "are we inside them right now?" check so Edge
+  // defers work-block suggestions made outside the user's day (the 6:14 PM bug).
+  const workSched = parseWorkSchedule(workScheduleJson);
+  const nowInstant = new Date();
+  const withinWorkHours = isWithinWorkHours(workSched, nowInstant, userTimezone);
+  const workHoursStr = formatWorkHours(workSched);
+  const nextWorkDay = nextWorkDayName(workSched, nowInstant, userTimezone);
+
 
 
   const systemPrompt = `You are Edg3 (pronounced "Edge") — the Elite Daily Guidance Engine — AI Chief of Staff for ${userName}. If asked who you are, say "I'm Edg3, your Elite Daily Guidance Engine." Always call the user ${firstName} — never any other name, never their full name.
@@ -648,7 +660,7 @@ TIME: It is currently ${pad(userHour)}:${pad(userTzNow.getMinutes())} for ${firs
 
 ${callTime ? `SCHEDULED CALL TIME: ${firstName}'s daily briefing call is set for ${callTime} ${userTimezone} — if they ask "when do you call me?", answer with this time directly.\n` : ''}
 
-WORKING HOURS: Default all scheduling and work suggestions to WEEKDAY DAYTIME (approx 9 AM–6 PM Mon–Fri).${userDay === 0 || userDay === 6 ? ` TODAY IS ${dayNames[userDay].toUpperCase()} — NEVER suggest "do it tonight", evening work, or any work this weekend; always frame as "when you're back at it Monday" or name the next working day.` : ''} NEVER recommend evenings (after 6 PM) or weekends for work unless ${firstName} has explicitly said they work those hours. Energy-matching peak/trough windows live inside this weekday envelope.
+WORKING HOURS: ${firstName}'s work hours are ${workHoursStr}. Default ALL scheduling and work suggestions to within that window. ${withinWorkHours ? `It's currently within work hours.` : `IT IS CURRENTLY OUTSIDE ${firstName}'s WORK HOURS — do NOT suggest booking work-related calendar blocks right now. Push them to the next work day (${nextWorkDay}) within work hours: say "That's outside your work hours — want me to put that on ${nextWorkDay} morning instead?"`} NEVER recommend evenings or non-work days for work unless ${firstName} has explicitly said they work then. Energy-matching peak/trough windows live inside this envelope.
 
 
 

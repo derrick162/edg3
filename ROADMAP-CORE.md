@@ -2818,6 +2818,25 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R33 SHIPPED (2221 green) — work-hours setting + Edge defers after-hours scheduling.**
+  - **Context:** Edge offered to block work time at 6:14 PM — there was no way for a user to tell it their hours.
+  - **Part A — schema (`lib/db.ts`, Shared):** added `users.work_schedule TEXT` (JSON
+    `{"start","end","days"}`, ISO weekdays 1=Mon; constant default 9–18 Mon–Fri) + `userQueries.get/setWorkSchedule`.
+  - **Pure helper (`lib/workHours.ts`, new):** `parseWorkSchedule` (always returns a valid schedule),
+    `validateWorkSchedule` (start 0–23, end 1–24, end>start, days non-empty ⊂ 1–7), `isWithinWorkHours`
+    (tz-aware on-day + hour check), `nextWorkDayName`, `formatWorkHours`. 18 tests.
+  - **Part B — API + UI:** `app/api/profile/work-hours/route.ts` (`GET` current schedule; `PATCH` validates
+    + normalizes + saves, 400 on invalid). Settings page (`app/settings/page.tsx`) gained a "Work hours"
+    card — start/end selects + Mon–Sun day toggles + Save.
+  - **Part C — call/briefing awareness (T2):** `lib/vapi.ts` WORKING HOURS block now uses the user's actual
+    hours and a live "are we inside them right now?" check — outside hours it tells Edge NOT to suggest
+    work blocks and to offer the next work day instead (replaces the old hardcoded 9–6 Mon–Fri + weekend
+    special-case). `lib/briefing.ts` injects a `USER'S WORK HOURS … Current time …` line + after-hours
+    defer note into the briefing system prompt. New `initiateCall` param `workScheduleJson`; `lib/scheduler.ts`
+    passes `getWorkSchedule` at both call sites.
+  - **⚠️ Additive to Shared `lib/db.ts` (column + queries) + Security-owned `lib/vapi.ts` (new param +
+    WORKING HOURS content) + `lib/scheduler.ts` (2 call sites) — Vijay sync down.** Scheduler/hardening test
+    `userQueries` mocks gained `getWorkSchedule: () => null`; R25 T1 arg assertion gained the 16th arg.
 - **2026-06-24** — **R32 SHIPPED (2204 green, CRITICAL) — Edge can no longer false-confirm a calendar action.**
   - **Trust violation:** Edge said "Done. Locked in 90 minutes tomorrow at 11 AM…" for an event Google
     never created. Two-layer fix so neither path (Google silently failed / model confirmed on intent alone)

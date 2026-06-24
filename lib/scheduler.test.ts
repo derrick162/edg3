@@ -48,7 +48,7 @@ vi.mock('./db', () => ({
     update: h.briefingUpdate,
     countCompleted: vi.fn(() => 0),
   },
-  userQueries: { findById: h.findById },
+  userQueries: { findById: h.findById, getWorkSchedule: () => null },
   priorityQueries: { getThisWeek: vi.fn(() => []), getMostRecent: vi.fn(() => []) },
   factQueries: { getByCategory: vi.fn(() => []) },
   memoryQueries: { getRecent: vi.fn(() => []) },
@@ -246,6 +246,7 @@ describe('preference injection into initiateCall', () => {
       expect.stringMatching(/^(slow|default|fast)$/), // R12 T6 — voiceSpeedPref
       null,                  // R20 — gratitudeSystemPrompt (null for briefings)
       expect.any(String),    // R22 — language ('en' by default)
+      '',                    // R33 — workScheduleJson (mock getWorkSchedule → null → '')
     );
   });
 
