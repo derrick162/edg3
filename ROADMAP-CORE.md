@@ -31,6 +31,59 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 26 — Fact edit/delete + extraction misattribution fix)
+
+> `git merge master` first. Two tickets. **Do before R25 or pillar work.**
+
+---
+
+### T1 — Edit and delete individual facts in the Memory tab (HIGH — 1.5h)
+
+**Problem (reported 2026-06-24):** The "What Edge knows" section has no way to correct or remove a fact. Derrick found a misattributed fact ("prefers to keep gratitude conversations focused on himself") that Edge extracted from Edge's own words, not Derrick's — and there's no way to delete it from the UI.
+
+**Fix — two parts:**
+
+**Part A — API (`app/api/memory/facts/[id]/route.ts`):**
+Check if `DELETE` and `PATCH` handlers already exist. If not, add them:
+- `DELETE` — deletes the fact row (scoped to `user_id` — never allow cross-user deletes). Returns `{ ok: true }`.
+- `PATCH` — accepts `{ statement: string }` and updates the fact text. Validates: non-empty, ≤500 chars. Returns updated fact. Scope to `user_id`.
+
+**Part B — Dashboard Memory tab (`app/dashboard/page.tsx`):**
+For each fact in the structured facts section ("What Edge knows"), add:
+- **Delete button** — small `×` or trash icon, right side of the fact row. On click: confirm dialog ("Remove this from Edge's memory?") → `DELETE /api/memory/facts/:id` → remove from local state.
+- **Edit button** — pencil icon. On click: inline edit mode — the statement text becomes an `<input>` pre-filled with current value. Save button → `PATCH /api/memory/facts/:id` → update local state. Cancel → discard changes.
+
+Keep the UI minimal — these are rare actions. Small icon buttons that appear on hover are fine. No modal needed.
+
+**Tests:**
+- `DELETE /api/memory/facts/:id` with valid user → fact deleted, 200
+- `DELETE /api/memory/facts/:id` with wrong user → 404 (never leak cross-user)
+- `PATCH /api/memory/facts/:id` with valid statement → fact updated, 200
+- `PATCH /api/memory/facts/:id` with empty statement → 400
+- `PATCH /api/memory/facts/:id` with wrong user → 404
+
+---
+
+### T2 — Fact extractor: don't attribute Edge's words as user preferences (MEDIUM — 45m)
+
+**Problem (observed 2026-06-24):** During a gratitude call, Edge said "let's save that for another time" (applying the now-fixed "stay focused" rule). The fact extractor read this as Derrick's preference: "prefers to keep gratitude conversations focused on himself." Edge's own deflection statements are being misread as the user's stated preferences.
+
+**Fix — `lib/vapi.ts` or wherever the fact extraction prompt lives:** Add an explicit instruction to the fact extraction step:
+
+```
+ATTRIBUTION RULE: Only extract preferences, goals, or beliefs that the USER stated. 
+Do NOT attribute anything said by the assistant (Edge) as a user preference or belief.
+If the conversation shows the assistant deflecting or redirecting, that is NOT a user preference — ignore it.
+```
+
+Also check: does `extractFactsFromTranscript` in `lib/briefing.ts` have a speaker-attribution step? If so, add a filter: skip any inference drawn from assistant turns.
+
+**Tests:**
+- Transcript where Edge says "let's keep focused" → no preference fact extracted for the user
+- Transcript where User says "I prefer to stay on topic" → preference fact extracted correctly
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 25 — Memory gap + gratitude call UX fixes)
 
 > `git merge master` first. Seven tickets. **Do before R24 or pillar work.**
