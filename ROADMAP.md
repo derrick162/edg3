@@ -107,10 +107,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R24 SHIPPED (2117 green) — ready for PM merge.** Onboarding "Connect your tools" step (`app/onboarding/page.tsx`): Google Calendar+Gmail **required** (Continue gated, shows ✓ + connected email) + Whoop **optional** (Skip for now); pre-checks `/api/auth/accounts` + `/api/whoop/status` on mount, popup+postMessage OAuth. Gating logic in pure `lib/onboardingConnect.ts` + 4 tests. Idle, awaiting next dispatch.)_ | `app/onboarding/page.tsx`, `lib/onboardingConnect.ts` | 2026-06-23 |
-| 🔒 Security | `security` | _(✅ **R19 FULLY SHIPPED (2120 green); idle/polling.** **T1 — quota-error retry cascade fix:** `isQuotaError` guard in `app/api/vapi/webhook/route.ts`. **T2 — gratitude re-fire loop:** pre-insert null-item gratitude row before `scheduleOpenCall` in `lib/proactiveNotifications.ts`. **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + volume + `DATA_ENCRYPTION_KEY` backup + restore drill.)_ | `app/api/vapi/webhook/route.ts`, `lib/proactiveNotifications.ts`, `lib/db.ts` | 2026-06-23 |
-| 🔧 PM/CoS | `master` | _(📋 **Design R22+R23 dispatched. Core R24 dispatched. Security R19 dispatched (T1: quota retry cascade fix + T2: gratitude re-call fix).**  R23 (Design, do first): sidebar cleanup + sparkline fix. R22: briefings date grouping + score trust signals. R24 (Core): onboarding account linking. R19 (Security): quota retry cascade + gratitude re-fire loop.)_ | `ROADMAP.md`, `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md`, `ROADMAP-DESIGN.md` | 2026-06-23 |
-| 🎨 Design | `design` | _(📋 **R23 + R22 DISPATCHED 2026-06-23.** R23 first: sidebar cleanup + sparkline fix. R22: briefings date grouping + score trust labels. git merge master first.)_ | `app/globals.css`, `app/dashboard/page.tsx`, `components/ui/EdgeScoreCard.tsx`, `app/score/page.tsx` | 2026-06-23 |
+| 🛠️ Core | `core` | _(✅ **R24 SHIPPED (2117 green) — merged to master.** Onboarding "Connect your tools" step: Google Calendar+Gmail required, Whoop optional. Idle, awaiting next dispatch.)_ | `app/onboarding/page.tsx`, `lib/onboardingConnect.ts` | 2026-06-23 |
+| 🔒 Security | `security` | _(✅ **R19 FULLY SHIPPED (2120 green) — merged to master.** T1: quota-error retry cascade fix. T2: gratitude re-fire loop fix. **⚠️ EXTERNAL (Derrick):** Railway VAPID + `LITESTREAM_S3_*` + volume + `DATA_ENCRYPTION_KEY` backup + restore drill.)_ | `app/api/vapi/webhook/route.ts`, `lib/proactiveNotifications.ts`, `lib/db.ts` | 2026-06-23 |
+| 🔧 PM/CoS | `master` | _(📋 **All R22/R23/R24/R19 merged to master 2026-06-23. Engineers idle, awaiting next dispatch.**)_ | `ROADMAP.md` | 2026-06-23 |
+| 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---
 

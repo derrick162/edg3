@@ -11,6 +11,25 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
+## 2026-06-23 — R23 + R22 ship + pillar sweep (Cam)
+
+**Status: GREEN** — preflight clean, build clean.
+
+### R23 T1+T2 shipped
+- ✅ T1: Sidebar cleanup — duplicate Gmail block removed, Calendar section simplified to status+email+"Manage in Settings →", Whoop hidden when not connected, NotificationHistoryPanel removed, dead import cleaned up
+- ✅ T2: EdgeTrendSparkline always extends to today's live score; day-name x-axis labels added below chart
+
+### R22 T1+T2 shipped
+- ✅ T1: Briefings grouped by date ("Today"/"Yesterday"/day name/"Earlier"); empty transcript placeholder; copy button promoted to `--text-muted`; `.scrollbar-thin` class + applied to transcript container
+- ✅ T2: "Recalculates on page load" label in EdgeScoreCard; subtitle on /score page; `.score-high/medium/low` colour classes in globals.css
+
+### Pillar sweep (2026-06-23)
+- ✅ PILLAR-DAILY-CALL: all DC0–DC3 shipped; DC4 Phase-2-gated — no Design items actionable
+- ✅ PILLAR-TRUST: all UX items shipped — no remaining Design items
+- ✅ PILLAR-MEMORY: all Design items shipped — no remaining actionable items
+
+---
+
 ## 2026-06-20 — R12 email-removal QA pass (Cam)
 
 **Status: GREEN** — 1939/1939 green (counts reflect test files deleted in R12 email removal), tsc clean, next build clean.

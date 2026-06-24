@@ -30,9 +30,9 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-23 (ROUND 19 — Quota-error retry cascade fix + gratitude re-call fix)
+## 📥 PM DISPATCH — 2026-06-23 (ROUND 19 — Quota-error retry cascade fix + gratitude re-call fix + greeting time fix)
 
-> `git merge master` first. Two small tickets. **Do before R18 or pillar work.**
+> `git merge master` first. Three small tickets. **Do before R18 or pillar work.**
 
 ---
 
@@ -91,6 +91,43 @@ await scheduleOpenCall(user.id);
 - `scheduleOpenCall` throws → null row already inserted → still no re-call that day
 - `recordGratitude` fires on a successful call → second row inserted with real items → `getByDate` returns the real-items row (latest created_at)
 - No gratitude entry at all → auto-call fires normally (unchanged behavior for first call each day)
+
+---
+
+### T3 — Fix greeting time boundaries (LOW — 10m)
+
+**Issue (observed 2026-06-23):** Edge says "Good morning" on open calls at 8:15 PM because the evening threshold is `hour >= 18` (6 PM). Correct boundaries:
+- Midnight–noon (0–11): morning
+- Noon–5 PM (12–16): afternoon
+- 5 PM onwards (17+): evening
+
+**Fix — two files, one-line change each:**
+
+`lib/scheduler.ts` — `scheduleOpenCall`, the greeting line:
+```ts
+// Before:
+const greet = hour >= 18 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning';
+// After:
+const greet = hour >= 17 ? 'Good evening' : hour >= 12 ? 'Good afternoon' : 'Good morning';
+```
+
+`app/api/vapi/webhook/route.ts` — inbound `assistant-request` handler, the greeting line:
+```ts
+// Before:
+const greet = hour >= 18 ? 'evening' : hour >= 12 ? 'afternoon' : 'morning';
+// After:
+const greet = hour >= 17 ? 'evening' : hour >= 12 ? 'afternoon' : 'morning';
+```
+
+Also update the Cantonese opener in `scheduleOpenCall` similarly:
+```ts
+// Before:
+const greetYue = hour >= 18 ? '晚上好' : hour >= 12 ? '下午好' : '早晨';
+// After:
+const greetYue = hour >= 17 ? '晚上好' : hour >= 12 ? '下午好' : '早晨';
+```
+
+**Tests:** hour=17 → 'Good evening'; hour=16 → 'Good afternoon'; hour=11 → 'Good morning'; hour=0 → 'Good morning'.
 
 ---
 

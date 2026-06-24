@@ -338,26 +338,40 @@ function MomentumPanel({ score }: { score: ScoreResult }) {
 
 // ── 7-day Edge Score trend sparkline ──────────────────────────────────────────
 
-function EdgeTrendSparkline({ history }: { history: { date: string; score: number }[] }) {
-  if (history.length < 2) {
+function EdgeTrendSparkline({ history, todayScore }: { history: { date: string; score: number }[]; todayScore: number | null }) {
+  if (history.length < 2 && todayScore === null) {
     return (
       <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
         Your 7-day trend appears here once Edg3 has a couple of days of scores.
       </p>
     );
   }
+
+  // Extend the last slot to today's live score so the line always reaches the right edge
+  const extended = [...history];
+  if (todayScore !== null && todayScore !== undefined) {
+    extended[extended.length - 1] = { ...extended[extended.length - 1], score: todayScore };
+  }
+
   const W = 240, H = 52, pad = 6;
-  const scores = history.map(h => h.score);
+  const scores = extended.map(h => h.score);
   const min = Math.min(...scores), max = Math.max(...scores);
   const range = Math.max(1, max - min);
-  const n = history.length;
-  const x = (i: number) => pad + (i / (n - 1)) * (W - pad * 2);
+  const n = extended.length;
+  const x = (i: number) => pad + (i / Math.max(1, n - 1)) * (W - pad * 2);
   const y = (v: number) => H - pad - ((v - min) / range) * (H - pad * 2);
-  const line = history.map((h, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(h.score).toFixed(1)}`).join(' ');
+  const line = extended.map((h, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(h.score).toFixed(1)}`).join(' ');
   const area = `${line} L ${x(n - 1).toFixed(1)} ${(H - pad).toFixed(1)} L ${x(0).toFixed(1)} ${(H - pad).toFixed(1)} Z`;
   const delta = scores[n - 1] - scores[0];
   const stroke = delta > 0 ? 'var(--gauge-peak)' : delta < 0 ? 'var(--gauge-low)' : 'var(--text-muted)';
-  const last = history[n - 1];
+  const last = extended[n - 1];
+
+  // Day-name labels for the x-axis: compute from today backwards
+  const today = new Date();
+  const labels = extended.map((_, i) => {
+    const d = new Date(today.getTime() - (n - 1 - i) * 86400000);
+    return i === n - 1 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+  });
 
   return (
     <div>
@@ -372,9 +386,12 @@ function EdgeTrendSparkline({ history }: { history: { date: string; score: numbe
         <path d={line} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
         <circle cx={x(n - 1)} cy={y(last.score)} r={3} fill={stroke} />
       </svg>
-      <div className="flex items-center justify-between mt-0.5">
-        <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{scores[0]}</span>
-        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>{last.score} today</span>
+      <div className="flex justify-between mt-1 px-1">
+        {labels.map((label, i) => (
+          <span key={i} className="text-[9px]" style={{ color: 'var(--text-faint)' }}>
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -559,6 +576,10 @@ export function EdgeScoreCard({
             </p>
           )}
 
+          <p className="text-xs mb-1" style={{ color: 'var(--text-faint)' }}>
+            Recalculates on page load
+          </p>
+
           {/* Breakdown toggle */}
           <button
             onClick={() => setExpanded(v => !v)}
@@ -572,7 +593,7 @@ export function EdgeScoreCard({
             <div className="space-y-3 mt-1">
               {/* ── 7-day Edge Score trend ── */}
               <div className="pb-1" style={{ borderBottom: '1px solid var(--edg-hairline)' }}>
-                <EdgeTrendSparkline history={history} />
+                <EdgeTrendSparkline history={history} todayScore={edgeScore} />
               </div>
 
               {/* ── Focus ── */}
