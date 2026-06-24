@@ -134,20 +134,14 @@ describe('computeAlignment', () => {
     expect(result!.unalignedHours).toBe(1.5);
   });
 
-  it('caps a long all-day event at 8h so vacations do not balloon totals', async () => {
-    // 45-day trip: without cap → 360h; with cap → 8h max.
+  // R25 T3 — all-day events (trips, conferences, OOO) are now EXCLUDED from alignment entirely,
+  // not counted as 8h: they're context, not countable work hours, and were falsely flagged as the
+  // biggest unaligned sink (e.g. "Conrad Las Vegas (8.0h)"). See the dedicated exclusion suite below.
+  it('a long all-day trip contributes no unaligned hours (excluded, not capped at 8h)', async () => {
     const longTrip = { summary: 'Vegas trip', start: { date: '2026-06-01' }, end: { date: '2026-07-16' } };
-    h.create.mockResolvedValue(classifyResponse([{ event: 'Vegas trip', priority: 'none' }]));
     const result = await computeAlignment([priority('fundraising', 1)], [longTrip], 'America/Vancouver');
-    expect(result!.unalignedHours).toBeLessThanOrEqual(8);
-    expect(result!.unalignedHours).toBeGreaterThan(0);
-  });
-
-  it('counts a single-day all-day event as 8h', async () => {
-    const oneDay = { summary: 'Conference', start: { date: '2026-06-10' }, end: { date: '2026-06-11' } };
-    h.create.mockResolvedValue(classifyResponse([{ event: 'Conference', priority: '1' }]));
-    const result = await computeAlignment([priority('fundraising', 1)], [oneDay], 'America/Vancouver');
-    expect(result!.perPriority[0].hours).toBe(8);
+    expect(h.create).not.toHaveBeenCalled();
+    expect(result!.unalignedHours).toBe(0);
   });
 
   it('classifies a generically-titled event correctly when its description names the priority', async () => {
@@ -330,5 +324,41 @@ describe('detectHygieneFlags', () => {
     const result = detectHygieneFlags(events, TZ);
     expect(result).not.toBeNull();
     expect(result).toMatch(/back-to-back/); // back-to-back wins
+  });
+});
+
+// ── R25 T3: all-day events excluded from the LLM classifier ────────────────────
+describe('computeAlignment — all-day exclusion (R25 T3)', () => {
+  function allDayEvent(title: string) {
+    return { summary: title, start: { date: '2026-06-10' }, end: { date: '2026-06-14' } };
+  }
+
+  it('excludes an all-day-only week from the classifier (no LLM call, all 0h)', async () => {
+    const result = await computeAlignment(
+      [priority('fundraising', 1)],
+      [allDayEvent('Conrad Las Vegas')],
+      'America/Vancouver',
+    );
+    expect(h.create).not.toHaveBeenCalled();
+    expect(result!.perPriority).toEqual([{ priority: 'fundraising', hours: 0, blocked: false }]);
+    expect(result!.unalignedHours).toBe(0);
+  });
+
+  it('includes a timed event (classifier is called)', async () => {
+    h.create.mockResolvedValue(classifyResponse([{ event: 'Team sync', priority: '1' }]));
+    await computeAlignment([priority('fundraising', 1)], [timedEvent('Team sync', 2)], 'America/Vancouver');
+    expect(h.create).toHaveBeenCalled();
+  });
+
+  it('mixed week: only timed events reach the classifier prompt', async () => {
+    h.create.mockResolvedValue(classifyResponse([{ event: 'Team sync', priority: '1' }]));
+    await computeAlignment(
+      [priority('fundraising', 1)],
+      [timedEvent('Team sync', 2), allDayEvent('Conrad Las Vegas')],
+      'America/Vancouver',
+    );
+    const promptStr = JSON.stringify(h.create.mock.calls[0][0]);
+    expect(promptStr).toContain('Team sync');
+    expect(promptStr).not.toContain('Conrad Las Vegas');
   });
 });
