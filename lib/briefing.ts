@@ -498,6 +498,15 @@ export function buildBriefingContext(
     sections.push(`RELATIONSHIP CONTEXT (today's calendar):\n${relText}`);
   }
 
+  // R25 T1 — people Edge knows who are NOT on today's calendar (e.g. a friend mentioned on a past
+  // call, like Patrick's Vegas bachelor party). Previously these were dropped entirely, so the
+  // briefing could never reference them. Cap at 5 to avoid noise.
+  const nonCalPeople = selectNonCalendarPeopleFacts(activeFacts, calendarPeopleFacts);
+  if (nonCalPeople.length > 0) {
+    const txt = nonCalPeople.map(f => `- ${f.entity}: ${f.statement}`).join('\n');
+    sections.push(`PEOPLE EDGE KNOWS ABOUT (not on today's calendar):\n${txt}`);
+  }
+
   if ((data.episodes ?? []).length > 0) {
     sections.push(`EPISODIC MEMORY:\n${data.episodes!.slice(0, 3).map(e => `- ${e.content.slice(0, 200)}`).join('\n')}`);
   }
@@ -512,6 +521,23 @@ export function buildBriefingContext(
  * Activated automatically by the 11pm scheduler once this export exists.
  * Excludes calendar events — those are time-sensitive and must be fetched live at call time.
  */
+/**
+ * R25 T1 — pick person-category facts whose entity is NOT among the people on today's calendar,
+ * so the briefing can still mention friends/contacts who aren't in a calendar event today. Capped.
+ */
+export function selectNonCalendarPeopleFacts<T extends { category: string; entity: string | null; statement: string }>(
+  activeFacts: T[],
+  calendarPeopleFacts: T[],
+  cap = 5,
+): T[] {
+  const calendarEntityKeys = new Set(
+    calendarPeopleFacts.filter(f => f.entity).map(f => f.entity!.toLowerCase()),
+  );
+  return activeFacts
+    .filter(f => f.category === 'person' && f.entity && !calendarEntityKeys.has(f.entity.toLowerCase()))
+    .slice(0, cap);
+}
+
 export async function buildBriefingContextPack(userId: number): Promise<string> {
   const user = userQueries.findById(userId);
   if (!user) throw new Error(`buildBriefingContextPack: user ${userId} not found`);
