@@ -46,6 +46,7 @@ _Permanent backlog. If your dispatch is exhausted, work through this in order. I
 ~~**The status:** Dispatched in Round 5. This item deepens it once T2 is live.~~
 - After the consolidation agent runs: verify it checks for facts that haven't been confirmed in 60+ days and flags them as `confidence < 0.5` (once the confidence column lands)
 - Add a reconciliation step: if two active facts on the same entity+category exist (shouldn't happen, but check), retire the older one
+- **Known gap (observed 2026-06-23):** consolidation misses cross-entity identity upgrades. Example: Jun 22 extracted `(unknown)` entity → "friend with bachelor party in Vegas"; Jun 23 named the person as Patrick. Two NEW facts were extracted (`Patrick` person + `Friend's Bachelor Party` event) but the Jun 22 `(unknown)` fact was not retired and the `Friend's Bachelor Party` entry was not merged into `Patrick`. The consolidation prompt needs to explicitly ask: "does any `(unknown)` or vague entity in stored facts now have a name in this call or in the new facts? If so, retire the old one and consolidate." Also: avoid creating event-as-entity facts when the event is a property of a person (bachelor party → attribute of Patrick, not its own entity).
 - Log every consolidation run: how many facts updated, how many retired, how many added
 
 ### M2-2 — In-call memory trigger: immediate overwrite on correction (Core) — ✅ **LIVE (Round 5)**
