@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R24 SHIPPED (2117 green) — merged to master.** Onboarding "Connect your tools" step: Google Calendar+Gmail required, Whoop optional. Idle, awaiting next dispatch.)_ | `app/onboarding/page.tsx`, `lib/onboardingConnect.ts` | 2026-06-23 |
+| 🛠️ Core | `core` | _(🚨 **R25 T1+T2+T3 dispatched 2026-06-24.** T1: briefing person memory gap. T2: gratitude high-recovery opener + natural conversation. T3: alignment excludes all-day events (Conrad Las Vegas false positive).)_ | `lib/briefing.ts`, `lib/scheduler.ts`, `lib/vapi.ts`, `lib/alignment.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(🚨 **R19 T3+T4 dispatched 2026-06-24.** T3: evening greeting threshold (`>= 18` → `>= 17`). T4 [HIGH]: gratitude completed call blocking morning briefing — add `is_open_call = 0` guard to both `alreadyCalled` queries in `lib/scheduler.ts`.)_ | `lib/scheduler.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R19 T4 dispatched 2026-06-24 (morning briefing blocked by gratitude call). Core R25 T1+T2 dispatched to Darren. Vijay: T3+T4 active.**)_ | `ROADMAP.md`, `ROADMAP-SECURITY.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
