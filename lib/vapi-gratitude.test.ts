@@ -57,3 +57,32 @@ describe('buildGratitudeSystemPrompt — R25 T2 (recovery opener + natural conve
     expect(p).toContain('WHAT TO DEFLECT');
   });
 });
+
+describe('buildGratitudeSystemPrompt — R27 (memory injection so Edge knows people)', () => {
+  // positional: firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, language, recoveryScore, memoryText
+  // Use a distinctive phrase that does NOT appear anywhere in the static prompt (the LISTENING
+  // example already mentions "Patrick", so assert on the bachelor-party detail instead).
+  const memory = 'WHAT EDGE KNOWS ABOUT YOU:\nPeople: Patrick — bachelor party in Vegas next month';
+
+  it('injects the memory block (incl. people facts) when memoryText is provided', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null, false, 'resilience', 'en', null, memory);
+    expect(p).toContain('MEMORY —');
+    expect(p).toContain('bachelor party in Vegas next month');
+    // Guard: memory is for answering, not for pivoting away from gratitude.
+    expect(p).toContain('never volunteer it');
+  });
+
+  it('omits the memory block when memoryText is empty (default)', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null);
+    expect(p).not.toContain('MEMORY —');
+    expect(p).not.toContain('bachelor party in Vegas next month');
+  });
+
+  it('injects the memory block in the Cantonese gratitude prompt too', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', '6月23日 星期一', null, false, 'resilience', 'yue', null, memory);
+    expect(p).toContain('記憶');
+    expect(p).toContain('bachelor party in Vegas next month');
+    // Still the Cantonese gratitude prompt, not the English one.
+    expect(p).toContain('感恩');
+  });
+});

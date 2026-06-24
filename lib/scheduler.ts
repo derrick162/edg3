@@ -747,7 +747,9 @@ export async function scheduleOpenCall(userId: number) {
     // R25 T2 — celebrate a strong recovery/sleep score at the top of the gratitude call.
     const rec = await getLatestRecovery(userId).catch(() => null);
     const recoveryScore = rec?.recoveryScore ?? null;
-    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore);
+    // R27 — pass rich memory so Edge can answer naturally when the user brings up a person mid-gratitude
+    // (the gratitude prompt replaces the default one, which is the only place memory was injected before).
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore, currentOpenCallMemoryText(userId));
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = isCantonese
       ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今朝點呀？`

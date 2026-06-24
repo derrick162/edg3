@@ -113,6 +113,10 @@ export function buildGratitudeSystemPrompt(
   quoteTheme: string = 'resilience',
   language: string = 'en',
   recoveryScore: number | null = null,
+  // R27 — rich memory (people/goals/projects/etc.) so Edge can answer naturally when the user brings
+  // someone up mid-gratitude (e.g. "do you know about Patrick?"). Without this the gratitude prompt
+  // fully replaced the default system prompt that injects memory, so Edge blanked on people.
+  memoryText: string = '',
 ): string {
   // R25 T2 — warmly celebrate a strong recovery/sleep score at the top of the call.
   const highRecovery = typeof recoveryScore === 'number' && recoveryScore >= 80;
@@ -124,8 +128,11 @@ export function buildGratitudeSystemPrompt(
     const quoteInstructionYue = quoteEnabled
       ? `\n金句——喺講早晨之前，先講一句同「${quoteTheme}」有關嘅簡短金句，一句就夠，簡單講邊個講過。然後自然停一停，先至開始問候。\n`
       : '';
+    const memBlockYue = memoryText
+      ? `\n你對 ${firstName} 嘅記憶（如果佢提到某個人或者某件事，可以自然咁用嚟回應；唔好主動講出嚟，呢個係感恩分享）：\n${memoryText}\n`
+      : '';
     return `你係 Edge。呢個係清晨感恩分享——唔係工作匯報。保持溫暖、輕鬆、唔好超過三分鐘。全程講廣東話。
-${quoteInstructionYue}
+${memBlockYue}${quoteInstructionYue}
 開場：講「早晨 ${firstName}！今日係 ${dateStr}。${weatherInstructionYue}」然後真誠咁停一停，先至問：「喺今日開始之前——你今日有咩三件事值得感恩？」
 
 聆聽：每一件事，用一到兩句真誠回應點解呢件事有意義——唔好求其講「好嘢」或者「好靚」，要真係聽到佢講乜。語氣要短、要暖，唔好講大道理。
@@ -141,8 +148,11 @@ ${quoteInstructionYue}
   const quoteInstruction = quoteEnabled
     ? `\nQUOTE — Before saying good morning, open with one short meaningful quote related to "${quoteTheme}". Keep it to one sentence; attribute it simply (e.g. the author's name, or "someone once said…"). Then pause naturally before moving to the greeting.\n`
     : '';
+  const memBlock = memoryText
+    ? `\nMEMORY — what you know about ${firstName} (use ONLY to answer naturally if they bring up a person or topic; never volunteer it or pivot to it — this is a gratitude check-in, not a briefing):\n${memoryText}\n`
+    : '';
   return `You are Edge. This is a morning gratitude check-in — NOT a productivity briefing. Warm, personal, unhurried. No tasks, no calendar, no priorities.
-${quoteInstruction}
+${memBlock}${quoteInstruction}
 OPENER: Say "Good morning ${firstName}! Today is ${dateStr}.${weatherInstruction}" Then ask warmly: "How are you doing this morning?"
 ${highRecovery ? `\nWHOOP ACKNOWLEDGMENT: Before asking how they're doing, open with one warm, brief line celebrating their strong recovery/sleep — e.g. "Wow — ${recoveryScore}% recovery? You slept like a champion. That's a great sign for today." Keep it to one sentence. Do not give health advice or elaborate. Then proceed to "How are you doing this morning?"\n` : ''}
 SMALL TALK: Actually listen to how they're doing. Respond genuinely in 1-2 sentences — acknowledge what they share, meet them where they are. If they're tired, honour that. If they're good, match the energy. Keep it natural, like catching up with someone you care about. After a brief exchange (1-2 back-and-forths), transition naturally — something like "I love that. Okay — what are three things you're grateful for today?"

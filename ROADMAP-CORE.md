@@ -2479,6 +2479,23 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R27 SHIPPED (2176 green) — gratitude calls now know people (memory injection gap).**
+  - **Symptom (live transcript):** Derrick mentioned Patrick on a gratitude call; Edge said "I don't have
+    details about Patrick stored" — even though the fact was in the DB and `scheduleOpenCall` already
+    passes `currentOpenCallMemoryText(userId)` to `initiateCall`.
+  - **Root cause:** `initiateCall` builds `effectiveSystemPrompt = gratitudeSystemPrompt || cantoneseSystemPrompt || systemPrompt`. The memory text is injected ONLY into the default `systemPrompt` (as
+    `preferencesText`, line 322). When a gratitude call set `gratitudeSystemPrompt`, that default prompt
+    was fully bypassed — so the gratitude prompt carried zero memory. (Plain English open calls were fine:
+    they fall through to the default prompt. The gap was gratitude — and, by the same mechanism, Cantonese.)
+  - **Fix:** added a `memoryText` param to `buildGratitudeSystemPrompt` (`lib/vapi.ts`) that injects a
+    MEMORY block into BOTH the English and 廣東話 gratitude prompts — scoped "use only to answer naturally
+    if they bring a person/topic up; never volunteer it or pivot" so it doesn't turn the gratitude call
+    into a briefing. `lib/scheduler.ts` `scheduleOpenCall` now passes `currentOpenCallMemoryText(userId)`
+    into it. `currentOpenCallMemoryText` already includes person-category facts (Section 1, "People"). 3 tests.
+  - **⚠️ Additive edits to Security-owned `lib/vapi.ts` + `lib/scheduler.ts` — Vijay sync down.**
+  - **Flagged follow-up for PM:** the Cantonese *briefing/open-call* prompt (`buildCantoneseSystemPrompt`)
+    also doesn't inject memory — a Cantonese non-gratitude open call would still blank on people. Out of
+    scope for this fix (English bug reported); noted for a future ticket.
 - **2026-06-24** — **R26 T1 (already shipped) + T2 SHIPPED (2146 green) — fact edit/delete + extraction attribution fix.**
   - **T1 — NO ACTION NEEDED, already in production.** The Memory-tab fact edit/delete feature the
     dispatch asked for already exists end-to-end: `app/api/memory/facts/[id]/route.ts` has user-scoped
