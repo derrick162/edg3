@@ -107,9 +107,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R27 SHIPPED (2176 green) — ready for PM merge.** Gratitude prompt now injects rich memory (EN + 廣東話) via new `buildGratitudeSystemPrompt` `memoryText` param + scheduler passes `currentOpenCallMemoryText` — Edge no longer blanks on people (Patrick) mid-gratitude. ⚠️ **Additive edits to Security-owned `lib/vapi.ts` + `lib/scheduler.ts` — Vijay sync down.** Flagged: Cantonese non-gratitude open call still lacks memory (`buildCantoneseSystemPrompt`) — future ticket. Idle.)_ | `lib/vapi.ts`, `lib/scheduler.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R19 FULLY DONE (2172 green) — merged to master.** T3: greeting boundary 5 PM. T4 [HIGH]: gratitude/open call no longer blocks morning briefing. T5: nightly score cron. T6: score-change notif uses getPrior. Idle.)_ | `lib/scheduler.ts`, `lib/greeting.ts`, `lib/notifications.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R26 + R19 all merged 2026-06-24. R26 T1+T2 + R19 T3-T6 all green and live on master.**)_ | `ROADMAP.md` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R27 SHIPPED (2176 green) — merged to master.** Gratitude prompt injects rich memory so Edge knows people mid-call (Patrick fix). Greeting bug also resolved in combination with Security hotfix. Idle.)_ | `lib/vapi.ts`, `lib/scheduler.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2177+ green).** T3-followup: gratitude call greeting now uses wall-clock time. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts` | 2026-06-24 || 🔧 PM/CoS | `master` | _(📋 **R27 + greeting hotfix merged 2026-06-24. Patrick memory + time-of-day greeting both fixed.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---

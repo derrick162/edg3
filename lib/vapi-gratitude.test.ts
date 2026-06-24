@@ -32,6 +32,38 @@ describe('buildGratitudeSystemPrompt (R20)', () => {
   });
 });
 
+describe('buildGratitudeSystemPrompt — time-aware greeting (R19 T3 follow-up)', () => {
+  // positional: firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, language, recoveryScore, greeting, timeOfDay
+  it('defaults to morning wording when greeting/timeOfDay are omitted (backward compatible)', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null);
+    expect(p).toContain('Good morning Derrick!');
+    expect(p).toContain('How are you doing this morning?');
+  });
+
+  it('uses the supplied evening greeting + period instead of "Good morning"', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null, false, 'resilience', 'en', null, 'Good evening', 'evening');
+    expect(p).toContain('Good evening Derrick!');
+    expect(p).toContain('How are you doing this evening?');
+    expect(p).not.toContain('Good morning');
+    expect(p).not.toContain('this morning');
+    // the fixed-ritual phrasing must not re-introduce a hardcoded morning
+    expect(p).not.toContain('morning gratitude check-in');
+  });
+
+  it('threads the time-of-day into the Whoop acknowledgment line too', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null, false, 'resilience', 'en', 86, 'Good afternoon', 'afternoon');
+    expect(p).toContain('WHOOP ACKNOWLEDGMENT');
+    expect(p).toContain('How are you doing this afternoon?');
+    expect(p).not.toContain('this morning');
+  });
+
+  it('Cantonese uses the supplied localized greeting, not hardcoded 早晨', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', '六月二十三', null, false, 'resilience', 'yue', null, '晚上好', 'evening');
+    expect(p).toContain('晚上好 Derrick！');
+    expect(p).not.toContain('早晨 Derrick');
+  });
+});
+
 describe('buildGratitudeSystemPrompt — R25 T2 (recovery opener + natural conversation)', () => {
   // positional: firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, language, recoveryScore
   const build = (recovery: number | null) =>
@@ -59,13 +91,13 @@ describe('buildGratitudeSystemPrompt — R25 T2 (recovery opener + natural conve
 });
 
 describe('buildGratitudeSystemPrompt — R27 (memory injection so Edge knows people)', () => {
-  // positional: firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, language, recoveryScore, memoryText
+  // positional: firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, language, recoveryScore, greeting, timeOfDay, memoryText
   // Use a distinctive phrase that does NOT appear anywhere in the static prompt (the LISTENING
   // example already mentions "Patrick", so assert on the bachelor-party detail instead).
   const memory = 'WHAT EDGE KNOWS ABOUT YOU:\nPeople: Patrick — bachelor party in Vegas next month';
 
   it('injects the memory block (incl. people facts) when memoryText is provided', () => {
-    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null, false, 'resilience', 'en', null, memory);
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null, false, 'resilience', 'en', null, 'Good morning', 'morning', memory);
     expect(p).toContain('MEMORY —');
     expect(p).toContain('bachelor party in Vegas next month');
     // Guard: memory is for answering, not for pivoting away from gratitude.
@@ -79,7 +111,7 @@ describe('buildGratitudeSystemPrompt — R27 (memory injection so Edge knows peo
   });
 
   it('injects the memory block in the Cantonese gratitude prompt too', () => {
-    const p = buildGratitudeSystemPrompt('Derrick', '6月23日 星期一', null, false, 'resilience', 'yue', null, memory);
+    const p = buildGratitudeSystemPrompt('Derrick', '6月23日 星期一', null, false, 'resilience', 'yue', null, '早晨', 'morning', memory);
     expect(p).toContain('記憶');
     expect(p).toContain('bachelor party in Vegas next month');
     // Still the Cantonese gratitude prompt, not the English one.
