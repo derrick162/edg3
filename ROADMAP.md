@@ -109,7 +109,7 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ **R31 + R30 SHIPPED (2198 green) — ready for PM merge** (R29+R28 also awaiting merge). R31: briefing now passes Clarity+Momentum to `computeCalendarFit` (was 4-arg → 41 vs dashboard 56) + persists fresh score. R30 T2: `createCallInitiatedNotif` + dropped success `alert()`. R30 T1: interim staged button feedback — **full backend pack-reuse deferred (pack is LLM input, not a finished briefing; needs Security-coordinated ticket) — flagged to PM.** ⚠️ **Additive to `lib/notifications.ts` — Vijay sync down.** Idle.)_ | `lib/briefing.ts`, `lib/notifications.ts`, `lib/calendarScore.test.ts`, `app/api/briefing/call/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2177+ green).** T3-followup: gratitude call greeting now uses wall-clock time. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R31 dispatched 2026-06-24. Score mismatch root cause found: briefing missing Clarity+Momentum score components. Dispatch written to ROADMAP-CORE.md.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R32 + R33 dispatched 2026-06-24. R32 CRITICAL: Edge false-confirmed a calendar booking. R33: work hours setting + after-hours scheduling gate. Priority order: R32 → R31 → R30 → R29 → R28.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---
