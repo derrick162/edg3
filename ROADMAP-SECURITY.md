@@ -131,6 +131,73 @@ const greetYue = hour >= 17 ? '晚上好' : hour >= 12 ? '下午好' : '早晨';
 
 ---
 
+### T4 — Gratitude/open call completion blocking morning briefing (HIGH — 20m)
+
+**Root cause (diagnosed 2026-06-24):** `lib/scheduler.ts` has two `alreadyCalled` / `existing` queries that check `scheduled_for LIKE 'today%'` for `status = 'completed'`. These queries do **not** filter on `is_open_call`, so a completed gratitude call (open call, `is_open_call = 1`) satisfies the check and silently skips the morning briefing for the rest of the day. Confirmed: ElevenLabs quota resets overnight → gratitude call fires at ~5-7am → Derrick answers → call completes → `is_open_call = 1` row with `status = 'completed'` exists for today → morning briefing scheduler sees it and skips.
+
+**Fix — `lib/scheduler.ts`, two query edits:**
+
+**1. `checkAndInitiateCalls` outer check (around line 468):**
+```ts
+// Before:
+const alreadyCalled = db.prepare(`
+  SELECT 1 FROM briefings
+  WHERE user_id = ?
+  AND scheduled_for LIKE ?
+  AND (
+    status = 'completed'
+    OR (status = 'calling' AND scheduled_for >= ?)
+    OR (status = 'pending' AND scheduled_for >= ?)
+    OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+  )
+`).get(user.id, `${userToday}%`, callingCutoff, pendingCutoff);
+
+// After (add is_open_call guard — open/gratitude calls must not block the morning briefing):
+const alreadyCalled = db.prepare(`
+  SELECT 1 FROM briefings
+  WHERE user_id = ?
+  AND scheduled_for LIKE ?
+  AND (is_open_call IS NULL OR is_open_call = 0)
+  AND (
+    status = 'completed'
+    OR (status = 'calling' AND scheduled_for >= ?)
+    OR (status = 'pending' AND scheduled_for >= ?)
+    OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+  )
+`).get(user.id, `${userToday}%`, callingCutoff, pendingCutoff);
+```
+
+**2. `scheduleBriefingCall` inner check (around line 562):**
+```ts
+// Before:
+const existing = getDb().prepare(
+  `SELECT status, error_code FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (
+    status = 'completed'
+    OR (status = 'calling' AND scheduled_for >= ?)
+    OR (status = 'pending' AND scheduled_for >= ?)
+    OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+  ) ORDER BY scheduled_for DESC LIMIT 1`
+).get(userId, `${today}%`, callingCutoff, pendingCutoff) ...
+
+// After (same guard):
+const existing = getDb().prepare(
+  `SELECT status, error_code FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (is_open_call IS NULL OR is_open_call = 0) AND (
+    status = 'completed'
+    OR (status = 'calling' AND scheduled_for >= ?)
+    OR (status = 'pending' AND scheduled_for >= ?)
+    OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+  ) ORDER BY scheduled_for DESC LIMIT 1`
+).get(userId, `${today}%`, callingCutoff, pendingCutoff) ...
+```
+
+**Tests:**
+- Completed open call (is_open_call=1) today → morning briefing NOT blocked
+- Completed open call (is_open_call=1) + no morning briefing → scheduler fires morning briefing at call_time
+- Completed morning briefing (is_open_call=0) today → subsequent auto-trigger blocked (unchanged)
+- is_open_call NULL (legacy rows) → treated same as 0 → still blocks (safe, conservative)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Inbound call security)
 
 > `git merge master` first. One ticket. **Do before R17 or pillar work.**
