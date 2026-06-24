@@ -85,6 +85,36 @@ const STALE_CALLING_MS = 15 * 60 * 1000;
 // so the scheduler can retry instead of being permanently stuck.
 const STALE_PENDING_MS = 5 * 60 * 1000;
 
+/**
+ * The once-a-day guard: is there a briefing for `dayPrefix` (a YYYY-MM-DD local date) that
+ * should block placing a NEW morning briefing call right now? Returns the blocking row, or
+ * undefined if the slot is free.
+ *
+ * R19 T4: the `(is_open_call IS NULL OR is_open_call = 0)` filter is critical — a completed
+ * *open/gratitude* call (is_open_call = 1) creates a `completed` briefings row for today, but
+ * it must NOT count as "the morning briefing already happened", or the gratitude call (which
+ * fires earlier once the overnight ElevenLabs quota resets) silently suppresses the briefing.
+ * Legacy rows with NULL is_open_call are treated as morning briefings (conservative: still block).
+ *
+ * Single source of truth for both the `checkAndInitiateCalls` sweep and `scheduleBriefingCall`.
+ */
+export function findTodaysBlockingBriefing(
+  db: ReturnType<typeof getDb>,
+  userId: number,
+  dayPrefix: string,
+  callingCutoff: string,
+  pendingCutoff: string,
+): { status: string; error_code: string | null } | undefined {
+  return db.prepare(
+    `SELECT status, error_code FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (is_open_call IS NULL OR is_open_call = 0) AND (
+      status = 'completed'
+      OR (status = 'calling' AND scheduled_for >= ?)
+      OR (status = 'pending' AND scheduled_for >= ?)
+      OR (status = 'failed' AND error_code = 'vapi_daily_limit')
+    ) ORDER BY scheduled_for DESC LIMIT 1`,
+  ).get(userId, `${dayPrefix}%`, callingCutoff, pendingCutoff) as { status: string; error_code: string | null } | undefined;
+}
+
 function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -466,17 +496,7 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
       // a 'failed' daily-limit row blocks for the rest of the day (no point retrying).
       const callingCutoff = new Date(now.getTime() - STALE_CALLING_MS).toISOString();
       const pendingCutoff = new Date(now.getTime() - STALE_PENDING_MS).toISOString();
-      const alreadyCalled = db.prepare(`
-        SELECT 1 FROM briefings
-        WHERE user_id = ?
-        AND scheduled_for LIKE ?
-        AND (
-          status = 'completed'
-          OR (status = 'calling' AND scheduled_for >= ?)
-          OR (status = 'pending' AND scheduled_for >= ?)
-          OR (status = 'failed' AND error_code = 'vapi_daily_limit')
-        )
-      `).get(user.id, `${userToday}%`, callingCutoff, pendingCutoff);
+      const alreadyCalled = findTodaysBlockingBriefing(db, user.id, userToday, callingCutoff, pendingCutoff);
 
       if (alreadyCalled) continue;
 
@@ -560,14 +580,7 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
     // blocks for the rest of the day — no point retrying and burning more LLM calls.
     const callingCutoff = new Date(Date.now() - STALE_CALLING_MS).toISOString();
     const pendingCutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
-    const existing = getDb().prepare(
-      `SELECT status, error_code FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (
-        status = 'completed'
-        OR (status = 'calling' AND scheduled_for >= ?)
-        OR (status = 'pending' AND scheduled_for >= ?)
-        OR (status = 'failed' AND error_code = 'vapi_daily_limit')
-      ) ORDER BY scheduled_for DESC LIMIT 1`
-    ).get(userId, `${today}%`, callingCutoff, pendingCutoff) as { status: string; error_code: string | null } | undefined;
+    const existing = findTodaysBlockingBriefing(getDb(), userId, today, callingCutoff, pendingCutoff);
     if (existing) {
       if (existing.status === 'failed' && existing.error_code === 'vapi_daily_limit') {
         throw new CallError(
