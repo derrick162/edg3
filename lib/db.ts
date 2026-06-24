@@ -740,6 +740,9 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE briefings ADD COLUMN is_open_call INTEGER DEFAULT 0",
   // Backfill historical open calls (scheduleOpenCall prefixes their content with '[Open call]').
   "UPDATE briefings SET is_open_call = 1 WHERE is_open_call = 0 AND content LIKE '[Open call]%'",
+  // R33 (Core builds the settings API/UI) — per-user working hours. JSON: {start,end,days[]}.
+  // ISO weekday 1=Mon…7=Sun. Default = 9am–6pm Mon–Fri.
+  `ALTER TABLE users ADD COLUMN work_schedule TEXT DEFAULT '{"start":9,"end":18,"days":[1,2,3,4,5]}'`,
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -2059,6 +2062,8 @@ export interface User {
   // R21 — optional themed daily quote at the top of the gratitude call.
   gratitude_quote_enabled?: number;
   gratitude_quote_theme?: string;
+  // R33 — per-user working hours as JSON {start,end,days[]} (see getWorkSchedule).
+  work_schedule?: string | null;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,
@@ -2068,6 +2073,16 @@ export function effectiveTimezone(user: { current_timezone?: string | null; time
   if (isValidTimeZone(user.current_timezone)) return user.current_timezone!;
   if (isValidTimeZone(user.timezone)) return user.timezone!;
   return 'America/Los_Angeles';
+}
+
+// R33 — per-user working hours, stored as JSON in users.work_schedule. Returns the parsed
+// schedule, falling back to the 9am–6pm Mon–Fri default on missing/corrupt JSON (never throws).
+export function getWorkSchedule(user: { work_schedule?: string | null }): { start: number; end: number; days: number[] } {
+  try {
+    return user.work_schedule ? JSON.parse(user.work_schedule) : { start: 9, end: 18, days: [1, 2, 3, 4, 5] };
+  } catch {
+    return { start: 9, end: 18, days: [1, 2, 3, 4, 5] };
+  }
 }
 
 export interface Priority {

@@ -170,7 +170,16 @@ function friendlyError(err: unknown): string {
 
 // Result strings that indicate the action did NOT succeed (used for the activity log status).
 // Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
-const FAILURE_RE = /^(Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
+const FAILURE_RE = /^(Error:|ERROR:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
+
+// R21 T1 — explicit, unambiguous mutation-failure strings. Every error/catch path of the four
+// mutating handlers (createEvent / deleteEvent / moveEvent / editEvent) returns one of these so
+// the model can NEVER read a failed tool call as success ("Done. Locked in 90 minutes" for an
+// event that was never created). The leading "ERROR:" is matched by FAILURE_RE above.
+const ERR_CREATE = 'ERROR: Event was NOT created. Tell the user honestly: "I tried to book that but ran into an error — it did not get added. Want me to try again?"';
+const ERR_DELETE = 'ERROR: Event was NOT deleted. Tell the user: "I could not remove that — it is still on your calendar."';
+const ERR_MOVE = 'ERROR: Event was NOT moved. Tell the user: "I ran into an issue moving that — the time did not change."';
+const ERR_EDIT = 'ERROR: Event was NOT updated. Tell the user: "The edit did not go through."';
 
 // Research notes Edge attaches are wrapped in these delimiters so a later research call can
 // REPLACE the prior block (not stack on it) while leaving the user's own typed notes intact.
@@ -191,7 +200,7 @@ function stripResearchBlock(desc: string | null | undefined): string {
   return out.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-interface ToolContext {
+export interface ToolContext {
   cal: calendar_v3.Calendar;
   calIds: string[];
   calMeta: Map<string, { accessRole: string; summary: string }>;
@@ -200,7 +209,8 @@ interface ToolContext {
 }
 
 // Execute a single tool call and return the human-readable result string.
-async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+// Exported for testing (R21 T1) — lets tests drive a single handler with a mock calendar client.
+export async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   const { cal, calIds, calMeta, userId, tz } = ctx;
 
   // Tier-1 grounding: correct STT phonetic errors in title args before event resolution.
@@ -304,8 +314,9 @@ async function executeTool(fn: string, args: Record<string, unknown>, ctx: ToolC
     const undoBody: calendar_v3.Schema$Event = {};
     if ('location' in body) undoBody.location = e.location ?? '';
     if ('description' in body) undoBody.description = e.description ?? '';
-    const editPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: body });
-    if (!editPatched.data.id) return `Couldn't confirm the update to "${e.summary}" — please double-check your calendar.`;
+    const editPatched = await cal.events.patch({ calendarId: r.calId, eventId: e.id!, requestBody: body })
+      .catch((editErr: unknown) => { console.error(`[editEvent] patch failed calId=${r.calId}:`, editErr instanceof Error ? editErr.message : editErr); return null; });
+    if (!editPatched || !editPatched.data.id) return ERR_EDIT;
     recordUndo(userId, `edited "${(e.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: r.calId, eventId: e.id!, requestBody: undoBody }]);
     return `Updated and confirmed "${(e.summary ?? '').replace(/^⚡\s*/, '')}"${body.location ? ` — location: ${body.location}` : ''}${body.description ? ' — notes updated' : ''}.`;
 
@@ -403,8 +414,8 @@ Query: ${query}` }],
         ...(location ? { location } : {}),
         ...(recur ? { recurrence: [recur] } : {}),
         ...(attendeeList.length ? { attendees: attendeeList } : {}),
-      } });
-      if (!insAllDay.data.id) return `Couldn't confirm the all-day "${title}" saved — please double-check your calendar.`;
+      } }).catch((insErr: unknown) => { console.error('[createEvent] all-day insert failed:', insErr instanceof Error ? insErr.message : insErr); return null; });
+      if (!insAllDay || !insAllDay.data.id) return ERR_CREATE;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
       const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
       return `Created and confirmed all-day "${title}" ${span}.`;
@@ -464,8 +475,9 @@ Query: ${query}` }],
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
     const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}), ...(attendeeList.length ? { attendees: attendeeList } : {}) };
-    const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
-    if (!insTimed.data.id) return `Couldn't confirm "${title}" saved — please double-check your calendar.`;
+    const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb })
+      .catch((insErr: unknown) => { console.error('[createEvent] timed insert failed:', insErr instanceof Error ? insErr.message : insErr); return null; });
+    if (!insTimed || !insTimed.data.id) return ERR_CREATE;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
     const inviteNote = attendeeList.length ? ` Invited ${attendeeList.length} ${attendeeList.length === 1 ? 'person' : 'people'}.` : '';
     return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
@@ -592,7 +604,7 @@ Query: ${query}` }],
     if (recreates.length) recordUndo(userId, `deleted ${describeDeleteTargets(toDelete, recurringScope, tz)}`, recreates);
     if (!deleted.length) {
       return failedDel.length
-        ? `I hit a snag removing ${failedDel.join(', ')} — couldn't clear ${failedDel.length > 1 ? 'those' : 'that one'} from here.`
+        ? ERR_DELETE
         : `No event matching "${title}" on ${date}.`;
     }
     return failedDel.length
@@ -653,7 +665,7 @@ Query: ${query}` }],
       const endTime = (newEndDateTime || '').slice(11, 19);
       if (!master?.start?.dateTime || !/^\d{2}:\d{2}/.test(startTime)) {
         console.error(`[moveEvent] recurring-all could not read master calId=${found.calId} eventId=${eventId}`);
-        return `I couldn't retime the whole "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" series just now — I'll flag it to get sorted. Want me to move just the next occurrence instead?`;
+        return ERR_MOVE;
       }
       const masterTz = master.start.timeZone ?? timezone;
       rb = recurringSeriesTimeShift(master.start.dateTime, master.end?.dateTime ?? '', startTime, endTime, masterTz);
@@ -695,7 +707,7 @@ Query: ${query}` }],
       console.error(`[moveEvent] failed calId=${found.calId} accessRole=${calMeta.get(found.calId)?.accessRole ?? 'unknown'} rb=${JSON.stringify(rb)}:`, moveErr instanceof Error ? moveErr.message : moveErr);
       return null;
     });
-    if (!patched || !patched.data.id) return `Couldn't get that shift through for "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}" — want me to draft a message to the organizer requesting a different time?`;
+    if (!patched || !patched.data.id) return ERR_MOVE;
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
