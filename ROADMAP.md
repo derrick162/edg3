@@ -109,7 +109,7 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(🚨 **R31 T1 dispatched 2026-06-24. Score mismatch: briefing calls `computeCalendarFit` with 4 args (missing `clarityInputs`/`momentumInputs`) → shows 41. Dashboard uses all 7 → shows 56. Fix: build clarity+momentum inputs in `lib/briefing.ts` and pass through. Do before R30.**)_ | `lib/briefing.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R19 + greeting hotfix all merged to master (2177+ green).** T3-followup: gratitude call greeting now uses wall-clock time. Idle.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R32 + R33 dispatched 2026-06-24. R32 CRITICAL: Edge false-confirmed a calendar booking. R33: work hours setting + after-hours scheduling gate. Priority order: R32 → R31 → R30 → R29 → R28.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R32–R34 dispatched 2026-06-24. Full flywheel sprint: trust fixes + memory depth + accountability + briefing hygiene. Priority order: R32 → R31 → R30 → R29 → R28 → R33 → R34.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---
