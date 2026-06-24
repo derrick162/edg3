@@ -33,7 +33,7 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 25 — Memory gap + gratitude call UX fixes)
 
-> `git merge master` first. Six tickets. **Do before R24 or pillar work.**
+> `git merge master` first. Seven tickets. **Do before R24 or pillar work.**
 
 ---
 
@@ -245,6 +245,59 @@ The existing `GET /api/scores` route can import and call this function (no behav
 - `computeAndSaveScore` with valid user → score row upserted in `calendar_scores`
 - `computeAndSaveScore` with Google failure → degrades silently, no throw
 - `computeAndSaveScore` with no events → no upsert (focusReliable = false)
+
+---
+
+### T7 — Edge Score rise: notification + animation don't fire on page load (LOW — 45m)
+
+**Root cause (observed 2026-06-24):** Two separate gaps when the score rises naturally (not via confirm-focus):
+
+**Gap A — Bell notification (`lib/notifications.ts`):** `maybeCreateScoreChangeNotif` computes `yesterday` (today − 1 day) and calls `calendarScoreQueries.getRange(userId, yesterday, yesterday)`. If yesterday has no score row (user didn't open dashboard), `rows.length = 0` → early return → no notification. Derrick's score rose from 54 → 60 but he got no bell because Mon/Tue had no saved scores to compare against.
+
+The `getRange` call should be replaced with `calendarScoreQueries.getPrior(userId, todayDate)` (already used in `app/api/scores/route.ts` line 184) so it finds the most recent prior score regardless of how many days have passed.
+
+**Gap B — Score-rise animation (`app/dashboard/page.tsx`):** The `edgeScoreCelebrating` state (line 1592) is only set to `true` inside `handleConfirmFocus` (line 1773). It never fires on page load when the score naturally improved. The CSS animation and styling already exist — they just need a trigger on load.
+
+**Fix — both in the same ticket:**
+
+**Part A — `lib/notifications.ts`:** Replace yesterday-specific lookup:
+```ts
+// Before:
+const yesterdayMs = new Date(todayDate + 'T12:00:00Z').getTime() - 86400000;
+const yesterday = new Date(yesterdayMs).toISOString().slice(0, 10);
+const rows = calendarScoreQueries.getRange(userId, yesterday, yesterday);
+if (!rows.length) return;
+const prevScore = rows[0].edge_score as number | null;
+if (prevScore === null || prevScore === undefined) return;
+
+// After:
+const prior = calendarScoreQueries.getPrior(userId, todayDate);
+if (!prior || prior.edge_score == null) return;
+const prevScore = prior.edge_score as number;
+```
+
+**Part B — `app/dashboard/page.tsx`:** Wire `edgeScoreCelebrating` to also fire on page load when the score rose since the last stored score. In `loadData` (or wherever `calendarFit` is set after the scores API call), after setting `calendarFit`:
+
+```ts
+// After setting calendarFit from the API response:
+if (calendarFitData?.edgeScore != null && calendarFitData?.priorScore != null) {
+  const delta = calendarFitData.edgeScore - calendarFitData.priorScore;
+  const lastSeen = parseInt(localStorage.getItem('edg3_last_seen_score') ?? '0', 10);
+  if (delta >= 3 && calendarFitData.edgeScore > lastSeen) {
+    setEdgeScoreCelebrating(true);
+    localStorage.setItem('edg3_last_seen_score', String(calendarFitData.edgeScore));
+  }
+}
+```
+
+Note: `priorScore` must be returned by `GET /api/scores` — check if it's already there. If not, add it: the route already computes `prior` at line 184; just include `priorScore: prior?.edge_score ?? null` in the response.
+
+**Tests:**
+- `maybeCreateScoreChangeNotif`: yesterday has no row, but prior row 3 days ago exists with lower score → notification created
+- `maybeCreateScoreChangeNotif`: no prior row at all → no notification (unchanged)
+- `maybeCreateScoreChangeNotif`: delta < 3 → no notification (unchanged)
+- Dashboard `loadData`: score rose ≥3 pts and higher than localStorage value → `edgeScoreCelebrating` set to true
+- Dashboard `loadData`: score rose < 3 pts → `edgeScoreCelebrating` stays false
 
 ---
 

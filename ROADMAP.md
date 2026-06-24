@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R25 T1–T6 ALL SHIPPED (2139 green) — ready for PM merge.** T1: off-calendar people. T2: gratitude UX. T3: alignment all-day filter. T4: `lib/scores.ts` nightly score cron. T5: open/gratitude call source label (`source_is_open_call` in `/api/memory` + pure `lib/factSourceLabel.ts`). T6: goal re-learn preserves oldest learned date (`factQueries.updateLearnedAt`). ⚠️ **Additive edits to Shared `lib/db.ts` (`updateLearnedAt`) + Security-owned `lib/scheduler.ts` — Vijay sync down.** Idle, awaiting next dispatch.)_ | `lib/db.ts`, `lib/facts.ts`, `lib/factSourceLabel.ts`, `app/api/memory/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
-| 🔒 Security | `security` | _(🚨 **R19 T3+T4 dispatched 2026-06-24.** T3: evening greeting threshold (`>= 18` → `>= 17`). T4 [HIGH]: gratitude completed call blocking morning briefing — add `is_open_call = 0` guard to both `alreadyCalled` queries in `lib/scheduler.ts`.)_ | `lib/scheduler.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R19 T4 dispatched 2026-06-24 (morning briefing blocked by gratitude call). Core R25 T1+T2 dispatched to Darren. Vijay: T3+T4 active.**)_ | `ROADMAP.md`, `ROADMAP-SECURITY.md` | 2026-06-24 |
+| 🛠️ Core | `core` | _(🔨 **R25 T1–T6 SHIPPED (2139 green); T7 Part B IN PROGRESS.** T7: score-rise animation on page load + `/api/scores` returns `priorScore`. **Part A (`lib/notifications.ts` getPrior fix) is Security's R19 T6 — Core does NOT touch notifications.ts.**)_ | `app/api/scores/route.ts`, `app/dashboard/page.tsx`, `lib/scoreCelebration.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(🚨 **R19 T3+T4+T5+T6 dispatched 2026-06-24.** T3: evening greeting threshold. T4 [HIGH]: gratitude call blocking morning briefing. T5: nightly score cron. T6: score change notification uses `getPrior` not yesterday.)_ | `lib/scheduler.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R25 T7 + R19 T6 added 2026-06-24 (score-rise notification + animation gap). All Core R25 T1-T7 and Security R19 T3-T6 dispatched.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md`, `ROADMAP-SECURITY.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---

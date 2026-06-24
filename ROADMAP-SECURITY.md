@@ -229,6 +229,36 @@ Dynamic import so the cron is a no-op (logs a warning) until Core exports the fu
 
 ---
 
+### T6 — Score change notification uses yesterday-only lookup (LOW — 20m)
+
+**Root cause (observed 2026-06-24):** `lib/notifications.ts` `maybeCreateScoreChangeNotif` computes `yesterday` (today − 1 day) and calls `calendarScoreQueries.getRange(userId, yesterday, yesterday)`. If yesterday has no score row (user didn't load the dashboard), `rows.length = 0` → early return → no notification. Derrick's score rose from 54 → 60 but he got no notification because Mon/Tue had no saved scores.
+
+**Fix — `lib/notifications.ts`:** Replace the yesterday-specific lookup with `calendarScoreQueries.getPrior(userId, todayDate)` (already used in the scores route):
+
+```ts
+// Before:
+const yesterdayMs = new Date(todayDate + 'T12:00:00Z').getTime() - 86400000;
+const yesterday = new Date(yesterdayMs).toISOString().slice(0, 10);
+const rows = calendarScoreQueries.getRange(userId, yesterday, yesterday);
+if (!rows.length) return;
+const prevScore = rows[0].edge_score as number | null;
+if (prevScore === null || prevScore === undefined) return;
+
+// After:
+const prior = calendarScoreQueries.getPrior(userId, todayDate);
+if (!prior || prior.edge_score == null) return;
+const prevScore = prior.edge_score as number;
+```
+
+Also import `calendarScoreQueries.getPrior` (already available in `lib/db.ts`).
+
+**Tests:**
+- Yesterday has no row, but prior row exists 3 days ago with lower score → notification created
+- Yesterday has no row, no prior row at all → no notification (unchanged)
+- Delta < 3 → no notification (unchanged)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-22 (ROUND 18 — Inbound call security)
 
 > `git merge master` first. One ticket. **Do before R17 or pillar work.**
