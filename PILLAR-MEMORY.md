@@ -132,7 +132,14 @@ Output: structured pattern facts stored under category `pattern` in the `facts` 
 - Briefing builder: when a person appears on tomorrow's calendar, inject their model into context
 - Test: mention a person on 3 consecutive calls with different context, verify their model updates each time
 
-### M4-5 — Hierarchical call summarization: per-call → weekly synthesis → lifetime profile (Core)
+### M4-5 — Hierarchical call summarization: per-call → weekly synthesis → lifetime profile (Core) — ✅ CORE HELPERS SHIPPED 2026-06-24 (cron wiring pending Security)
+
+> **Status:** `runWeeklySynthesis` + `runLifetimeSynthesis` (`lib/facts.ts`), `weekly_summary`/`lifetime_profile`
+> categories + CHECK fix, and lifetime-profile injection into `currentOpenCallMemoryText` are shipped + tested
+> (2239 green). **Remaining (Security):** wire the weekly (Sun ~4am UTC) + monthly (first Sun) cron jobs in
+> `lib/scheduler.ts` via the dynamic-import activation pattern (same as `runNightlyContextPacks`). Until then
+> the tiers exist but don't run automatically.
+
 
 **Why (from production RAG research, 2026):** Flat per-call extraction destroys causal chains. When Edge extracts facts from each call independently, "because of what we decided last week" context — the thread connecting decisions across multiple calls — gets lost. A tree structure (turn-level → episode-level → session-level summaries) preserves those chains. Production systems running this pattern show 96.3% fact coherence vs 81.2% with flat extraction.
 

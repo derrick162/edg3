@@ -2946,6 +2946,27 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **M4-5 SHIPPED (2239 green) — hierarchical memory synthesis (weekly + lifetime) [PILLAR-MEMORY].**
+  - Dispatch queue (R28–R34 + R29 Part D) exhausted → picked up the next Memory-pillar item.
+  - **Tier 2 — `runWeeklySynthesis(userId)` (`lib/facts.ts`):** gate ≥3 completed calls in the last 7 days →
+    one Haiku call over the week's transcripts → a 3–5 sentence "week narrative" stored as a
+    `weekly_summary` fact keyed `week_of_YYYY-MM-DD` (replace-on-rerun for the same week); keeps the 3 most
+    recent, retires older. Returns false (no-op) below the gate; never throws.
+  - **Tier 3 — `runLifetimeSynthesis(userId)`:** gate ≥10 active weekly summaries → one Haiku call → a
+    ~150-word "who this person is" `lifetime_profile` fact (retire + insert each run).
+  - **Injection:** the lifetime profile is now the FIRST item in `currentOpenCallMemoryText` (`LIFETIME
+    PROFILE:` section), the highest-signal/most-stable context.
+  - **Categories:** `weekly_summary` + `lifetime_profile` added to the `Fact` type + weight maps. **Also
+    fixed a latent R34 bug:** the `facts.category` CHECK constraint still listed only the old 6 categories,
+    so `commitment` (R34) — and these two new ones — were silently rejected on fresh DBs. CHECK expanded to
+    include all of them. 6 synthesis tests (real :memory: DB, mocked Haiku).
+  - **⚠️ CRON WIRING IS SECURITY'S (like R25 T4 → R19 T5):** the helpers are shipped + tested but NOT yet
+    scheduled. Security should add two cron jobs in `lib/scheduler.ts` (dynamic-import activation pattern,
+    same as `runNightlyContextPacks`/`computeAndSaveScore`): **weekly** Sunday ~4am UTC → `runWeeklySynthesis`
+    for each active user; **monthly** first Sunday → `runLifetimeSynthesis`. Until then the tiers don't run.
+  - **⚠️ Persistent dev DBs** created before this change keep the old CHECK and will silently reject the new
+    categories until a one-time facts rebuild (prod is ephemeral → fresh CHECK, unaffected). Additive to
+    Shared `lib/db.ts`.
 - **2026-06-24** — **R29 Part D SHIPPED (2233 green) — structured grounding contract for call memory.**
   - `currentOpenCallMemoryText` (`lib/callMemory.ts`) restructured from a flat prose blob into labelled
     ALL-CAPS sections — **PEOPLE / GOALS / PREFERENCES / OPEN COMMITMENTS / PROJECTS / OTHER / CONSTRAINTS**

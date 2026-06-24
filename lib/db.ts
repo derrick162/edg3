@@ -291,13 +291,14 @@ export function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS facts (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id            INTEGER NOT NULL REFERENCES users(id),
-      -- T3-1-A: 'pattern' added so factPatterns can land in the Patterns tab (not Facts).
-      -- Additive for new DBs. NOTE: SQLite can't ALTER a CHECK — a long-lived DB created
-      -- before this change keeps the old CHECK and would reject category='pattern' INSERTs
-      -- until a table rebuild. Given the ephemeral-volume situation, prod DBs initialize fresh
-      -- with this CHECK; a deliberate facts rebuild is deferred/flagged (not done unprompted on
+      -- T3-1-A: 'pattern' added so factPatterns land in the Patterns tab. R34: 'commitment'
+      -- (accountability). M4-5: 'weekly_summary' + 'lifetime_profile' (hierarchical synthesis).
+      -- NOTE: SQLite can't ALTER a CHECK — a long-lived DB created before a category was added keeps
+      -- the old CHECK and would reject the new category's INSERTs until a table rebuild. Prod uses an
+      -- ephemeral volume and initializes fresh with THIS CHECK, so new categories work in prod; a
+      -- deliberate facts rebuild for any persistent dev DB is deferred/flagged (not done unprompted on
       -- the core memory table). Fact inserts are best-effort (try/catch), so no crash either way.
-      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern')),
+      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern','commitment','weekly_summary','lifetime_profile')),
       statement          TEXT NOT NULL,
       entity             TEXT,
       learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -2163,7 +2164,7 @@ export interface GmailDraftLog {
 export interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern' | 'commitment';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern' | 'commitment' | 'weekly_summary' | 'lifetime_profile';
   statement: string;
   entity: string | null;
   learned_at: string;

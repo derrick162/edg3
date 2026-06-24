@@ -92,6 +92,9 @@ const CATEGORY_PRIORITY: Record<Fact['category'], number> = {
   // R34 — commitments are time-bound accountability prompts surfaced by their own briefing block,
   // not reconfirmed via the "is that still true?" path. Lowest priority here.
   commitment: 6,
+  // M4-5 — synthesized memory tiers (not user-stated facts to reconfirm aloud).
+  weekly_summary: 7,
+  lifetime_profile: 8,
 };
 
 /**

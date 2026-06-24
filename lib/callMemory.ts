@@ -29,6 +29,10 @@ export function currentOpenCallMemoryText(userId: number): string {
   try {
     const facts = factQueries.getAll(userId);
 
+    // M4-5 — the lifetime profile is the highest-signal, most-stable context: inject it FIRST.
+    const lifetime = facts.find(f => f.category === 'lifetime_profile');
+    const lifetimeBlock = lifetime?.statement?.trim() ? `LIFETIME PROFILE:\n- ${lifetime.statement.trim()}` : null;
+
     // PEOPLE: one line per person, ALL their facts joined (never truncate a person's line).
     const peopleByEntity = new Map<string, string[]>();
     for (const f of facts) {
@@ -72,6 +76,7 @@ export function currentOpenCallMemoryText(userId: number): string {
     ];
     const blocks: string[] = [];
     let used = 0;
+    if (lifetimeBlock) { blocks.push(lifetimeBlock); used += lifetimeBlock.length; }
     for (const [header, lines] of ordered) {
       if (!lines.length) continue;
       const block = `${header}:\n${lines.join('\n')}`;
