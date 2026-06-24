@@ -695,7 +695,10 @@ export async function scheduleOpenCall(userId: number) {
       try { return userQueries.getGratitudeQuote(userId); }
       catch { return { quoteEnabled: false, quoteTheme: 'resilience' }; }
     })();
-    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en');
+    // R25 T2 — celebrate a strong recovery/sleep score at the top of the gratitude call.
+    const rec = await getLatestRecovery(userId).catch(() => null);
+    const recoveryScore = rec?.recoveryScore ?? null;
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore);
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = isCantonese
       ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今朝點呀？`
