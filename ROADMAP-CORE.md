@@ -2281,6 +2281,8 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R25 T3 SHIPPED (2130 green) — alignment excludes all-day events.**
+  - `lib/alignment.ts`: added `.filter(e => !!e.start?.dateTime)` before the `.map()` so all-day events (hotel stays, travel, OOO — `start.date` not `start.dateTime`) never reach the LLM classifier. They were capped to 8h and surfaced as the biggest unaligned time sink ("Conrad Las Vegas (8.0h)") — context, not work hours. 3 new tests + updated the 2 prior tests that asserted the old "all-day = 8h" behavior. 2130/2130 green. Committed `554ea6b`.
 - **2026-06-24** — **R25 T2 SHIPPED (2128 green) — gratitude high-recovery opener + natural conversation.**
   - **Fix A:** `buildGratitudeSystemPrompt` (`lib/vapi.ts`) gains a `recoveryScore` param; when ≥ 80, injects a `WHOOP ACKNOWLEDGMENT` block celebrating the score in one line. `lib/scheduler.ts` (Security file, additive — **Vijay sync down**) gratitude branch fetches `getLatestRecovery` and passes `recoveryScore`.
   - **Fix B:** replaced the `LISTENING` block + the hard "Do not pivot…" line with `LISTENING` (natural 2–3 exchange mini-conversation; answer questions about what the user shared, e.g. "do you know about Patrick?"), `STEERING` (acknowledge then guide to the next item), and `WHAT TO DEFLECT` (only work/calendar/priority pivots — not natural questions about people/feelings/topics the user raised).
