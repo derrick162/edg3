@@ -5,21 +5,24 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ActivationLoading, ActivationReveal, ThinDataFallback, DerivedProposal } from '@/components/ui/ActivationReveal';
 import { ActivationHeroCard, ActivationHeroAligned, PlanChange } from '@/components/ui/ActivationHeroCard';
 import { DataConsentScreen, DataConsent } from '@/components/ui/DataConsentCard';
+import { deriveConnectState, canContinue } from '@/lib/onboardingConnect';
 
-type Step = 'profile' | 'consent' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'done';
+type Step = 'profile' | 'consent' | 'calendar' | 'activation' | 'hero' | 'priorities' | 'calltime' | 'connect' | 'done';
 
-const STEPS: Step[] = ['profile', 'consent', 'calendar', 'activation', 'hero', 'priorities', 'calltime'];
+// R24 — 'connect' is the final gate before the dashboard: Google required, Whoop optional.
+const STEPS: Step[] = ['profile', 'consent', 'calendar', 'activation', 'hero', 'priorities', 'calltime', 'connect'];
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
 // Activation + hero are hidden "wow" beats — shown as progress inside the
 // calendar step node, not as separate indicator steps.
-const INDICATOR_STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime'];
+const INDICATOR_STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime', 'connect'];
 const INDICATOR_META: { label: string; icon: string }[] = [
   { label: 'About you',  icon: '👤' },
   { label: 'Calendar',   icon: '📅' },
   { label: 'Focus',      icon: '🎯' },
   { label: 'Your call',  icon: '📞' },
+  { label: 'Connect',    icon: '🔗' },
 ];
 
 function indicatorIdx(step: Step): number {
@@ -848,6 +851,153 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
   );
 }
 
+// ── R24: Connect your tools (final gate — Google required, Whoop optional) ──────
+
+function ConnectToolsStep({ onNext }: { onNext: () => void }) {
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarEmail, setCalendarEmail] = useState<string | null>(null);
+  const [whoopConnected, setWhoopConnected] = useState(false);
+  const [whoopSkipped, setWhoopSkipped] = useState(false);
+  const [connecting, setConnecting] = useState<'calendar' | 'whoop' | null>(null);
+  const [error, setError] = useState('');
+
+  // Pre-check existing connections so a user who linked earlier sees ✓ immediately.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [accounts, whoop] = await Promise.all([
+        fetch('/api/auth/accounts').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/whoop/status').then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      if (cancelled) return;
+      const s = deriveConnectState(accounts, whoop);
+      setCalendarConnected(s.calendarConnected);
+      setCalendarEmail(s.calendarEmail);
+      setWhoopConnected(s.whoopConnected);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // OAuth popups post back a message on success (same flow as the dashboard/calendar step).
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.data === 'calendar_connected') {
+        setConnecting(null);
+        // Re-fetch to pick up the connected email.
+        fetch('/api/auth/accounts').then(r => r.ok ? r.json() : null).then(d => {
+          setCalendarConnected(!!d?.calendar?.connected);
+          setCalendarEmail(d?.calendar?.email ?? null);
+        }).catch(() => { setCalendarConnected(true); });
+      } else if (e.data === 'whoop_connected') {
+        setConnecting(null);
+        setWhoopConnected(true);
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  async function connect(which: 'calendar' | 'whoop') {
+    setError('');
+    setConnecting(which);
+    try {
+      const res = await fetch(which === 'calendar' ? '/api/calendar/connect' : '/api/whoop/connect');
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        setConnecting(null);
+        setError(data.error || `${which === 'calendar' ? 'Google' : 'Whoop'} connection not available`);
+        return;
+      }
+      const popup = window.open(data.url, `${which}-oauth`, 'width=500,height=650,scrollbars=yes');
+      if (!popup) window.location.href = data.url; // popup blocked → full-page fallback
+    } catch {
+      setConnecting(null);
+      setError('Something went wrong starting the connection.');
+    }
+  }
+
+  return (
+    <StepFade>
+      <div style={{ maxWidth: 420, margin: '0 auto' }}>
+        <h2 className="text-2xl font-bold mb-1">Connect your tools</h2>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+          Edge needs access to your calendar to book and move events during calls.
+        </p>
+
+        {/* Google Calendar + Gmail — required */}
+        <div className="rounded-xl p-5 mb-3" style={{ background: 'var(--rec-area-bg)', border: '1px solid var(--rec-area-border)' }}>
+          <div className="flex items-start gap-3 mb-4">
+            <span className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>📅</span>
+            <div>
+              <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-strong)' }}>Google Calendar + Gmail</p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                Read your events, create and move them during calls. Reads email threads so Edge can check if someone replied.
+              </p>
+            </div>
+          </div>
+          {calendarConnected ? (
+            <div className="flex items-center justify-center gap-2 text-sm font-medium py-2" style={{ color: 'var(--edg-success)' }}>
+              <span>✓</span><span>Connected{calendarEmail ? ` — ${calendarEmail}` : ''}</span>
+            </div>
+          ) : (
+            <button className="btn-primary w-full" onClick={() => connect('calendar')} disabled={connecting === 'calendar'}>
+              {connecting === 'calendar' ? 'Connecting…' : 'Connect Google →'}
+            </button>
+          )}
+        </div>
+
+        {/* Whoop — optional */}
+        {!whoopSkipped && (
+          <div className="rounded-xl p-5 mb-4" style={{ background: 'var(--edg-fill-04)', border: '1px solid var(--edg-hairline)' }}>
+            <div className="flex items-start gap-3 mb-4">
+              <span className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--edg-fill-06)', border: '1px solid var(--edg-hairline)' }}>⚡</span>
+              <div>
+                <p className="text-sm font-semibold mb-0.5 flex items-center gap-2" style={{ color: 'var(--text-strong)' }}>
+                  Whoop
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--edg-fill-06)', color: 'var(--text-faint)', border: '1px solid var(--edg-hairline)' }}>OPTIONAL</span>
+                </p>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  Lets Edge factor in your recovery score during calls.
+                </p>
+              </div>
+            </div>
+            {whoopConnected ? (
+              <div className="flex items-center justify-center gap-2 text-sm font-medium py-2" style={{ color: 'var(--edg-success)' }}>
+                <span>✓</span><span>Connected</span>
+              </div>
+            ) : (
+              <>
+                <button className="btn-secondary w-full" onClick={() => connect('whoop')} disabled={connecting === 'whoop'}>
+                  {connecting === 'whoop' ? 'Connecting…' : 'Connect Whoop →'}
+                </button>
+                <button onClick={() => setWhoopSkipped(true)} className="text-xs mt-2 w-full text-center" style={{ color: 'var(--text-faint)' }}>
+                  Skip for now
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {whoopSkipped && !whoopConnected && (
+          <p className="text-xs mb-4 text-center" style={{ color: 'var(--text-faint)' }}>
+            Whoop skipped — you can connect it later in settings.
+          </p>
+        )}
+
+        {error && <p className="text-xs mb-3 text-center" style={{ color: 'var(--edg-warning)' }}>{error}</p>}
+
+        <button
+          onClick={onNext}
+          disabled={!canContinue(calendarConnected)}
+          className="btn-primary w-full"
+          style={!canContinue(calendarConnected) ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+        >
+          {canContinue(calendarConnected) ? 'Continue →' : 'Connect Google to continue'}
+        </button>
+      </div>
+    </StepFade>
+  );
+}
+
 // ── Page shell ────────────────────────────────────────────────────────────────
 
 function OnboardingContent() {
@@ -916,6 +1066,7 @@ function OnboardingContent() {
           {step === 'hero'       && <HeroStep onContinue={() => setStep('calltime')} />}
           {step === 'priorities' && <PrioritiesStep onNext={() => setStep('calltime')} />}
           {step === 'calltime'   && <CallTimeStep   onNext={advance} />}
+          {step === 'connect'    && <ConnectToolsStep onNext={advance} />}
         </div>
 
         {/* Bottom reassurance */}
