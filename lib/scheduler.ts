@@ -9,7 +9,7 @@ import { currentOpenCallMemoryText } from './callMemory';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
 import { isPrivacyMode } from './consent';
-import { greetingEn, greetingYue } from './greeting';
+import { greetingEn, greetingYue, dayPeriod } from './greeting';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
 import { maybeDailyBackup } from './backup';
 
@@ -722,6 +722,7 @@ export async function scheduleOpenCall(userId: number) {
   const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
   const greet = greetingEn(hour);
   const greetYue = greetingYue(hour);
+  const period = dayPeriod(hour); // 'morning' | 'afternoon' | 'evening' — keeps the gratitude opener time-accurate
   const firstName = user.name.split(' ')[0];
   const isCantonese = (user.language || 'en') === 'yue';
 
@@ -747,11 +748,12 @@ export async function scheduleOpenCall(userId: number) {
     // R25 T2 — celebrate a strong recovery/sleep score at the top of the gratitude call.
     const rec = await getLatestRecovery(userId).catch(() => null);
     const recoveryScore = rec?.recoveryScore ?? null;
-    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore);
+    const gratGreeting = isCantonese ? greetYue : greet;
+    gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore, gratGreeting, period);
     const weatherPhrase = weatherStr ? ` ${weatherStr}.` : '';
     opener = isCantonese
-      ? `早晨 ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今朝點呀？`
-      : `Good morning ${firstName}! Today is ${dateStr}.${weatherPhrase} How are you doing this morning?`;
+      ? `${greetYue} ${firstName}！今日係 ${dateStr}。${weatherPhrase}你今日點呀？`
+      : `${greet} ${firstName}! Today is ${dateStr}.${weatherPhrase} How are you doing this ${period}?`;
   }
 
   const result = briefingQueries.create(userId, `[Open call] ${opener}`, scheduledFor) as { lastInsertRowid: number };

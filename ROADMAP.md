@@ -108,7 +108,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ **R26 T1+T2 DONE (2146 green) — ready for PM merge.** T1: fact edit/delete already fully shipped (route PATCH/DELETE + dashboard UI + 24 tests — verified). T2: ATTRIBUTION rule added to extractor so Edge's deflections aren't stored as user preferences. Idle, awaiting next dispatch.)_ | `lib/facts.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R19 FULLY DONE (2172 green) — merged to master.** T3: greeting boundary 5 PM. T4 [HIGH]: gratitude/open call no longer blocks morning briefing. T5: nightly score cron. T6: score-change notif uses getPrior. Idle.)_ | `lib/scheduler.ts`, `lib/greeting.ts`, `lib/notifications.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R19 done (merged). HOTFIX committed — ready for PM merge (2177 green).** T3 follow-up: gratitude open call said "Good morning" at 5 PM — the gratitude path hardcoded morning in `scheduleOpenCall` opener + `buildGratitudeSystemPrompt`; both now use the centralized time-of-day greeting (`dayPeriod`/`greetingEn`/`greetingYue`) + 4 tests. ⚠️ touched `lib/vapi.ts` (additive optional params — Core FYI). Idle after this.)_ | `lib/scheduler.ts`, `lib/vapi.ts`, `lib/greeting.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R26 + R19 all merged 2026-06-24. R26 T1+T2 + R19 T3-T6 all green and live on master.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 

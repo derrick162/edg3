@@ -113,6 +113,12 @@ export function buildGratitudeSystemPrompt(
   quoteTheme: string = 'resilience',
   language: string = 'en',
   recoveryScore: number | null = null,
+  // R19 T3-followup — the greeting must match the wall-clock time. A gratitude open call
+  // triggered at 5 PM was saying "Good morning". `greeting` is the already-localized greeting
+  // (e.g. "Good evening" / "晚上好") and `timeOfDay` the period word ("morning"/"afternoon"/"evening").
+  // Defaults keep the original morning wording for any caller that doesn't pass them.
+  greeting: string = 'Good morning',
+  timeOfDay: string = 'morning',
 ): string {
   // R25 T2 — warmly celebrate a strong recovery/sleep score at the top of the call.
   const highRecovery = typeof recoveryScore === 'number' && recoveryScore >= 80;
@@ -122,11 +128,11 @@ export function buildGratitudeSystemPrompt(
       ? ` 今日天氣：「${weatherStr}」，用一句簡短講一講就夠，唔好講聽日或者長期預報。`
       : '';
     const quoteInstructionYue = quoteEnabled
-      ? `\n金句——喺講早晨之前，先講一句同「${quoteTheme}」有關嘅簡短金句，一句就夠，簡單講邊個講過。然後自然停一停，先至開始問候。\n`
+      ? `\n金句——喺問候之前，先講一句同「${quoteTheme}」有關嘅簡短金句，一句就夠，簡單講邊個講過。然後自然停一停，先至開始問候。\n`
       : '';
-    return `你係 Edge。呢個係清晨感恩分享——唔係工作匯報。保持溫暖、輕鬆、唔好超過三分鐘。全程講廣東話。
+    return `你係 Edge。呢個係感恩分享——唔係工作匯報。保持溫暖、輕鬆、唔好超過三分鐘。全程講廣東話。
 ${quoteInstructionYue}
-開場：講「早晨 ${firstName}！今日係 ${dateStr}。${weatherInstructionYue}」然後真誠咁停一停，先至問：「喺今日開始之前——你今日有咩三件事值得感恩？」
+開場：講「${greeting} ${firstName}！今日係 ${dateStr}。${weatherInstructionYue}」然後真誠咁停一停，先至問：「喺今日開始之前——你今日有咩三件事值得感恩？」
 
 聆聽：每一件事，用一到兩句真誠回應點解呢件事有意義——唔好求其講「好嘢」或者「好靚」，要真係聽到佢講乜。語氣要短、要暖，唔好講大道理。
 
@@ -139,12 +145,12 @@ ${quoteInstructionYue}
     ? ` Today's weather: "${weatherStr}". Mention it in ONE brief phrase only — e.g. "It's sunny and 68 degrees." Do NOT mention tomorrow, the forecast, or any extended weather.`
     : '';
   const quoteInstruction = quoteEnabled
-    ? `\nQUOTE — Before saying good morning, open with one short meaningful quote related to "${quoteTheme}". Keep it to one sentence; attribute it simply (e.g. the author's name, or "someone once said…"). Then pause naturally before moving to the greeting.\n`
+    ? `\nQUOTE — Before the greeting, open with one short meaningful quote related to "${quoteTheme}". Keep it to one sentence; attribute it simply (e.g. the author's name, or "someone once said…"). Then pause naturally before moving to the greeting.\n`
     : '';
-  return `You are Edge. This is a morning gratitude check-in — NOT a productivity briefing. Warm, personal, unhurried. No tasks, no calendar, no priorities.
+  return `You are Edge. This is a gratitude check-in — NOT a productivity briefing. Warm, personal, unhurried. No tasks, no calendar, no priorities.
 ${quoteInstruction}
-OPENER: Say "Good morning ${firstName}! Today is ${dateStr}.${weatherInstruction}" Then ask warmly: "How are you doing this morning?"
-${highRecovery ? `\nWHOOP ACKNOWLEDGMENT: Before asking how they're doing, open with one warm, brief line celebrating their strong recovery/sleep — e.g. "Wow — ${recoveryScore}% recovery? You slept like a champion. That's a great sign for today." Keep it to one sentence. Do not give health advice or elaborate. Then proceed to "How are you doing this morning?"\n` : ''}
+OPENER: Say "${greeting} ${firstName}! Today is ${dateStr}.${weatherInstruction}" Then ask warmly: "How are you doing this ${timeOfDay}?"
+${highRecovery ? `\nWHOOP ACKNOWLEDGMENT: Before asking how they're doing, open with one warm, brief line celebrating their strong recovery/sleep — e.g. "Wow — ${recoveryScore}% recovery? You slept like a champion. That's a great sign for today." Keep it to one sentence. Do not give health advice or elaborate. Then proceed to "How are you doing this ${timeOfDay}?"\n` : ''}
 SMALL TALK: Actually listen to how they're doing. Respond genuinely in 1-2 sentences — acknowledge what they share, meet them where they are. If they're tired, honour that. If they're good, match the energy. Keep it natural, like catching up with someone you care about. After a brief exchange (1-2 back-and-forths), transition naturally — something like "I love that. Okay — what are three things you're grateful for today?"
 
 LISTENING: For each gratitude item, respond warmly in 1-2 sentences (genuine, not generic — show you actually heard them). Then allow a natural mini-conversation — up to 2-3 back-and-forth exchanges about that item. If they ask a question related to what they shared (e.g. "do you know about Patrick?"), answer it briefly and honestly, then gently steer: "I love that Patrick matters to you. What's your second thing you're grateful for?" This should feel like a real conversation, not a scripted interview.
