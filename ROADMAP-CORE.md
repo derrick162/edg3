@@ -31,9 +31,9 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-23 (ROUND 25 — Briefing call memory gap + person facts)
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 25 — Memory gap + gratitude call UX fixes)
 
-> `git merge master` first. One ticket. **Do before R24 or pillar work.**
+> `git merge master` first. Two tickets. **Do before R24 or pillar work.**
 
 ---
 
@@ -59,6 +59,50 @@ const call = await initiateCall(..., currentOpenCallMemoryText(userId), ...);
 **Tests:**
 - Person fact for someone NOT on today's calendar → appears in briefing context pack
 - `scheduleBriefingCall` passes `currentOpenCallMemoryText` (not `currentPreferencesText`)
+
+---
+
+### T2 — Gratitude call: high-recovery opener + natural per-item conversation (HIGH — 1h)
+
+**Context (from user transcript 2026-06-24):** Two issues observed on a live gratitude call:
+1. Derrick had 86% recovery + 86% sleep score — Edge never acknowledged it. High scores should be celebrated warmly at the start.
+2. Derrick asked "What do you know about Patrick?" after mentioning Patrick as a gratitude item. Edge deflected awkwardly ("let's save that for another time") instead of answering briefly and naturally. The "stay focused" rule is being applied too broadly — it should only block pivots to work/tasks, not natural conversation about the gratitude topic itself.
+
+**Fix A — High-recovery opener in `lib/vapi.ts` `buildGratitudeSystemPrompt`:**
+
+Add `recoveryScore?: number | null` parameter. Add guidance block:
+
+```
+WHOOP ACKNOWLEDGMENT (if recovery ≥ 80 OR sleep score ≥ 80): Before asking how they're doing, open with one warm, brief line celebrating the score — e.g. "Wow — 86% recovery? You slept like a champion. That's a great sign for today." Keep it to one sentence. Do not give health advice or elaborate. Then proceed to "How are you doing this morning?"
+```
+
+In `lib/scheduler.ts` `scheduleOpenCall` (when `isGratitude`), fetch the recovery score and pass it:
+```ts
+const rec = await getLatestRecovery(user.id).catch(() => null);
+const recoveryScore = rec?.score ?? null;
+gratitudePrompt = buildGratitudeSystemPrompt(firstName, dateStr, weatherStr, quoteEnabled, quoteTheme, user.language || 'en', recoveryScore);
+```
+`getLatestRecovery` is already imported in `lib/whoop.ts` — import it in scheduler (or use the already-fetched `currentWhoopText` result to avoid a duplicate API call — your choice).
+
+**Fix B — Natural per-item conversation in `buildGratitudeSystemPrompt`:**
+
+Replace the current `LISTENING` + `IMPORTANT` blocks with:
+
+```
+LISTENING: For each gratitude item, respond warmly in 1-2 sentences (genuine, not generic). Then allow a natural mini-conversation — up to 2-3 back-and-forth exchanges about that item. If they ask a question related to what they shared (e.g. "do you know about Patrick?"), answer it briefly and honestly, then gently steer: "I love that Patrick matters to you. What's your second thing you're grateful for?" This should feel like a real conversation, not a scripted interview.
+
+STEERING: After 2-3 exchanges on a given item, guide naturally to the next one. Never abruptly cut off — always acknowledge what was said before moving on.
+
+WHAT TO DEFLECT (only this): Pivots to work tasks, calendar bookings, or priorities. Redirect these gently: "Let's save that for your morning briefing — for now, what else are you grateful for?" Don't deflect questions about people, feelings, or topics the user raises naturally within the gratitude conversation.
+```
+
+Also remove the current `IMPORTANT: Do not pivot to tasks...` line at the bottom — it's replaced by the WHAT TO DEFLECT block above.
+
+**Tests:**
+- `buildGratitudeSystemPrompt` with `recoveryScore=86` → prompt includes Whoop acknowledgment block
+- `buildGratitudeSystemPrompt` with `recoveryScore=60` → no Whoop acknowledgment block
+- `buildGratitudeSystemPrompt` with `recoveryScore=null` → no Whoop acknowledgment block
+- Prompt does NOT contain "Do not pivot" hardcoded block (replaced by WHAT TO DEFLECT)
 
 ---
 
