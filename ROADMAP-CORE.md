@@ -414,6 +414,47 @@ Fallback if Haiku fails: simple concatenation `"${old} ${new}"`, capped at 500 c
 - Haiku failure → falls back to concatenation, no throw
 - Merged result ≤ 500 chars
 
+**Part D — Structured grounding contract: upgrade `currentOpenCallMemoryText` format (do in same commit):**
+
+Right now `currentOpenCallMemoryText` injects facts as a flat prose blob. The video talk confirmed: a structured block with labelled sections makes the model index into it 4x more reliably than free-form text (Google DeepMind 2024). Format change only — no new data, just structure.
+
+Replace the current plain-text output with:
+
+```
+WHAT EDGE KNOWS ABOUT YOU:
+
+PEOPLE:
+- Patrick: friend; bachelor party in Vegas Jun 2026; grew up in Dallas; met in New York
+
+GOALS:
+- Reach 135 lbs by September
+- Improve runway: extend to 18 months
+
+PREFERENCES:
+- Morning calls preferred
+- Work hours: 9am–6pm Mon–Fri
+
+OPEN COMMITMENTS:
+- Said on [date]: "I'm going to tackle the Railway fix before Vegas"
+
+CONSTRAINTS:
+- No work scheduling suggestions outside work hours
+```
+
+Key rules:
+- Each category is a clearly labelled section (ALL CAPS header)
+- One item per line, dash-prefixed
+- Person entries must include ALL known facts on one line (comma-separated) — never truncate
+- Empty categories are omitted entirely
+- Cap at ~600 chars total — use only highest-confidence, most-recent facts per entity
+
+Apply this same structured format to `currentPreferencesText` (briefing call memory injection) so both call types get the same structure.
+
+**Tests:**
+- `currentOpenCallMemoryText` output contains PEOPLE: and GOALS: sections when facts exist
+- Patrick's full fact set (Vegas + Dallas + New York) appears on one line under PEOPLE
+- `currentPreferencesText` uses same structured format
+
 ---
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 28 — Explicit "please remember" not saving to memory)
