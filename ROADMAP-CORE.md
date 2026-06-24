@@ -31,6 +31,55 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 30 — Call me now: lag + missing notification)
+
+> `git merge master` first. Two tickets. **Do before R29 or pillar work.**
+
+---
+
+### T1 — "Call me now" has a 5-10s lag before Edge calls (HIGH — 1h)
+
+**Root cause:** `scheduleBriefingCall` runs `generateDailyBriefing(userId)` synchronously at `lib/scheduler.ts` lines 643-652 — calendar fetch + LLM call — before `initiateCall` is invoked. The user clicks the button, sees "Calling…", and waits in silence while all that runs.
+
+**Fix:** Use the nightly pre-warmed context pack when it exists; only fall back to on-demand generation when it doesn't.
+
+In `scheduleBriefingCall` (or in `generateDailyBriefing`), check if a fresh context pack was already computed for today (nightly run stores it). If yes, build the briefing from that pack directly — no new calendar fetch, no new LLM call. If no fresh pack exists (user calls before midnight cron, or cron failed), fall back to the current on-demand path.
+
+If the context pack approach is complex, a simpler interim fix: show per-step feedback on the dashboard ("Preparing your briefing..." → "Calling you now...") via SSE or polling so the user isn't staring at a silent spinner.
+
+**Tests:**
+- Fresh context pack exists for today → briefing call initiates faster (no calendar/LLM fetch)
+- No context pack → falls back to on-demand generation, no regression
+
+---
+
+### T2 — No in-app notification when "Call me now" succeeds (MEDIUM — 30m)
+
+**Root cause:** `app/api/briefing/call/route.ts` success path has no `notificationQueries.create()` call. The dashboard shows a browser `alert()` on success — which is dismissible and easy to miss, and doesn't appear at all if the user navigates away. There's also no notification for the post-open-call path.
+
+**Fix — two parts:**
+
+**Part A — `lib/notifications.ts`:** Add:
+```ts
+export function createCallInitiatedNotif(userId: number): void {
+  try {
+    notificationQueries.create(
+      userId, 'call_initiated',
+      'Edge is calling you',
+      'Your briefing call is being placed — answer when it rings.',
+    );
+  } catch { /* non-fatal */ }
+}
+```
+
+**Part B — `app/api/briefing/call/route.ts`:** After `scheduleBriefingCall` succeeds, call `createCallInitiatedNotif(user.id)`. Also remove or downgrade the `alert()` on the dashboard — the in-app notification panel handles this now.
+
+**Tests:**
+- `POST /api/briefing/call` success → `call_initiated` notification row created
+- Notification appears in the dashboard notification panel
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 29 — All memory facts should enrich, not overwrite)
 
 > `git merge master` first. One ticket. **Do before R28 or pillar work.**
