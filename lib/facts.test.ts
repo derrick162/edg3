@@ -186,6 +186,16 @@ describe('extractFactsFromTranscript — userName injection', () => {
     expect(promptContent).toContain('"Derrick Fung"');
   });
 
+  // R26 T2 — the extractor must never read Edge's own deflections as the user's preferences.
+  it('includes an ATTRIBUTION rule that excludes assistant statements (R26 T2)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    await extractFactsFromTranscript('Edge: let us save that for another time.');
+    const promptContent = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(promptContent).toContain('ATTRIBUTION');
+    expect(promptContent).toMatch(/USER stated/);
+    expect(promptContent).toMatch(/assistant.*NOT a user preference|NOT a user preference/);
+  });
+
   it('maps model confidence:"low" to ExtractedFact confidence:"low"', async () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([
       { category: 'person', statement: 'Sarah is an investor', entity: 'Sarah', confidence: 'low' },

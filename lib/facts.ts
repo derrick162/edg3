@@ -74,6 +74,7 @@ Categories:
 - "fact"       — any other durable fact about the user's life or business
 
 Rules:
+- ATTRIBUTION: Only extract preferences, goals, beliefs, or facts that the USER stated about themselves. NEVER attribute anything the assistant (Edge/Edg3) said as a user preference or belief. The assistant deflecting, redirecting, or suggesting (e.g. "let's save that for another time", "let's keep focused") is the ASSISTANT's behavior, NOT a user preference — ignore it entirely. When unsure who said something, do not extract it.
 - "statement" must be a timeless sentence (not "today" / "yesterday").
 - "entity" = the name or identifier this fact is about (person, company, project). null if none.
 - "confidence": set to "low" if the entity is a name or address that speech-to-text may have garbled (unknown spelling, unusual name, street address). Set "high" for everything else.

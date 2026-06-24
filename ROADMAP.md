@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(🚨 **R26 T1+T2 dispatched 2026-06-24.** T1: edit/delete facts in Memory tab. T2: fix extractor misattributing Edge's words as user preferences.)_ | `app/api/memory/facts/[id]/route.ts`, `app/dashboard/page.tsx`, `lib/briefing.ts` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R26 T1+T2 DONE (2146 green) — ready for PM merge.** T1: fact edit/delete in Memory tab was already fully shipped (route PATCH/DELETE + dashboard Edit/Remove UI + 24 tests) — verified, not rebuilt. T2: added ATTRIBUTION rule to `lib/facts.ts` extractor so Edge's deflections aren't stored as user preferences (+1 test). Idle, awaiting next dispatch.)_ | `lib/facts.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(🚨 **R19 T3+T4+T5+T6 dispatched 2026-06-24.** T3: evening greeting threshold. T4 [HIGH]: gratitude call blocking morning briefing. T5: nightly score cron. T6: score change notification uses `getPrior` not yesterday.)_ | `lib/scheduler.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R26 dispatched 2026-06-24 (fact edit/delete + extraction misattribution). R25 merged to master. Security R19 T3-T6 pending Vijay.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
