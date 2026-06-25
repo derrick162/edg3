@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R28–R35 + R29D + M4-5 + M4-6 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** Full flywheel sprint shipped: false-confirm fix, score mismatch fix, work hours, commitment tracking, people deepening, opener hygiene, prior-call continuity, structured grounding contract, hierarchical memory synthesis, Memory Ranking Engine, browser timezone auto-detect. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
+| 🛠️ Core | `core` | _(📋 **R36 dispatched 2026-06-24 — manual memory context input.** Free-form textarea in Memory tab → `extractAndUpsertFacts` + raw user_note fact. New `POST /api/memory/notes` route. UI: "Add context" card at top of Memory tab, shows extracted fact count on save.)_ | `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(✅ **Full sprint merged + deployed 2026-06-24. Both lanes idle. Next: Conversation State Engine (transcript layer) per Derrick memo — dispatch pending.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |

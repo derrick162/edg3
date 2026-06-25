@@ -31,6 +31,78 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 36 — Manual memory context input)
+
+> `git merge master` first. One ticket.
+
+---
+
+### T1 — "Add context" panel in Memory tab: free-form text → structured facts (MEDIUM — 1.5h)
+
+**User need:** Derrick wants to drop context into Edge's memory without having to say it on a call. Example: type "Patrick just moved back to Toronto and is job hunting in finance" → Edge knows it on the next briefing.
+
+**Implementation — two parts:**
+
+**Part A — API route (`app/api/memory/notes/route.ts`):**
+
+New `POST /api/memory/notes` endpoint. Accepts `{ text: string }`. Validates: non-empty, max 2000 chars.
+
+1. Run `text` through `extractAndUpsertFacts(userId, text, 'user_note')` — same pipeline as call transcripts. This populates structured facts under People / Goals / Preferences / etc.
+2. Also store the raw note as a single fact:
+   ```ts
+   upsertFact(userId, {
+     category: 'user_note',
+     entity: 'context note',
+     statement: text.slice(0, 500), // truncate for display
+     source: 'manual',
+     confidence_score: 1.0,
+   });
+   ```
+3. Return `{ factsExtracted: number }` — count of structured facts extracted, shown in the confirmation message.
+
+**Tests:**
+- POST with valid text → calls `extractAndUpsertFacts` + stores raw note fact
+- POST with empty string → 400
+- POST with text > 2000 chars → 400
+- POST without auth → 401
+
+**Part B — UI in Memory tab (`app/dashboard/page.tsx`):**
+
+Add an "Add context" card at the top of the Memory tab, above the "What Edge knows" section. Keep it minimal:
+
+```
+┌─────────────────────────────────────────────────┐
+│ Add context                                      │
+│                                                  │
+│ ┌──────────────────────────────────────────────┐ │
+│ │ Type anything Edge should know — about a    │ │
+│ │ person, a goal, a preference, an update...  │ │
+│ │                                             │ │
+│ └──────────────────────────────────────────────┘ │
+│                                    [Save]        │
+│                                                  │
+│ ✓ Saved — extracted 3 facts   (shown after save) │
+└─────────────────────────────────────────────────┘
+```
+
+- Textarea: `rows=3`, resizable, max 2000 chars, placeholder as above
+- Save button: disabled while empty or submitting
+- On success: show `"✓ Saved — extracted N fact(s)"` inline below the textarea (auto-clear after 4s), clear the textarea, reload the facts section so new facts appear immediately
+- On error: show `"Something went wrong — try again"` inline
+- No modal, no separate page — stays in the Memory tab
+
+**User-note facts in the "Call notes" list:**
+
+In the existing call notes section (raw memories list), `category === 'user_note'` entries should render with a `📝` prefix and "Added manually" instead of a call date. This distinguishes them from call-derived notes at a glance.
+
+**Tests:**
+- Memory tab renders the "Add context" card
+- Submit fires POST /api/memory/notes
+- Success state shows extracted count, clears textarea
+- Error state shows error message
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 35 — Browser timezone auto-detect)
 
 > `git merge master` first. One ticket. **Do after R34.**
