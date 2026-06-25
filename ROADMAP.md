@@ -107,7 +107,7 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(📋 **R36 + R37 dispatched 2026-06-24.** R36: memory context panel + inbox dedup. R37: social mental models — sleep-time agent writes `people_models` after every call + briefing injects person context when they're on tomorrow's calendar.)_ | `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx`, `lib/gmail.ts`, `lib/facts.ts`, `lib/briefing.ts` | 2026-06-24 |
+| 🛠️ Core | `core` | _(📋 **R36 + R37 + R38 dispatched 2026-06-24.** R36: memory context panel + inbox dedup. R37: social mental models. R38: consolidation `(unknown)` entity resolution + event-as-entity guard.)_ | `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx`, `lib/gmail.ts`, `lib/facts.ts`, `lib/briefing.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(✅ **Full sprint merged + deployed 2026-06-24. Both lanes idle. Next: Conversation State Engine (transcript layer) per Derrick memo — dispatch pending.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(📋 **R24 dispatched 2026-06-24 — "Add context" card visual design.** Coordinate with Core R36: Darren ships functional textarea first, Cam does design pass on top. glass-card + .input token + btn-primary + success/error inline states + 📝 user_note label in call notes.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |

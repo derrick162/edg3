@@ -31,6 +31,63 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 38 — Consolidation: unknown entity resolution)
+
+> `git merge master` first. One ticket. **Do after R37.**
+
+---
+
+### T1 — Fix consolidation: retire `(unknown)` entities when they get named later (HIGH — 1h)
+
+**The bug (observed repeatedly):** Call A extracts `entity: '(unknown)', statement: 'friend with bachelor party in Vegas'`. Call B names the person: `entity: 'Patrick', statement: 'bachelor party in Vegas with Patrick'`. Two things go wrong: (1) the `(unknown)` fact is never retired — it stays active alongside the Patrick fact as a duplicate. (2) `Friend's Bachelor Party` gets created as its own entity-fact instead of being stored as an attribute of Patrick. Result: facts pile up, context is diluted, Edge appears to forget things it actually knows.
+
+**Root cause:** `runSleepTimeConsolidation` in `lib/facts.ts` doesn't ask "do any existing `(unknown)` or vague-entity facts now have a real name?" — it only reconciles facts within the same entity/category, never across entity boundaries.
+
+**Fix — `lib/facts.ts` `runSleepTimeConsolidation` (and/or the Haiku consolidation prompt):**
+
+**Part A — `(unknown)` entity resolution pass:**
+
+After the standard consolidation step, add a second pass specifically for cross-entity identity upgrades:
+
+1. Fetch all active facts where `entity IS NULL OR entity = '(unknown)' OR entity LIKE '%(unknown)%'` for this user.
+2. Fetch all `category='people'` facts extracted from this call (the newly landed ones).
+3. Make one Haiku call:
+
+```
+You are resolving vague entities in a user's memory.
+
+Newly learned people facts from this call:
+{newPeopleFacts}
+
+Existing facts with unknown/vague entities:
+{unknownFacts}
+
+For each unknown fact, determine: does one of the newly named people clearly match?
+Match criteria: same event, same context, same relationship. When in doubt, do NOT match.
+
+Return a JSON array of matches:
+[{ "unknownFactId": number, "matchedEntity": string, "confidence": "high" | "medium" }]
+Only return high or medium confidence matches. Return [] if nothing matches.
+```
+
+4. For each high-confidence match: retire the `(unknown)` fact + upsert its statement under the matched entity name (so it joins that person's fact cluster).
+5. For medium: only retire if an identical statement already exists under the matched entity (true duplicate).
+
+**Part B — prevent event-as-entity facts:**
+
+In `extractAndUpsertFacts`, add a guard: if an extracted fact's entity looks like an event title rather than a person name (heuristic: contains "party", "trip", "conference", "wedding", "meeting", "summit", "event", "retreat") AND a people-category fact exists for a related person in this call — store it as an attribute of that person instead of as its own entity. Concretely: change `entity: 'Friend's Bachelor Party'` to `entity: 'Patrick', statement: 'has a bachelor party in Vegas'`.
+
+This heuristic should be conservative — only fire when there's a clear person match in the same call. When uncertain, leave the entity as-is (don't guess).
+
+**Tests:**
+- Call A extracts `(unknown)` "friend with bachelor party"; Call B names Patrick → `(unknown)` fact retired, Patrick fact updated
+- No name match → `(unknown)` fact left untouched
+- Event-entity heuristic: "Friend's Bachelor Party" + Patrick in same call → stored as Patrick attribute
+- Event-entity heuristic: no clear person match → entity left as-is
+- Medium-confidence match with no identical statement → NOT retired (conservative)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 37 — Social mental models: per-person context)
 
 > `git merge master` first. Two tickets. **Do after R36.**
