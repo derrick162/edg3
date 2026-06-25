@@ -45,6 +45,7 @@
   --edg-success: #10b981;
   --edg-warning: #f59e0b;
   --edg-danger:  #ef4444;
+  --edg-error:   #ef4444;
 
   /* Alpha tints */
   --edg-accent-glow:  rgba(99, 102, 241, 0.30);

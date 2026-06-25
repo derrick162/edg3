@@ -110,7 +110,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(📋 **R36 dispatched 2026-06-24 — T1: manual memory context input + T2: inbox review dedup fix.** T1: free-form textarea in Memory tab → `extractAndUpsertFacts` + raw user_note fact. T2: `lib/gmail.ts` `getPreviousEmailSubjects` helper → only log new threads, skip if identical.)_ | `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx`, `lib/gmail.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(✅ **Full sprint merged + deployed 2026-06-24. Both lanes idle. Next: Conversation State Engine (transcript layer) per Derrick memo — dispatch pending.**)_ | `ROADMAP.md` | 2026-06-24 |
-| 🎨 Design | `design` | _(📋 **R24 dispatched 2026-06-24 — "Add context" card visual design.** Coordinate with Core R36: Darren ships functional textarea first, Cam does design pass on top. glass-card + .input token + btn-primary + success/error inline states + 📝 user_note label in call notes.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
+| 🎨 Design | `design` | _(✅ **R24 SHIPPED.** "Add context" card — glass-card, .input textarea, char counter, success/error inline, 📝 user_note label. Built with placeholder handler; needs Core R36 T1 (`/api/memory/notes`) merged before Railway deploy. Idle.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
 ---
 
