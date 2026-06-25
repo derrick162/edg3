@@ -7,7 +7,7 @@ import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { filterReviewedSubjects } from '@/lib/emailActivityFilter';
 import { computeCallStreak } from '@/lib/streak';
 import { factDisplayStatement } from '@/lib/factDisplay';
-import { factSourceLabel } from '@/lib/factSourceLabel';
+import { factSourceLabel, parseDbTimestamp } from '@/lib/factSourceLabel';
 import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
 import { pickTimezoneUpdate } from '@/lib/timezoneDetect';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
@@ -3670,7 +3670,7 @@ export default function Dashboard() {
                                         {correctName(entity, firstName)}
                                       </p>
                                       <p className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
-                                        last updated {format(new Date(mostRecent.last_updated_at ?? mostRecent.learned_at), 'MMM d')}
+                                        last updated {format(parseDbTimestamp(mostRecent.last_updated_at ?? mostRecent.learned_at), 'MMM d')}
                                       </p>
                                     </div>
                                     <div className="space-y-0">
