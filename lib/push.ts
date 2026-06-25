@@ -56,3 +56,19 @@ export async function sendPushToUser(
     }),
   );
 }
+
+/**
+ * S2 — broadcast a system/health alert to every user who has a push subscription (the operator).
+ * Used by the daily health digest so a DEGRADED status reaches Derrick's phone, not just the logs.
+ * Best-effort throughout: silent no-op when VAPID is unset or nobody is subscribed; never throws.
+ */
+export async function sendPushToAllSubscribers(
+  notification: { title: string; body: string },
+): Promise<void> {
+  try {
+    const userIds = pushSubscriptionQueries.allUserIds();
+    await Promise.allSettled(userIds.map(uid => sendPushToUser(uid, notification)));
+  } catch (e) {
+    console.error('[push] sendPushToAllSubscribers failed:', (e as Error).message);
+  }
+}

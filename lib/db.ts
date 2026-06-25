@@ -1842,6 +1842,10 @@ export const pushSubscriptionQueries = {
   delete: (userId: number, endpoint: string): void => {
     getDb().prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?').run(userId, endpoint);
   },
+  // S2 — distinct users with at least one push subscription (for system/health broadcasts).
+  allUserIds: (): number[] => {
+    return (getDb().prepare('SELECT DISTINCT user_id FROM push_subscriptions').all() as Array<{ user_id: number }>).map(r => r.user_id);
+  },
 };
 
 // R14 — Notification send log. Gates repeat proactive notifications within a window.

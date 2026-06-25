@@ -1206,6 +1206,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **DISPATCH S2 — web push for health alerts (2370 green).** _(synced master first; DISPATCH.md item)_
+  - **Most of S2 already shipped (R14/R17):** `lib/push.ts` `sendPushToUser`, encrypted `push_subscriptions` table, `web-push` dep, `POST /api/notifications/subscribe` (+ unsubscribe), and push already wired into the proactive low-recovery / priority-gap jobs. The gap was the **operator alert path** — DEGRADED health only logged to Railway.
+  - **Added:** `pushSubscriptionQueries.allUserIds()` (distinct subscribers) + `sendPushToAllSubscribers(notification)` in `lib/push.ts` (best-effort fan-out; no-op without VAPID / subscribers; never throws). Wired into `runHealthDigest`: on **DEGRADED**, push `"Edg3 health: DEGRADED — <summary>"` to all subscribers. This single consolidated alert covers **all three** spec'd triggers — failed calls, `failed_webhooks` DLQ non-empty, and background-job failures — because each is one of the `issues[]` that produces DEGRADED (and the daily digest is the established single alert path, T1-3; per-event push would spam on routine no-answers).
+  - **Tests:** +3 in `lib/push.test.ts` (fan-out to every subscriber; no-op when none; never throws on a rejected send). 159 files / 2370 green.
+  - ⚠️ **Cross-lane (Core/Design):** S2 part (4), the dashboard "enable push permission" first-load prompt, lives in `app/dashboard/**` — Core/Design lane, not Security. Flagged for routing.
 - **2026-06-24** — **DISPATCH S1 — end-to-end integration test suite (2320 green).** _(synced master first; DISPATCH.md item)_
   - New `tests/e2e/` (real in-memory DB; only external boundaries — Anthropic SDK, Google calendar client, network fetch — mocked):
     - `calendar-tools.test.ts` (5) — each mutating handler (`createEvent`/`editEvent`/`moveEvent`/`deleteEvent`) drives `executeTool` and returns the correct spoken confirmation on SUCCESS and an explicit `ERROR: …` on FAILURE; honest-failure guard (no phantom "Created" on a rejected insert).

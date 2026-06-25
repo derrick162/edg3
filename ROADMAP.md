@@ -108,7 +108,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ **R41 T0+T1 merged; T4 SHIPPED (2300 green) — pushed to origin/core.** T4 (DISPATCH.md): energy false-confirm fix — Part B (setEnergyLevel tool + energy_log + /api/energy/today) ALREADY existed; added Part A prompt guard ("never promise to change the Whoop indicator") + dashboard "(self-reported)" label. Now on a 10-min DISPATCH.md loop. ⚠️ Additive to Security `lib/vapi.ts` — Vijay sync down. Idle.)_ | `lib/vapi.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R22 MERGED TO MASTER (2298 green).** Monthly consolidation cron wired. Pillar-Trust scan clean. Idle — awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **DISPATCH S1+S2 DONE (2370 green) — ready for merge.** S1: tests/e2e/ suite (13 tests). S2: web push for health alerts — `sendPushToAllSubscribers` + DEGRADED→push in `runHealthDigest` (covers failed-calls/DLQ/job-failures); subscribe route + sender already existed (R14). ⚠️ S2 dashboard push-permission prompt = Core/Design lane. Next: S3 (multi-user audit).)_ | `lib/push.ts`, `lib/scheduler.ts`, `lib/db.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **D20 SHIPPED.** Memory tab UI polish: fact confidence display (low=italic+muted, medium=dot, high=none), learned-date timezone fix, category headings `text-xs uppercase tracking-widest`. 2291 green. Idle → pillar sweep next.)_ | `app/dashboard/page.tsx` | 2026-06-24 |
 

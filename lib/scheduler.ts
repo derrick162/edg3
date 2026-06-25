@@ -441,6 +441,14 @@ export async function runHealthDigest(): Promise<void> {
     console.log('[health] HEALTH: OK — All systems nominal');
   } else {
     console.error(`[health] HEALTH: DEGRADED — ${summary}`);
+    // S2 — surface DEGRADED to the operator's phone, not just the logs. This consolidated
+    // alert covers all three trigger conditions (failed calls, failed_webhooks DLQ, job
+    // failures) since each is one of the `issues` that produced the DEGRADED status.
+    // Best-effort: no-op when VAPID is unset or nobody is subscribed; never blocks the digest.
+    try {
+      const { sendPushToAllSubscribers } = await import('./push');
+      await sendPushToAllSubscribers({ title: 'Edg3 health: DEGRADED', body: summary.slice(0, 180) });
+    } catch (e) { console.error('[health] DEGRADED push failed:', e); }
   }
 }
 
