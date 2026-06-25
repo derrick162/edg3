@@ -31,9 +31,9 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
-## 📥 PM DISPATCH — 2026-06-24 (ROUND 36 — Manual memory context input)
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 36 — Manual memory context input + inbox dedup)
 
-> `git merge master` first. One ticket.
+> `git merge master` first. Two tickets.
 
 ---
 
@@ -100,6 +100,63 @@ In the existing call notes section (raw memories list), `category === 'user_note
 - Submit fires POST /api/memory/notes
 - Success state shows extracted count, clears textarea
 - Error state shows error message
+
+---
+
+### T2 — Activity tab: deduplicate inbox review entries when no new emails (QUICK — 30m)
+
+**Bug (observed 2026-06-24):** The Activity tab shows two "Reviewed 20 inbox threads" entries 1 hour apart — both identical, same 20 threads. Happens when `getRecentEmailSignal` runs twice in a short window (briefing + retry-call, or two briefings), both bypassing the 24h metadata cache (`fullBodies: true`) and each writing an `email_signal_fetch` audit entry.
+
+**Root cause:** `lib/gmail.ts` `getRecentEmailSignal()` line ~330 — writes the audit entry whenever `items.length > 0`, with no check for whether those threads were already logged.
+
+**Fix — `lib/gmail.ts` `getRecentEmailSignal()` (around lines 326-338):**
+
+Add a `getPreviousEmailSubjects(userId)` helper (private, below `readEmailSignalCache`):
+
+```ts
+function getPreviousEmailSubjects(userId: number): Set<string> {
+  try {
+    const row = getDb().prepare(
+      "SELECT snapshot_after FROM audit_log WHERE user_id = ? AND action = 'email_signal_fetch' ORDER BY created_at DESC LIMIT 1"
+    ).get(userId) as { snapshot_after: string | null } | undefined;
+    if (!row?.snapshot_after) return new Set();
+    const parsed = JSON.parse(decryptField(row.snapshot_after)) as { subjects?: unknown };
+    const subjects = Array.isArray(parsed.subjects) ? parsed.subjects as string[] : [];
+    return new Set(subjects);
+  } catch { return new Set(); }
+}
+```
+
+Then replace the existing audit-log write block (lines 330-338) with:
+
+```ts
+if (items.length > 0) {
+  const prevSubjects = getPreviousEmailSubjects(userId);
+  const newItems = items.filter(i => !prevSubjects.has(i.subject));
+  // Only log if there are threads not seen in the last review.
+  if (newItems.length > 0) {
+    auditLogQueries.record({
+      userId,
+      action: 'email_signal_fetch',
+      argsJson: JSON.stringify({ days, threadCount: newItems.length }),
+      resultText: `${newItems.length} inbox thread${newItems.length === 1 ? '' : 's'} reviewed for prioritization`,
+      ok: true,
+      snapshotAfter: encryptField(JSON.stringify({ subjects: newItems.map(i => i.subject) })),
+    });
+  }
+}
+```
+
+**Result:**
+- Same threads as last time → no new audit entry → no duplicate in Activity
+- New threads arrived → logs only the new ones with the correct count
+- First-ever fetch → `getPreviousEmailSubjects` returns empty set → logs all threads normally
+
+**Tests:**
+- `getRecentEmailSignal` called twice with identical thread subjects → only one audit entry written
+- Second call with 2 new + 18 old threads → second entry logs `threadCount: 2`, subjects = new 2 only
+- First call (no prior entry) → logs all threads normally
+- `getPreviousEmailSubjects` with no prior audit row → returns empty Set
 
 ---
 
