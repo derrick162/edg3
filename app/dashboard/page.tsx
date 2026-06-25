@@ -10,10 +10,17 @@ import { factDisplayStatement } from '@/lib/factDisplay';
 import { factSourceLabel, parseDbTimestamp } from '@/lib/factSourceLabel';
 import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
 import { pickTimezoneUpdate } from '@/lib/timezoneDetect';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard, ToastProvider } from '@/components/ui';
+import { useToast } from '@/lib/toast';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
+
+// D27 — beforeinstallprompt is not in the TS lib; extend Window
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
 
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
@@ -805,11 +812,11 @@ function ActivityTab() {
 
   if (loading) return (
     <div className="space-y-3 mt-2">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="glass-card p-4 animate-pulse">
-          <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-fill-04)' }} />
-          <div className="h-4 rounded w-3/4 mb-2" style={{ background: 'var(--edg-fill-04)' }} />
-          <div className="h-3 rounded w-1/2" style={{ background: 'var(--edg-fill-04)' }} />
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} className="glass-card p-4">
+          <div className="skeleton h-3 w-1/3 mb-3 rounded" />
+          <div className="skeleton h-4 w-3/4 mb-2 rounded" />
+          <div className="skeleton h-3 w-1/2 rounded" />
         </div>
       ))}
     </div>
@@ -846,7 +853,7 @@ function ActivityTab() {
       />
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-lg font-bold">Edg3&apos;s actions</h2>
-        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
+        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }} aria-label="Refresh activity log">↻ Refresh</button>
       </div>
       <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
         Every change Edg3 makes appears here — review it, undo it, or just keep the audit trail.
@@ -973,10 +980,10 @@ function ActivityTab() {
                       </div>
 
                       {/* Expanded detail panel */}
-                      {isExpanded && item.detail && (
+                      {item.detail && (
                         <div
-                          className="px-4 pb-4"
-                          style={{ borderTop: '1px solid var(--edg-hairline)' }}
+                          className={`row-expand px-4 pb-4 ${isExpanded ? 'expanded' : 'collapsed'}`}
+                          style={{ borderTop: isExpanded ? '1px solid var(--edg-hairline)' : 'none' }}
                         >
                           {/* Email receipt — lazy-fetched on expand */}
                           {item.emailReceiptId && (() => {
@@ -1105,6 +1112,7 @@ function ActivityTab() {
             </div>
           ))}
         </div>
+
       )}
     </div>
   );
@@ -1462,10 +1470,19 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
-export default function Dashboard() {
+function DashboardInner() {
+  const { showToast } = useToast();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  // D27 — PWA install prompt
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+  const [installDismissed, setInstallDismissed] = useState(false);
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -1490,6 +1507,7 @@ export default function Dashboard() {
   const [callStage, setCallStage] = useState('');
   const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
+  const [tabSlideDir, setTabSlideDir] = useState<'left' | 'right' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [memoryPage, setMemoryPage] = useState(1);
   const [contextNote, setContextNote] = useState('');
@@ -1522,6 +1540,9 @@ export default function Dashboard() {
   const [rollingBackId, setRollingBackId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
+  // D24 — call history search + pagination
+  const [briefingsSearch, setBriefingsSearch] = useState('');
+  const [briefingsPage, setBriefingsPage] = useState(20);
   // R17 T2 — briefing ids the user has rated this session (one rating per call).
   const [ratedBriefings, setRatedBriefings] = useState<Set<number>>(new Set());
   async function submitCallFeedback(briefingId: number, rating: number) {
@@ -2184,9 +2205,11 @@ export default function Dashboard() {
       if (r.ok) {
         setContextNote('');
         setContextResult({ ok: true, message: `✓ Saved — extracted ${d.factsExtracted ?? 0} fact${(d.factsExtracted ?? 0) !== 1 ? 's' : ''}` });
+        showToast(`Saved — extracted ${d.factsExtracted ?? 0} fact${(d.factsExtracted ?? 0) !== 1 ? 's' : ''}`, 'success');
         loadData();
       } else {
         setContextResult({ ok: false, message: d.error || 'Something went wrong — try again' });
+        showToast(d.error || 'Something went wrong — try again', 'error');
       }
     } catch {
       setContextResult({ ok: false, message: 'Something went wrong — try again' });
@@ -2251,6 +2274,37 @@ export default function Dashboard() {
     return 'Earlier';
   }
 
+  // D24 — key moments derived from existing call data
+  function getBriefingMoments(b: Briefing): { label: string; icon: string }[] {
+    const moments: { label: string; icon: string }[] = [];
+    try {
+      if (b.calendar_actions) {
+        const actions = JSON.parse(b.calendar_actions);
+        if (Array.isArray(actions) && actions.length > 0) moments.push({ icon: '📅', label: 'Event created' });
+      }
+    } catch { /* skip */ }
+    try {
+      if (b.edge_promises) {
+        const promises = JSON.parse(b.edge_promises);
+        if (Array.isArray(promises) && promises.length > 0) moments.push({ icon: '✓', label: 'Commitment' });
+      }
+    } catch { /* skip */ }
+    if (b.transcript) {
+      const lower = b.transcript.toLowerCase();
+      if (lower.includes("i'll remember") || lower.includes("noted that") || lower.includes('stored that')) {
+        moments.push({ icon: '💡', label: 'New fact' });
+      }
+    }
+    return moments;
+  }
+
+  // D24 — brief one-line summary from briefing content (first sentence)
+  function getBriefingSummary(b: Briefing): string | null {
+    if (!b.content) return null;
+    const first = b.content.trim().split(/[.\n]/)[0];
+    return first.length > 10 ? first.replace(/^(SECTION \d+[:\-–]?\s*)/i, '').trim() : null;
+  }
+
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--surface-page)' }}>
       <div className="orb orb-1" />
@@ -2259,6 +2313,39 @@ export default function Dashboard() {
       {linkedNotice && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'var(--edg-success-tint)', border: '1px solid var(--edg-success-border)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
           ✓ Google account linked
+        </div>
+      )}
+
+      {/* D27 — PWA install banner (mobile, once per session) */}
+      {installPrompt && !installDismissed && (
+        <div
+          className="toast-slide-in"
+          style={{
+            position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 80, background: 'var(--surface-card)', border: '1px solid var(--edg-accent-20)',
+            borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12,
+            boxShadow: '0 4px 24px rgba(0,0,0,0.3)', maxWidth: 'calc(100vw - 32px)',
+          }}
+        >
+          <span className="logo-text text-sm">E</span>
+          <p className="text-xs flex-1" style={{ color: 'var(--text-body)' }}>Add Edg3 to your home screen</p>
+          <button
+            className="btn-primary text-xs py-1.5 px-3"
+            onClick={() => {
+              (installPrompt as BeforeInstallPromptEvent).prompt();
+              setInstallDismissed(true);
+            }}
+          >
+            Install
+          </button>
+          <button
+            onClick={() => setInstallDismissed(true)}
+            className="text-xs"
+            style={{ color: 'var(--text-faint)' }}
+            aria-label="Dismiss install prompt"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -2340,20 +2427,30 @@ export default function Dashboard() {
             <span className="logo-text text-lg">EDG3</span>
           </div>
 
-          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
-            {[
-              { id: 'home', label: 'Today', icon: '✦' },
-              { id: 'priorities', label: 'Focus', icon: '🎯' },
-              { id: 'memory', label: 'Memory', icon: '🧠' },
-              { id: 'activity', label: 'Activity', icon: '📊' },
-              { id: 'briefings', label: 'Briefings', icon: '📋' },
-              { id: 'profile', label: 'Profile', icon: '👤' },
-              { id: 'help', label: 'Help', icon: '?' },
-            ].map(tab => (
+          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0" aria-label="Dashboard navigation" role="tablist">
+            {(() => {
+              const NAV_TABS = [
+                { id: 'home', label: 'Today', icon: '✦' },
+                { id: 'briefings', label: 'Briefings', icon: '📋' },
+                { id: 'memory', label: 'Memory', icon: '🧠' },
+                { id: 'priorities', label: 'Focus', icon: '🎯' },
+                { id: 'activity', label: 'Activity', icon: '📊' },
+                { id: 'profile', label: 'Profile', icon: '👤' },
+                { id: 'help', label: 'Help', icon: '?' },
+              ];
+              const TAB_ORDER = NAV_TABS.map(t => t.id);
+              return NAV_TABS.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => {
+                  const fromIdx = TAB_ORDER.indexOf(activeTab);
+                  const toIdx = TAB_ORDER.indexOf(tab.id);
+                  setTabSlideDir(toIdx > fromIdx ? 'right' : 'left');
+                  setActiveTab(tab.id as any);
+                }}
+                role="tab"
                 aria-label={tab.label}
+                aria-selected={activeTab === tab.id}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
                 className="flex-shrink-0 md:w-full flex flex-col md:flex-row items-center md:items-center gap-0 md:gap-3 px-2 md:px-3 py-1.5 md:py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
@@ -2366,7 +2463,8 @@ export default function Dashboard() {
                 <span className="text-[9px] md:hidden block leading-none mt-0.5 opacity-70">{tab.label}</span>
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
-            ))}
+              ));
+            })()}
           </nav>
 
           {/* Mobile-only: compact Next Call strip below nav */}
@@ -2563,6 +2661,16 @@ export default function Dashboard() {
               </div>
             )}
 
+            {whoopConnected === false && (
+              <div className="px-2">
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                  Connect Whoop in{' '}
+                  <a href="/settings" style={{ color: 'var(--edg-indigo)' }}>Settings</a>{' '}
+                  to see your recovery data here.
+                </p>
+              </div>
+            )}
+
             {whoopConnected === true && (
               <div>
                 {whoopData && whoopData.recoveryScore !== null && whoopData.tier && (
@@ -2623,7 +2731,7 @@ export default function Dashboard() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
+        <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0" role="main" aria-label="Dashboard content">
           {/* Screen 7 — activation arrival banner (dismissible, non-gating) */}
           {showActivatedBanner && (() => {
             const day = new Date().getDay();
@@ -2705,6 +2813,9 @@ export default function Dashboard() {
               </p>
             </div>
           )}
+
+          {/* Tab slide animation wrapper — key forces remount on tab change */}
+          <div key={activeTab} className={tabSlideDir === 'right' ? 'tab-slide-right' : tabSlideDir === 'left' ? 'tab-slide-left' : 'fade-in'}>
 
           {/* ── Home tab — morning cockpit ──────────────────────────── */}
           {activeTab === 'home' && (
@@ -2819,7 +2930,19 @@ export default function Dashboard() {
                 id="briefings"
                 text="Your call history and full transcripts."
               />
-              <h2 className="text-lg font-bold mb-4">Call history</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+                <h2 className="text-lg font-bold flex-1">Call history</h2>
+                {briefingsLoaded && briefings.length > 3 && (
+                  <input
+                    type="search"
+                    value={briefingsSearch}
+                    onChange={e => { setBriefingsSearch(e.target.value); setBriefingsPage(20); }}
+                    placeholder="Search calls…"
+                    className="input text-sm"
+                    style={{ maxWidth: 220, paddingTop: '0.375rem', paddingBottom: '0.375rem' }}
+                  />
+                )}
+              </div>
               {!briefingsLoaded ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -2873,25 +2996,43 @@ export default function Dashboard() {
                     </p>
                   </div>
                 )
-              ) : (
+              ) : (() => {
+                const q = briefingsSearch.trim().toLowerCase();
+                const filtered = q
+                  ? briefings.filter(b =>
+                      (b.content || '').toLowerCase().includes(q) ||
+                      (b.transcript || '').toLowerCase().includes(q) ||
+                      (b.user_response || '').toLowerCase().includes(q) ||
+                      b.scheduled_for.includes(q)
+                    )
+                  : briefings;
+                const visible = filtered.slice(0, briefingsPage);
+                if (filtered.length === 0) return (
+                  <div className="glass-card p-8 text-center">
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No calls match &quot;{briefingsSearch}&quot;</p>
+                  </div>
+                );
+                return (
                 <div className="space-y-3">
-                  {briefings.reduce<React.ReactNode[]>((acc, b, idx) => {
+                  {visible.reduce<React.ReactNode[]>((acc, b, idx) => {
                     const grp = getBriefingGroup(b.scheduled_for);
-                    const prevGrp = idx > 0 ? getBriefingGroup(briefings[idx - 1].scheduled_for) : '';
+                    const prevGrp = idx > 0 ? getBriefingGroup(visible[idx - 1].scheduled_for) : '';
                     if (grp !== prevGrp) {
                       acc.push(
                         <p key={`grp-${b.id}`} className="text-xs font-semibold px-1 pt-2 pb-0.5 select-none"
                           style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>{grp}</p>
                       );
                     }
+                    const moments = getBriefingMoments(b);
+                    const summary = getBriefingSummary(b);
                     acc.push(
                     <div
                       key={b.id}
-                      className="glass-card glass-card-hover p-5 cursor-pointer"
+                      className="glass-card glass-card-hover card-lift p-5 cursor-pointer"
                       onClick={() => setSelectedBriefing(selectedBriefing?.id === b.id ? null : b)}
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm">
                               {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
@@ -2907,13 +3048,23 @@ export default function Dashboard() {
                               </span>
                             )}
                           </div>
-                          {b.user_response && (
-                            <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: 'var(--text-muted)' }}>
-                              You said: "{b.user_response}"
+                          {summary && (
+                            <p className="text-xs mt-1 line-clamp-1" style={{ color: 'var(--text-muted)' }}>
+                              {summary}
                             </p>
                           )}
+                          {moments.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                              {moments.map((m, mi) => (
+                                <span key={mi} className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                                  style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
+                                  {m.icon} {m.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <span className={`badge ${statusColor[b.status as keyof typeof statusColor] || 'badge-info'}`}>
+                        <span className={`badge flex-shrink-0 ${statusColor[b.status as keyof typeof statusColor] || 'badge-info'}`}>
                           {b.status}
                         </span>
                       </div>
@@ -3061,8 +3212,17 @@ export default function Dashboard() {
                     );
                     return acc;
                   }, [])}
+                  {filtered.length > briefingsPage && (
+                    <button
+                      onClick={() => setBriefingsPage(p => p + 20)}
+                      className="btn-secondary w-full text-sm"
+                    >
+                      Load more ({filtered.length - briefingsPage} remaining)
+                    </button>
+                  )}
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
@@ -3940,9 +4100,9 @@ export default function Dashboard() {
               {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
                   <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
-                  <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edg3 hasn&apos;t learned anything yet</p>
+                  <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edge will start learning after your first call</p>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Your first call changes that — goals, projects, preferences, and the context behind your calendar will start appearing here.
+                    Goals, relationships, preferences, and the context behind your calendar all build up here over time.
                   </p>
                 </div>
               )}
@@ -3958,6 +4118,8 @@ export default function Dashboard() {
               <HelpSupportSection />
             </div>
           )}
+
+          </div>{/* end tab slide animation wrapper */}
         </main>
       </div>
 
@@ -4008,5 +4170,13 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <ToastProvider>
+      <DashboardInner />
+    </ToastProvider>
   );
 }

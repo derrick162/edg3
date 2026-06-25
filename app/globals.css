@@ -505,9 +505,15 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   from { width: 100%; }
   to   { width: 0%; }
 }
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @media (prefers-reduced-motion: reduce) {
   .toast-countdown-bar { animation: none !important; width: 100%; }
+  .toast-slide-in { animation: none !important; }
 }
+.toast-slide-in { animation: toast-slide-in 0.22s ease both; }
 
 .badge {
   display: inline-flex;
@@ -745,3 +751,58 @@ button:disabled,
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* ── D29 — Animation + transition polish ─────────────────────────────────── */
+
+/* Fade-in: dashboard / tab panel load */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fade-in 0.2s ease both; }
+
+/* Tab slide — direction toggled via JS class */
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.tab-slide-left  { animation: slide-in-left  0.18s ease both; }
+.tab-slide-right { animation: slide-in-right 0.18s ease both; }
+
+/* Card hover lift — apply to clickable glass-cards */
+.card-lift {
+  transition: transform var(--dur-base), box-shadow var(--dur-base);
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 0 1px rgba(99,102,241,0.12);
+}
+
+/* Expanding rows — smooth max-height reveal */
+.row-expand {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+.row-expand.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+.row-expand.expanded {
+  max-height: 800px; /* generous upper bound */
+  opacity: 1;
+}
+
+/* Count-up — CSS only, driven by counter-reset in JS */
+/* Usage: set --count-target on the element, apply .count-up-value */
+@keyframes count-up {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
+.count-up-value { animation: count-up 0.4s ease both; }
+
+/* All D29 animations respect prefers-reduced-motion (already covered by the
+   global reduce rule above — no extra declarations needed) */
