@@ -50,7 +50,7 @@ vi.mock('googleapis', () => ({
   },
 }));
 
-import { deleteDraft, readThread, getRecentEmailSignal, getEmailSignalSubjects, searchEmailsBySubject, truncateAtSentenceBoundary, GmailScopeError } from './gmail';
+import { deleteDraft, readThread, getRecentEmailSignal, getEmailSignalSubjects, searchEmailsBySubject, truncateAtSentenceBoundary, GmailScopeError, selectNewInboxSubjects } from './gmail';
 
 const WITH_GMAIL = { access_token: 'a', refresh_token: 'r', expiry: null, scope: GOOGLE_SCOPES.join(' ') };
 const CAL_ONLY = { access_token: 'a', refresh_token: 'r', expiry: null, scope: CALENDAR_SCOPES.join(' ') };
@@ -648,5 +648,22 @@ describe('searchEmailsBySubject', () => {
     await searchEmailsBySubject(1, 'Sync (Q3) "kickoff"');
     const call = (h.threadsList.mock.calls as any[][])[0]?.[0];
     expect(call.q).toBe('subject:(Sync Q3 kickoff) newer_than:30d');
+  });
+});
+
+// ── R36 T2 — inbox review dedup ───────────────────────────────────────────────
+describe('selectNewInboxSubjects (R36 T2)', () => {
+  it('returns only subjects not seen in the previous review', () => {
+    const prev = new Set(['A', 'B', 'C']);
+    expect(selectNewInboxSubjects(['A', 'B', 'C', 'D'], prev)).toEqual(['D']);
+  });
+
+  it('returns [] when the inbox is identical to the last review (no dupe entry)', () => {
+    const prev = new Set(['A', 'B', 'C']);
+    expect(selectNewInboxSubjects(['A', 'B', 'C'], prev)).toEqual([]);
+  });
+
+  it('returns all subjects when there was no previous review', () => {
+    expect(selectNewInboxSubjects(['A', 'B'], new Set())).toEqual(['A', 'B']);
   });
 });

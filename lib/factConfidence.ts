@@ -95,6 +95,8 @@ const CATEGORY_PRIORITY: Record<Fact['category'], number> = {
   // M4-5 — synthesized memory tiers (not user-stated facts to reconfirm aloud).
   weekly_summary: 7,
   lifetime_profile: 8,
+  // R36 — raw manually-added context note; never reconfirmed aloud (lowest priority).
+  user_note: 9,
 };
 
 /**

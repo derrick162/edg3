@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(📋 **R36 + R37 + R38 dispatched 2026-06-24.** R36: memory context panel + inbox dedup. R37: social mental models. R38: consolidation `(unknown)` entity resolution + event-as-entity guard.)_ | `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx`, `lib/gmail.ts`, `lib/facts.ts`, `lib/briefing.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **Pillar Security backlog EXHAUSTED (2268 green) — M4-5 ready for merge; idle.** M4-5 cron wiring done (`runWeeklySynthesisSweep` → Sunday 4am cron, 3 tests). Scanned all 3 pillars: no open `(Security)` code items remain — every remaining unchecked box is a live-QA verification step, mapped in `content/qa-log.md` with code-level coverage + external handoff. R21+R20 merged/deployed. Awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(✅ **Full sprint merged + deployed 2026-06-24. Both lanes idle. Next: Conversation State Engine (transcript layer) per Derrick memo — dispatch pending.**)_ | `ROADMAP.md` | 2026-06-24 |
+| 🛠️ Core | `core` | _(📋 **R40 dispatched 2026-06-24. T1: evening time-of-day framing (calls after 5 PM treat today as past). T2: moveEvent false confirmation fix. Do after R39 which is already merged.**)_ | `lib/vapi.ts`, `lib/briefing.ts`, `app/api/vapi/webhook/route.ts`, `app/api/vapi/tool-call/route.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **Pillar Security backlog EXHAUSTED (2268 green) — M4-5 ready for merge; idle.** M4-5 cron wiring done (`runWeeklySynthesisSweep` → Sunday 4am cron, 3 tests). All 3 pillars scanned: no open `(Security)` code items — remaining boxes are live-QA steps, mapped in `content/qa-log.md`. R21+R20 merged/deployed. Awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R40 dispatched 2026-06-24 — evening framing + move confirmation. R39+R36+R37+R38 all merged + deployed.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(📋 **R24 dispatched 2026-06-24 — "Add context" card visual design.** Coordinate with Core R36: Darren ships functional textarea first, Cam does design pass on top. glass-card + .input token + btn-primary + success/error inline states + 📝 user_note label in call notes.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
 ---

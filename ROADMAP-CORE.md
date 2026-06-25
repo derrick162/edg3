@@ -31,9 +31,160 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 40 — Call time-of-day awareness + move confirmation)
+
+> `git merge master` first. Two tickets.
+
+---
+
+### T1 — Briefing/open call must know current time and treat past events as done (HIGH — 1h)
+
+**The bug (live call, 9:45 PM):** Derrick did a call at 9:45 PM. Edge opened with "You've got 3 back-to-back blocks this afternoon" — but those blocks had already happened hours ago. The briefing content is built without injecting the ACTUAL current time, so the model treats the call as if it's still morning.
+
+**Root cause:** The briefing prompt and open call system prompt inject today's date but not the current time. The model has no way to know it's evening vs morning, so it always speaks about today's calendar as upcoming.
+
+**Fix — two parts:**
+
+**Part A — inject current time into both briefing and open call prompts:**
+
+In `lib/briefing.ts`, the briefing prompt already has `today` (date string). Add `currentHour` (0–23, in user's timezone) to the context block injected into the prompt:
+```
+Current time: 9:45 PM (Thursday Jun 26)
+```
+
+In `lib/vapi.ts` `buildOpenCallSystemPrompt`, add a `currentTime` param (passed from the webhook at call-start time) and inject it into the system prompt header alongside the date.
+
+In `app/api/vapi/webhook/route.ts`, when building the open call system prompt, derive the current time in the user's timezone and pass it in.
+
+**Part B — add an EVENING FRAMING rule to `lib/vapi.ts`:**
+
+In the briefing/open call system prompt, add this rule after the GROUNDED section:
+
+```
+TIME AWARENESS: You always know the current time (injected above). If the current time is 5 PM or later:
+- Today's calendar events have ALREADY HAPPENED — do not reference them as upcoming or suggest acting on them today.
+- Open with the evening context: acknowledge what's been done, pivot to what's ahead (tomorrow, the week).
+- Never say "this afternoon" or "today you have X" when it's evening.
+- Never suggest "finish X today" when it's past 5 PM unless the user explicitly says they're still working.
+If the current time is before 5 PM: standard briefing framing applies.
+```
+
+**Tests:**
+- Open call at 9 PM → calendar events from today are referenced as past, framing shifts to tomorrow
+- Open call at 8 AM → standard morning framing, no change
+- Briefing at 9 PM (unusual but possible) → same evening framing rule applies
+
+---
+
+### T2 — Move confirmation without tool success: Edge says "Done" before verifying (HIGH — 45m)
+
+**The bug (live call):** Edge said "Done. Move Scandia cash flow to Thursday 10 to 11 AM." — the move never happened on the calendar. Root cause: same false-confirmation pattern as R32 — the model says "Done" before reading the tool result, or calls the tool but ignores an error response.
+
+**Diagnosis to do first:** Check `lib/vapi.ts` for the HONEST FAILURE / NEVER FALSE CONFIRM rule. Confirm whether `moveEvent` tool results include an explicit `ERROR:` string on failure (they should from R32 — check `app/api/vapi/tool-call/route.ts` `ERR_MOVE` constant). If the tool IS returning an error but the model is ignoring it, this is a prompt issue. If the tool isn't being called at all, this is a model hallucination issue.
+
+**Fix A — if the prompt rule is missing or weak:** In `lib/vapi.ts`, add to the HONEST FAILURE block:
+```
+MOVE CONFIRMATION: Never say "Done" or confirm a calendar move until you have read the moveEvent tool result. If the result contains "ERROR" or does not contain a confirmation, tell the user the move didn't go through and offer to try again. A verbal "Done" before the tool returns is a false confirmation — it destroys trust.
+```
+
+**Fix B — if `ERR_MOVE` isn't being returned correctly:** In `app/api/vapi/tool-call/route.ts`, verify the `moveEvent` handler returns `ERR_MOVE` (the constant, not an inline string) on all failure paths — patch failure, organizer check failure, calendar not writable. Confirm `FAILURE_RE` catches `ERR_MOVE`.
+
+**Fix C — add a success confirmation string:** The `moveEvent` success path should return an explicit confirmation string that the model can read: e.g. `"Moved '${title}' to ${newTime}."` — not just a partial description. This makes it unambiguous whether the move succeeded.
+
+**Tests:**
+- `moveEvent` called, Google API returns success → model says "Moved X to Y" (not before)
+- `moveEvent` called, Google API returns 403 → model says it didn't work, does not say "Done"
+- `moveEvent` tool not called at all → model should not say the move happened (prompt rule)
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 39 — Memory extraction: transcript truncation + person/pet category fixes)
+
+> `git merge master` first. Three tickets. **Do before R38, R37, R36 — these are blocking bugs.**
+
+---
+
+### T1 — Fix transcript truncation: `transcript.slice(0, 2000)` cuts off late-call memory (CRITICAL — 30m)
+
+**The bug (confirmed from live call):** Derrick asked Edge mid-gratitude-call "Could you remember that I have a dog named Jamie?" — Edge verbally confirmed it, but nothing appeared in memory. Root cause: `extractFactsFromTranscript` in `lib/facts.ts` line 91 truncates the transcript to 2000 chars before sending to Haiku. A 5–10 min call easily generates 8,000–15,000 chars (both speakers combined). Anything said after the first ~300–400 words is silently discarded and never extracted.
+
+**Fix — `lib/facts.ts` two changes:**
+
+1. Line 91: `transcript.slice(0, 2000)` → `transcript.slice(0, 8000)` (covers ~15 min calls). Update the label on line 90 from `"Transcript (first 2000 chars):"` → `"Transcript (first 8000 chars):"`.
+
+2. Line 61: `max_tokens: 600` → `max_tokens: 1000` — larger input needs more room to return up to 10 facts in JSON.
+
+**Tests:**
+- Facts mentioned at character positions 2000–4000 in a long transcript are now extracted
+- Facts at position 0–2000 still extracted (no regression)
+- Extraction still returns [] for empty transcript
+
+---
+
+### T2 — Fix person category: add "friend" + pet guidance to extraction prompt (HIGH — 30m)
+
+**Two sub-bugs:**
+
+**Sub-bug A — Gabby filed as 'fact' not 'person':** The extraction prompt's `"person"` category lists only "investor, client, colleague, family member" as examples. The Haiku model classified Gabby ("a really good friend who lives in Hong Kong") as `category: 'fact'` because "friend" isn't in the list. She appears in "Recently Learned" with the wrong icon (⚡ not 👤) and doesn't appear in the People section.
+
+**Sub-bug B — Jamie the dog has no extraction path:** The extraction prompt gives no guidance for pets. Even with the MANDATORY REMEMBER REQUESTS rule (which should have caught "Could you remember I have a dog named Jamie"), there's no example that tells the model how to categorize or entity-tag a pet fact.
+
+**Fix — `lib/facts.ts` extraction prompt (two lines to change):**
+
+Line 70 — person category: Change:
+```
+- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
+```
+to:
+```
+- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member, friend, close friend, romantic partner). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
+```
+
+Line 74 — fact category: Change:
+```
+- "fact"       — any other durable fact about the user's life or business
+```
+to:
+```
+- "fact"       — any other durable fact about the user's life or business. Includes PETS — a pet is a fact (e.g. "Derrick has a dog named Jamie, a puggle-Shih Tzu mix" → {"category":"fact","entity":"Jamie","statement":"Derrick has a dog named Jamie, a puggle-Shih Tzu mix","confidence":"high"}).
+```
+
+**Tests:**
+- Transcript "my good friend Gabby lives in Hong Kong" → extracted as `{"category":"person","entity":"Gabby",...}`
+- Transcript "I have a dog named Jamie, a puggle and Shih Tzu mix" → extracted as `{"category":"fact","entity":"Jamie",...}`
+- Existing investor/colleague/family member facts still extracted correctly (no regression)
+
+---
+
+### T3 — Fix `rememberPreference` handler: add 'person' to VALID_FACT_CATS (HIGH — 20m)
+
+**The bug:** `rememberPreference` in `app/api/vapi/tool-call/route.ts` line 1508 defines `VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact'])`. The `'person'` category is NOT in this set. If Edge calls `rememberPreference` with `category: 'person'` (e.g. during the PEOPLE DEEPENING flow when Derrick mentions Gabby), the handler silently falls back to `'preference'`, storing Gabby's fact in the wrong category where it won't appear in the People section.
+
+**Fix — `app/api/vapi/tool-call/route.ts` line 1508:**
+
+Change:
+```ts
+const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact']);
+```
+to:
+```ts
+const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact', 'person']);
+```
+
+No other changes needed — the existing upsert logic at line 1532 works for any category already in VALID_CATEGORIES.
+
+Also in `lib/vapi.ts`, update the two gratitude prompt REMEMBER REQUESTS lines (English ~line 334, Cantonese ~line 284) where it says `"topic = the person/place it's about"` → `"topic = the person, pet, or place it's about"` so the model knows to call `rememberPreference` when Derrick mentions a pet.
+
+**Tests:**
+- `rememberPreference` called with `category: 'person'`, `topic: 'Gabby'` → fact stored as `category='person'`, entity='Gabby'
+- `rememberPreference` called with no category → still defaults to 'preference' (existing behavior preserved)
+- `rememberPreference` called with `category: 'preference'` → still stored as preference (no regression)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 38 — Consolidation: unknown entity resolution)
 
-> `git merge master` first. One ticket. **Do after R37.**
+> `git merge master` first. One ticket. **Do after R39.**
 
 ---
 
@@ -3247,7 +3398,56 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
-- **2026-06-24** — **M4-6 SHIPPED (2249 green) — Memory Ranking Engine ("PageRank for personal memory") [PILLAR-MEMORY].**
+- **2026-06-24** — **R39 SHIPPED (2287 green, CRITICAL) — memory extraction bug fixes (Jamie the dog + Gabby miscategorized).**
+  - **T1 — truncation.** `lib/facts.ts` extraction read only `transcript.slice(0, 2000)` (~300 words / first
+    minute) with `max_tokens: 600` — everything later in a 5–10 min call was silently dropped (Jamie the dog
+    was never saved). → `slice(0, 8000)` + `max_tokens: 1000` + label updated. 1 test (a marker past the old
+    2000-char cutoff now reaches the prompt).
+  - **T2 — categories.** The `person` category listed only investor/client/colleague/family — "friend" was
+    missing, so Gabby landed in `fact`. Added friend/close friend/romantic partner. Added explicit PET
+    guidance to `fact` (dog/cat → `category:'fact'`, `entity`=pet name).
+  - **T3 — rememberPreference.** `tool-call/route.ts` `VALID_FACT_CATS` lacked `'person'`, so a mid-call
+    `rememberPreference(category:'person')` silently fell back to `'preference'`. Added `'person'`. Updated
+    both gratitude REMEMBER REQUESTS lines (EN + 廣東話) in `lib/vapi.ts` to "the person, pet, or place … for
+    a person use category 'person'".
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` (prompt content) + Shared `tool-call/route.ts` (Core tool
+    behavior) — Vijay sync down.** (R39 was dispatched before its roadmap commit landed on master — implemented
+    from the dispatch message; R36/R37/R38 were already shipped.)
+- **2026-06-24** — **R37 + R38 SHIPPED (2286 green) — social mental models + `(unknown)`-entity resolution.**
+  - **R37 (M4-4) — social mental models.** **T1:** new `lib/peopleModels.ts` `updatePeopleModels` —
+    fire-and-forget from the post-call webhook; for each person-category fact actually mentioned this
+    call (cap 5), one Haiku call merges the existing `people_models` row with new transcript signal
+    (preserving un-mentioned fields) and upserts. Degrades silently. 5 tests. **T2:** the briefing
+    read/inject path (`buildPeopleModelBlock` + injected `peopleModelBlock`) already existed from prior
+    M4-4 work — it was dormant only because nothing wrote models; T1 activates it. Enhanced the block with
+    `last_interaction` + added a PEOPLE CONTEXT mid-call note in `lib/vapi.ts`. (Found + removed a redundant
+    `formatPeopleContextBlock`/`getByName` I'd started before discovering the existing path.)
+  - **R38 — consolidation: `(unknown)`-entity resolution + event-as-entity guard.** **Part A:** added a
+    cross-entity pass to `runSleepTimeConsolidation` — a Haiku call matches active unknown/null-entity
+    PERSON facts against newly-named people; high-confidence → retire the unknown + re-file its statement
+    under the real name; medium → retire only if an identical statement already exists (conservative).
+    Scoped to `category='person'` so legit null-entity goals/preferences are never swept in. **Part B:**
+    pure `looksLikeEventEntity` + `reassignEventEntityFacts` in `extractAndUpsertFacts` — an event-title
+    entity ("Friend's Bachelor Party") is re-filed as an attribute of the single clearly-named person in
+    the call; ambiguous (0 or >1 people) → left as-is. 8 tests. Together these stop Patrick's context from
+    fragmenting across `(unknown)` + event-entity duplicates.
+  - **⚠️ Additive to webhook (Security) + `lib/vapi.ts` (Security prompt content) — Vijay sync down.**
+- **2026-06-24** — **R36 SHIPPED (2273 green) — "Add context" panel + inbox-review dedup.**
+  - **T1 — manual memory context.** New `POST /api/memory/notes` (`{text}`, ≤2000 chars, 401/400 guards):
+    runs the text through `extractAndUpsertFacts` (same pipeline as call transcripts → structured facts)
+    AND stores the raw note as a `user_note` fact; returns `{factsExtracted}`. Dashboard Memory tab gets an
+    "Add context" card (textarea + Save + inline "✓ Saved — extracted N fact(s)" / error, auto-clear, reloads
+    facts). New `user_note` fact category (Fact type + CHECK + weight maps + 📝 icon). 5 route tests.
+    _(Cam/Design R24 will polish the card visual + the "📝 Added manually" call-notes treatment.)_
+  - **T2 — inbox-review dedup.** `lib/gmail.ts` `getRecentEmailSignal` wrote an identical "Reviewed N inbox
+    threads" Activity entry on every fetch (briefing + retry-call). Added `getPreviousEmailSubjects` +
+    pure `selectNewInboxSubjects` — only records a receipt when the fetch surfaced threads the last review
+    didn't; count/text reflect the new threads. **Corrected the dispatch's snippet:** it stored only the
+    *new* subjects in the snapshot, which would shrink the comparison set and re-log older threads next time
+    (and break the 24h cache) — I store the FULL inbox subjects in the snapshot instead. 3 tests.
+  - **⚠️ `lib/gmail.ts` is Security-owned** — additive (`getPreviousEmailSubjects` + `selectNewInboxSubjects`
+    + the receipt guard), PM-dispatched to Core; Vijay sync down. Reused the `profileUpdate` rate-limit
+    bucket for the notes route to avoid a Security-owned `rateLimit.ts` edit. **Additive to Shared `lib/db.ts`** (user_note category).
   - New pure `memoryRankScore(fact, priorities, today)` (`lib/memorySalience.ts`) — 0–1 blend of goal
     alignment 30% (token overlap vs top-3 priorities → 1.0/0.5/0), recency 20% (90-day linear decay off
     `last_confirmed_at`/`learned_at`), confidence 20% (`confidence_score`), reference frequency 15%
