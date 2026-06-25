@@ -158,6 +158,48 @@ export function assessEncryptionReadiness(env: EncryptionEnv): DurabilityAssessm
 }
 
 /**
+ * S6 — build the S3 base URL Litestream replicates to, from the same env vars `litestream.yml` uses.
+ * Only used for a boot-time reachability probe — the real replication is done by the litestream binary.
+ */
+export function litestreamS3Url(env: { bucket?: string; region?: string; endpoint?: string }): string | null {
+  if (!env.bucket) return null;
+  if (env.endpoint) {
+    const base = env.endpoint.replace(/\/+$/, '');
+    const withProto = /^https?:\/\//.test(base) ? base : `https://${base}`;
+    return `${withProto}/${env.bucket}`;
+  }
+  const region = env.region || 'us-east-1';
+  return `https://${env.bucket}.s3.${region}.amazonaws.com`;
+}
+
+/** Resolves if the host returns ANY HTTP response (even 403); rejects on network/DNS/TLS failure. */
+export type ReachabilityProbe = (url: string) => Promise<void>;
+
+const defaultProbe: ReachabilityProbe = async (url) => {
+  // 5s timeout so a hung egress can't stall boot. A 403/404 still proves the host is reachable.
+  await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+};
+
+/**
+ * S6 — verify the Litestream S3 target is reachable at boot. `checked=false` when no bucket is
+ * configured (nothing to verify). When configured, `reachable` reflects whether the probe resolved.
+ * Pure aside from the injected probe, so the decision is unit-tested deterministically.
+ */
+export async function checkS3Reachable(
+  env: { bucket?: string; region?: string; endpoint?: string },
+  probe: ReachabilityProbe = defaultProbe,
+): Promise<{ checked: boolean; reachable: boolean; url: string | null; detail: string }> {
+  const url = litestreamS3Url(env);
+  if (!url) return { checked: false, reachable: true, url: null, detail: 'LITESTREAM_S3_BUCKET not set — nothing to verify' };
+  try {
+    await probe(url);
+    return { checked: true, reachable: true, url, detail: 'Litestream S3 endpoint reachable' };
+  } catch (e) {
+    return { checked: true, reachable: false, url, detail: `Litestream S3 endpoint UNREACHABLE: ${(e as Error).message}` };
+  }
+}
+
+/**
  * Gather the real boot environment + DB stats, assess, and log loudly.
  * Best-effort: never throws — a durability check must never crash the app boot.
  *
@@ -220,6 +262,27 @@ export async function runStartupDurabilityCheck(): Promise<DurabilityAssessment>
         console.log(`[durability] ${enc.summary}`);
       }
     } catch { /* encryption check is best-effort — never blocks boot */ }
+
+    // S6 step 3 — if Litestream is configured, verify the S3 target is actually reachable from this
+    // box. A set-but-unreachable bucket means replication is silently failing (RPO → ∞) — CRITICAL,
+    // and push it so Derrick sees it without reading logs (S2). Best-effort; never blocks boot.
+    try {
+      const s3 = await checkS3Reachable({
+        bucket: process.env.LITESTREAM_S3_BUCKET,
+        region: process.env.LITESTREAM_S3_REGION,
+        endpoint: process.env.LITESTREAM_S3_ENDPOINT,
+      });
+      if (s3.checked && !s3.reachable) {
+        console.error(`[durability] 🚨 ${s3.detail} (${s3.url})`);
+        try { healthLogQueries.write('degraded', `STARTUP: ${s3.detail}`); } catch { /* best-effort */ }
+        try {
+          const { sendPushToAllSubscribers } = await import('./push');
+          await sendPushToAllSubscribers({ title: 'Edg3: backup replication unreachable', body: s3.detail.slice(0, 180) });
+        } catch { /* push best-effort */ }
+      } else if (s3.checked) {
+        console.log(`[durability] ${s3.detail}`);
+      }
+    } catch { /* S3 reachability is best-effort — never blocks boot */ }
 
     // Persist to health_log so the 6am digest and admin health endpoint surface it.
     try {

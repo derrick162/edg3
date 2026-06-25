@@ -1206,6 +1206,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **DISPATCH S6 — Litestream activation package (2387 green).** _(synced master first; DISPATCH.md item)_
+  - **(1) `scripts/activate-litestream.sh`** — pre-flight validator: required-env-var presence, DB-path writability + persistent-volume hint, litestream-binary presence, and a live S3 auth/write test via `litestream snapshots`/`replicate`. PASS/FAIL per step; non-zero exit on any failure so it can gate a deploy.
+  - **(2) `content/litestream-setup-guide.md`** — step-by-step: create the `/data` Railway volume, create the bucket + scoped IAM key, set the 3 required (+3 optional) env vars, verify with the script, run the restore drill, confirm the post-deploy log signal.
+  - **(3) Startup S3-reachability check** — `litestreamS3Url()` + `checkS3Reachable(env, probe?)` (pure, injectable probe) in `lib/durability.ts`, wired into `runStartupDurabilityCheck`: when `LITESTREAM_S3_BUCKET` is set but the endpoint is unreachable → CRITICAL log + `health_log` degraded + **push alert** (S2). Best-effort; never blocks boot.
+  - **Tests:** new `lib/durability-s3.test.ts` (7 — URL builder for AWS/custom-endpoint, reachable/unreachable/no-bucket). 162 files / 2387 green.
 - **2026-06-24** — **DISPATCH S5 — performance benchmarks (2380 green).** _(synced master first; DISPATCH.md item)_
   - **Security infra:** new `performance_log` table (system-wide, no PII) + `performanceLogQueries` (`record`/`recentMaxByJob`/`prune`) in `lib/db.ts`. Wired into `runHealthDigest` (scheduler): `PERF_TARGETS` (briefing_generation 3s, memory_retrieval 500ms, fact_extraction 5s) — any job whose slowest run in the last 24h exceeds target flips the 6am digest to **DEGRADED** (→ push via S2). 4 tests (`lib/performance-log.test.ts`).
   - ⚠️ **Additive instrumentation in Core-owned files (Darren sync down):** one-line timing + `performanceLogQueries.record(...)` hooks added to `generateDailyBriefing` (`lib/briefing.ts`), `currentOpenCallMemoryText` (`lib/callMemory.ts`), `extractAndUpsertFacts` (`lib/facts.ts`). Zero behaviour change — pure observability; required so the perf_log has producers. Job names match `PERF_TARGETS`.
