@@ -65,7 +65,7 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation, derivePersonModelFields, looksLikeEventEntity, reassignEventEntityFacts } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation, derivePersonModelFields, looksLikeEventEntity, reassignEventEntityFacts, isVagueEntity } from './facts';
 import { factQueries, peopleProfileQueries, type Fact } from './db';
 import type { EmailSignal, EmailSignalItem } from './gmail';
 
@@ -1086,5 +1086,40 @@ describe('runSleepTimeConsolidation — unknown-entity resolution (R38 Part A)',
       .mockResolvedValueOnce(textResponse(JSON.stringify([{ unknownFactId: 10, matchedEntity: 'Patrick', confidence: 'medium' }])));
     await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
     expect(factQueries.retire).not.toHaveBeenCalledWith(1, 10);
+  });
+
+  // C6 (M2-1) — the 2026-06-23 bug: the vague fact was filed under a PLACEHOLDER entity
+  // ("friend"), not null/"unknown", so it was never a resolution candidate. Now it is.
+  it('retires a vague-placeholder ("friend") person fact when a call later names the person', async () => {
+    const vagueFact = makeFact(20, 'person', 'friend', 'has a bachelor party in Vegas');
+    const patrickFact = makeFact(21, 'person', 'Patrick', 'Patrick is a close friend');
+    vi.mocked(factQueries.getAll).mockReturnValue([vagueFact, patrickFact]);
+    h.create
+      .mockResolvedValueOnce(textResponse('[]'))
+      .mockResolvedValueOnce(textResponse(JSON.stringify([{ unknownFactId: 20, matchedEntity: 'Patrick', confidence: 'high' }])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).toHaveBeenCalledWith(1, 20);
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'person', 'has a bachelor party in Vegas', 'Patrick', 'high');
+  });
+});
+
+// ── C6 (M2-1) — vague-entity placeholder detection ────────────────────────────
+describe('isVagueEntity (C6)', () => {
+  it('treats null/empty/"unknown" as vague', () => {
+    expect(isVagueEntity(null)).toBe(true);
+    expect(isVagueEntity('')).toBe(true);
+    expect(isVagueEntity('  ')).toBe(true);
+    expect(isVagueEntity('unknown')).toBe(true);
+    expect(isVagueEntity('Unknown person')).toBe(true);
+  });
+  it('treats placeholder words as vague, with or without an article/possessive', () => {
+    for (const e of ['friend', 'a friend', 'my friend', 'the guy', 'his buddy', 'coworker', 'a colleague', 'someone', 'their partner']) {
+      expect(isVagueEntity(e)).toBe(true);
+    }
+  });
+  it('treats real names as NOT vague', () => {
+    for (const e of ['Patrick', 'Sarah Chen', 'Faiza', 'Mom', 'Dr. Lee']) {
+      expect(isVagueEntity(e)).toBe(false);
+    }
   });
 });

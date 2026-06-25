@@ -294,6 +294,26 @@ function isActivityEntity(entity: string | null | undefined): boolean {
   return ACTIVITY_WORDS.has(entity.trim().toLowerCase());
 }
 
+// C6 (M2-1) — a person entity that is a VAGUE PLACEHOLDER, not a name. The 2026-06-23 bug:
+// "my friend's bachelor party" was filed under entity "friend"; when a later call named him
+// (Patrick), the old vague fact was never retired because the consolidation filter only caught
+// null/empty/"unknown" entities. These placeholders all mean "a person whose name we don't yet
+// have" and should be candidates for identity resolution. A real name ("Patrick", "Sarah Chen")
+// returns false. Leading articles/possessives are stripped ("a friend", "my buddy" → vague).
+const VAGUE_ENTITY_WORDS = new Set([
+  'unknown', 'someone', 'somebody', 'friend', 'buddy', 'pal', 'mate', 'guy', 'girl', 'person',
+  'colleague', 'coworker', 'co-worker', 'acquaintance', 'neighbor', 'neighbour', 'contact',
+  'client', 'them', 'they', 'he', 'she', 'partner', 'roommate', 'flatmate',
+]);
+export function isVagueEntity(entity: string | null | undefined): boolean {
+  const raw = entity?.trim().toLowerCase();
+  if (!raw) return true; // null/empty entity is the most vague of all
+  if (/unknown/.test(raw)) return true;
+  // Strip a leading article / possessive ("a friend", "the guy", "my coworker", "his buddy").
+  const core = raw.replace(/^(a|an|the|my|his|her|their|our|your|some)\s+/, '').trim();
+  return VAGUE_ENTITY_WORDS.has(core);
+}
+
 // R38 Part B — an entity that names an EVENT (a friend's bachelor party, a wedding) rather than a
 // person. These should be filed as an attribute of the person, not as their own entity.
 const EVENT_ENTITY_RE = /\b(party|trip|conference|wedding|meeting|summit|event|retreat|reunion|gala|offsite|getaway|bachelor|bachelorette)\b/i;
@@ -960,8 +980,10 @@ Only return HIGH-CONFIDENCE changes where the user explicitly stated the change.
     // null-entity goals/preferences are never swept in.
     try {
       const active = factQueries.getAll(userId);
-      const unknownFacts = active.filter(f => f.category === 'person' && (!f.entity?.trim() || /unknown/i.test(f.entity)));
-      const namedPeople = active.filter(f => f.category === 'person' && f.entity?.trim() && !/unknown/i.test(f.entity));
+      // C6 — catch vague PLACEHOLDER entities (friend, buddy, coworker, …), not just null/"unknown",
+      // so a fact filed under "friend" gets resolved once a later call names the person.
+      const unknownFacts = active.filter(f => f.category === 'person' && isVagueEntity(f.entity));
+      const namedPeople = active.filter(f => f.category === 'person' && f.entity?.trim() && !isVagueEntity(f.entity));
       if (unknownFacts.length && namedPeople.length) {
         const matchRes = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',

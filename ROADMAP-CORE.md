@@ -3422,6 +3422,24 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C6 SHIPPED (2345 green) — M2-1 unknown-entity consolidation.**
+  - **ROOT CAUSE of the 2026-06-23 bug** ("friend with bachelor party" → Patrick never retired):
+    the sleep-time consolidation's unknown-entity resolver (R38 Part A) only treated facts with a
+    null/empty/literal-"unknown" entity as resolution candidates. The real fact was filed under a
+    vague PLACEHOLDER entity ("friend"), so it never entered the candidate set and lingered
+    forever as a duplicate.
+  - **Fix:** new pure `isVagueEntity(entity)` in `lib/facts.ts` — true for null/empty/"unknown"
+    AND a set of placeholder words (friend, buddy, pal, guy, coworker, colleague, someone,
+    partner, neighbor, …), with a leading article/possessive stripped first ("a friend",
+    "my buddy", "the guy" → vague). Real names ("Patrick", "Sarah Chen", "Mom") → not vague.
+    The consolidation filter now uses it for both `unknownFacts` (candidates) and the
+    `namedPeople` exclusion, so a "friend"-filed fact is retired + re-filed under the real name
+    once a call names them.
+  - **Event-as-entity block** (bachelor party → attribute of Patrick, not its own entity): already
+    handled by `reassignEventEntityFacts` (R38 Part B), wired into `extractAndUpsertFacts`;
+    verified with existing + confirmed tests.
+  - +4 tests (isVagueEntity matrix + a "friend"→Patrick consolidation case). 2341 → 2345.
+    tsc + next build clean.
 - **2026-06-24** — **C5 SHIPPED (2341 green) — calendar tool prompt tightening.**
   - New **GROUND TRUTH RULE** at the very top of the CALENDAR TOOLS section in `lib/vapi.ts`,
     above TOOL CALL DISCIPLINE: "You never know if a calendar action succeeded until you see the
