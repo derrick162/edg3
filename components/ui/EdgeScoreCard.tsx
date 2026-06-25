@@ -329,11 +329,12 @@ function EdgeTrendSparkline({ history, todayScore }: { history: { date: string; 
   const area = `${line} L ${x(n - 1).toFixed(1)} ${(H - pad).toFixed(1)} L ${x(0).toFixed(1)} ${(H - pad).toFixed(1)} Z`;
   const last = extended[n - 1];
 
-  // Day-name labels for the x-axis: compute from today backwards
-  const today = new Date();
-  const labels = extended.map((_, i) => {
-    const d = new Date(today.getTime() - (n - 1 - i) * 86400000);
-    return i === n - 1 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+  // Day-name labels read directly from the extended date strings so gap-filled
+  // slots show the correct weekday (not a back-computed approximation).
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const labels = extended.map(h => {
+    if (h.date === todayDateStr) return 'Today';
+    return new Date(h.date + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short' });
   });
 
   return (
