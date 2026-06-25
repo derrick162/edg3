@@ -10,8 +10,6 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
-- [ ] **C3 — moveEvent reliability** — Specific known issues: (1) Edge confirms a move without the tool result — add `MOVE CONFIRMATION RULE v2`: the spoken confirmation must echo the new time from the tool result, not from what the user said. Example: "Moved — it's now Thursday at 2pm" (from result), NOT "I've moved that to Thursday" (from memory). (2) Recurring scope: when moveEvent returns a recurring-scope question, Edge must stop and ask before re-calling — verify this prompt rule is firing correctly with a test transcript. (3) After a failed moveEvent (403, organizer restriction, API error), Edge must never say it succeeded — audit every error return path.
-
 - [ ] **C4 — deleteEvent + cleanupEvents reliability** — Audit: (1) Does deleteEvent always verify the event exists before confirming deletion? (2) Does it handle the case where the event was already deleted (404 → "already removed" not "couldn't find it")? (3) `cleanupDuplicates` — verify it correctly identifies and removes only true duplicates, not events with similar names at different times. Add tests for the 404 and already-deleted cases.
 
 - [ ] **C5 — Calendar tool prompt tightening** — Read `lib/vapi.ts` calendar section end-to-end. Identify every place where Edge could plausibly skip calling a tool and just narrate an action. Add a global rule at the top of the calendar tools section: "GROUND TRUTH RULE: You never know if a calendar action succeeded until you see the tool result. Do not infer success from the user's request. Do not confirm until you have a result. If you did not call the tool, you did not take the action." Apply to all 8 calendar tools.
@@ -79,6 +77,7 @@ _(QA tester fills this section)_
 
 ## ✅ Completed
 
+- [x] **C3** — moveEvent reliability: MOVE CONFIRMATION RULE v2 (echo result time) + confirmation grounded in patch result; recurring-scope + error paths verified with tests — 2026-06-24 (Darren)
 - [x] **C2** — createEvent reliability: CREATE CONFIRMATION prompt rule + writable-primary pre-check + confirmation grounded in calendar echo — 2026-06-24 (Darren)
 - [x] **C1** — Calendar tool reliability audit + test matrix (`content/calendar-tool-audit.md`, `calendar-reliability.test.ts`, `isAlreadyGoneError` 404/410 fix) — 2026-06-24 (Darren)
 - [x] **R41 T0** — Memory date tz fix (`parseDbTimestamp`) — 2026-06-24 (Darren)

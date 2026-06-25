@@ -183,6 +183,20 @@ describe('C1 — moveEvent', () => {
     expect(res).toContain('Moved and confirmed');
   });
 
+  it('C3 — confirmation echoes the patch result time, not the requested time', async () => {
+    // Google echoes the stored event; the spoken confirmation must reflect that, not input args.
+    const cal = mockCal({
+      listItems: [EVENT],
+      patch: async () => ({ data: { id: 'evt_1', start: { dateTime: '2026-06-25T16:30:00-04:00', timeZone: 'America/New_York' } } }),
+    });
+    const res = await executeTool('moveEvent', {
+      title: 'Dentist', date: '2026-06-25', currentTime: '2pm',
+      newStartDateTime: '2026-06-25T16:00:00', newEndDateTime: '2026-06-25T17:00:00', timezone: 'America/New_York',
+    }, ctx(cal));
+    expect(res).toContain('Moved and confirmed');
+    expect(res).toContain('16:30'); // result time, not the requested 16:00
+  });
+
   it('non-organizer event → honest refusal, no patch', async () => {
     const foreign = { ...EVENT, organizer: { email: 'faiza@cibc.com', displayName: 'Faiza' }, guestsCanModify: false };
     let patched = false;

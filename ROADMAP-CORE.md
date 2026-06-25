@@ -3422,6 +3422,25 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C3 SHIPPED (2338 green) — moveEvent reliability.**
+  - **(1) MOVE CONFIRMATION RULE v2** (`lib/vapi.ts`): upgraded the move-confirmation prompt rule
+    — the spoken confirmation must echo the new time FROM THE RESULT, not from what the user
+    asked ("Moved — it's now Thursday at 2pm" reading the result back, NOT "I've moved that to
+    Thursday" from memory). Notes the result and the request can differ (recurring-'all' reports
+    time only; all-day reports a date).
+  - **Grounded confirmation** (handler): `confirmWhen` is now rebuilt from the patch RESULT
+    (`patched.data.start.dateTime` / `.date`) after a successful move, so the spoken time matches
+    what Google stored. The recurring-'all' path is intentionally skipped — its result is the
+    master anchored to the series base date, so the existing "to <time> (all occurrences)"
+    phrasing is correct.
+  - **(2) Recurring scope** — verified the existing prompt rule (RECURRING EVENTS, line ~766) +
+    handler scope-question both fire; added a test that a recurring event with no scope asks
+    before patching (no write).
+  - **(3) Error paths** — audited; all return ERR_MOVE / honest refusals (read-only, non-organizer
+    via `canUserReschedule`, API throw). Covered by `calendar-reliability.test.ts` (non-organizer
+    no-patch, recurring-scope no-patch, result-echo grounding) + `mutation-errors.test.ts`
+    (API throw → ERR_MOVE).
+  - +1 test (2337 → 2338). tsc + next build clean.
 - **2026-06-24** — **C2 SHIPPED (2337 green) — createEvent reliability.**
   - **(1) Prompt:** new CREATE CONFIRMATION RULE in `lib/vapi.ts` TOOL CALL DISCIPLINE block —
     "You MUST call createEvent and receive a tool result before saying any event was created.

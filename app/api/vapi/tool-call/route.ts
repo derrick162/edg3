@@ -729,6 +729,20 @@ Query: ${query}` }],
       return null;
     });
     if (!patched || !patched.data.id) return ERR_MOVE;
+    // C3 — ground the spoken confirmation in the patch RESULT, not the requested args, so Edge
+    // echoes back what Google actually stored. Skip the recurring-'all' path: its result is the
+    // master event anchored to the series base date, so reporting that date would be misleading
+    // ("all occurrences to 2pm" is the right phrasing, which confirmWhen already holds).
+    if (!(recurringScope === 'all' && found.event.recurringEventId)) {
+      const pStart = patched.data.start;
+      if (pStart?.dateTime) {
+        const zone = pStart.timeZone || (rb.start && 'timeZone' in rb.start ? rb.start.timeZone : undefined) || tz;
+        confirmWhen = `${pStart.dateTime.slice(11, 16)} ${zone} on ${pStart.dateTime.slice(0, 10)}`;
+      } else if (pStart?.date) {
+        const last = patched.data.end?.date ? prevDay(patched.data.end.date) : pStart.date;
+        confirmWhen = last === pStart.date ? pStart.date : `${pStart.date} to ${last}`;
+      }
+    }
     // Undo = move it back to where it was (single-occurrence moves only — 'all' has no clean inverse here).
     if (recurringScope !== 'all' && origStart && origEnd) {
       recordUndo(userId, `moved "${(found.event.summary ?? '').replace(/^⚡\s*/, '')}"`, [{ type: 'patch', calId: found.calId, eventId, requestBody: { start: origStart, end: origEnd } }]);
