@@ -3422,6 +3422,19 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C8 SHIPPED (2349 green) — gratitude/open-call memory integration (verified + locked in).**
+  - **Finding:** the dispatch premise ("gratitude call doesn't feed memory; wire `extractAndUpsertFacts`
+    in") is outdated. A gratitude/open call creates a `briefings` row (is_open_call = 1) with a
+    `vapi_call_id` (scheduler.ts:842), and the webhook's post-call learning block is NOT gated on
+    call type — so it already runs the full pipeline for them: `extractAndUpsertFacts` (incl. the
+    EXPLICIT REMEMBER REQUESTS rule → part 3), `updatePeopleModels` (part 1), and
+    `recordTranscriptSignals` (explicit emotional states → `pattern` facts → part 2). The R37 +
+    R41 T1 wiring made the pipeline call-type-agnostic.
+  - **Lock-in:** new `app/api/vapi/webhook/gratitude-memory.test.ts` — drives the real webhook POST
+    with an open-call (is_open_call=1) end-of-call-report and asserts all three learners run with
+    the gratitude transcript (fact extraction sees "anxious about runway"; signal recording sees
+    "Patrick"). Guards against a future refactor silently gating the learners on call type.
+  - +1 test (2348 → 2349). tsc + next build clean.
 - **2026-06-24** — **C7 SHIPPED (2348 green) — M4-4 social mental models (mid-call update).**
   - **Already shipped (R37):** (1) the sleep-time agent `updatePeopleModels` runs post-call in the
     webhook (`peopleModelsP`), and (2) `buildPeopleModelBlock` injects a mentioned person's model
