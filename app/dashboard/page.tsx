@@ -2431,10 +2431,10 @@ function DashboardInner() {
             {(() => {
               const NAV_TABS = [
                 { id: 'home', label: 'Today', icon: '✦' },
-                { id: 'priorities', label: 'Focus', icon: '🎯' },
-                { id: 'memory', label: 'Memory', icon: '🧠' },
-                { id: 'activity', label: 'Activity', icon: '📊' },
                 { id: 'briefings', label: 'Briefings', icon: '📋' },
+                { id: 'memory', label: 'Memory', icon: '🧠' },
+                { id: 'priorities', label: 'Focus', icon: '🎯' },
+                { id: 'activity', label: 'Activity', icon: '📊' },
                 { id: 'profile', label: 'Profile', icon: '👤' },
                 { id: 'help', label: 'Help', icon: '?' },
               ];

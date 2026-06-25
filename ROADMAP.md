@@ -110,7 +110,7 @@ other lane and the PM can see live ownership claims.
 | 🛠️ Core | `core` | _(✅ **R41 T0+T1 MERGED TO MASTER (2300 green).** T0: memory date tz fix. T1: Conversation State Engine L3. T2/T3 assessed → nothing buildable (Tier-2 shipped, M4-3 gated). Idle.)_ | `lib/factSourceLabel.ts`, `lib/transcriptSignals.ts`, `app/api/vapi/webhook/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R22 MERGED TO MASTER (2298 green).** Monthly consolidation cron wired. Pillar-Trust scan clean. Idle — awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
-| 🎨 Design | `design` | _(✅ **D29 SHIPPED.** Animation + transition polish: fade-in, tab slide (direction-aware), card-lift hover, row-expand smooth height, count-up. 2326 green. → D30 next.)_ | `app/globals.css`, `app/dashboard/page.tsx` | 2026-06-24 |
+| 🎨 Design | `design` | _(✅ **D30 SHIPPED. Full dispatch D20–D30 complete.** IA review: tab reorder (Briefings+Memory promoted), typography/spacing confirmed consistent. 2326 green. → Pillar sweep next.)_ | `app/dashboard/page.tsx` | 2026-06-24 |
 
 ---
 
