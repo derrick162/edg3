@@ -43,6 +43,12 @@ yarn-error.log*
 next-env.d.ts
 /data/
 
+# SQLite DB files must never be committed (may contain user PII). The real DB lives
+# under /data/ (ignored above); this also catches a stray root-level edg3.db.
+*.db
+*.db-shm
+*.db-wal
+
 # Internal planning docs — keep out of the public repo
 docs/
 

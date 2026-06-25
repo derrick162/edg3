@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { isValidTimeZone } from './time';
+import { timezoneFromPhone } from './phoneTimezone';
 import { encryptField, encryptNullable, decryptField, decryptNullable, safeDecryptField, safeDecryptNullable } from './crypto';
 
 // On Railway, use the mounted volume at /data. Locally, use ./data
@@ -743,9 +744,9 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE briefings ADD COLUMN is_open_call INTEGER DEFAULT 0",
   // Backfill historical open calls (scheduleOpenCall prefixes their content with '[Open call]').
   "UPDATE briefings SET is_open_call = 1 WHERE is_open_call = 0 AND content LIKE '[Open call]%'",
-  // R33 — user work hours so Edge never suggests booking work blocks outside them. JSON:
-  // {"start":<0-23>,"end":<1-24>,"days":[1..7]} (ISO weekdays, 1=Mon). Constant default = 9-18 Mon-Fri.
-  "ALTER TABLE users ADD COLUMN work_schedule TEXT NOT NULL DEFAULT '{\"start\":9,\"end\":18,\"days\":[1,2,3,4,5]}'",
+  // R33 — per-user working hours (Security added the column; Core built the settings API/UI + prompt
+  // gating). JSON: {start,end,days[]}. ISO weekday 1=Mon…7=Sun. Default = 9am–6pm Mon–Fri.
+  `ALTER TABLE users ADD COLUMN work_schedule TEXT DEFAULT '{"start":9,"end":18,"days":[1,2,3,4,5]}'`,
   // M4-6 — Memory Ranking Engine: per-fact reference count (incremented when surfaced into context).
   "ALTER TABLE facts ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0",
 ];
@@ -2076,15 +2077,33 @@ export interface User {
   // R21 — optional themed daily quote at the top of the gratitude call.
   gratitude_quote_enabled?: number;
   gratitude_quote_theme?: string;
+  // R33 — per-user working hours as JSON {start,end,days[]} (see getWorkSchedule).
+  work_schedule?: string | null;
 }
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,
 // otherwise their home timezone. Use this anywhere a call/briefing needs "the user's timezone".
-export function effectiveTimezone(user: { current_timezone?: string | null; timezone?: string | null }): string {
+export function effectiveTimezone(user: { current_timezone?: string | null; timezone?: string | null; phone_number?: string | null }): string {
   // Validate each candidate — a stale/garbage current_timezone must never crash a call.
   if (isValidTimeZone(user.current_timezone)) return user.current_timezone!;
   if (isValidTimeZone(user.timezone)) return user.timezone!;
+  // No stored timezone — infer from the phone number's NANP area code rather than silently
+  // defaulting to Pacific. A user who connects via a Vapi call before ever opening the dashboard
+  // would otherwise be greeted/scheduled in the wrong zone (an Eastern 7:37 PM read as LA 4:37 PM
+  // → "Good afternoon" at night). Browser auto-detect (Core) is the precise fix; this is the net.
+  const fromPhone = timezoneFromPhone(user.phone_number);
+  if (fromPhone) return fromPhone;
   return 'America/Los_Angeles';
+}
+
+// R33 — per-user working hours, stored as JSON in users.work_schedule. Returns the parsed
+// schedule, falling back to the 9am–6pm Mon–Fri default on missing/corrupt JSON (never throws).
+export function getWorkSchedule(user: { work_schedule?: string | null }): { start: number; end: number; days: number[] } {
+  try {
+    return user.work_schedule ? JSON.parse(user.work_schedule) : { start: 9, end: 18, days: [1, 2, 3, 4, 5] };
+  } catch {
+    return { start: 9, end: 18, days: [1, 2, 3, 4, 5] };
+  }
 }
 
 export interface Priority {

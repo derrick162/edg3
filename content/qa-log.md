@@ -361,6 +361,17 @@ the Railway shell. Logged so they are not mistaken for "covered":
   - **★ E2E smoke test (T0-3):** ✅ `lib/call-to-briefing.test.ts` 19/19 green (run this turn).
   - **Scope decision flagged to PM:** dedicated Gmail flow's `gmail.readonly` is required by contact ingest (not a regression) — keep-vs-tighten decision is in the audit doc for Kevin.
   - **No regressions.** Still ⚠️ external (unchanged): live 7am call path, Vapi/Whoop live checks, Railway volume + `LITESTREAM_S3_*`, `DATA_ENCRYPTION_KEY` backup, restore drill.
+- **2026-06-24 (Vijay) — R21 T3 QA sweep. Preflight green: 140 files / 2189 tests, tsc + build clean.**
+  Re-ran every **code-verifiable** item in the PILLAR-TRUST + PILLAR-DAILY-CALL QA checklists against the current tree. All previously-green automated guards still hold; this cycle's R21 work also hardened two checklist items directly. Live-path items remain ⚠️ EXTERNAL (a worktree cannot place Vapi calls, read Railway/Vapi dashboards, or run a prod restore drill).
+  - **Accuracy → "tool failure → honest explanation" (PILLAR-TRUST + PILLAR-DAILY-CALL):** ✅ **materially hardened by R21 T1.** The four mutating handlers (`createEvent`/`deleteEvent`/`moveEvent`/`editEvent`) now return explicit `ERROR: Event was NOT …` on every Google failure path — the model can no longer confirm a failed mutation as success (the live "Done. Locked in 90 minutes" hallucination). Guarded by `app/api/vapi/tool-call/mutation-errors.test.ts` (5 cases). The *spoken* delivery of that honest message still needs one live-call confirmation (⚠️).
+  - **Data protection → cross-user 404:** ✅ re-verified — `app/api/briefing/[id]/route.ts` getByIdForUser enforces `AND user_id = ?`; fact route test (user 2's fact → user 1 gets 404).
+  - **Data protection → mutation audited w/ correct userId:** ✅ re-verified — `auditLogQueries.record(...)` in `tool-call/route.ts` (2 sites) + `lib/auditLog.test.ts`.
+  - **Data protection → disconnect removes OAuth tokens:** 🔁 code-verified (`calendarQueries.delete` → `DELETE FROM calendar_tokens WHERE user_id = ?`, `lib/calendar.ts:102`); live OAuth-grant revocation still ⚠️.
+  - **Reliability → health_log / failed_webhooks / call_attempts:** ✅ tables present (`lib/db.ts`); `runHealthDigest` writes `health_log` (`lib/scheduler.ts`); `lib/health-digest.test.ts` + `lib/failure-logging.test.ts`.
+  - **Reliability → backup restorable:** ✅ automated round-trip (`lib/backup-restore-drill.test.ts`); the live Railway/S3 restore drill remains ⚠️.
+  - **Reliability → preflight green:** ✅ 140 files / 2189 tests this run.
+  - **Transparency → export completeness / consent accuracy:** ✅ unchanged from R10/R17 (`GET /api/account/export` omits secrets, includes consent; account tests).
+  - **Unchanged ⚠️ EXTERNAL (handoff to Derrick/Kevin):** live 7am call → transcript/fact/next-briefing chain; 15s mid-call pause check-in; spoken tool-failure message; Whoop-on-live-call; Railway persistent `/data` volume + `LITESTREAM_S3_*` activation; `DATA_ENCRYPTION_KEY` backup; real restore drill. (Same list as the Morning action list at the top of this file — none are newly blocking.)
 ---
 
 # EDG3 — QA Log (Core lane)
