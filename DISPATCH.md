@@ -10,10 +10,6 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
-- [ ] **R41 T4** — Self-reported energy level tool. (A) Prompt guard: Edge cannot change Whoop indicator — if user says "my energy is low", call `rememberPreference` + acknowledge, never promise a visual update. (B) `setEnergyLevel` tool: `POST /api/energy/level` (`level: 'high'|'medium'|'low'`, `note?`), `energy_log` table, Vapi tool wired in `tool-call/route.ts`, dashboard badge "Self-reported: 🔴 Low · Jun 24" below Whoop card. ⚠️ External: create Vapi tool + paste UUID.
-
-- [ ] **C1 — Calendar tool reliability audit** — The #1 product issue: calendar tools (createEvent, moveEvent, deleteEvent, editEvent) are not working reliably. Do a systematic audit of every calendar tool handler in `app/api/vapi/tool-call/route.ts`. For each tool: (1) What does a successful call look like in the logs? (2) What are all the failure modes (API error, wrong params, read-only calendar, organizer restriction, recurring scope)? (3) Is the tool returning an honest spoken error on every failure path — no silent failures, no "Done" on error? (4) Is the Google API response being validated before Edge speaks? Create a comprehensive test matrix: for each tool, write tests covering happy path + every failure mode. Fix every gap found.
-
 - [ ] **C2 — createEvent reliability** — Specific known issues: (1) Edge sometimes says it created an event without calling the tool at all — tighten the prompt: "You MUST call createEvent and receive a tool result before saying any event was created. Never narrate a creation." (2) Verify `createEvent` handler validates the Google API response and returns a confirmed event ID in the spoken response so Edge can ground its confirmation in a real result. (3) Check that events are always created on the user's primary writable calendar, not a read-only subscribed one. Add a writable-calendar pre-check before every `createEvent` call.
 
 - [ ] **C3 — moveEvent reliability** — Specific known issues: (1) Edge confirms a move without the tool result — add `MOVE CONFIRMATION RULE v2`: the spoken confirmation must echo the new time from the tool result, not from what the user said. Example: "Moved — it's now Thursday at 2pm" (from result), NOT "I've moved that to Thursday" (from memory). (2) Recurring scope: when moveEvent returns a recurring-scope question, Edge must stop and ask before re-calling — verify this prompt rule is firing correctly with a test transcript. (3) After a failed moveEvent (403, organizer restriction, API error), Edge must never say it succeeded — audit every error return path.
@@ -94,8 +90,10 @@
 
 ## ✅ Completed
 
+- [x] **C1** — Calendar tool reliability audit + test matrix (`content/calendar-tool-audit.md`, `calendar-reliability.test.ts`, `isAlreadyGoneError` 404/410 fix) — 2026-06-24 (Darren)
 - [x] **R41 T0** — Memory date tz fix (`parseDbTimestamp`) — 2026-06-24 (Darren)
 - [x] **R41 T1** — Conversation State Engine L3 (`lib/transcriptSignals.ts`) — 2026-06-24 (Darren)
+- [x] **R41 T4** — Self-reported energy false-confirm fix (`728fd3e`) — 2026-06-24 (Darren). Part B (energy_log + setEnergyLevel Vapi tool + `/api/energy/today`) was already live; shipped Part A prompt guard + dashboard "(self-reported)" label. No external Vapi step needed.
 - [x] **R22** — Monthly memory consolidation cron (`lib/scheduler.ts`) — 2026-06-24 (Vijay)
 - [x] **R23** — Inbound call `assistant-request` handler — already shipped (Core R23 T2 + Security R18) — 2026-06-24
 - [x] **R24** — Add Context card visual polish — 2026-06-24 (Cam)
