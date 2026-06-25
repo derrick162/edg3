@@ -309,6 +309,10 @@ export async function POST(req: NextRequest) {
               briefingQueries.updateLearningStatus(briefingId, { consolidation_ok: false, consolidation_error: String(err).slice(0, 200) });
               try { backgroundJobFailureQueries.record('sleep_consolidation', briefing.user_id, String(err).slice(0, 200)); } catch {}
             });
+          // R37 (M4-4) — update per-person social mental models for anyone mentioned this call.
+          // Fire-and-forget, fully self-guarding (never throws) — runs alongside the other learners.
+          const peopleModelsP = import('@/lib/peopleModels').then(m => m.updatePeopleModels(briefing.user_id, transcript, user.name))
+            .catch(err => { console.error('[webhook] People-model update failed:', err); });
           // Extract open loops / commitments from the call transcript.
           const loopsP = import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
             .then(() => briefingQueries.updateLearningStatus(briefingId, { loops_ok: true }))
@@ -338,7 +342,7 @@ export async function POST(req: NextRequest) {
 
           // DC0-2: once all memory jobs settle, record total latency. A line the Security
           // health digest (T1-3) can scrape; warns when it exceeds the 2-minute target.
-          Promise.allSettled([taskP, factsP, consolidationP, loopsP, episodeP]).then(() => {
+          Promise.allSettled([taskP, factsP, consolidationP, loopsP, episodeP, peopleModelsP]).then(() => {
             const postCallMs = Date.now() - postCallStart;
             briefingQueries.updateLearningStatus(briefingId, { post_call_ms: postCallMs });
             if (postCallMs > 120_000) {
