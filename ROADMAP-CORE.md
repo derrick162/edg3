@@ -33,7 +33,31 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 40 — Call time-of-day awareness + move confirmation)
 
-> `git merge master` first. Two tickets.
+> `git merge master` first. Three tickets.
+
+---
+
+### T3 — Reduce VAD sensitivity: background noise interrupts Edge mid-sentence (QUICK — 15m)
+
+**The bug:** Any ambient sound — chair bump, cough, background noise — triggers Vapi's voice activity detection and stops Edge mid-sentence, as if the user started talking. This makes calls feel brittle in any real-world environment.
+
+**Root cause:** Vapi's `stopSpeakingPlan.numWords` defaults to 0, meaning any audio signal (including non-speech noise) stops the assistant. Setting it to 2 means Vapi requires detecting at least 2 actual transcribed words before it considers the user to be interrupting — chair bumps and ambient noise produce 0 words and are ignored.
+
+**Fix — `app/api/vapi/webhook/route.ts`:**
+
+In the assistant config object (where `firstMessage`, `voice`, `model` etc. are set), add:
+
+```ts
+stopSpeakingPlan: {
+  numWords: 2,
+},
+```
+
+Add this to BOTH the briefing assistant config and the open call assistant config (the inbound call path). They should both have it.
+
+**Tests:**
+- Config includes `stopSpeakingPlan.numWords: 2` in both assistant configs
+- No regression to existing assistant config fields
 
 ---
 
