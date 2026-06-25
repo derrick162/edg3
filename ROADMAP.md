@@ -108,7 +108,7 @@ other lane and the PM can see live ownership claims.
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ **R41 T0+T1 MERGED TO MASTER (2300 green).** T0: memory date tz fix. T1: Conversation State Engine L3. T2/T3 assessed → nothing buildable (Tier-2 shipped, M4-3 gated). Idle.)_ | `lib/factSourceLabel.ts`, `lib/transcriptSignals.ts`, `app/api/vapi/webhook/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R22 MERGED TO MASTER (2298 green).** Monthly consolidation cron wired. Pillar-Trust scan clean. Idle — awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **DISPATCH S1 DONE (2320 green) — ready for merge.** New `tests/e2e/` integration suite (13 tests, real DB): calendar-tools success+failure, inbound assistant-request, briefing fact→prompt, memory call-ended→fact+episode. Automates the manual-only pillar-QA live-path items. R22 merged. Next: S2 (web push) on next loop tick.)_ | `tests/e2e/**` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R24 SHIPPED — merged to master.** "Add context" card — glass-card, .input textarea, char counter, success/error inline, 📝 user_note label. Idle → pillar sweep next.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
