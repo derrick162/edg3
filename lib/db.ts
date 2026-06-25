@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { isValidTimeZone } from './time';
+import { timezoneFromPhone } from './phoneTimezone';
 import { encryptField, encryptNullable, decryptField, decryptNullable, safeDecryptField, safeDecryptNullable } from './crypto';
 
 // On Railway, use the mounted volume at /data. Locally, use ./data
@@ -2068,10 +2069,16 @@ export interface User {
 
 // The timezone EDG3 should treat the user as currently in: a travel override if set,
 // otherwise their home timezone. Use this anywhere a call/briefing needs "the user's timezone".
-export function effectiveTimezone(user: { current_timezone?: string | null; timezone?: string | null }): string {
+export function effectiveTimezone(user: { current_timezone?: string | null; timezone?: string | null; phone_number?: string | null }): string {
   // Validate each candidate — a stale/garbage current_timezone must never crash a call.
   if (isValidTimeZone(user.current_timezone)) return user.current_timezone!;
   if (isValidTimeZone(user.timezone)) return user.timezone!;
+  // No stored timezone — infer from the phone number's NANP area code rather than silently
+  // defaulting to Pacific. A user who connects via a Vapi call before ever opening the dashboard
+  // would otherwise be greeted/scheduled in the wrong zone (an Eastern 7:37 PM read as LA 4:37 PM
+  // → "Good afternoon" at night). Browser auto-detect (Core) is the precise fix; this is the net.
+  const fromPhone = timezoneFromPhone(user.phone_number);
+  if (fromPhone) return fromPhone;
   return 'America/Los_Angeles';
 }
 
