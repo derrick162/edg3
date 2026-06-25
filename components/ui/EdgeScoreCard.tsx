@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { CalendarFit, ScoreResult, ScoreTopFix } from './CalendarFitCard';
+import { scoreColor, scoreSummary, scoreGlow, scoreCardBorder, scoreCardBg, prepareSparklineData } from '@/lib/edgeScoreHelpers';
 
 // Re-export the type so consumers can import from here too
 export type { CalendarFit };
@@ -24,42 +25,6 @@ export interface EdgeScoreCardProps {
   celebrating?: boolean;    // in-session score rose — triggers spark burst
   change?: ScoreChange | null;  // recent delta + reason from Core — null = no prior data
   onRequestFix?: () => void;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function scoreColor(s: number): string {
-  if (s >= 85) return 'var(--gauge-peak)';
-  if (s >= 65) return 'var(--gauge-high)';
-  if (s >= 35) return 'var(--gauge-mid)';
-  return 'var(--gauge-low)';
-}
-
-function scoreGlow(s: number): string {
-  if (s >= 85) return 'var(--gauge-glow-peak)';
-  if (s >= 65) return 'var(--gauge-glow-high)';
-  return 'var(--gauge-glow-low)';
-}
-
-function scoreSummary(s: number): string {
-  if (s >= 85) return "You're set up well today — keep going.";
-  if (s >= 65) return 'Good shape. A couple of small things to shift.';
-  if (s >= 35) return 'A few changes could make today stronger.';
-  return 'Today needs some work — Edg3 can help fix it.';
-}
-
-function scoreCardBorder(s: number): string {
-  if (s >= 85) return 'var(--score-card-border-peak)';
-  if (s >= 65) return 'var(--score-card-border-high)';
-  if (s >= 35) return 'var(--score-card-border-mid)';
-  return 'var(--score-card-border-low)';
-}
-
-function scoreCardBg(s: number): string {
-  if (s >= 85) return 'var(--score-card-bg-peak)';
-  if (s >= 65) return 'transparent';
-  if (s >= 35) return 'var(--score-card-bg-mid)';
-  return 'var(--score-card-bg-low)';
 }
 
 // ── Calibrating arc (dashed pulse, no score label) ────────────────────────────
@@ -339,19 +304,19 @@ function MomentumPanel({ score }: { score: ScoreResult }) {
 // ── 7-day Edge Score trend sparkline ──────────────────────────────────────────
 
 function EdgeTrendSparkline({ history, todayScore }: { history: { date: string; score: number }[]; todayScore: number | null }) {
-  if (history.length < 2 && todayScore === null) {
+  // Need at least 2 history points to draw a meaningful trend line.
+  // Guarding on < 2 (not just todayScore === null) prevents a crash when history is
+  // empty but todayScore is set — extended[-1] is a no-op and Math.min(...[]) = Infinity.
+  if (history.length < 2) {
     return (
       <p className="text-xs leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-        Your 7-day trend appears here once Edg3 has a couple of days of scores.
+        Trend available after a few days of scores.
       </p>
     );
   }
 
-  // Extend the last slot to today's live score so the line always reaches the right edge
-  const extended = [...history];
-  if (todayScore !== null && todayScore !== undefined) {
-    extended[extended.length - 1] = { ...extended[extended.length - 1], score: todayScore };
-  }
+  const prepared = prepareSparklineData(history, todayScore)!;
+  const { extended, delta, stroke } = prepared;
 
   const W = 240, H = 52, pad = 6;
   const scores = extended.map(h => h.score);
@@ -362,8 +327,6 @@ function EdgeTrendSparkline({ history, todayScore }: { history: { date: string; 
   const y = (v: number) => H - pad - ((v - min) / range) * (H - pad * 2);
   const line = extended.map((h, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(h.score).toFixed(1)}`).join(' ');
   const area = `${line} L ${x(n - 1).toFixed(1)} ${(H - pad).toFixed(1)} L ${x(0).toFixed(1)} ${(H - pad).toFixed(1)} Z`;
-  const delta = scores[n - 1] - scores[0];
-  const stroke = delta > 0 ? 'var(--gauge-peak)' : delta < 0 ? 'var(--gauge-low)' : 'var(--text-muted)';
   const last = extended[n - 1];
 
   // Day-name labels for the x-axis: compute from today backwards
