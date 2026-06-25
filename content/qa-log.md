@@ -11,56 +11,20 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
-## 2026-06-24 — QA loop tick 3 (MEMORY M1-2 bi-temporal / contradiction handling)
+## 2026-06-24 — D20 ship + pillar sweep (Cam)
 
-Retest check: DISPATCH P1/P2 findings still `[ ]`. Noted: Security shipped **S1 e2e test suite** (`dbb5c0d`, 13 tests in `tests/e2e/`, 2320 green) — my manual flywheel test is now partly automated.
+**Status: GREEN** — 2291 tests, tsc clean, next build clean.
 
-- [2026-06-24] PASS — **Bi-temporal retire (M1-2), LOW-confidence path.** On a fresh current-schema DB: `upsertFact(entity, low)` then a contradicting `upsertFact(entity, high)` → old fact retired (`valid_until` set), exactly 1 active row, and the retired fact has a `fact_history` snapshot. Matches the M1-2 contract.
-- [2026-06-24] PASS (characterized) — **HIGH-confidence contradiction → enrich, not retire (by design, R29).** When the existing fact is HIGH confidence, a differing assertion does NOT retire+insert; it merges. The sync `factQueries.upsertFact` path concatenates (`"old new"`), but the async callers (`rememberPreference`, post-call extraction) route through `enrichFact` first — whose Haiku prompt explicitly resolves contradictions ("if they contradict, the second statement wins for that claim"). Blind concatenation only occurs as the Haiku-failure fallback (acceptable rare degradation). **Not a bug** — contradiction correction works via the enrich path; verified the prompt + code paths. Residual watch-item: on an Anthropic outage a contradiction degrades to a concatenated self-contradictory fact, but that's a tolerable failure mode.
-- Net: the "contradict an existing fact → memory ends up correct" requirement (TRUST memory-pipeline + M1-2) holds across both confidence paths. No new finding filed.
+### D20 shipped
+- ✅ T1: Fact confidence display — low=italic+muted+verify button, medium=muted dot, high=no indicator
+- ✅ T2: learned-date timezone fix — `toLocaleDateString('en-US', { timeZone: user.timezone })` eliminates next-day display bug
+- ✅ T3: Category headings standardized to `text-xs font-semibold uppercase tracking-widest mt-6 mb-2 --text-muted`
+- ✅ T4: Empty categories already omitted by `grouped` reduce — confirmed no heading renders for 0-item categories
 
----
-
-## 2026-06-24 — QA loop tick 2 (TRUST checklist: reliability + data-protection)
-
-Retest check: both DISPATCH 🐛 QA Findings (P1 batch-loss, P2 CHECK-migration) still `[ ]` — engineers haven't picked them up, nothing to retest.
-
-- [2026-06-24] PASS — **`npm run preflight` GREEN** (full: `tsc --noEmit` + 2307 tests + `next build`, exit 0). No engineer merge has broken the build. (Reliability checklist item.)
-- [2026-06-24] PASS — **Cross-tenant isolation (data-protection checklist: "another user's data → 404").** `briefingQueries.getByIdForUser(74, …)` against the real DB: returns the row for owner (user 1, `user_id===1`), returns NULL for user 2 and user 999. The `WHERE id=? AND user_id=?` scoping holds → the route's `if (!briefing) → 404` correctly denies cross-tenant reads.
-- [2026-06-24] PASS — **Owner-only route auth gate.** HTTP probes on `GET /api/briefing/74`: no cookie → 401; garbage cookie → 401; token signed with a wrong secret → 401 (signature rejected). Auth is checked before id parsing (the 400 "invalid id" path is only reachable post-auth) — correct ordering; no info leak to anonymous callers.
-- Note: `rememberPreference` mid-call correction (M2-2) **enriches** the matching fact in place (`updateFact` → snapshots to `fact_history`) rather than retire+insert; the bi-temporal retire (`valid_until` set) lives in `factQueries.upsertFact` on entity+category conflict. The TRUST/M1-2 "contradict → old retired, new active" check is split across those two layers — flagged for a dedicated tick (needs a controlled upsert-conflict, not the enrich path).
-
----
-
-## 2026-06-24 — QA Tester live-path sweep (Round 1 + Round 2 flywheel)
-
-**Baseline:** `npm run test` → 2307/2307 green (153 files). tsc/build not re-run this tick (suite is the gate; engineers run full preflight before push).
-
-### Round 2 — End-to-end flywheel test (THE critical test) — ⚠️ PARTIAL
-Method: started dev server (had to override placeholder `JWT_SECRET` from `.env.local` via shell env to boot — local config only, file untouched), inserted briefing 74 with a known `vapi_call_id`, POSTed a real `end-of-call-report` with a transcript naming a new goal + investor "Marcus Chen" + a commitment + a gym-time change. Verified DB ~25s later.
-
-- [2026-06-24] PASS — Transcript stored (briefing 74, 419 chars, status=completed) within seconds.
-- [2026-06-24] PASS — Episode created (`episodes` 0→1; topics `["fundraising","product"]`, content_raw 419 chars). `episode_ok:true`.
-- [2026-06-24] PASS — Tasks extracted: "Send Marcus Chen updated pitch deck" + 3 fundraising tasks (`source='edg3'`, `tasks_ok:true`).
-- [2026-06-24] PASS — Open-loops extracted: "Send updated pitch deck to Marcus Chen" (commitment_made) + "Investor meeting with Marcus Chen" (deadline), both due 2026-06-26.
-- [2026-06-24] PASS — Facts written: goal "closing the seed round" + person "Marcus Chen" (both `source_briefing_id=74`).
-- [2026-06-24] **FAIL — P1** — `learning_status` recorded `facts_extracted:0` + `flagged_for_review:true` **despite 2 facts being written**, and the "new fact learned" notification never fired. `extractAndUpsertFacts` + `runSleepTimeConsolidation` both threw mid-batch (`lib/facts.ts:429`) and returned 0 from the outer catch — no per-fact error isolation. Also left a **duplicate** "seed round" goal fact (consolidation + extraction raced, then the dedup pass was skipped by the throw). Logged to DISPATCH.md → Core/Darren.
-- [2026-06-24] **FAIL — P2 (latent P1)** — Trigger of the throw: the live `data/edg3.db` carries the original 5-category `facts.category` CHECK; current code emits `commitment`/`pattern`/etc. SQLite can't migrate a CHECK and no rebuild migration exists. Masked in prod only by the ephemeral volume — directly conflicts with T0-1 (persistent volume). Logged to DISPATCH.md → Security/Vijay + Core.
-
-- [2026-06-24] PASS — **Flywheel final hop verified.** Ran `buildBriefingContextPack(1)` against the real DB (temp vitest test, since deleted). The extracted facts render in the briefing's `STRUCTURED FACTS` block: `GOAL: Derrick's top priority this week is closing the seed round` + `PERSON: Marcus Chen is an investor Derrick is meeting`. A fact learned on the call literally reaches the next briefing. ✅
-- [2026-06-24] **FAIL — P2 (confirmed in briefing output)** — the duplicate goal fact (extraction vs consolidation race) appears **twice** in the same briefing pack: both "Close seed round - top priority this week" and "Derrick's top priority this week is closing the seed round." — Edge would state the same goal twice on the call. Same root cause as the P1 above (dedup pass skipped by the throw). Covered by the DISPATCH P1 fix.
-
-**Net:** the flywheel's core (transcript → episode → tasks → loops → goal/person facts → next-briefing fuel) genuinely works on a fresh schema, and the fact-to-briefing hop is verified live.
-
-### Round 3 — Bug hunting (partial)
-- [2026-06-24] PASS — **Tool-call honest-failure (DC3-3 / T2-3).** Fired 4 malformed payloads at `POST /api/vapi/tool-call` (unknown tool `destroyEverything`; `createEvent` with no params; `deleteEvent` with wrong-typed arg; `createEvent` with invalid-JSON arguments string). All returned HTTP 200 in the correct Vapi `{results:[{toolCallId,result}]}` shape with an honest "ERROR — that did NOT go through… nothing was saved. Do not say it's done" message. No 500s, no fake successes. (Minor copy nit: missing-required-param cases say "something went wrong on my end" rather than naming the missing field — acceptable; errs toward honesty, not worth a ticket.)
-- [2026-06-24] PASS — `failed_webhooks` table empty (0 rows) — no dead-lettered webhooks.
-- [2026-06-24] N/A — `health_log` empty (0 rows): the 6am health-digest cron hasn't fired in this local dev session. Can't validate OK/DEGRADED locally without forcing the cron; deferred to a prod log check.
-- [2026-06-24] N/A — `undo_log` empty: no calendar tool-call mutations were executed this session (the flywheel test is read/learn-only), so there was nothing to record an undo for. Undo coverage was last audited under T4-5 (all calendar mutations + setPriorities/planWeek covered).
-
-### Open for next tick
-- Round 1 pillar checklists: connection-reliability + most briefing-quality items need prod/Vapi-live signals (call_attempts, real call audio) — not exercisable from local dev; will spot-check `call_attempts`/Railway logs when available.
-- Retest the two DISPATCH P1/P2 findings once Core/Security pick them up. The failures are (a) a robustness gap that turns one malformed fact into a whole-batch loss + a *false* "learned nothing" signal that poisons the DC0-1 health monitor, and (b) a schema-migration gap that becomes silent fact-loss the day T0-1's persistent volume ships. Neither is a full P0 (calls still learn), so no PM escalation — but the P1 should land before T0-1.
+### Pillar sweep (2026-06-24)
+- ✅ PILLAR-DAILY-CALL: DC4 Phase-2-gated — no Design items actionable
+- ✅ PILLAR-TRUST: all UX + T3-1 shipped — no remaining Design items
+- ✅ PILLAR-MEMORY: all Design items shipped — no remaining actionable items
 
 ---
 
