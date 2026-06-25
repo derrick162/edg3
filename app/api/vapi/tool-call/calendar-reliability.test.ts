@@ -256,3 +256,43 @@ describe('C1/C4 — deleteEvent', () => {
     expect(res).toContain('ERROR: Event was NOT deleted');
   });
 });
+
+describe('C4 — cleanupDuplicates (true duplicates only)', () => {
+  // Non-singleton title (a real meeting): same minute = duplicate, different minute = distinct.
+  // (Daily-singleton meal/gym titles group by day instead — that's a separate, intentional rule.)
+  const dupA = { id: 'a', summary: 'Strategy sync', created: '2026-06-25T08:00:00Z', start: { dateTime: '2026-06-25T12:00:00-04:00' }, end: { dateTime: '2026-06-25T12:30:00-04:00' } };
+  const dupB = { id: 'b', summary: 'Strategy sync', created: '2026-06-25T09:00:00Z', start: { dateTime: '2026-06-25T12:00:00-04:00' }, end: { dateTime: '2026-06-25T12:30:00-04:00' } };
+  // Same title, DIFFERENT time — two real meetings, not duplicates.
+  const syncEarly = { id: 'c', summary: 'Strategy sync', created: '2026-06-25T08:00:00Z', start: { dateTime: '2026-06-25T11:30:00-04:00' }, end: { dateTime: '2026-06-25T12:00:00-04:00' } };
+  const syncLate = { id: 'd', summary: 'Strategy sync', created: '2026-06-25T09:00:00Z', start: { dateTime: '2026-06-25T13:00:00-04:00' }, end: { dateTime: '2026-06-25T13:30:00-04:00' } };
+
+  async function cleanupWithConfirm(cal: unknown, meta?: Map<string, { accessRole: string; summary: string }>) {
+    const first = await executeTool('cleanupDuplicates', { startDate: '2026-06-25', endDate: '2026-06-25' }, ctx(cal, meta));
+    const token = first.match(/confirmToken set to "([^"]+)"/)?.[1];
+    if (!token) return first;
+    return executeTool('cleanupDuplicates', { startDate: '2026-06-25', endDate: '2026-06-25', confirmToken: token }, ctx(cal, meta));
+  }
+
+  it('same title + same time → removes the duplicate (keeps earliest)', async () => {
+    const deletedIds: string[] = [];
+    const cal = mockCal({ listItems: [dupA, dupB], del: async (...a: unknown[]) => { deletedIds.push((a[0] as { eventId?: string }).eventId!); return { data: {} }; } });
+    const res = await cleanupWithConfirm(cal);
+    expect(res).toMatch(/removed 1 duplicate/i);
+    expect(deletedIds).toEqual(['b']); // b is newer, so it's removed; a (earliest) kept
+  });
+
+  it('same title + DIFFERENT time → NOT treated as duplicates', async () => {
+    let deleted = false;
+    const cal = mockCal({ listItems: [syncEarly, syncLate], del: async () => { deleted = true; return { data: {} }; } });
+    const res = await cleanupWithConfirm(cal);
+    expect(deleted).toBe(false);
+    expect(res).toMatch(/No duplicate events found/i);
+  });
+
+  it('404 during cleanup → counted as removed (not a failure)', async () => {
+    const cal = mockCal({ listItems: [dupA, dupB], del: async () => { throw httpErr(404, 'Not Found'); } });
+    const res = await cleanupWithConfirm(cal);
+    expect(res).toMatch(/removed 1 duplicate/i);
+    expect(res).not.toMatch(/Couldn't remove/i);
+  });
+});

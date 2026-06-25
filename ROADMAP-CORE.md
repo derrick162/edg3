@@ -3422,6 +3422,19 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C4 SHIPPED (2341 green) — deleteEvent + cleanupDuplicates reliability.**
+  - **(1) Verify-exists:** confirmed `deleteEvent` resolves the target from the live calendar
+    (`eventsOnDay`) before the confirm-token gate — it never confirms a deletion for an event it
+    didn't find (test: no-match → honest "No event matching").
+  - **(2) Already-deleted:** the 404/410 → "already removed" fix landed in C1
+    (`isAlreadyGoneError`); C4 adds the integration coverage.
+  - **(3) True-duplicates-only:** verified `cleanupDuplicates` removes only genuine duplicates.
+    Non-singleton titles (real meetings) group by title + exact minute, so two same-named
+    meetings at different times are NOT merged; daily-singleton titles (meals/gym) group by day
+    by design. New route-level tests: same-time → removes one (keeps earliest-created);
+    different-time non-singleton → "No duplicate events found", no delete; 404 during cleanup →
+    counted as removed, not a failure.
+  - +3 tests in `calendar-reliability.test.ts` (2338 → 2341). tsc + next build clean.
 - **2026-06-24** — **C3 SHIPPED (2338 green) — moveEvent reliability.**
   - **(1) MOVE CONFIRMATION RULE v2** (`lib/vapi.ts`): upgraded the move-confirmation prompt rule
     — the spoken confirmation must echo the new time FROM THE RESULT, not from what the user

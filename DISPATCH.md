@@ -10,8 +10,6 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
-- [ ] **C4 — deleteEvent + cleanupEvents reliability** — Audit: (1) Does deleteEvent always verify the event exists before confirming deletion? (2) Does it handle the case where the event was already deleted (404 → "already removed" not "couldn't find it")? (3) `cleanupDuplicates` — verify it correctly identifies and removes only true duplicates, not events with similar names at different times. Add tests for the 404 and already-deleted cases.
-
 - [ ] **C5 — Calendar tool prompt tightening** — Read `lib/vapi.ts` calendar section end-to-end. Identify every place where Edge could plausibly skip calling a tool and just narrate an action. Add a global rule at the top of the calendar tools section: "GROUND TRUTH RULE: You never know if a calendar action succeeded until you see the tool result. Do not infer success from the user's request. Do not confirm until you have a result. If you did not call the tool, you did not take the action." Apply to all 8 calendar tools.
 
 - [ ] **C6 — M2-1 unknown entity consolidation** — Known production bug (observed 2026-06-23): when a call names a previously `(unknown)` entity (e.g., "friend with bachelor party" → Patrick), the old `(unknown)` fact is not retired. Fix in `lib/facts.ts` sleep-time consolidation: explicitly check "does any `(unknown)` or vague entity in stored facts now have a name in this call or in the new facts? If so, retire the old one and merge." Also block event-as-entity facts where the event is a property of a person (bachelor party → attribute of Patrick, not its own entity). Tests: (unknown) → named resolution retires old fact; event-as-entity is blocked.
@@ -77,6 +75,7 @@ _(QA tester fills this section)_
 
 ## ✅ Completed
 
+- [x] **C4** — deleteEvent + cleanupEvents: verify-exists confirmed; 404/410 already-deleted handled (C1); cleanupDuplicates true-dup vs different-time + 404-during-cleanup tests added — 2026-06-24 (Darren)
 - [x] **C3** — moveEvent reliability: MOVE CONFIRMATION RULE v2 (echo result time) + confirmation grounded in patch result; recurring-scope + error paths verified with tests — 2026-06-24 (Darren)
 - [x] **C2** — createEvent reliability: CREATE CONFIRMATION prompt rule + writable-primary pre-check + confirmation grounded in calendar echo — 2026-06-24 (Darren)
 - [x] **C1** — Calendar tool reliability audit + test matrix (`content/calendar-tool-audit.md`, `calendar-reliability.test.ts`, `isAlreadyGoneError` 404/410 fix) — 2026-06-24 (Darren)
