@@ -7,7 +7,7 @@
 // Design: always degrades safely — any failure is a no-op that never blocks post-call
 // processing. Extraction failure === no new facts stored, existing facts unchanged.
 
-import { factQueries, peopleProfileQueries, peopleModelQueries, type Fact, type PeopleModelFields } from './db';
+import { factQueries, peopleProfileQueries, peopleModelQueries, briefingQueries, type Fact, type PeopleModelFields } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import { matchesSelfName } from './selfName';
@@ -17,13 +17,13 @@ import type { EmailSignal } from './gmail';
 import { isLikelySpam } from './emailActivityFilter';
 
 export type ExtractedFact = {
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'commitment';
   statement: string;
   entity?: string | null;
   confidence?: 'high' | 'low';
 };
 
-const VALID_CATEGORIES = new Set(['person', 'project', 'goal', 'preference', 'fact']);
+const VALID_CATEGORIES = new Set(['person', 'project', 'goal', 'preference', 'fact', 'commitment']);
 
 /**
  * ONE Haiku call: parse up to 10 durable structured facts from a transcript.
@@ -72,9 +72,11 @@ Categories:
 - "goal"       — a stated goal, aspiration, or deadline
 - "preference" — how the user likes to work, communicate, or make decisions
 - "fact"       — any other durable fact about the user's life or business
+- "commitment" — something the user said THEY WILL DO, especially near-term ("I'm going to tackle the Railway fix today", "I'll call the bank tomorrow", "I plan to finish the deck this week", "I need to get to the gym"). Capture the action as the statement, entity null. These are NOT timeless — they're for next-call accountability, so do extract them even though they're time-bound (this overrides the "timeless only" rule for commitments). One commitment per distinct intention.
 
 Rules:
 - ATTRIBUTION: Only extract preferences, goals, beliefs, or facts that the USER stated about themselves. NEVER attribute anything the assistant (Edge/Edg3) said as a user preference or belief. The assistant deflecting, redirecting, or suggesting (e.g. "let's save that for another time", "let's keep focused") is the ASSISTANT's behavior, NOT a user preference — ignore it entirely. When unsure who said something, do not extract it.
+- EXPLICIT REMEMBER REQUESTS (highest priority): Any statement the user prefaces with "please remember", "remember that", "make a note that", or "don't forget" is a MANDATORY high-confidence fact — always extract it regardless of how durable it seems; it's an explicit instruction, not an inference. Use the right category and entity: a fact about another person → "person" with that person's name as the entity (e.g. "remember that Patrick grew up in Dallas" → {"category":"person","entity":"Patrick","statement":"Patrick grew up in Dallas","confidence":"high"}); a fact about the user → "preference"/"goal"/"fact" as fits.
 - "statement" must be a timeless sentence (not "today" / "yesterday").
 - "entity" = the name or identifier this fact is about (person, company, project). null if none.
 - "confidence": set to "low" if the entity is a name or address that speech-to-text may have garbled (unknown spelling, unusual name, street address). Set "high" for everything else.
@@ -116,6 +118,154 @@ ${transcript.slice(0, 2000)}`,
       }));
   } catch {
     return [];
+  }
+}
+
+// R29 — universally cumulative memory. Merged facts are capped so a fact can't grow unbounded.
+const ENRICH_MAX = 500;
+
+/**
+ * R29 — merge two facts about the same subject into ONE statement that preserves ALL information.
+ * Additive details combine; on a direct contradiction the NEW statement wins for that point only,
+ * everything else is kept. Uses one cheap Haiku call; on ANY failure (or empty output) it falls
+ * back to a simple concatenation. Never throws. Used by `rememberPreference` and post-call
+ * extraction so re-stating something about a known subject enriches rather than overwrites.
+ */
+export async function enrichFact(oldStatement: string, newStatement: string): Promise<string> {
+  const oldS = (oldStatement ?? '').trim();
+  const newS = (newStatement ?? '').trim();
+  if (!oldS) return newS.slice(0, ENRICH_MAX);
+  if (!newS) return oldS.slice(0, ENRICH_MAX);
+  // Nothing to add — the new statement is already contained in the old one.
+  if (oldS.toLowerCase().includes(newS.toLowerCase())) return oldS.slice(0, ENRICH_MAX);
+
+  const concatFallback = () => `${oldS} ${newS}`.trim().slice(0, ENRICH_MAX);
+
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Merge these two facts about the same subject into one concise statement.
+Preserve ALL information from both. If they contradict on a specific claim, the second statement wins for just that claim. Keep the result under 400 chars.
+Old: "${oldS}"
+New: "${newS}"
+Return only the merged statement, nothing else.`,
+      }],
+    });
+    const merged = res.content
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text?: string }) => b.text ?? '')
+      .join('')
+      .trim()
+      .replace(/^["']+|["']+$/g, '') // strip wrapping quotes the model sometimes adds
+      .trim();
+    return merged ? merged.slice(0, ENRICH_MAX) : concatFallback();
+  } catch {
+    return concatFallback();
+  }
+}
+
+// ─── M4-5 — Hierarchical call summarization (per-call → weekly → lifetime) ──────
+// Per-call extraction is the leaf (extractAndUpsertFacts). These two helpers add the higher tiers:
+// a weekly synthesis that preserves cross-call causal chains, and a lifetime profile that compounds
+// the weeks into a stable "who this person is". Both degrade silently and never throw.
+
+const WEEKLY_MIN_CALLS = 3;       // a week with fewer completed calls isn't worth synthesizing
+const WEEKLY_MAX_ACTIVE = 3;      // keep the 3 most recent weekly summaries; retire older
+const LIFETIME_MIN_WEEKLIES = 10; // only build a lifetime profile once there's real history
+
+async function haikuText(prompt: string, maxTokens: number): Promise<string> {
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const res = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  return res.content
+    .filter((b: { type: string }) => b.type === 'text')
+    .map((b: { type: string; text?: string }) => b.text ?? '')
+    .join('')
+    .trim();
+}
+
+/**
+ * M4-5 Tier 2 — weekly synthesis. Over the last 7 days of completed-call transcripts (gate: ≥3 calls),
+ * one Haiku call produces a 3–5 sentence "week narrative" capturing the through-line across calls.
+ * Stored as a `weekly_summary` fact keyed by `week_of_YYYY-MM-DD` (replace semantics for a re-run of
+ * the same week); the 3 most recent are kept, older ones retired. Returns true when a summary was written.
+ */
+export async function runWeeklySynthesis(userId: number): Promise<boolean> {
+  try {
+    const since = Date.now() - 7 * 86400000;
+    const recent = briefingQueries.getRecent(userId, 30)
+      .filter(b => b.status === 'completed')
+      .filter(b => { const t = Date.parse(b.scheduled_for ?? ''); return Number.isFinite(t) && t >= since; });
+    if (recent.length < WEEKLY_MIN_CALLS) return false;
+
+    const transcripts = recent
+      .map(b => (b.user_response || b.content || '').trim())
+      .filter(Boolean)
+      .map((t, i) => `Call ${i + 1}: ${t.slice(0, 1500)}`)
+      .join('\n\n');
+    if (!transcripts) return false;
+
+    const narrative = await haikuText(
+      `Synthesize this week's calls into a 3-5 sentence "week narrative" for the user. Capture the through-line ACROSS calls — recurring themes, momentum or friction building over the week, and how decisions connect (e.g. "mentioned Railway three times with rising frustration"). Plain prose, no bullet points, no preamble.\n\n${transcripts}`,
+      400,
+    );
+    if (!narrative) return false;
+
+    const weekOf = new Date().toISOString().slice(0, 10);
+    const entity = `week_of_${weekOf}`;
+    // Replace (not merge) a same-week re-run: retire the prior week's summary first so upsert inserts fresh.
+    for (const f of factQueries.getByCategory(userId, 'weekly_summary').filter(f => f.entity === entity)) {
+      factQueries.retire(userId, f.id);
+    }
+    factQueries.upsertFact(userId, 'weekly_summary', narrative.slice(0, 1500), entity, 'high');
+
+    // Cap active weekly summaries at the most recent N.
+    const active = factQueries.getByCategory(userId, 'weekly_summary')
+      .sort((a, b) => (b.learned_at ?? '').localeCompare(a.learned_at ?? ''));
+    for (const old of active.slice(WEEKLY_MAX_ACTIVE)) factQueries.retire(userId, old.id);
+    return true;
+  } catch (e) {
+    console.error('[runWeeklySynthesis]', e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+/**
+ * M4-5 Tier 3 — lifetime profile. Once the user has ≥10 active weekly summaries, one Haiku call over
+ * all of them produces a ~150-word "who this person is" profile, stored as a single `lifetime_profile`
+ * fact (retire + insert each run). Injected first in the call memory block. Returns true when written.
+ */
+export async function runLifetimeSynthesis(userId: number): Promise<boolean> {
+  try {
+    const weeklies = factQueries.getByCategory(userId, 'weekly_summary');
+    if (weeklies.length < LIFETIME_MIN_WEEKLIES) return false;
+
+    const input = [...weeklies]
+      .sort((a, b) => (a.learned_at ?? '').localeCompare(b.learned_at ?? ''))
+      .map((w, i) => `Week ${i + 1}: ${w.statement}`)
+      .join('\n\n');
+
+    const profile = await haikuText(
+      `From these weekly summaries, write a ~150-word "who this person is" profile — their durable traits, goals, working style, key relationships, and what matters most to them. Plain prose, no preamble, no bullet points.\n\n${input}`,
+      300,
+    );
+    if (!profile) return false;
+
+    for (const f of factQueries.getByCategory(userId, 'lifetime_profile')) factQueries.retire(userId, f.id);
+    factQueries.upsertFact(userId, 'lifetime_profile', profile.slice(0, 1200), null, 'high');
+    return true;
+  } catch (e) {
+    console.error('[runLifetimeSynthesis]', e instanceof Error ? e.message : e);
+    return false;
   }
 }
 
@@ -203,6 +353,16 @@ export async function extractAndUpsertFacts(
     // Pass allCanonical (not just knownNames) so the Haiku model uses exact event-title
     // spellings when a transcribed name is a near-miss (e.g. event "1:1 Jim" → prefer "Jim").
     const facts = await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts);
+
+    // R29 — universally cumulative memory: when extraction surfaces new info about a subject we
+    // already have an active fact for, ENRICH (merge) it rather than overwrite. Entity-keyed facts
+    // (person/project/goal-with-topic) merge via Haiku here; null-entity facts fall through to
+    // upsertFact, whose high-confidence path now merges by concatenation.
+    const activeByKey = new Map<string, Fact>();
+    for (const sf of storedFacts) {
+      if (sf.entity && sf.entity.trim()) activeByKey.set(`${sf.category}|${sf.entity.trim().toLowerCase()}`, sf);
+    }
+
     let stored = 0;
     for (const f of facts) {
       // Anti-hallucination: never store a health/body measurement whose number the
@@ -225,7 +385,17 @@ export async function extractAndUpsertFacts(
           if (!isKnown) continue;
         }
       }
-      factQueries.upsertFact(userId, f.category, f.statement.slice(0, 500), f.entity, f.confidence ?? 'high', sourceBriefingId);
+      // R29 — enrich an existing entity-keyed fact instead of overwriting it.
+      const existingActive = f.entity?.trim()
+        ? activeByKey.get(`${f.category}|${f.entity.trim().toLowerCase()}`)
+        : undefined;
+      if (existingActive && existingActive.statement.trim().toLowerCase() !== f.statement.trim().toLowerCase()) {
+        const merged = await enrichFact(existingActive.statement, f.statement);
+        factQueries.updateFact(userId, existingActive.id, merged.slice(0, 500), f.entity ?? existingActive.entity ?? null);
+        existingActive.statement = merged; // keep the map current if another extracted fact targets the same subject
+      } else {
+        factQueries.upsertFact(userId, f.category, f.statement.slice(0, 500), f.entity, f.confidence ?? 'high', sourceBriefingId);
+      }
       stored++;
     }
     if (stored > 0) {

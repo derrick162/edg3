@@ -31,6 +31,12 @@ export default function SettingsPage() {
   const [quoteEnabled, setQuoteEnabled] = useState(false);
   const [quoteTheme, setQuoteTheme] = useState('resilience');
   const [quoteSaved, setQuoteSaved] = useState(false);
+  // R33 — work hours (so Edge never suggests booking work blocks outside them).
+  const [workStart, setWorkStart] = useState(9);
+  const [workEnd, setWorkEnd] = useState(18);
+  const [workDays, setWorkDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [workSaved, setWorkSaved] = useState(false);
+  const [workError, setWorkError] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -39,13 +45,15 @@ export default function SettingsPage() {
       fetch('/api/settings/gratitude-mode').then(r => r.ok ? r.json() : null),
       fetch('/api/settings/language').then(r => r.ok ? r.json() : null),
       fetch('/api/settings/gratitude-quote').then(r => r.ok ? r.json() : null),
-    ]).then(([me, accts, gm, lang, quote]) => {
+      fetch('/api/profile/work-hours').then(r => r.ok ? r.json() : null),
+    ]).then(([me, accts, gm, lang, quote, work]) => {
       if (!me) { router.push('/login'); return; }
       setProfile(me);
       setAccounts(accts);
       if (gm) setGratitudeMode(!!gm.gratitudeMode);
       if (lang) setLanguage(lang.language ?? 'en');
       if (quote) { setQuoteEnabled(!!quote.quoteEnabled); setQuoteTheme(quote.quoteTheme ?? 'resilience'); }
+      if (work?.schedule) { setWorkStart(work.schedule.start); setWorkEnd(work.schedule.end); setWorkDays(work.schedule.days); }
     }).catch(() => router.push('/login'))
       .finally(() => setLoading(false));
   }, [router]);
@@ -97,6 +105,25 @@ export default function SettingsPage() {
     }).then(r => {
       if (r.ok) { setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2000); }
     }).catch(() => {});
+  }
+
+  function toggleWorkDay(d: number) {
+    setWorkDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b));
+  }
+
+  async function handleSaveWorkHours() {
+    setWorkError('');
+    if (workEnd <= workStart) { setWorkError('End time must be after start time.'); return; }
+    if (workDays.length === 0) { setWorkError('Pick at least one work day.'); return; }
+    try {
+      const r = await fetch('/api/profile/work-hours', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start: workStart, end: workEnd, days: workDays }),
+      });
+      if (r.ok) { setWorkSaved(true); setTimeout(() => setWorkSaved(false), 2000); }
+      else { const d = await r.json().catch(() => ({})); setWorkError(d.error ?? 'Could not save.'); }
+    } catch { setWorkError('Network error. Please try again.'); }
   }
 
   async function handleDeleteAccount() {
@@ -228,6 +255,61 @@ export default function SettingsPage() {
                 </button>
               ))}
             </div>
+          </section>
+
+          {/* Work hours */}
+          <section className="glass-card p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="label-caps">Work hours</p>
+              {workSaved && <span className="text-xs" style={{ color: 'var(--edg-green, #4ade80)' }}>Saved ✓</span>}
+            </div>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Edge won&apos;t suggest blocking work time outside these hours — after hours, it offers the next work day instead.
+            </p>
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="text-xs mb-1" style={{ color: 'var(--text-faint)' }}>Start</p>
+                <select className="input text-sm" value={workStart} onChange={e => setWorkStart(Number(e.target.value))}>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{(h % 12 || 12)} {h < 12 ? 'AM' : 'PM'}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="text-xs mb-1" style={{ color: 'var(--text-faint)' }}>End</p>
+                <select className="input text-sm" value={workEnd} onChange={e => setWorkEnd(Number(e.target.value))}>
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map(h => (
+                    <option key={h} value={h}>{(h % 12 || 12)} {h < 12 || h === 24 ? 'AM' : 'PM'}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs mb-1.5" style={{ color: 'var(--text-faint)' }}>Work days</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {([[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']] as const).map(([d, label]) => (
+                  <button
+                    key={d}
+                    onClick={() => toggleWorkDay(d)}
+                    className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
+                    style={{
+                      background: workDays.includes(d) ? 'var(--edg-accent, var(--edg-indigo))' : 'var(--edg-fill-04)',
+                      color: workDays.includes(d) ? '#fff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {workError && <p className="text-xs" style={{ color: 'var(--edg-danger)' }}>{workError}</p>}
+            <button
+              onClick={handleSaveWorkHours}
+              className="text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+              style={{ background: 'var(--edg-accent, var(--edg-indigo))', color: '#fff' }}
+            >
+              Save work hours
+            </button>
           </section>
 
           {/* 1 — Profile */}

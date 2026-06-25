@@ -9,6 +9,7 @@ import { computeCallStreak } from '@/lib/streak';
 import { factDisplayStatement } from '@/lib/factDisplay';
 import { factSourceLabel } from '@/lib/factSourceLabel';
 import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
+import { pickTimezoneUpdate } from '@/lib/timezoneDetect';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
@@ -1479,6 +1480,9 @@ export default function Dashboard() {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [initiatingCall, setInitiatingCall] = useState(false);
+  // R30 T1 (interim) — staged feedback so the user isn't staring at a silent spinner while the
+  // briefing is generated (calendar fetch + LLM take a few seconds before the phone rings).
+  const [callStage, setCallStage] = useState('');
   const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [moreOpen, setMoreOpen] = useState(false);
@@ -1826,6 +1830,24 @@ export default function Dashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // R35 — auto-detect & persist the browser timezone on dashboard load so no user ever silently
+  // runs on the wrong zone (an unset tz fell back to LA, putting every time feature hours behind).
+  // Silent + fire-and-forget; targets the current-timezone override (where the user actually is).
+  useEffect(() => {
+    let detected: string | null = null;
+    try { detected = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { detected = null; }
+    if (!detected) return;
+    fetch('/api/profile').then(r => r.ok ? r.json() : null).then(d => {
+      const next = pickTimezoneUpdate(d?.current_timezone, detected);
+      if (!next) return;
+      fetch('/api/profile/timezone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_timezone: next }),
+      }).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
   // R12 T5: when the user returns to the tab (e.g. after finishing a call), silently
   // refetch the Edge Score. If it rose, trigger the celebrate animation. Registered once;
   // reads the live score from calendarFitRef to avoid a stale closure.
@@ -2029,14 +2051,25 @@ export default function Dashboard() {
 
   async function initiateCall() {
     setInitiatingCall(true);
-    const res = await fetch('/api/briefing/call', { method: 'POST' });
-    const data = await res.json();
-    setInitiatingCall(false);
-    if (!res.ok) {
-      alert(data.error || 'Failed to initiate call');
-    } else {
-      alert('Call initiated! EDG3 will call you shortly.');
-      loadData();
+    // R30 T1 (interim) — staged status so the few-second briefing-generation wait reads as progress,
+    // not a hung button. The phone rings once the briefing is built and Vapi places the call.
+    setCallStage('Preparing your briefing…');
+    const stageTimer = setTimeout(() => setCallStage('Placing your call…'), 4000);
+    try {
+      const res = await fetch('/api/briefing/call', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to initiate call');
+      } else {
+        // R30 T2 — the in-app notification panel now confirms the call (survives navigating away),
+        // so no dismissible alert(). Refresh notifications + dashboard data so it shows immediately.
+        loadNotifs();
+        loadData();
+      }
+    } finally {
+      clearTimeout(stageTimer);
+      setCallStage('');
+      setInitiatingCall(false);
     }
   }
 
@@ -2590,7 +2623,7 @@ export default function Dashboard() {
                 disabled={initiatingCall}
                 className="btn-primary text-sm py-2 px-4"
               >
-                {initiatingCall ? 'Calling…' : '📞 Call me now'}
+                {initiatingCall ? (callStage || 'Calling…') : '📞 Call me now'}
               </button>
             </div>
           </div>

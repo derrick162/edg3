@@ -2981,6 +2981,171 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **M4-6 SHIPPED (2249 green) — Memory Ranking Engine ("PageRank for personal memory") [PILLAR-MEMORY].**
+  - New pure `memoryRankScore(fact, priorities, today)` (`lib/memorySalience.ts`) — 0–1 blend of goal
+    alignment 30% (token overlap vs top-3 priorities → 1.0/0.5/0), recency 20% (90-day linear decay off
+    `last_confirmed_at`/`learned_at`), confidence 20% (`confidence_score`), reference frequency 15%
+    (`reference_count`/10, caps at 10), category weight 15% (goal/commitment/lifetime = 1.0 … fact = 0.6).
+    `rankByMemoryScore(facts, priorities, today, topN)` sorts desc + caps. A runway-priority fact now
+    outranks a bachelor-party fact when assembling context.
+  - **Wired into both context paths:** `currentOpenCallMemoryText` (`lib/callMemory.ts`) ranks all facts →
+    top 20 (lifetime profile always kept) before building the structured block; `buildBriefingContextPack`
+    (`lib/briefing.ts`) re-ranks the salient set for the STRUCTURED FACTS block. Each surfaced fact's
+    `reference_count` is bumped fire-and-forget so frequently-used facts compound their rank.
+  - **Schema:** `facts.reference_count INTEGER DEFAULT 0` (CREATE TABLE + migration) + Fact type +
+    `factQueries.incrementReferenceCount`. 6 new tests (rank math + ordering + purity + live increment).
+  - **⚠️ Additive to Shared `lib/db.ts`** (column + query). Note: a distinct `RANK_CATEGORY_WEIGHTS` map is
+    used (the M4-6 spec's weights) so the older `scoreFact`/`topFacts` salience scorer is undisturbed.
+- **2026-06-24** — **R35 T1 SHIPPED (2243 green) — browser timezone auto-detect on dashboard load.**
+  - Closes the failure class behind today's incident (unset `current_timezone` → `effectiveTimezone` fell
+    back to LA → every time feature ran 3h behind). A mount `useEffect` in the main `Dashboard()` reads
+    `Intl.DateTimeFormat().resolvedOptions().timeZone` and silently persists it when the stored
+    current-timezone is empty or differs. Decision extracted to pure `lib/timezoneDetect.ts`
+    (`pickTimezoneUpdate(stored, detected)` → tz-to-POST or null; null when Intl is unavailable). 4 tests.
+  - **Correction to the spec:** the dispatch said `POST /api/profile {timezone}`, but that route only
+    accepts `profile_summary`/`voice_preference` (it would 400). Used the existing, correct
+    `POST /api/profile/timezone {current_timezone}` endpoint (already used by the manual tz selector).
+  - Placed the effect in `Dashboard()` (always runs on load), NOT in `ProfileTab` (only mounts when the
+    Profile tab is opened — would never fire for most users). Fire-and-forget; Intl failure → no-op.
+- **2026-06-24** — **M4-5 SHIPPED (2239 green) — hierarchical memory synthesis (weekly + lifetime) [PILLAR-MEMORY].**
+  - Dispatch queue (R28–R34 + R29 Part D) exhausted → picked up the next Memory-pillar item.
+  - **Tier 2 — `runWeeklySynthesis(userId)` (`lib/facts.ts`):** gate ≥3 completed calls in the last 7 days →
+    one Haiku call over the week's transcripts → a 3–5 sentence "week narrative" stored as a
+    `weekly_summary` fact keyed `week_of_YYYY-MM-DD` (replace-on-rerun for the same week); keeps the 3 most
+    recent, retires older. Returns false (no-op) below the gate; never throws.
+  - **Tier 3 — `runLifetimeSynthesis(userId)`:** gate ≥10 active weekly summaries → one Haiku call → a
+    ~150-word "who this person is" `lifetime_profile` fact (retire + insert each run).
+  - **Injection:** the lifetime profile is now the FIRST item in `currentOpenCallMemoryText` (`LIFETIME
+    PROFILE:` section), the highest-signal/most-stable context.
+  - **Categories:** `weekly_summary` + `lifetime_profile` added to the `Fact` type + weight maps. **Also
+    fixed a latent R34 bug:** the `facts.category` CHECK constraint still listed only the old 6 categories,
+    so `commitment` (R34) — and these two new ones — were silently rejected on fresh DBs. CHECK expanded to
+    include all of them. 6 synthesis tests (real :memory: DB, mocked Haiku).
+  - **⚠️ CRON WIRING IS SECURITY'S (like R25 T4 → R19 T5):** the helpers are shipped + tested but NOT yet
+    scheduled. Security should add two cron jobs in `lib/scheduler.ts` (dynamic-import activation pattern,
+    same as `runNightlyContextPacks`/`computeAndSaveScore`): **weekly** Sunday ~4am UTC → `runWeeklySynthesis`
+    for each active user; **monthly** first Sunday → `runLifetimeSynthesis`. Until then the tiers don't run.
+  - **⚠️ Persistent dev DBs** created before this change keep the old CHECK and will silently reject the new
+    categories until a one-time facts rebuild (prod is ephemeral → fresh CHECK, unaffected). Additive to
+    Shared `lib/db.ts`.
+- **2026-06-24** — **R29 Part D SHIPPED (2233 green) — structured grounding contract for call memory.**
+  - `currentOpenCallMemoryText` (`lib/callMemory.ts`) restructured from a flat prose blob into labelled
+    ALL-CAPS sections — **PEOPLE / GOALS / PREFERENCES / OPEN COMMITMENTS / PROJECTS / OTHER / CONSTRAINTS**
+    — one item per line (dash-prefixed), each person's full fact set on ONE line (never truncated), empty
+    sections omitted, soft ~600-char budget (PEOPLE + GOALS always kept; lower-priority sections drop when
+    over budget). OPEN COMMITMENTS now draws from R34 `commitment` facts (+ open loops as fallback);
+    CONSTRAINTS surfaces the user's work hours (R33) and rides along only when real learned memory exists
+    (never work-hours-alone). Format-only — no new data sources. 3 callMemory tests updated/added (labelled
+    sections, Patrick's Vegas+Dallas+New York on one line, constraints present with memory).
+  - **Note:** the dispatch's "apply the same format to `currentPreferencesText`" is already satisfied —
+    `currentPreferencesText` was removed in R25 T1; both briefing and open calls use
+    `currentOpenCallMemoryText`, so this single change covers both call types.
+- **2026-06-24** — **R34 SHIPPED (2232 green) — accountability + memory depth + briefing hygiene + continuity.**
+  - **T1 — commitment tracking.** New `commitment` fact category (`lib/db.ts` `Fact` type, `lib/facts.ts`
+    `VALID_CATEGORIES` + extraction prompt — captures "I'm going to tackle X today" as `category:'commitment'`,
+    entity null, overriding the timeless-only rule). New pure `buildOpenCommitmentsBlock(facts, now)` in
+    `lib/briefing.ts` surfaces active commitments < 72h old (cap 2, most recent first) as
+    "You said on [day]: '…' — did that happen?", injected at the top of the briefing user-prompt before the
+    calendar section. Resolution rides the existing retire path (retired commitments never reach
+    `getByCategory`). Category-weight maps in `factConfidence.ts`/`memorySalience.ts` extended. 7 tests.
+  - **T2 — PEOPLE DEEPENING.** Prompt block in `lib/vapi.ts` (main open-call/briefing prompt + gratitude
+    prompt): when the user mentions a person Edge knows only 1–2 facts about and flow allows, ask ONE warm
+    follow-up (once per person), then `rememberPreference` on the answer. 1 test (gratitude).
+  - **T3 — hard OPENER RULE.** Briefing system prompt now forbids opening on meals/gym/workout/daily
+    routine/commute and requires a priority-relevant event/deadline/relationship/health hook (falls back to
+    the top priority when the calendar is quiet).
+  - **T4 — prior-call continuity.** New pure `pickContinuitySource(briefings, now)` (most recent COMPLETED
+    transcript < 48h, else null) + guarded Haiku `extractContinuitySignal` → `CONTINUITY — FROM YOUR LAST
+    CALL` section in `buildBriefingContextPack`; system-prompt instruction to weave ONE natural callback
+    into the closing question. 4 tests (the 48h gate).
+  - **⚠️ Additive to Shared `lib/db.ts` (Fact type) + Security-owned `lib/vapi.ts` (prompt content) — Vijay
+    sync down.** Note: the inline briefing system-prompt rules (T3 OPENER, T4/T1 instructions) aren't
+    unit-tested (the prompt isn't an exported builder) — verified via tsc/build; the pure helpers + extraction
+    + gratitude prompts are tested.
+- **2026-06-24** — **R33 SHIPPED (2221 green) — work-hours setting + Edge defers after-hours scheduling.**
+  - **Context:** Edge offered to block work time at 6:14 PM — there was no way for a user to tell it their hours.
+  - **Part A — schema (`lib/db.ts`, Shared):** added `users.work_schedule TEXT` (JSON
+    `{"start","end","days"}`, ISO weekdays 1=Mon; constant default 9–18 Mon–Fri) + `userQueries.get/setWorkSchedule`.
+  - **Pure helper (`lib/workHours.ts`, new):** `parseWorkSchedule` (always returns a valid schedule),
+    `validateWorkSchedule` (start 0–23, end 1–24, end>start, days non-empty ⊂ 1–7), `isWithinWorkHours`
+    (tz-aware on-day + hour check), `nextWorkDayName`, `formatWorkHours`. 18 tests.
+  - **Part B — API + UI:** `app/api/profile/work-hours/route.ts` (`GET` current schedule; `PATCH` validates
+    + normalizes + saves, 400 on invalid). Settings page (`app/settings/page.tsx`) gained a "Work hours"
+    card — start/end selects + Mon–Sun day toggles + Save.
+  - **Part C — call/briefing awareness (T2):** `lib/vapi.ts` WORKING HOURS block now uses the user's actual
+    hours and a live "are we inside them right now?" check — outside hours it tells Edge NOT to suggest
+    work blocks and to offer the next work day instead (replaces the old hardcoded 9–6 Mon–Fri + weekend
+    special-case). `lib/briefing.ts` injects a `USER'S WORK HOURS … Current time …` line + after-hours
+    defer note into the briefing system prompt. New `initiateCall` param `workScheduleJson`; `lib/scheduler.ts`
+    passes `getWorkSchedule` at both call sites.
+  - **⚠️ Additive to Shared `lib/db.ts` (column + queries) + Security-owned `lib/vapi.ts` (new param +
+    WORKING HOURS content) + `lib/scheduler.ts` (2 call sites) — Vijay sync down.** Scheduler/hardening test
+    `userQueries` mocks gained `getWorkSchedule: () => null`; R25 T1 arg assertion gained the 16th arg.
+- **2026-06-24** — **R32 SHIPPED (2204 green, CRITICAL) — Edge can no longer false-confirm a calendar action.**
+  - **Trust violation:** Edge said "Done. Locked in 90 minutes tomorrow at 11 AM…" for an event Google
+    never created. Two-layer fix so neither path (Google silently failed / model confirmed on intent alone)
+    can recur:
+  - **Fix A — prompt (`lib/vapi.ts`):** added a CRITICAL "NEVER FALSE-CONFIRM" rule to the HONEST FAILURE
+    block — never say Done/Booked/Locked in/Created/Moved/Deleted unless the matching tool returned SUCCESS
+    in this turn; if the result starts with "ERROR" or reports it didn't go through, say so and offer to retry.
+  - **Fix B — handler (`app/api/vapi/tool-call/route.ts`):** the `createEvent` `cal.events.insert` (timed +
+    all-day) had NO try/catch — a Google throw fell through to the top-level catch. Wrapped both with an
+    explicit "ERROR: Event was NOT created. Do not confirm this booking…" return. `friendlyError` extracted
+    to pure **`lib/calendarToolErrors.ts`** and every branch now leads with "ERROR — that did NOT go through
+    … Do not say it's done" (covers moveEvent/editEvent/deleteEvent/all mutations that throw to the funnel).
+    `moveEvent` + `deleteEvent` local failure returns hardened to the same explicit standard. `FAILURE_RE`
+    updated so leading "ERROR" classifies as a failure in the activity log. 6 tests on the extracted module.
+  - **⚠️ Shared `app/api/vapi/tool-call/route.ts` + Security-owned `lib/vapi.ts` — additive/behavioral on the
+    Core-owned tool side; Vijay sync down. R33 (work hours) is next.**
+- **2026-06-24** — **R31 + R30 SHIPPED (2198 green) — briefing score mismatch fixed + "Call me now" notification & staged feedback.**
+  - **R31 — briefing Edge Score now matches the dashboard.** Root cause: `lib/briefing.ts` called
+    `computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep)` with only **4 args** — Clarity
+    (20%) + Momentum (20%) absent, so the blend renormalized over 60% weight and produced a systematically
+    lower number (Edge said 41 on the call; dashboard showed 56). Fix: build the same `clarityInputs` +
+    `momentumInputs` the dashboard builds (`app/api/scores/route.ts`) and pass all 7 args; also
+    `calendarScoreQueries.upsert` the fresh score (same `alignment!==null && weekEvents>0` guard) so the
+    call's computation becomes today's authoritative stored value. New imports in `lib/briefing.ts`:
+    `calendarQueries`, `whoopQueries`, `getDb`, `ClarityInputs`, `MomentumInputs`. 2 tests (4-arg vs 7-arg
+    divergence + determinism).
+  - **R30 T2 — "Call me now" now confirms in-app.** New `createCallInitiatedNotif(userId)` in
+    `lib/notifications.ts`; `app/api/briefing/call/route.ts` calls it on success; dashboard drops the
+    dismissible success `alert()` and refreshes the notification panel instead (`loadNotifs()`). 3 tests.
+  - **R30 T1 — interim staged feedback (full backend deferred, flagged).** The "Call me now" button now
+    shows "Preparing your briefing…" → "Placing your call…" instead of a silent spinner (pure frontend,
+    reversible). **⚠️ The dispatched backend fix ("build the briefing from the nightly context pack, skip
+    fetch/LLM") is NOT a drop-in:** `generateDailyBriefing` already *consumes* the context pack as LLM
+    *input* (briefing.ts:632) — the pack is context text, not a finished briefing, and generation makes
+    several live LLM calls + a live calendar fetch. Truly skipping them means caching a *finished* briefing
+    nightly, which risks stale time-of-day greetings ("this morning") + a stale calendar on a live call and
+    needs changes to Security-owned `lib/scheduler.ts`. Recommend a dedicated Security-coordinated ticket;
+    the dispatch explicitly sanctioned this interim. The staged-feedback + R30 T2 notification together
+    materially improve the perceived wait now.
+  - **⚠️ Additive edit to `lib/notifications.ts` (also touched by Vijay's R19 T6) — new `createCallInitiatedNotif`, no existing function changed. `lib/scheduler.ts` left untouched (R30 T1 backend deferred). Vijay sync down.**
+- **2026-06-24** — **R29 + R28 SHIPPED (2193 green) — memory enriches not overwrites + "please remember" always saves.**
+  - **R29 — universally cumulative memory.** New `enrichFact(old, new)` pure-ish helper in `lib/facts.ts`:
+    one cheap Haiku call merges two statements about the same subject preserving ALL info (on a direct
+    contradiction the new claim wins for that point only); falls back to concatenation on any failure,
+    capped 500 chars, never throws, skips the call when the new info is already contained in the old.
+    Wired at all three sites: **(A)** `rememberPreference` (`tool-call/route.ts`) now `enrichFact`s before
+    `updateFact` so an update never drops earlier details (Patrick's "bachelor party in Vegas" survives
+    "grew up in Dallas"); **(B)** `extractAndUpsertFacts` enriches an existing entity-keyed fact (via
+    Haiku) instead of overwriting; **(C)** `factQueries.upsertFact` (`lib/db.ts`) — a DIFFERING
+    **high-confidence** statement now enriches (sync concat merge, since db.ts can't call async Haiku;
+    the async callers do the smart merge first). 11 tests.
+    - **⚠️ Deviation from literal spec (flagged for PM):** Part C is a **hybrid**, not "always merge."
+      A *low-confidence* re-extraction still does NOT overwrite/merge a user-corrected (high-conf) fact —
+      this preserves the existing protection against extraction noise polluting corrections. Genuine new
+      info arrives as high-confidence (explicit "remember" → high-conf via R28, or user PATCH) and DOES
+      merge. Net effect matches the Patrick intent without letting garbled re-extractions append noise.
+  - **R28 — explicit "please remember" always triggers a save.** `lib/vapi.ts`: added a **REMEMBER
+    REQUESTS** block to the open-call/briefing tool guidance AND to the gratitude prompt (EN + 廣東話) —
+    "please remember / remember that / make a note that / don't forget" → call `rememberPreference`
+    immediately on ALL call types, routing person facts to `category:'person', topic:<name>`. `lib/facts.ts`
+    extraction prompt: added an **EXPLICIT REMEMBER REQUESTS** rule making any "please remember …" a
+    mandatory high-confidence fact (so post-call extraction is a backstop). 3 tests.
+  - **⚠️ Additive edits to Shared `lib/db.ts` + Security-owned `lib/vapi.ts` — Vijay sync down.**
+  - **FYI to PM:** `edg3.db` (a binary SQLite file) is tracked on master and arrived via the last merge —
+    it should almost certainly be `git rm --cached`'d and gitignored; left untouched here (not my change).
 - **2026-06-24** — **R27 SHIPPED (2176 green) — gratitude calls now know people (memory injection gap).**
   - **Symptom (live transcript):** Derrick mentioned Patrick on a gratitude call; Edge said "I don't have
     details about Patrick stored" — even though the fact was in the DB and `scheduleOpenCall` already

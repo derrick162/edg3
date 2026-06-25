@@ -14,12 +14,15 @@ import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetin
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, hasWhoopConnected, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
-import { topFacts } from './memorySalience';
+import { topFacts, rankByMemoryScore } from './memorySalience';
 import { selectReconfirmationFact, buildReconfirmationPromptBlock } from './factConfidence';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries, dailyFocusQueries } from './db';
+// R31 — Clarity + Momentum score inputs (the briefing was computing Edge Score on only Focus+Energy).
+import { calendarQueries, whoopQueries, getDb } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
-import { computeCalendarFit } from './calendarScore';
+import { computeCalendarFit, type ClarityInputs, type MomentumInputs } from './calendarScore';
+import { parseWorkSchedule, isWithinWorkHours, formatWorkHours, nextWorkDayName } from './workHours';
 import { recommendFocusAreas, type FocusRecommendation } from './focusRecommendation';
 import { getRecentEmailSignal } from './gmail';
 import { derivePriorities, type DerivedPriorityProposal } from './priorityDerivation';
@@ -238,6 +241,70 @@ export function pickTopCommitment(tasks: Task[]): Task | null {
     if (ad !== bd) return ad.localeCompare(bd);
     return (a.created_at || '').localeCompare(b.created_at || '');
   })[0];
+}
+
+/**
+ * R34 T1 — accountability hook. From the user's active 'commitment' facts ("I'm going to tackle the
+ * Railway fix today"), surface the most recent ones so the next briefing can ask "did that happen?".
+ * Only commitments learned within `maxHours` (default 72h), most recent first, capped (default 2).
+ * Resolved commitments are simply retired (valid_until set) so they never reach `getByCategory` — the
+ * caller passes ACTIVE facts only, which is why no explicit "resolved" filter is needed here.
+ * Pure; returns null when there's nothing to surface. Exported for unit tests.
+ */
+export function buildOpenCommitmentsBlock(
+  facts: Array<{ statement: string; learned_at: string; category: string }>,
+  now: Date = new Date(),
+  maxHours = 72,
+  cap = 2,
+): string | null {
+  const cutoff = now.getTime() - maxHours * 3_600_000;
+  const open = facts
+    .filter(f => f.category === 'commitment')
+    .filter(f => { const t = Date.parse(f.learned_at); return Number.isFinite(t) && t >= cutoff; })
+    .sort((a, b) => Date.parse(b.learned_at) - Date.parse(a.learned_at))
+    .slice(0, cap);
+  if (!open.length) return null;
+  return open.map(f => `You said on ${format(new Date(f.learned_at), 'EEEE')}: "${f.statement}" — did that happen?`).join('\n');
+}
+
+/**
+ * R34 T4 — prior-call continuity. Pick the transcript to draw a "last call" callback from: the most
+ * recent COMPLETED call with real content, only if it happened within `maxHours` (default 48). Pure;
+ * returns the transcript text or null. The Haiku continuity extraction runs only when this is non-null.
+ * Exported for unit tests.
+ */
+export function pickContinuitySource(
+  briefings: Array<{ scheduled_for?: string | null; status?: string | null; transcript?: string | null }>,
+  now: Date = new Date(),
+  maxHours = 48,
+): string | null {
+  const cutoff = now.getTime() - maxHours * 3_600_000;
+  const candidate = [...briefings]
+    .filter(b => (b.status ?? 'completed') === 'completed' && (b.transcript ?? '').trim().length > 0)
+    .filter(b => { const t = Date.parse(b.scheduled_for ?? ''); return Number.isFinite(t) && t >= cutoff; })
+    .sort((a, b) => Date.parse(b.scheduled_for ?? '') - Date.parse(a.scheduled_for ?? ''))[0];
+  return candidate ? (candidate.transcript ?? '').trim() : null;
+}
+
+/**
+ * R34 T4 — one Haiku pass over the last call's transcript to surface 1–2 notable emotional signals or
+ * open questions worth a gentle callback next time. Guarded: returns null on any failure or "NONE".
+ */
+async function extractContinuitySignal(transcript: string): Promise<string | null> {
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 150,
+      messages: [{
+        role: 'user',
+        content: `From this call transcript, pull 1-2 notable emotional signals or open questions the user raised that are worth a gentle follow-up next call (e.g. "stressed about fundraising", "waiting to hear back on the apartment offer"). Return ONE short line, no preamble. If nothing notable, return exactly "NONE".\n\n${transcript.slice(0, 2000)}`,
+      }],
+    });
+    const text = res.content.filter((b: { type: string }) => b.type === 'text').map((b: { type: string; text?: string }) => b.text ?? '').join('').trim();
+    return (!text || /^NONE/i.test(text)) ? null : text;
+  } catch { return null; }
 }
 
 // R17 T1 — events that shouldn't lead the opener (the user already knows them).
@@ -584,8 +651,13 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
   }
 
   if (salientFacts.length > 0) {
+    // M4-6 — re-rank the salient set by memory score (goal alignment / recency / confidence /
+    // reference frequency / category) so the most decision-relevant facts lead, and bump their
+    // reference counts (fire-and-forget) so frequently-surfaced facts compound their rank.
+    const rankedFacts = rankByMemoryScore(salientFacts, latestPriorities, today, 20);
+    for (const f of rankedFacts) { try { factQueries.incrementReferenceCount(userId, f.id); } catch { /* non-fatal */ } }
     const byCategory = new Map<string, typeof salientFacts>();
-    for (const f of salientFacts) {
+    for (const f of rankedFacts) {
       if (!byCategory.has(f.category)) byCategory.set(f.category, []);
       byCategory.get(f.category)!.push(f);
     }
@@ -610,6 +682,21 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
       .join('\n');
     sections.push(`MEMORY & PRIOR CONVERSATIONS:\n${memoriesText}`);
   }
+
+  // R34 T4 — prior-call continuity: a callback to the last call's open emotional thread (< 48h).
+  try {
+    const continuitySource = pickContinuitySource(
+      briefingQueries.getRecent(userId, 8).map(b => ({
+        scheduled_for: b.scheduled_for,
+        status: b.status,
+        transcript: (b.user_response || b.content || ''),
+      })),
+    );
+    if (continuitySource) {
+      const signal = await extractContinuitySignal(continuitySource);
+      if (signal) sections.push(`CONTINUITY — FROM YOUR LAST CALL:\n${signal}`);
+    }
+  } catch { /* continuity is additive — never block the pack */ }
 
   return sections.join('\n\n');
 }
@@ -1111,8 +1198,70 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const energySignal = deriveEnergySignal(todayEnergyLog, whoopRecovery?.recoveryScore ?? null);
   const energyBlock = formatEnergyForBriefing(energySignal, priorities, user.name.split(' ')[0]);
 
-  // Calendar Fit scores: Focus (alignment) + Energy (Whoop sleep + recovery).
-  const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep);
+  // Calendar Fit scores: Focus (alignment) + Energy (Whoop) + Clarity + Momentum.
+  // R31 — the briefing previously passed only 4 args, so Clarity (20%) + Momentum (20%) were absent
+  // and the formula renormalized on 60% of the weight → a systematically LOWER score than the
+  // dashboard (which passes all 7). Build the same Clarity/Momentum inputs the dashboard does so the
+  // number Edge speaks matches the dashboard exactly.
+  const clarityInputs: ClarityInputs = (() => {
+    try {
+      const calToken   = calendarQueries.get(userId);
+      const calScope   = calToken?.scope ?? '';
+      const whoopToken = whoopQueries.get(userId);
+      const facts      = factQueries.getAll(userId);
+      const memories   = memoryQueries.getRecent(userId, 50);
+      return {
+        calendarConnected:  !!calToken,
+        gmailReadGranted:   calScope.includes('gmail'),
+        whoopConnected:     !!whoopToken,
+        factsCount:         facts.length,
+        memoriesCount:      memories.length,
+        prioritiesCount:    priorities.length,
+      };
+    } catch {
+      return { calendarConnected: false, gmailReadGranted: false, whoopConnected: false, factsCount: 0, memoriesCount: 0, prioritiesCount: 0 };
+    }
+  })();
+  const momentumInputs: MomentumInputs = (() => {
+    const dailyFocusToday = (() => { try { return dailyFocusQueries.getToday(userId, today); } catch { return null; } })();
+    try {
+      const briefings14d = recentBriefings; // already fetched (getRecent 30)
+      const now = new Date();
+      const cut14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      const cut7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+      const completedAll = briefings14d.filter(b => b.status === 'completed');
+      const c14 = completedAll.filter(b => new Date(b.scheduled_for) >= cut14);
+      const localDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: userTimezone });
+      const morningC14 = c14.filter(b => !b.is_open_call);
+      const morningCallDays14d = new Set(morningC14.map(b => localDay(b.scheduled_for))).size;
+      const morningCallDays7d  = new Set(morningC14.filter(b => new Date(b.scheduled_for) >= cut7).map(b => localDay(b.scheduled_for))).size;
+      const openCallCount14d = c14.filter(b => !!b.is_open_call).length;
+      const streakDays = computeCallStreak(briefings14d, userTimezone);
+      const cut14Str = cut14.toISOString().slice(0, 10);
+      const confirmedRow = getDb().prepare(
+        "SELECT COUNT(DISTINCT date) AS n FROM daily_focus WHERE user_id = ? AND confirmed = 1 AND date >= ?"
+      ).get(userId, cut14Str) as { n: number };
+      return { morningCallDays14d, morningCallDays7d, openCallCount14d, confirmedFocusDays14d: confirmedRow.n, streakDays, confirmedToday: !!dailyFocusToday?.confirmed };
+    } catch {
+      return { morningCallDays14d: 0, morningCallDays7d: 0, openCallCount14d: 0, confirmedFocusDays14d: 0, streakDays: 0, confirmedToday: !!dailyFocusToday?.confirmed };
+    }
+  })();
+  const calendarFit = computeCalendarFit(alignment, priorities, recoveryHistory, whoopSleep, 45, clarityInputs, momentumInputs);
+
+  // R31 — persist the briefing's fresh (and now complete) computation as today's authoritative score,
+  // so the dashboard and any score-change notification agree with what Edge just said on the call.
+  // Same reliability guard the dashboard uses: only store when Focus is trustworthy.
+  if (alignment !== null && weekEvents.length > 0) {
+    try {
+      calendarScoreQueries.upsert(userId, today, {
+        edgeScore:     calendarFit.edgeScore,
+        focusScore:    calendarFit.focusScore.score,
+        energyScore:   calendarFit.energyScore.score,
+        focusDrivers:  calendarFit.focusScore.drivers,
+        energyDrivers: calendarFit.energyScore.drivers,
+      });
+    } catch { /* non-fatal — score persistence is additive */ }
+  }
 
   // Focus Scoreboard: per-area progress + milestone celebrations.
   const allMilestones = (() => { try { return focusMilestoneQueries.listForUser(userId); } catch { return []; } })();
@@ -1149,8 +1298,14 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     return parts.join(', ');
   })();
 
+  // R33 — work hours so the briefing never suggests blocking work time outside the user's day.
+  const workSchedule = parseWorkSchedule((() => { try { return userQueries.getWorkSchedule(userId); } catch { return null; } })());
+  const withinWorkHours = isWithinWorkHours(workSchedule, now, userTimezone);
+  const workHoursLine = `USER'S WORK HOURS: ${formatWorkHours(workSchedule)}. Current time: ${localTime}.${withinWorkHours ? '' : ` It is currently OUTSIDE work hours — do not suggest blocking work time today; defer any work-block offers to the next work day (${nextWorkDayName(workSchedule, now, userTimezone)}) within work hours.`}`;
+
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
+${workHoursLine}
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.
 ${isFirstCall ? 'IMPORTANT: This is the first briefing. Lead with and address every stated weekly priority directly — do not substitute your own judgment for what matters most.' : ''}
 You speak like Jarvis from Iron Man — confident, sharp, and always one step ahead. You are a trusted advisor, not a critic.
@@ -1163,13 +1318,22 @@ IMPORTANT — NO FALSE HEDGING (UX-4): State facts from the calendar, priorities
 IMPORTANT: Write times naturally as they would be spoken. "1:30 PM" → "one thirty PM". "9:00 AM" → "nine AM". "10:53 AM" → "ten fifty-three AM". Never round times — say the exact time. Never spell out time digits individually. For money: "two hundred fifty thousand dollars". For percentages: "thirty percent". For weights: "lbs" → "pounds", "kg" → "kilograms". For other numbers: spell out fully. Never write bare digits or abbreviations that won't be spoken correctly.
 IMPORTANT: Always write full day names — never abbreviate. "Mon" → "Monday", "Tue" → "Tuesday", "Wed" → "Wednesday", "Thu" → "Thursday", "Fri" → "Friday", "Sat" → "Saturday", "Sun" → "Sunday".
 IMPORTANT: Use memory context to make the briefing relevant and personal, but do NOT open with references to previous calls or what was said last time. Get straight to today.
+OPENER RULE (hard): Your opening hook after the greeting MUST be a priority-relevant event, deadline, relationship, or health signal worth noting. NEVER open with meals (breakfast, lunch, dinner, coffee), gym, workout, yoga, daily habits, commute, or any recurring personal routine — the user already knows about those. If nothing meaningful is on today's calendar, open on the most important priority instead: "Nothing urgent on the calendar today — that's actually your window to push on [priority]."
+CONTINUITY: If the context includes a "CONTINUITY — FROM YOUR LAST CALL" block, weave ONE natural callback to that open thread into your closing question — not as a report, but warmly: "You mentioned you were stressed about fundraising last time — where does that stand?" One callback only, and only when the block is present.
+COMMITMENTS: If the context includes an "OPEN COMMITMENTS" block, check in on those first — right after the opener, before calendar detail — naturally and without nagging: "You said you'd tackle the Railway fix — did that happen?"
 IMPORTANT — MEMORY: You have full memory of every previous conversation with this person. It is provided to you in the briefing data. Never say you "don't have memory", "start fresh", or "can't remember" previous calls. If asked, say "I have everything from our previous calls — it's all here." You remember everything they've told you.
 IMPORTANT — CALENDAR CAPABILITIES: You can read, create, edit, move, and delete calendar events. When the user asks you to make calendar changes during the call, confirm you'll handle it and it will be done after the call. Never say you "can't edit" or "don't have access" to their calendar. You have full calendar access.
 IMPORTANT: The user's name is ${user.name.split(' ')[0]} — always address them by this name and no other.
 IMPORTANT: The product is spelled "Edg3" but should be pronounced "Edge" — always write it as "Edge" in the text so it is spoken correctly.`;
 
+  // R34 T1 — recent commitments to check in on, before any calendar talk.
+  const openCommitmentsBlock = (() => {
+    try { return buildOpenCommitmentsBlock(factQueries.getByCategory(userId, 'commitment'), now); }
+    catch { return null; }
+  })();
+
   const userPrompt = `Generate today's (${todayLabel}) morning briefing for ${user.name}.
-${focusScoreLine ? `\nFOCUS SCORE (anchor the opener on this — say the number + the one-line reason naturally in Part 1, then move on):\n${focusScoreLine}\n` : ''}
+${openCommitmentsBlock ? `\nOPEN COMMITMENTS (from recent calls — check in on these first, before any calendar talk):\n${openCommitmentsBlock}\n` : ''}${focusScoreLine ? `\nFOCUS SCORE (anchor the opener on this — say the number + the one-line reason naturally in Part 1, then move on):\n${focusScoreLine}\n` : ''}
 USER PROFILE:
 ${user.profile_summary || 'No profile summary available.'}
 

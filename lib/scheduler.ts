@@ -677,7 +677,7 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
       console.log(`[scheduler] Initiating Vapi call for ${user.name} (isFirstCall=${isFirstCall})...`);
       // R25 T1 — briefing calls get the same rich live memory block as open calls (all facts +
       // open loops + recent call notes), so Edge knows people who aren't on today's calendar.
-      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), null, user.language || 'en');
+      const call = await initiateCall(phoneNumber, briefingContent, user.name, isFirstCall, effectiveTimezone(user), false, currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), null, user.language || 'en', userQueries.getWorkSchedule(userId) ?? '');
       console.log(`[scheduler] Vapi call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -775,7 +775,7 @@ export async function scheduleOpenCall(userId: number) {
       console.log(isGratitude ? `[scheduler] Gratitude call for ${user.name}` : `[scheduler] Initiating OPEN call for ${user.name}...`);
       // R23 T1 — open calls get briefing-quality memory (all fact categories + open loops + recent
       // call notes), not just 10 preference facts. Passed as preferencesText (rendered under MEMORY).
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt, user.language || 'en');
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt, user.language || 'en', userQueries.getWorkSchedule(userId) ?? '');
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {

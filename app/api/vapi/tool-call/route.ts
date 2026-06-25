@@ -19,6 +19,8 @@ import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
 import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries } from '@/lib/db';
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
+import { enrichFact } from '@/lib/facts';
+import { friendlyError } from '@/lib/calendarToolErrors';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -158,24 +160,17 @@ function resolveEvent(matches: { event: calendar_v3.Schema$Event; calId: string 
 }
 
 // Translate an exception into something Edge can read out to the user.
-function friendlyError(err: unknown): string {
-  const msg = String(err);
-  if (msg.includes('No calendar connected')) return "I can't access your calendar right now — it may need to be reconnected in the dashboard.";
-  if (msg.includes('insufficientPermissions') || msg.includes('403')) return "I don't have permission to make that change — the event may be on a read-only calendar or organized by someone else. Want me to draft a message to the organizer instead?";
-  if (msg.includes('notFound') || msg.includes('404')) return "I couldn't find that event to modify it.";
-  if (msg.includes('rateLimitExceeded') || msg.includes('429')) return "Google Calendar is temporarily rate-limiting requests — try again in a moment.";
-  if (msg.includes('timeout') || msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED')) return "The request timed out — want me to try again?";
-  return "Something went wrong on my end — want me to try again or take a different approach?";
-}
+// R32 — calendar-tool failure messaging extracted to lib/calendarToolErrors.ts (unit-tested).
 
 // Result strings that indicate the action did NOT succeed (used for the activity log status).
 // Conflict prompts and empty reads are NOT failures, so they're deliberately excluded.
-const FAILURE_RE = /^(Error:|ERROR:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
+// R32: leading "ERROR" (createEvent's explicit not-created returns + friendlyError's "ERROR —")
+// must classify as a failure here too, so it never shows as a successful action in the activity log.
+const FAILURE_RE = /^(ERROR|Error:|I can't access|I don't have permission|I couldn't find|Something went wrong|No event matching|No timed events|Couldn't|I didn't catch|I need the day|I need a date|Google Calendar is temporarily|The request timed out)/i;
 
 // R21 T1 — explicit, unambiguous mutation-failure strings. Every error/catch path of the four
 // mutating handlers (createEvent / deleteEvent / moveEvent / editEvent) returns one of these so
-// the model can NEVER read a failed tool call as success ("Done. Locked in 90 minutes" for an
-// event that was never created). The leading "ERROR:" is matched by FAILURE_RE above.
+// the model can NEVER read a failed tool call as success. The leading "ERROR:" is matched by FAILURE_RE above.
 const ERR_CREATE = 'ERROR: Event was NOT created. Tell the user honestly: "I tried to book that but ran into an error — it did not get added. Want me to try again?"';
 const ERR_DELETE = 'ERROR: Event was NOT deleted. Tell the user: "I could not remove that — it is still on your calendar."';
 const ERR_MOVE = 'ERROR: Event was NOT moved. Tell the user: "I ran into an issue moving that — the time did not change."';
@@ -1522,9 +1517,12 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
     const isUpdate = !!(existing && existing.statement.toLowerCase() !== statement.trim().toLowerCase());
 
     if (isUpdate && existing) {
-      // User explicitly said to update — always write even if the old fact was high-confidence.
-      // updateFact snapshots to fact_history (reason='user-edit') before overwriting.
-      factQueries.updateFact(userId, existing.id, statement.trim().slice(0, 500), ent);
+      // R29 — universally cumulative memory: ENRICH the existing fact instead of overwriting it, so
+      // earlier details survive (e.g. Patrick's "bachelor party in Vegas" isn't lost when "grew up in
+      // Dallas" is added). enrichFact merges via Haiku (concat fallback); never throws.
+      const merged = await enrichFact(existing.statement, statement.trim());
+      // updateFact snapshots to fact_history (reason='user-edit') before writing the merged statement.
+      factQueries.updateFact(userId, existing.id, merged.slice(0, 500), ent);
       // Undo = rollback to the history entry just created (most recent for this fact).
       try {
         const hist = factHistoryQueries.getForFact(existing.id, userId);

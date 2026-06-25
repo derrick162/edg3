@@ -123,17 +123,54 @@ describe('factQueries — bi-temporal (T1)', () => {
       expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(false);
     });
 
-    it('does not overwrite high-confidence existing fact', () => {
+    it('R29 — enriches (merges) when a DIFFERING high-confidence fact adds new info', () => {
       m.get.mockReturnValue({
         id: 10,
-        statement: 'User explicitly set this',
+        statement: 'Patrick is a friend whose bachelor party is in Vegas',
         confidence: 'high',
       });
 
-      factQueries.upsertFact(1, 'preference', 'new extraction overwrite attempt', 'gym schedule', 'low');
+      factQueries.upsertFact(1, 'person', 'Patrick grew up in Dallas', 'Patrick', 'high');
 
       const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
-      // Should not retire or insert when high-conf existing fact found
+      // Enrich path = UPDATE the statement in place — NOT a retire, NOT a new INSERT INTO facts.
+      expect(prepareCalls.some(s => s.includes('UPDATE facts SET statement'))).toBe(true);
+      expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(false);
+      expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(false);
+      // Merged statement preserves the OLD fact AND adds the new info (concat merge in the sync layer).
+      const runCalls = (m.run.mock.calls as unknown as Array<unknown[]>);
+      const updateRun = runCalls.find(args =>
+        typeof args[0] === 'string' && args[0].includes('bachelor party is in Vegas') && args[0].includes('grew up in Dallas'));
+      expect(updateRun).toBeTruthy();
+    });
+
+    it('R29 — a LOW-confidence re-extraction never overwrites/merges a user-corrected fact', () => {
+      m.get.mockReturnValue({
+        id: 10,
+        statement: 'Jim Smith is my personal trainer',
+        confidence: 'high',
+      });
+
+      // Inferior low-confidence re-extraction — must NOT touch the user's correction.
+      factQueries.upsertFact(1, 'person', 'Jim is a trainer', 'Jim', 'low');
+
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+      expect(prepareCalls.some(s => s.includes('UPDATE facts SET statement'))).toBe(false);
+      expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(false);
+    });
+
+    it('R29 — no merge/overwrite when the new info is already contained in the old', () => {
+      m.get.mockReturnValue({
+        id: 10,
+        statement: 'Lives in New York and works in fintech',
+        confidence: 'high',
+      });
+
+      factQueries.upsertFact(1, 'person', 'works in fintech', 'Sarah', 'high');
+
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+      // Nothing new to add → the fact is left intact: no statement rewrite, no retire, no re-insert.
+      expect(prepareCalls.some(s => s.includes('UPDATE facts SET statement'))).toBe(false);
       expect(prepareCalls.some(s => s.includes('valid_until') && s.includes('UPDATE'))).toBe(false);
       expect(prepareCalls.some(s => s.includes('INSERT INTO facts'))).toBe(false);
     });

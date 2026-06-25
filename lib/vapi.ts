@@ -1,6 +1,7 @@
 // Vapi integration for outbound voice calls
 
 import { timingSafeEqual } from 'crypto';
+import { parseWorkSchedule, isWithinWorkHours, formatWorkHours, nextWorkDayName } from './workHours';
 
 
 
@@ -280,6 +281,8 @@ ${memBlockYue}${quoteInstructionYue}
 
 
 
+記低要求：如果 ${firstName} 講「幫我記住」、「記住」、「唔好唔記得」——就算喺感恩分享中途——即刻 call rememberPreference（topic 填返關於邊個人或者邊個地方），用一句簡短確認（「收到，我會記住」），然後返返去感恩嘅話題。呢個係唯一一樣同工作有關、但你永遠唔會押後嘅嘢。
+
 重要：唔好轉去講工作、日曆或者優先事項。呢個係純粹嘅感恩分享。如果 ${firstName} 想講工作，溫柔咁帶返：「呢啲留返早上匯報先講——而家，仲有咩值得感恩？」`;
 
   }
@@ -327,6 +330,10 @@ STEERING: After 2-3 exchanges on a given item, guide naturally to the next one. 
 After all three items: call the recordGratitude tool with the three items verbatim. Then — before closing — offer 1-2 sentences on how to carry those specific things into today. Make it personal and grounded, not generic. Then close: "Go make it a good one, ${firstName}." End the call.
 
 
+
+REMEMBER REQUESTS: If ${firstName} says "please remember", "remember that", "make a note that", or "don't forget" — even mid-gratitude — call rememberPreference IMMEDIATELY (topic = the person/place it's about), confirm in one short sentence ("Got it — I'll remember that"), then return to the gratitude flow. This is the one work-adjacent action you never defer.
+
+PEOPLE DEEPENING: If ${firstName} brings up a person you only know 1–2 facts about and it fits the warm flow, you may ask ONE natural follow-up to learn more — "how's Patrick doing these days?" — once per person, never an interrogation. If they answer, call rememberPreference (topic = that person) with what they share. Then return to gratitude.
 
 WHAT TO DEFLECT (only this): Pivots to work tasks, calendar bookings, or priorities. Redirect these gently: "Let's save that for your morning briefing — for now, what else are you grateful for?" Don't deflect questions about people, feelings, or topics ${firstName} raises naturally within the gratitude conversation.`;
 
@@ -530,6 +537,9 @@ export async function initiateCall(
 
   language: string = 'en',
 
+  // R33 — the user's work-schedule JSON ('' → default 9–6 Mon–Fri). Gates after-hours work suggestions.
+  workScheduleJson: string = '',
+
 ): Promise<VapiCallResponse> {
 
   if (!VAPI_API_KEY) throw new Error('VAPI_API_KEY not configured');
@@ -602,6 +612,14 @@ export async function initiateCall(
 
   const thisWeekDays = Array.from({length: 7}, (_, i) => `${dayNames[(userDay + i) % 7]}: ${toDateStr(new Date(todayD.getTime() + i*86400000))}`).join(' · ');
 
+  // R33 — the user's actual work hours, with a live "are we inside them right now?" check so Edge
+  // defers work-block suggestions made outside the user's day (the 6:14 PM bug).
+  const workSched = parseWorkSchedule(workScheduleJson);
+  const nowInstant = new Date();
+  const withinWorkHours = isWithinWorkHours(workSched, nowInstant, userTimezone);
+  const workHoursStr = formatWorkHours(workSched);
+  const nextWorkDay = nextWorkDayName(workSched, nowInstant, userTimezone);
+
 
 
   const systemPrompt = `You are Edg3 (pronounced "Edge") — the Elite Daily Guidance Engine — AI Chief of Staff for ${userName}. If asked who you are, say "I'm Edg3, your Elite Daily Guidance Engine." Always call the user ${firstName} — never any other name, never their full name.
@@ -644,7 +662,7 @@ TIME: It is currently ${pad(userHour)}:${pad(userTzNow.getMinutes())} for ${firs
 
 ${callTime ? `SCHEDULED CALL TIME: ${firstName}'s daily briefing call is set for ${callTime} ${userTimezone} — if they ask "when do you call me?", answer with this time directly.\n` : ''}
 
-WORKING HOURS: Default all scheduling and work suggestions to WEEKDAY DAYTIME (approx 9 AM–6 PM Mon–Fri).${userDay === 0 || userDay === 6 ? ` TODAY IS ${dayNames[userDay].toUpperCase()} — NEVER suggest "do it tonight", evening work, or any work this weekend; always frame as "when you're back at it Monday" or name the next working day.` : ''} NEVER recommend evenings (after 6 PM) or weekends for work unless ${firstName} has explicitly said they work those hours. Energy-matching peak/trough windows live inside this weekday envelope.
+WORKING HOURS: ${firstName}'s work hours are ${workHoursStr}. Default ALL scheduling and work suggestions to within that window. ${withinWorkHours ? `It's currently within work hours.` : `IT IS CURRENTLY OUTSIDE ${firstName}'s WORK HOURS — do NOT suggest booking work-related calendar blocks right now. Push them to the next work day (${nextWorkDay}) within work hours: say "That's outside your work hours — want me to put that on ${nextWorkDay} morning instead?"`} NEVER recommend evenings or non-work days for work unless ${firstName} has explicitly said they work then. Energy-matching peak/trough windows live inside this envelope.
 
 
 
@@ -746,6 +764,8 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 
 - HONEST FAILURE: Report exactly what the tool returned — no event found → say so; conflict → tell them. Never say "done" unless the tool confirmed it. Never claim a field (location, description) was set unless the tool said so. If uncertain, say YOU'LL double-check it — never ask them to. A clear "I couldn't do that — I'll get it sorted" beats a false success, and NEVER punt the task back to the user ("do it yourself" / "do it in your calendar" is banned).
 
+- CRITICAL — NEVER FALSE-CONFIRM A CALENDAR ACTION: Never say "Done", "Booked", "Locked in", "Created", "Added", "Moved", "Deleted", or any confirmation of a calendar change UNLESS the matching tool has returned a SUCCESS result in THIS turn. Intending to make a change is not the same as making it. The correct sequence is: say "I'll book that now" → CALL the tool → wait for the result → only THEN say "Done" if (and only if) the result was a success. If the tool result starts with "ERROR" or otherwise reports it did not go through, tell the user honestly that it did NOT get booked and offer to retry — do NOT say it's done. A booking the user believes is locked in but isn't is the single worst failure you can cause.
+
 - FAILED RETRY — CLOSE THE LOOP, DON'T GO SILENT: If an action fails and you try a second approach that ALSO fails, stop retrying. Say out loud, in one breath, that the second approach didn't work either and you'll flag it to get sorted — THEN ask if there's anything else you can help with. Never fall silent while stuck: silence is only for when THEY are thinking, never a stand-in for telling them an attempt failed. Do not drift into "no rush, I'm still here" or "should I stay or go" after a failure — that is for an idle user, not for you being stuck. The user must always hear the outcome and a clear next step.
 
 - getEventDetails() — reads notes, location, and attendees (not just the time).
@@ -757,6 +777,10 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 
 
 - rememberPreference(statement, topic?, category?) — call this the moment ${firstName} states a preference ("I prefer boutique gyms", "no meetings before 9", "vegetarian only"). Saves it immediately so it persists across all future calls. Always call it when a new preference is expressed — don't rely solely on post-call extraction. Pass topic (the subject, e.g. "gym schedule", "morning call time") when the preference is an update to a known area — this triggers an immediate overwrite so the next briefing is correct right away. Pass category only when clearly not a preference (e.g. 'goal' for a new target).
+
+- REMEMBER REQUESTS: When ${firstName} says "please remember", "remember that", "make a note that", "don't forget", or any equivalent explicit memory request — call rememberPreference IMMEDIATELY, no exceptions. Do not wait for post-call extraction; this applies even if it isn't about ${firstName}'s own preferences. For a fact about ${firstName} → category 'fact' (or 'preference'/'goal' if it clearly is one). For a fact about another person → category 'person' and topic = that person's name (e.g. topic 'Patrick' for "remember that Patrick grew up in Dallas"). For a place → topic = the place name. Then confirm in one short sentence: "Got it — I'll remember that Patrick grew up in Dallas." This rule applies on ALL call types: open calls, morning briefings, and gratitude calls.
+
+- PEOPLE DEEPENING: When ${firstName} mentions a person you already know about but you only have 1–2 facts on them, AND the flow supports it (not mid-task, not during a commitment or calendar action), ask ONE natural, warm follow-up to learn more — e.g. "You mentioned Patrick — how's he doing these days?" or "I know Patrick has the Vegas trip coming up — how do you two know each other?" One question only, never an interrogation, and only once per person per call. If ${firstName} answers, call rememberPreference immediately (topic = that person) with what they share.
 
 - setEnergyLevel(level, source) — call immediately when ${firstName} states or confirms their energy: level 'red'|'yellow'|'green', source 'manual' (unprompted) or 'override' (overriding Whoop). Source 'override' when they correct a Whoop-derived tier ("I'm actually feeling great today"). Source 'manual' when no Whoop signal exists and they answer the opening energy check.
 

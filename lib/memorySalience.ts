@@ -26,6 +26,9 @@ const CATEGORY_WEIGHTS: Record<Fact['category'], number> = {
   pattern:    0.6,  // derived behavioral insight — meaningful signal, below directly-stated facts
   fact:       0.5,
   preference: 0.4,
+  commitment: 0.3,  // R34 — time-bound; surfaced by its own briefing block, not general salience
+  weekly_summary:   0.85, // M4-5 — synthesized cross-call narrative, high signal
+  lifetime_profile: 1.0,  // M4-5 — the most stable, highest-signal context Edge has
 };
 
 // Bonus for facts that touch high-stakes domains, regardless of category.
@@ -147,6 +150,84 @@ export function isStaleForBriefing(fact: Fact, today: string): boolean {
   const lastConfirmed = (fact as Fact & { last_confirmed_at?: string | null }).last_confirmed_at;
   if (lastConfirmed && recencyScore(lastConfirmed, today) > 0) return false; // confirmed in last 90 days
   return true; // stale: old + unconfirmed + low confidence
+}
+
+// ─── M4-6 — Memory Ranking Engine ("PageRank for personal memory") ─────────────
+// A 0–1 rank per fact blending goal alignment, recency, confidence, reference frequency, and
+// category weight. Used to choose WHICH facts get injected into a call/briefing context, so a fact
+// about the user's top priority outranks a fact about a friend's bachelor party. Pure — no I/O.
+
+// Category weights for ranking (the M4-6 spec's table — intentionally distinct from CATEGORY_WEIGHTS,
+// which tunes the older salience scorer; goals/commitments/lifetime are the highest-leverage context).
+const RANK_CATEGORY_WEIGHTS: Record<string, number> = {
+  goal: 1.0,
+  commitment: 1.0,
+  lifetime_profile: 1.0,
+  person: 0.9,
+  weekly_summary: 0.9,
+  pattern: 0.8,
+  preference: 0.7,
+  project: 0.7,
+  fact: 0.6,
+};
+
+// Goal alignment: does the fact's entity/statement match any of the user's top-3 priorities?
+// ≥2 shared meaningful tokens with a priority → 1.0 (strong), exactly 1 → 0.5 (partial), none → 0.
+function rankGoalAlignment(
+  fact: { statement: string; entity: string | null },
+  priorities: Array<{ text: string }>,
+): number {
+  if (!priorities.length) return 0;
+  const factTokens = tokenize((fact.entity ?? '') + ' ' + fact.statement);
+  let best = 0;
+  for (const p of priorities.slice(0, 3)) {
+    const ov = overlap(factTokens, tokenize(p.text));
+    if (ov >= 2) best = Math.max(best, 1.0);
+    else if (ov === 1) best = Math.max(best, 0.5);
+  }
+  return best;
+}
+
+export interface RankableFact {
+  statement: string;
+  entity: string | null;
+  category: string;
+  confidence_score?: number | null;
+  last_confirmed_at?: string | null;
+  learned_at?: string;
+  reference_count?: number | null;
+}
+
+export function memoryRankScore(
+  fact: RankableFact,
+  priorities: Array<{ text: string }>,
+  today: string,
+): number {
+  const goalAlignment = rankGoalAlignment(fact, priorities);                              // 0–1
+  const recency       = recencyScore(fact.last_confirmed_at || fact.learned_at || today, today); // 0–1
+  const confidence    = Math.max(0, Math.min(1, fact.confidence_score ?? 0.5));           // 0–1
+  const frequency     = Math.min((fact.reference_count ?? 0) / 10, 1);                    // 0–1, caps at 10
+  const catWeight     = RANK_CATEGORY_WEIGHTS[fact.category] ?? 0.6;                       // 0–1
+
+  return (goalAlignment * 0.30)
+       + (recency       * 0.20)
+       + (confidence    * 0.20)
+       + (frequency     * 0.15)
+       + (catWeight     * 0.15);
+}
+
+// Sort a fact list by memory rank (descending) and take the top N. Pure.
+export function rankByMemoryScore<T extends RankableFact>(
+  facts: T[],
+  priorities: Array<{ text: string }>,
+  today: string,
+  topN = 20,
+): T[] {
+  return [...facts]
+    .map(f => ({ f, s: memoryRankScore(f, priorities, today) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, topN)
+    .map(x => x.f);
 }
 
 export function topFacts(

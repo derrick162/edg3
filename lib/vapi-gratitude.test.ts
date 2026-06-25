@@ -118,3 +118,27 @@ describe('buildGratitudeSystemPrompt — R27 (memory injection so Edge knows peo
     expect(p).toContain('感恩');
   });
 });
+
+describe('buildGratitudeSystemPrompt — R28 T2 (please-remember works on gratitude calls)', () => {
+  it('includes a REMEMBER REQUESTS instruction that calls rememberPreference (English)', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null);
+    expect(p).toContain('REMEMBER REQUESTS');
+    expect(p).toContain('rememberPreference');
+    expect(p).toContain('please remember');
+  });
+
+  it('includes the remember-request instruction in the Cantonese gratitude prompt too', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', '6月23日 星期一', null, false, 'resilience', 'yue');
+    expect(p).toContain('rememberPreference');
+    expect(p).toContain('記住');
+  });
+});
+
+describe('buildGratitudeSystemPrompt — R34 T2 (people deepening)', () => {
+  it('includes a PEOPLE DEEPENING instruction (one warm question, rememberPreference on answer)', () => {
+    const p = buildGratitudeSystemPrompt('Derrick', 'Monday June 23', null);
+    expect(p).toContain('PEOPLE DEEPENING');
+    expect(p).toContain('rememberPreference');
+    expect(p.toLowerCase()).toContain('once per person');
+  });
+});

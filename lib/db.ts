@@ -292,13 +292,14 @@ export function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS facts (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id            INTEGER NOT NULL REFERENCES users(id),
-      -- T3-1-A: 'pattern' added so factPatterns can land in the Patterns tab (not Facts).
-      -- Additive for new DBs. NOTE: SQLite can't ALTER a CHECK — a long-lived DB created
-      -- before this change keeps the old CHECK and would reject category='pattern' INSERTs
-      -- until a table rebuild. Given the ephemeral-volume situation, prod DBs initialize fresh
-      -- with this CHECK; a deliberate facts rebuild is deferred/flagged (not done unprompted on
+      -- T3-1-A: 'pattern' added so factPatterns land in the Patterns tab. R34: 'commitment'
+      -- (accountability). M4-5: 'weekly_summary' + 'lifetime_profile' (hierarchical synthesis).
+      -- NOTE: SQLite can't ALTER a CHECK — a long-lived DB created before a category was added keeps
+      -- the old CHECK and would reject the new category's INSERTs until a table rebuild. Prod uses an
+      -- ephemeral volume and initializes fresh with THIS CHECK, so new categories work in prod; a
+      -- deliberate facts rebuild for any persistent dev DB is deferred/flagged (not done unprompted on
       -- the core memory table). Fact inserts are best-effort (try/catch), so no crash either way.
-      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern')),
+      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern','commitment','weekly_summary','lifetime_profile')),
       statement          TEXT NOT NULL,
       entity             TEXT,
       learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -307,7 +308,9 @@ export function initSchema(db: Database.Database) {
       valid_from         TEXT NOT NULL DEFAULT (datetime('now')),
       valid_until        TEXT,
       confidence_score   REAL NOT NULL DEFAULT 1.0,
-      last_confirmed_at  TEXT DEFAULT (datetime('now'))
+      last_confirmed_at  TEXT DEFAULT (datetime('now')),
+      -- M4-6 — times this fact has been surfaced into a call/briefing context (ranking signal).
+      reference_count    INTEGER NOT NULL DEFAULT 0
     );
 
     -- Immutable audit trail: snapshot of a fact's value before it was retired or updated.
@@ -741,9 +744,11 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE briefings ADD COLUMN is_open_call INTEGER DEFAULT 0",
   // Backfill historical open calls (scheduleOpenCall prefixes their content with '[Open call]').
   "UPDATE briefings SET is_open_call = 1 WHERE is_open_call = 0 AND content LIKE '[Open call]%'",
-  // R33 (Core builds the settings API/UI) — per-user working hours. JSON: {start,end,days[]}.
-  // ISO weekday 1=Mon…7=Sun. Default = 9am–6pm Mon–Fri.
+  // R33 — per-user working hours (Security added the column; Core built the settings API/UI + prompt
+  // gating). JSON: {start,end,days[]}. ISO weekday 1=Mon…7=Sun. Default = 9am–6pm Mon–Fri.
   `ALTER TABLE users ADD COLUMN work_schedule TEXT DEFAULT '{"start":9,"end":18,"days":[1,2,3,4,5]}'`,
+  // M4-6 — Memory Ranking Engine: per-fact reference count (incremented when surfaced into context).
+  "ALTER TABLE facts ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -816,6 +821,15 @@ export const userQueries = {
   getLanguage: (id: number): string => {
     const row = getDb().prepare("SELECT language FROM users WHERE id = ?").get(id) as { language?: string } | undefined;
     return row?.language || 'en';
+  },
+  // R33 — read the user's work schedule JSON (raw string; parse with parseWorkSchedule from lib/workHours).
+  getWorkSchedule: (id: number): string | null => {
+    const row = getDb().prepare("SELECT work_schedule FROM users WHERE id = ?").get(id) as { work_schedule?: string | null } | undefined;
+    return row?.work_schedule ?? null;
+  },
+  // R33 — persist a validated work schedule (caller validates with validateWorkSchedule first).
+  setWorkSchedule: (id: number, scheduleJson: string) => {
+    return getDb().prepare("UPDATE users SET work_schedule = ? WHERE id = ?").run(scheduleJson, id);
   },
   // R21 — set the gratitude-call daily-quote toggle + theme in one statement.
   setGratitudeQuote: (id: number, enabled: boolean, theme: string) => {
@@ -2173,7 +2187,7 @@ export interface GmailDraftLog {
 export interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern' | 'commitment' | 'weekly_summary' | 'lifetime_profile';
   statement: string;
   entity: string | null;
   learned_at: string;
@@ -2189,6 +2203,9 @@ export interface Fact {
   // Below 0.3 = unverified, surfaced for reconfirmation. Optional: DB always populates; tests predate columns.
   confidence_score?: number;
   last_confirmed_at?: string | null;
+  // M4-6 — Memory Ranking Engine: how many times this fact has been injected into a call/briefing
+  // context. Frequently-surfaced facts rank higher over time. Optional: tests predate the column.
+  reference_count?: number;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -2317,9 +2334,22 @@ export const factQueries = {
 
     if (existingId !== undefined) {
       const sameStatement = existingStatement!.toLowerCase() === statement.toLowerCase();
-      // User-corrected facts (confidence='high') are not overwritten by new extractions.
       if (existingConfidence === 'high') {
-        // Refresh learned_at so facts seen again don't drift toward "stale".
+        // R29 — universally cumulative memory. A DIFFERING new HIGH-confidence assertion genuinely
+        // adds information, so it must ENRICH the fact, never be discarded. db.ts is synchronous (no
+        // Haiku here), so merge by smart concatenation; the async callers (rememberPreference,
+        // post-call extraction) already do the Haiku-quality merge before they reach this path.
+        const newContained = existingStatement!.toLowerCase().includes(statement.toLowerCase());
+        if (confidence === 'high' && !sameStatement && !newContained) {
+          const merged = `${existingStatement} ${statement}`.trim().slice(0, 500);
+          snapshotFactToHistory(existingId, userId, 'enrich-merge');
+          db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=? AND user_id=?")
+            .run(encryptField(merged), existingId, userId);
+          return;
+        }
+        // Otherwise — same statement, already-contained, or a LOW-confidence re-extraction (which has
+        // nothing authoritative to add) — keep the user-corrected fact intact and just refresh
+        // freshness so it doesn't drift toward "stale".
         if (sameStatement) db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
         return;
       }
@@ -2368,6 +2398,14 @@ export const factQueries = {
     getDb().prepare(
       'UPDATE facts SET learned_at = ? WHERE id = ? AND user_id = ?'
     ).run(learnedAt, id, userId);
+  },
+
+  // M4-6 — Memory Ranking Engine: bump a fact's reference count when it's surfaced into a context
+  // pack / call memory block. Fire-and-forget; frequently-surfaced facts rank higher over time.
+  incrementReferenceCount: (userId: number, id: number): void => {
+    try {
+      getDb().prepare('UPDATE facts SET reference_count = reference_count + 1 WHERE id = ? AND user_id = ?').run(id, userId);
+    } catch { /* non-fatal — ranking signal only */ }
   },
 
   getById: (userId: number, id: number): Fact | undefined => {

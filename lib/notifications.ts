@@ -28,6 +28,22 @@ export function maybeCreateScoreChangeNotif(userId: number, todayScore: number, 
   }
 }
 
+// R30 T2 — confirm in-app when a "Call me now" is placed, so success survives navigating away
+// (the old browser alert() was dismissible and easy to miss). Not day-capped: each explicit
+// call request should produce its own confirmation. Fire-and-forget safe.
+export function createCallInitiatedNotif(userId: number): void {
+  try {
+    notificationQueries.create(
+      userId,
+      'call_initiated',
+      'Edge is calling you',
+      'Your briefing call is being placed — answer when it rings.',
+    );
+  } catch {
+    // Non-fatal
+  }
+}
+
 export function maybeCreateFactLearnedNotif(userId: number, count: number): void {
   try {
     if (count <= 0) return;

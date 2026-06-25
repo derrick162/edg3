@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { scheduleBriefingCall, CallError } from '@/lib/scheduler';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
+import { createCallInitiatedNotif } from '@/lib/notifications';
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
@@ -14,6 +15,8 @@ export async function POST(req: NextRequest) {
     // Manual "Call me now" is an explicit user request — force past the once-a-day guard
     // (e.g. when an earlier call was wrongly marked completed after hitting voicemail).
     const briefingId = await scheduleBriefingCall(user.id, { force: true });
+    // R30 T2 — in-app confirmation that survives navigating away (replaces the dismissible alert()).
+    createCallInitiatedNotif(user.id);
     return NextResponse.json({ success: true, briefingId });
   } catch (err) {
     console.error('Call initiation error:', err);
