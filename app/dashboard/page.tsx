@@ -1522,6 +1522,9 @@ export default function Dashboard() {
   const [rollingBackId, setRollingBackId] = useState<number | null>(null);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
   const [briefingText, setBriefingText] = useState('');
+  // D24 — call history search + pagination
+  const [briefingsSearch, setBriefingsSearch] = useState('');
+  const [briefingsPage, setBriefingsPage] = useState(20);
   // R17 T2 — briefing ids the user has rated this session (one rating per call).
   const [ratedBriefings, setRatedBriefings] = useState<Set<number>>(new Set());
   async function submitCallFeedback(briefingId: number, rating: number) {
@@ -2251,6 +2254,37 @@ export default function Dashboard() {
     return 'Earlier';
   }
 
+  // D24 — key moments derived from existing call data
+  function getBriefingMoments(b: Briefing): { label: string; icon: string }[] {
+    const moments: { label: string; icon: string }[] = [];
+    try {
+      if (b.calendar_actions) {
+        const actions = JSON.parse(b.calendar_actions);
+        if (Array.isArray(actions) && actions.length > 0) moments.push({ icon: '📅', label: 'Event created' });
+      }
+    } catch { /* skip */ }
+    try {
+      if (b.edge_promises) {
+        const promises = JSON.parse(b.edge_promises);
+        if (Array.isArray(promises) && promises.length > 0) moments.push({ icon: '✓', label: 'Commitment' });
+      }
+    } catch { /* skip */ }
+    if (b.transcript) {
+      const lower = b.transcript.toLowerCase();
+      if (lower.includes("i'll remember") || lower.includes("noted that") || lower.includes('stored that')) {
+        moments.push({ icon: '💡', label: 'New fact' });
+      }
+    }
+    return moments;
+  }
+
+  // D24 — brief one-line summary from briefing content (first sentence)
+  function getBriefingSummary(b: Briefing): string | null {
+    if (!b.content) return null;
+    const first = b.content.trim().split(/[.\n]/)[0];
+    return first.length > 10 ? first.replace(/^(SECTION \d+[:\-–]?\s*)/i, '').trim() : null;
+  }
+
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--surface-page)' }}>
       <div className="orb orb-1" />
@@ -2817,7 +2851,19 @@ export default function Dashboard() {
                 id="briefings"
                 text="Your call history and full transcripts."
               />
-              <h2 className="text-lg font-bold mb-4">Call history</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+                <h2 className="text-lg font-bold flex-1">Call history</h2>
+                {briefingsLoaded && briefings.length > 3 && (
+                  <input
+                    type="search"
+                    value={briefingsSearch}
+                    onChange={e => { setBriefingsSearch(e.target.value); setBriefingsPage(20); }}
+                    placeholder="Search calls…"
+                    className="input text-sm"
+                    style={{ maxWidth: 220, paddingTop: '0.375rem', paddingBottom: '0.375rem' }}
+                  />
+                )}
+              </div>
               {!briefingsLoaded ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -2871,25 +2917,43 @@ export default function Dashboard() {
                     </p>
                   </div>
                 )
-              ) : (
+              ) : (() => {
+                const q = briefingsSearch.trim().toLowerCase();
+                const filtered = q
+                  ? briefings.filter(b =>
+                      (b.content || '').toLowerCase().includes(q) ||
+                      (b.transcript || '').toLowerCase().includes(q) ||
+                      (b.user_response || '').toLowerCase().includes(q) ||
+                      b.scheduled_for.includes(q)
+                    )
+                  : briefings;
+                const visible = filtered.slice(0, briefingsPage);
+                if (filtered.length === 0) return (
+                  <div className="glass-card p-8 text-center">
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No calls match &quot;{briefingsSearch}&quot;</p>
+                  </div>
+                );
+                return (
                 <div className="space-y-3">
-                  {briefings.reduce<React.ReactNode[]>((acc, b, idx) => {
+                  {visible.reduce<React.ReactNode[]>((acc, b, idx) => {
                     const grp = getBriefingGroup(b.scheduled_for);
-                    const prevGrp = idx > 0 ? getBriefingGroup(briefings[idx - 1].scheduled_for) : '';
+                    const prevGrp = idx > 0 ? getBriefingGroup(visible[idx - 1].scheduled_for) : '';
                     if (grp !== prevGrp) {
                       acc.push(
                         <p key={`grp-${b.id}`} className="text-xs font-semibold px-1 pt-2 pb-0.5 select-none"
                           style={{ color: 'var(--text-faint)', letterSpacing: '0.06em' }}>{grp}</p>
                       );
                     }
+                    const moments = getBriefingMoments(b);
+                    const summary = getBriefingSummary(b);
                     acc.push(
                     <div
                       key={b.id}
                       className="glass-card glass-card-hover p-5 cursor-pointer"
                       onClick={() => setSelectedBriefing(selectedBriefing?.id === b.id ? null : b)}
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm">
                               {format(new Date(b.scheduled_for), 'EEEE, MMM d · h:mm a')}
@@ -2905,13 +2969,23 @@ export default function Dashboard() {
                               </span>
                             )}
                           </div>
-                          {b.user_response && (
-                            <p className="text-xs mt-1 line-clamp-1 max-w-sm" style={{ color: 'var(--text-muted)' }}>
-                              You said: "{b.user_response}"
+                          {summary && (
+                            <p className="text-xs mt-1 line-clamp-1" style={{ color: 'var(--text-muted)' }}>
+                              {summary}
                             </p>
                           )}
+                          {moments.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                              {moments.map((m, mi) => (
+                                <span key={mi} className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                                  style={{ background: 'var(--edg-accent-08)', color: 'var(--text-accent)', border: '1px solid var(--edg-accent-15)' }}>
+                                  {m.icon} {m.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <span className={`badge ${statusColor[b.status as keyof typeof statusColor] || 'badge-info'}`}>
+                        <span className={`badge flex-shrink-0 ${statusColor[b.status as keyof typeof statusColor] || 'badge-info'}`}>
                           {b.status}
                         </span>
                       </div>
@@ -3059,8 +3133,17 @@ export default function Dashboard() {
                     );
                     return acc;
                   }, [])}
+                  {filtered.length > briefingsPage && (
+                    <button
+                      onClick={() => setBriefingsPage(p => p + 20)}
+                      className="btn-secondary w-full text-sm"
+                    >
+                      Load more ({filtered.length - briefingsPage} remaining)
+                    </button>
+                  )}
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
