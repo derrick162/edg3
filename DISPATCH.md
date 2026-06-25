@@ -10,6 +10,10 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
+- [ ] **R41 T4** — Self-reported energy level tool. (A) Prompt guard: Edge cannot change Whoop indicator — if user says "my energy is low", call `rememberPreference` + acknowledge, never promise a visual update. (B) `setEnergyLevel` tool: `POST /api/energy/level` (`level: 'high'|'medium'|'low'`, `note?`), `energy_log` table, Vapi tool wired in `tool-call/route.ts`, dashboard badge "Self-reported: 🔴 Low · Jun 24" below Whoop card. ⚠️ External: create Vapi tool + paste UUID.
+
+- [ ] **C1 — Calendar tool reliability audit** — The #1 product issue: calendar tools (createEvent, moveEvent, deleteEvent, editEvent) are not working reliably. Do a systematic audit of every calendar tool handler in `app/api/vapi/tool-call/route.ts`. For each tool: (1) What does a successful call look like in the logs? (2) What are all the failure modes (API error, wrong params, read-only calendar, organizer restriction, recurring scope)? (3) Is the tool returning an honest spoken error on every failure path — no silent failures, no "Done" on error? (4) Is the Google API response being validated before Edge speaks? Create a comprehensive test matrix: for each tool, write tests covering happy path + every failure mode. Fix every gap found.
+
 - [ ] **C2 — createEvent reliability** — Specific known issues: (1) Edge sometimes says it created an event without calling the tool at all — tighten the prompt: "You MUST call createEvent and receive a tool result before saying any event was created. Never narrate a creation." (2) Verify `createEvent` handler validates the Google API response and returns a confirmed event ID in the spoken response so Edge can ground its confirmation in a real result. (3) Check that events are always created on the user's primary writable calendar, not a read-only subscribed one. Add a writable-calendar pre-check before every `createEvent` call.
 
 - [ ] **C3 — moveEvent reliability** — Specific known issues: (1) Edge confirms a move without the tool result — add `MOVE CONFIRMATION RULE v2`: the spoken confirmation must echo the new time from the tool result, not from what the user said. Example: "Moved — it's now Thursday at 2pm" (from result), NOT "I've moved that to Thursday" (from memory). (2) Recurring scope: when moveEvent returns a recurring-scope question, Edge must stop and ask before re-calling — verify this prompt rule is firing correctly with a test transcript. (3) After a failed moveEvent (403, organizer restriction, API error), Edge must never say it succeeded — audit every error return path.
@@ -30,7 +34,7 @@
 
 ## 🔒 Security (Vijay) — branch `security`
 
-- [x] 2026-06-24 **S1 — End-to-end test suite** _(security `dbb5c0d` — 13 tests in tests/e2e/, 2320 green)_ — The pillar QA checklists describe tests that don't exist yet as automated tests. Write them. In `tests/e2e/`: (1) `memory-pipeline.test.ts` — POST mock call-end webhook → verify episode row, ≥1 fact, transcript stored within 5s. (2) `briefing-pipeline.test.ts` — fact extracted → briefing builder called → fact appears in output. (3) `calendar-tools.test.ts` — mock Google API responses → verify each tool handler returns correct spoken response on success AND each failure mode. (4) `inbound-call.test.ts` — POST `assistant-request` webhook with known/unknown/rate-limited number → verify correct assistant config returned. All tests run in preflight. These are integration tests — hit the real DB layer.
+- [x] 2026-06-24 **S1 — End-to-end test suite** — The pillar QA checklists describe tests that don't exist yet as automated tests. Write them. In `tests/e2e/`: (1) `memory-pipeline.test.ts` — POST mock call-end webhook → verify episode row, ≥1 fact, transcript stored within 5s. (2) `briefing-pipeline.test.ts` — fact extracted → briefing builder called → fact appears in output. (3) `calendar-tools.test.ts` — mock Google API responses → verify each tool handler returns correct spoken response on success AND each failure mode. (4) `inbound-call.test.ts` — POST `assistant-request` webhook with known/unknown/rate-limited number → verify correct assistant config returned. All tests run in preflight. These are integration tests — hit the real DB layer.
 
 - [ ] **S2 — Web push notifications** — Health alerts currently only log to Railway (`HEALTH: DEGRADED`). Derrick never sees them unless he checks logs. Add web push: (1) `POST /api/push/subscribe` — stores a Web Push subscription (endpoint + keys) per user in a new `push_subscriptions` table (encrypted). (2) `lib/push.ts` — `sendPushNotification(userId, title, body)` using the `web-push` npm package. (3) Wire into the existing alert paths: call failed → push; health digest DEGRADED → push; failed_webhooks queue non-empty → push. (4) Dashboard: prompt for push permission on first load (non-blocking, dismissible). Tests: mock push subscription → verify notification fires on simulated failure.
 
@@ -75,25 +79,14 @@
 ---
 
 ## 🐛 QA Findings
-
-- [ ] **BUG [P1]** — `extractAndUpsertFacts` (+ `runSleepTimeConsolidation`) abort the whole fact batch on a single bad fact, then falsely flag the call as having learned nothing — found 2026-06-24 (assign **Core/Darren**, `lib/facts.ts`).
-  - **Repro:** fired a real end-of-call webhook (briefing 74; transcript named a new goal + investor "Marcus Chen" + a commitment). Pipeline DID write 2 facts (goal + person, `source_briefing_id=74`), an episode, 2 open-loops, and the "Send Marcus Chen pitch deck" task — but `learning_status` recorded `facts_extracted:0, flagged_for_review:true`, and the "new fact learned" notification never fired.
-  - **Root cause:** the upsert loop (`lib/facts.ts:405-432`) has **no per-fact try/catch**. One `upsertFact` throw (here a `commitment`-category row hitting the DB CHECK) propagates to the outer catch at `:450`, which returns `0`. Effects even on a correct schema: (a) every not-yet-written fact in that batch is lost; (b) the `consolidateFacts` dedup pass at `:437` is skipped (left a **duplicate** "seed round" goal fact — id 1 vs id 2); (c) the call is mis-reported to the DC0-1 flywheel-integrity monitor as `facts_extracted:0` → false `flagged_for_review`, polluting the exact health signal meant to catch real learning failures.
-  - **Fix:** wrap each fact's upsert/enrich in try/catch (skip-and-log the offending fact, keep going); return the count actually written. Same hardening in `runSleepTimeConsolidation`. An LLM emitting one unexpected category/over-length value should degrade to "lost that one fact," never "lost the batch + falsely reported zero learning."
-
-- [ ] **BUG [P2, latent P1]** — `facts.category` CHECK constraint cannot be migrated in SQLite; new categories are silently rejected on any pre-existing DB — found 2026-06-24 (assign **Security/Vijay** schema + **Core**, `lib/db.ts:302`).
-  - **Evidence:** current code allows 10 categories (`…,'pattern','commitment','weekly_summary','lifetime_profile','user_note'`); the live local `data/edg3.db` still has the original 5-category CHECK (`'person','project','goal','preference','fact'`) because SQLite can't `ALTER` a CHECK and `MIGRATIONS` only does `ADD COLUMN`. On this DB every `commitment`/`pattern`/`weekly_summary`/`lifetime_profile`/`user_note` insert throws.
-  - **Why it matters:** the code comment (`lib/db.ts:295-301`) waves this off as "prod uses an ephemeral volume, so it re-inits fresh." But **T0-1's entire goal is to make the Railway volume persistent** (Litestream + persistent volume). The moment that lands on a DB created before a category was added, production silently loses every new-category fact — and, combined with the P1 above, drops whole batches + falsely reports zero learning. The two roadmap items are in direct tension.
-  - **Fix:** add a one-time `facts` table-rebuild migration (new table w/ current CHECK → copy → swap) so the constraint travels with the schema, OR drop the DB-level CHECK and enforce `category` in app code. Verify against a DB created before the new categories existed.
+_(QA tester fills this section)_
 
 ---
 
 ## ✅ Completed
 
-- [x] **C1** — Calendar tool reliability audit + test matrix (`content/calendar-tool-audit.md`, `calendar-reliability.test.ts`, `isAlreadyGoneError` 404/410 fix) — 2026-06-24 (Darren)
 - [x] **R41 T0** — Memory date tz fix (`parseDbTimestamp`) — 2026-06-24 (Darren)
 - [x] **R41 T1** — Conversation State Engine L3 (`lib/transcriptSignals.ts`) — 2026-06-24 (Darren)
-- [x] **R41 T4** — Self-reported energy false-confirm fix (`728fd3e`) — 2026-06-24 (Darren). Part B (energy_log + setEnergyLevel Vapi tool + `/api/energy/today`) was already live; shipped Part A prompt guard + dashboard "(self-reported)" label. No external Vapi step needed.
 - [x] **R22** — Monthly memory consolidation cron (`lib/scheduler.ts`) — 2026-06-24 (Vijay)
 - [x] **R23** — Inbound call `assistant-request` handler — already shipped (Core R23 T2 + Security R18) — 2026-06-24
 - [x] **R24** — Add Context card visual polish — 2026-06-24 (Cam)

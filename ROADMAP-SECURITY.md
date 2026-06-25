@@ -1206,6 +1206,13 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **DISPATCH S1 — end-to-end integration test suite (2320 green).** _(synced master first; DISPATCH.md item)_
+  - New `tests/e2e/` (real in-memory DB; only external boundaries — Anthropic SDK, Google calendar client, network fetch — mocked):
+    - `calendar-tools.test.ts` (5) — each mutating handler (`createEvent`/`editEvent`/`moveEvent`/`deleteEvent`) drives `executeTool` and returns the correct spoken confirmation on SUCCESS and an explicit `ERROR: …` on FAILURE; honest-failure guard (no phantom "Created" on a rejected insert).
+    - `inbound-call.test.ts` (4) — `assistant-request` POST: known caller → personalized config + `is_inbound` briefing + allowed audit; unknown → polite decline, no briefing; rate-limited (6th/24h) → 8s decline + rate_limited audit; missing number → error, no crash.
+    - `briefing-pipeline.test.ts` (2) — a stored goal fact flows through `generateDailyBriefing` into the model prompt; degrades to a valid briefing with no facts.
+    - `memory-pipeline.test.ts` (2) — `call-ended` POST stores the transcript synchronously + marks `completed`, and the fire-and-forget post-call jobs land ≥1 fact + a call episode within 5s (polled); a too-short transcript → `missed`.
+  - These automate the previously manual-only pillar QA "live path" items. Exported `executeTool`/`ToolContext` already in place from R21. 157 files / 2320 green; tsc + build clean.
 - **2026-06-24** — **R22 — monthly memory consolidation cron wired (2298 green).** _(synced master first)_
   - **Naming reconciled:** the dispatch named `runWeeklyContextRefresh`/`runMonthlyConsolidation`; the actual functions are `runWeeklySynthesis` (already wired by M4-5 — Sunday 4am) and `runLifetimeSynthesis` (the lifetime-profile consolidation, **was unwired**). So R22's weekly half was already done; this ships the monthly half.
   - **Fix (`lib/scheduler.ts`):** new exported `runMonthlyConsolidationSweep(now?)` — **self-gates to the first Sunday of the month** (`getUTCDay()===0 && getUTCDate()<=7`), then loops `onboarding_complete` users calling Core's `runLifetimeSynthesis`; per-user `try/catch` records `monthly_consolidation` job failures without aborting the sweep; dynamic `import('./facts')` keeps LLM deps lazy + degrades to a no-op if the export is absent. Added to the existing `0 4 * * 0` Sunday cron (fires every Sunday; self-gates to ~monthly). `now` injectable for deterministic tests.
