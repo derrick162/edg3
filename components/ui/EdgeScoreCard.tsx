@@ -407,23 +407,36 @@ export function EdgeScoreCard({
 }: EdgeScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Show the canonical 4-component Edge Score (Focus + Energy + Clarity + Momentum,
-  // already weight-renormalized server-side so calibrating components don't blank it).
-  // Fall back to the focus/energy blend only for old API responses without edgeScore.
-  const edgeScore = fit
-    ? typeof fit.edgeScore === 'number'
-      ? fit.edgeScore
-      : calibrating && calibratingHalf !== 'focus'
-        ? fit.focusScore.score
-        : Math.round((fit.focusScore.score + fit.energyScore.score) / 2)
-    : null;
-
   // 7-day Edge Score trend (oldest→newest) — drives the trend arrow + sparkline.
+  // Computed BEFORE edgeScore so the defensive guard below can reference recent history.
   const history = (fit?.history ?? []).filter(h => typeof h.score === 'number');
   const trend = history.length >= 2
     ? (() => {
         const delta = history[history.length - 1].score - history[0].score;
         return { delta, up: delta > 0, down: delta < 0, days: history.length };
+      })()
+    : null;
+
+  // Show the canonical 4-component Edge Score (Focus + Energy + Clarity + Momentum,
+  // already weight-renormalized server-side so calibrating components don't blank it).
+  // Fall back to the focus/energy blend only for old API responses without edgeScore.
+  // Defensive guard: if live computation returns < 5 (transient 0 from LLM/Google hiccup),
+  // serve the most recent historical score instead so the gauge doesn't flicker to near-zero.
+  const edgeScore = fit
+    ? (() => {
+        let score: number;
+        if (typeof fit.edgeScore === 'number') {
+          score = fit.edgeScore;
+        } else if (calibrating && calibratingHalf !== 'focus') {
+          score = fit.focusScore.score;
+        } else {
+          score = Math.round((fit.focusScore.score + fit.energyScore.score) / 2);
+        }
+        const recentHistoryScore = history.length > 0 ? history[history.length - 1].score : null;
+        if (score < 5 && recentHistoryScore !== null && recentHistoryScore >= 5) {
+          return recentHistoryScore;
+        }
+        return score;
       })()
     : null;
 

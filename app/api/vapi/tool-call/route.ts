@@ -443,9 +443,9 @@ Query: ${query}` }],
     // Skip the conflict check when the user has explicitly asked to book over existing events.
     if (!overrideConflicts) {
       const conflicts: string[] = [];
-      const tz = timezone || 'America/Vancouver';
-      const winMin = zonedWallTimeToUtc(startDateTime, tz).toISOString();
-      const winMax = zonedWallTimeToUtc(endDateTime, tz).toISOString();
+      const conflictTz = timezone || tz;
+      const winMin = zonedWallTimeToUtc(startDateTime, conflictTz).toISOString();
+      const winMax = zonedWallTimeToUtc(endDateTime, conflictTz).toISOString();
       const winEvents = (await Promise.all(calIds.map(calId =>
         cal.events.list({ calendarId: calId, timeMin: winMin, timeMax: winMax, singleEvents: true }).then(r => r.data.items ?? []).catch(() => [] as calendar_v3.Schema$Event[])
       ))).flat();
@@ -455,7 +455,7 @@ Query: ${query}` }],
         if (!/\b(hold|block|tentative|maybe|tbd)\b/i.test(ev.summary ?? '') && ev.summary !== `⚡ ${title}`) {
           // R13 T4 — name the conflict WITH its time so Edge can say it out loud.
           const ct = ev.start?.dateTime
-            ? new Date(ev.start.dateTime).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+            ? new Date(ev.start.dateTime).toLocaleTimeString('en-US', { timeZone: conflictTz, hour: 'numeric', minute: '2-digit' })
             : '';
           const cname = (ev.summary ?? 'Untitled').replace(/^⚡\s*/, '');
           conflicts.push(ct ? `${cname} at ${ct}` : cname);
@@ -484,7 +484,8 @@ Query: ${query}` }],
     if (!claimEventCreate(userId, buildEventDedupeKey(title, startDateTime))) {
       return `"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} was just created — looks like a retry. If you need a separate event, wait a moment and try again.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: timezone }, end: { dateTime: endDateTime, timeZone: timezone }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}), ...(attendeeList.length ? { attendees: attendeeList } : {}) };
+    const eventTz = timezone || tz;
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: startDateTime, timeZone: eventTz }, end: { dateTime: endDateTime, timeZone: eventTz }, colorId: color ? getColorId(color) : '9', ...(description ? { description } : {}), ...(location ? { location } : {}), ...(recur ? { recurrence: [recur] } : {}), ...(attendeeList.length ? { attendees: attendeeList } : {}) };
     const insTimed = await cal.events.insert({ calendarId: 'primary', requestBody: rb })
       .catch((insErr: unknown) => { console.error('[createEvent] timed insert failed:', insErr instanceof Error ? insErr.message : insErr); return null; });
     if (!insTimed || !insTimed.data.id) return ERR_CREATE;
@@ -493,21 +494,22 @@ Query: ${query}` }],
     // C2 — ground the spoken date/time in the calendar's echo of the saved event, not the
     // request args, so the confirmation reflects what Google actually stored.
     const savedDateTime = insTimed.data.start?.dateTime ?? startDateTime;
-    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${savedDateTime.slice(0, 10)} at ${savedDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
+    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${savedDateTime.slice(0, 10)} at ${savedDateTime.slice(11, 16)} ${eventTz}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
     // UNTIL must be a UTC instant. A bare date (UNTIL=YYYYMMDD) means midnight, which drops the
     // last day's occurrence (e.g. a 10am event on the end date). Use end-of-day in the event's
     // timezone so the final day is inclusive — "Tuesday to Thursday" books all three days.
+    const recurTz = timezone || tz;
     let fullRrule = `RRULE:${recurrence}`;
     if (endDate) {
-      fullRrule = `RRULE:${recurrence};UNTIL=${rruleUntilUtc(endDate, timezone || 'America/Vancouver')}`;
+      fullRrule = `RRULE:${recurrence};UNTIL=${rruleUntilUtc(endDate, recurTz)}`;
     }
     if (!claimEventCreate(userId, buildEventDedupeKey(title, `${startDate}T${startTime}`))) {
       return `Recurring "${title}" starting ${startDate} at ${startTime} was just created — looks like a retry.`;
     }
-    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: timezone }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: timezone }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
+    const rb: calendar_v3.Schema$Event = { summary: `⚡ ${title}`, start: { dateTime: `${startDate}T${startTime}:00`, timeZone: recurTz }, end: { dateTime: `${startDate}T${endTime}:00`, timeZone: recurTz }, recurrence: [fullRrule], colorId: color ? getColorId(color) : '9' };
     const insRec = await cal.events.insert({ calendarId: 'primary', requestBody: rb });
     if (!insRec.data.id) return `Couldn't confirm recurring "${title}" saved — please double-check your calendar.`;
     recordUndo(userId, `created recurring "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insRec.data.id }]);
