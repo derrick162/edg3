@@ -109,8 +109,8 @@ other lane and the PM can see live ownership claims.
 |---|---|---|---|---|
 | 🛠️ Core | `core` | _(✅ **R40 SHIPPED (2291 green) — ready for PM merge.** T1: TIME AWARENESS rule + current-time injection in live-call prompt, `buildOpenCallSystemPrompt` (currentTime/isEvening, EN+廣東話, webhook-wired) + briefing prompt — evening calls no longer say "this afternoon" for past events. T2: MOVE CONFIRMATION rule (moveEvent already returns ERR_MOVE on failure + explicit success string). ⚠️ **Additive to Security-owned `lib/vapi.ts` + webhook — Vijay sync down.** Idle.)_ | `lib/vapi.ts`, `lib/briefing.ts`, `app/api/vapi/webhook/route.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R40 dispatched 2026-06-24 — evening framing + move confirmation. R39+R36+R37+R38 all merged + deployed.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
-| 🎨 Design | `design` | _(📋 **R24 dispatched 2026-06-24 — "Add context" card visual design.** Coordinate with Core R36: Darren ships functional textarea first, Cam does design pass on top. glass-card + .input token + btn-primary + success/error inline states + 📝 user_note label in call notes.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🎨 Design | `design` | _(✅ **R24 SHIPPED — merged to master.** "Add context" card — glass-card, .input textarea, char counter, success/error inline, 📝 user_note label. Idle → pillar sweep next.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
 ---
 

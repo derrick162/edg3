@@ -1145,6 +1145,7 @@ interface Priority {
 interface Memory {
   id: number;
   type: string;
+  category?: string;
   content: string;
   created_at: string;
 }
@@ -1491,6 +1492,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [moreOpen, setMoreOpen] = useState(false);
   const [memoryPage, setMemoryPage] = useState(1);
+  const [contextNote, setContextNote] = useState('');
+  const [contextSubmitting, setContextSubmitting] = useState(false);
+  const [contextResult, setContextResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [expandedFactCats, setExpandedFactCats] = useState<Set<string>>(new Set());
   const [collapsedMemorySections, setCollapsedMemorySections] = useState<Set<string>>(
     new Set(['call-notes', 'people-m2', 'patterns-m3', 'accountability', 'fact', 'preference'])
@@ -2164,6 +2168,32 @@ export default function Dashboard() {
     const res = await fetch('/api/whoop/disconnect', { method: 'POST' });
     setDisconnectingWhoop(false);
     if (res.ok) setWhoopConnected(false);
+  }
+
+  async function handleContextSave() {
+    if (!contextNote.trim() || contextSubmitting) return;
+    setContextSubmitting(true);
+    setContextResult(null);
+    try {
+      const r = await fetch('/api/memory/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: contextNote.trim() }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setContextNote('');
+        setContextResult({ ok: true, message: `✓ Saved — extracted ${d.factsExtracted ?? 0} fact${(d.factsExtracted ?? 0) !== 1 ? 's' : ''}` });
+        loadData();
+      } else {
+        setContextResult({ ok: false, message: d.error || 'Something went wrong — try again' });
+      }
+    } catch {
+      setContextResult({ ok: false, message: 'Something went wrong — try again' });
+    } finally {
+      setContextSubmitting(false);
+      setTimeout(() => setContextResult(null), 4000);
+    }
   }
 
   if (dashboardLoading || !user) {
@@ -3099,6 +3129,43 @@ export default function Dashboard() {
 
           {activeTab === 'memory' && (
             <div>
+              {/* ── Add context card ── */}
+              <div className="glass-card p-5 mb-6">
+                <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-strong)' }}>Add context</p>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Anything Edge should know — a person, a goal, an update</p>
+                <div className="relative">
+                  <textarea
+                    className="input w-full"
+                    rows={3}
+                    style={{ resize: 'vertical' }}
+                    placeholder="e.g. Patrick just moved back to Toronto and is looking for work in finance"
+                    maxLength={2000}
+                    value={contextNote}
+                    onChange={e => setContextNote(e.target.value)}
+                    disabled={contextSubmitting}
+                  />
+                  {contextNote.length >= 1800 && (
+                    <p className="text-right text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      {2000 - contextNote.length} chars left
+                    </p>
+                  )}
+                </div>
+                {contextResult && (
+                  <p className="text-xs mt-2" style={{ color: contextResult.ok ? 'var(--edg-success)' : 'var(--edg-danger)' }}>
+                    {contextResult.message}
+                  </p>
+                )}
+                <div className="flex justify-end mt-3">
+                  <button
+                    className="btn-primary text-sm py-1.5 px-4"
+                    onClick={handleContextSave}
+                    disabled={!contextNote.trim() || contextSubmitting}
+                  >
+                    {contextSubmitting ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
               <SectionHint
                 id="memory"
                 text="Everything Edg3 has learned from your calls — the memory it draws on. Edit or remove anything that's off."
@@ -3809,16 +3876,24 @@ export default function Dashboard() {
                       {pageItems.map(m => (
                         <div key={m.id} className="glass-card p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className={`badge ${
-                              m.type === 'insight' ? 'badge-success' :
-                              m.type === 'transcript' ? 'badge-info' :
-                              m.type === 'profile' ? 'badge-pending' : 'badge-info'
-                            }`}>
-                              {m.type}
-                            </span>
-                            <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                              {format(new Date(m.created_at), 'MMM d, yyyy')}
-                            </span>
+                            {m.category === 'user_note' ? (
+                              <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                                📝 Added manually
+                              </span>
+                            ) : (
+                              <>
+                                <span className={`badge ${
+                                  m.type === 'insight' ? 'badge-success' :
+                                  m.type === 'transcript' ? 'badge-info' :
+                                  m.type === 'profile' ? 'badge-pending' : 'badge-info'
+                                }`}>
+                                  {m.type}
+                                </span>
+                                <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                                  {format(new Date(m.created_at), 'MMM d, yyyy')}
+                                </span>
+                              </>
+                            )}
                           </div>
                           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
                             {correctName(m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content, (user?.name || '').split(' ')[0])}
