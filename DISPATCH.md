@@ -10,8 +10,6 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
-- [ ] **C2 — createEvent reliability** — Specific known issues: (1) Edge sometimes says it created an event without calling the tool at all — tighten the prompt: "You MUST call createEvent and receive a tool result before saying any event was created. Never narrate a creation." (2) Verify `createEvent` handler validates the Google API response and returns a confirmed event ID in the spoken response so Edge can ground its confirmation in a real result. (3) Check that events are always created on the user's primary writable calendar, not a read-only subscribed one. Add a writable-calendar pre-check before every `createEvent` call.
-
 - [ ] **C3 — moveEvent reliability** — Specific known issues: (1) Edge confirms a move without the tool result — add `MOVE CONFIRMATION RULE v2`: the spoken confirmation must echo the new time from the tool result, not from what the user said. Example: "Moved — it's now Thursday at 2pm" (from result), NOT "I've moved that to Thursday" (from memory). (2) Recurring scope: when moveEvent returns a recurring-scope question, Edge must stop and ask before re-calling — verify this prompt rule is firing correctly with a test transcript. (3) After a failed moveEvent (403, organizer restriction, API error), Edge must never say it succeeded — audit every error return path.
 
 - [ ] **C4 — deleteEvent + cleanupEvents reliability** — Audit: (1) Does deleteEvent always verify the event exists before confirming deletion? (2) Does it handle the case where the event was already deleted (404 → "already removed" not "couldn't find it")? (3) `cleanupDuplicates` — verify it correctly identifies and removes only true duplicates, not events with similar names at different times. Add tests for the 404 and already-deleted cases.
@@ -81,6 +79,7 @@ _(QA tester fills this section)_
 
 ## ✅ Completed
 
+- [x] **C2** — createEvent reliability: CREATE CONFIRMATION prompt rule + writable-primary pre-check + confirmation grounded in calendar echo — 2026-06-24 (Darren)
 - [x] **C1** — Calendar tool reliability audit + test matrix (`content/calendar-tool-audit.md`, `calendar-reliability.test.ts`, `isAlreadyGoneError` 404/410 fix) — 2026-06-24 (Darren)
 - [x] **R41 T0** — Memory date tz fix (`parseDbTimestamp`) — 2026-06-24 (Darren)
 - [x] **R41 T1** — Conversation State Engine L3 (`lib/transcriptSignals.ts`) — 2026-06-24 (Darren)

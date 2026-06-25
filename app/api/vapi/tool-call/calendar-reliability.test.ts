@@ -117,6 +117,28 @@ describe('C1 — createEvent', () => {
     expect(res).toContain('ERROR: Event was NOT created');
   });
 
+  it('C2 — confirmation is grounded in the calendar echo, not input args', async () => {
+    // Google normalizes/echoes the saved event; the spoken time must reflect what was stored.
+    const cal = mockCal({ insert: async () => ({ data: { id: 'new_1', start: { dateTime: '2026-06-26T09:15:00-04:00' } } }) });
+    const res = await executeTool('createEvent', {
+      title: 'Grounded block', startDateTime: '2026-06-26T09:00:00', endDateTime: '2026-06-26T10:30:00',
+      timezone: 'America/New_York', overrideConflicts: true,
+    }, ctx(cal));
+    expect(res).toContain('at 09:15'); // echoed time, not the 09:00 request
+  });
+
+  it('C2 — primary calendar not writable → ERR_CREATE (no Google 403 leak)', async () => {
+    const meta = new Map([['primary', { accessRole: 'reader', summary: 'Primary (read-only)' }]]);
+    let inserted = false;
+    const cal = mockCal({ insert: async () => { inserted = true; return { data: { id: 'x' } }; } });
+    const res = await executeTool('createEvent', {
+      title: 'X', startDateTime: '2026-06-25T09:00:00', endDateTime: '2026-06-25T10:00:00',
+      timezone: 'America/New_York', overrideConflicts: true,
+    }, ctx(cal, meta));
+    expect(inserted).toBe(false);
+    expect(res).toContain('ERROR: Event was NOT created');
+  });
+
   it('conflict (no override) → warns, does not write', async () => {
     let inserted = false;
     const cal = mockCal({

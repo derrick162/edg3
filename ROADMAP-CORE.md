@@ -3422,6 +3422,23 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C2 SHIPPED (2337 green) — createEvent reliability.**
+  - **(1) Prompt:** new CREATE CONFIRMATION RULE in `lib/vapi.ts` TOOL CALL DISCIPLINE block —
+    "You MUST call createEvent and receive a tool result before saying any event was created.
+    NEVER narrate a creation from the user's request alone." Mirrors the existing MOVE
+    CONFIRMATION rule; tells Edge to echo the result's confirmed time and to relay conflict /
+    "already on your calendar" results instead of claiming a creation.
+  - **(2) Grounded confirmation:** both createEvent success returns (timed + all-day) now derive
+    the spoken date/time from the calendar's OWN echo of the saved event
+    (`insTimed.data.start.dateTime` / `insAllDay.data.start.date`), not the request args — so the
+    confirmation reflects what Google actually stored. Falls back to input args if the echo is
+    absent.
+  - **(3) Writable pre-check:** defensive guard at the top of the createEvent handler — if
+    `calMeta` reports primary as non-writable (revoked/downgraded scope), return `ERR_CREATE`
+    instead of letting Google 403 surface as a confusing "reconnect" error. (Primary is
+    normally always writable, so this is belt-and-suspenders.)
+  - 2 new tests in `calendar-reliability.test.ts` (echo grounding + non-writable primary).
+    +2 tests (2335 → 2337). tsc + next build clean.
 - **2026-06-24** — **C1 SHIPPED (2335 green) — calendar tool reliability audit + test matrix.**
   - **Audit deliverable:** `content/calendar-tool-audit.md` — per-tool table (success shape,
     failure modes, honest-on-every-path) for all 9 calendar tools, plus the structural proof

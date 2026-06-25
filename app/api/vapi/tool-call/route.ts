@@ -373,6 +373,17 @@ Query: ${query}` }],
     let { startDateTime, endDateTime } = args as { startDateTime: string; endDateTime: string };
     const { title: rawCreateTitle, timezone, color, overrideConflicts, allDay, endDate, description, location, recurrence, attendees } = args as { title: string; timezone: string; color?: string; overrideConflicts?: boolean; allDay?: boolean; endDate?: string; description?: string; location?: string; recurrence?: string; attendees?: { email?: string; name?: string }[] };
     if (!rawCreateTitle) return "I didn't catch what to call that event — what's the title?";
+    // C2 — writable-calendar pre-check. createEvent always inserts to 'primary', which is the
+    // user's own calendar and definitionally writable; this guard is defensive — if we somehow
+    // hold only view access to primary (revoked/downgraded scope), fail honestly instead of
+    // letting Google 403 surface as a confusing "reconnect" error.
+    {
+      const primaryMeta = calMeta.get('primary');
+      if (primaryMeta && !isWritable(primaryMeta.accessRole)) {
+        console.error(`[createEvent] primary calendar not writable accessRole=${primaryMeta.accessRole}`);
+        return ERR_CREATE;
+      }
+    }
     // R14 T2 — only accept a well-formed RRULE string (the model passes it directly).
     const recur = typeof recurrence === 'string' && /^RRULE:/i.test(recurrence.trim()) ? recurrence.trim() : undefined;
     // R14 T3 — Google sends invites for any attendees with an email.
@@ -412,7 +423,11 @@ Query: ${query}` }],
       } }).catch((insErr: unknown) => { console.error('[createEvent] all-day insert failed:', insErr instanceof Error ? insErr.message : insErr); return null; });
       if (!insAllDay || !insAllDay.data.id) return ERR_CREATE;
       recordUndo(userId, `created all-day "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insAllDay.data.id }]);
-      const span = lastDay === startOnly ? `on ${startOnly}` : `from ${startOnly} to ${lastDay}`;
+      // C2 — ground the confirmation in the calendar's OWN echo of the saved dates, not the
+      // input args, so the spoken time reflects what Google actually stored.
+      const savedStart = insAllDay.data.start?.date ?? startOnly;
+      const savedLast = insAllDay.data.end?.date ? prevDay(insAllDay.data.end.date) : lastDay;
+      const span = savedLast === savedStart ? `on ${savedStart}` : `from ${savedStart} to ${savedLast}`;
       return `Created and confirmed all-day "${title}" ${span}.`;
     }
 
@@ -475,7 +490,10 @@ Query: ${query}` }],
     if (!insTimed || !insTimed.data.id) return ERR_CREATE;
     recordUndo(userId, `created "${title}"`, [{ type: 'delete', calId: 'primary', eventId: insTimed.data.id }]);
     const inviteNote = attendeeList.length ? ` Invited ${attendeeList.length} ${attendeeList.length === 1 ? 'person' : 'people'}.` : '';
-    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${startDateTime.slice(0, 10)} at ${startDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
+    // C2 — ground the spoken date/time in the calendar's echo of the saved event, not the
+    // request args, so the confirmation reflects what Google actually stored.
+    const savedDateTime = insTimed.data.start?.dateTime ?? startDateTime;
+    return `Created and confirmed ${recur ? 'recurring ' : ''}"${title}" on ${savedDateTime.slice(0, 10)} at ${savedDateTime.slice(11, 16)} ${timezone}${overrideConflicts ? ' (booked over existing events)' : ''}.${inviteNote}`;
 
   } else if (fn === 'createRecurringEvent') {
     const { title, startTime, endTime, timezone, color, recurrence, startDate, endDate } = args as { title: string; startTime: string; endTime: string; timezone: string; color?: string; recurrence: string; startDate: string; endDate?: string };
