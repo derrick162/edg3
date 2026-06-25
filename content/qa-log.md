@@ -11,6 +11,23 @@ _Run the checklists in PILLAR-DAILY-CALL.md → PILLAR-MEMORY.md → PILLAR-TRUS
 
 ---
 
+## 2026-06-24 — D20 ship + pillar sweep (Cam)
+
+**Status: GREEN** — 2291 tests, tsc clean, next build clean.
+
+### D20 shipped
+- ✅ T1: Fact confidence display — low=italic+muted+verify button, medium=muted dot, high=no indicator
+- ✅ T2: learned-date timezone fix — `toLocaleDateString('en-US', { timeZone: user.timezone })` eliminates next-day display bug
+- ✅ T3: Category headings standardized to `text-xs font-semibold uppercase tracking-widest mt-6 mb-2 --text-muted`
+- ✅ T4: Empty categories already omitted by `grouped` reduce — confirmed no heading renders for 0-item categories
+
+### Pillar sweep (2026-06-24)
+- ✅ PILLAR-DAILY-CALL: DC4 Phase-2-gated — no Design items actionable
+- ✅ PILLAR-TRUST: all UX + T3-1 shipped — no remaining Design items
+- ✅ PILLAR-MEMORY: all Design items shipped — no remaining actionable items
+
+---
+
 ## 2026-06-23 — R23 + R22 ship + pillar sweep (Cam)
 
 **Status: GREEN** — preflight clean, build clean.
