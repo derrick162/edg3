@@ -106,11 +106,15 @@ export async function POST(req: NextRequest) {
       const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
       const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
 
+      // R40 T1 — current wall-clock time so an evening inbound call isn't framed as morning.
+      const currentTime = new Date().toLocaleTimeString('en-US', { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true });
       const systemPrompt = buildOpenCallSystemPrompt({
         firstName, userName: callerUser.name, timezone,
         prioritiesText: currentPrioritiesText(userId),
         memoryText: currentOpenCallMemoryText(userId),
         language,
+        currentTime,
+        isEvening: hour >= 17,
       });
       const ambientBase = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
       const assistantConfig = {
@@ -122,6 +126,9 @@ export async function POST(req: NextRequest) {
         endCallPhrases: isCantonese ? ['再見', '拜拜', '多謝', 'goodbye'] : ['have a focused day', 'have a great day', 'goodbye'],
         silenceTimeoutSeconds: 40,
         maxDurationSeconds: 1800,
+        // R40 T3 — require 2 words before Edge stops talking, so a chair bump / cough (0 words) no
+        // longer interrupts it mid-sentence.
+        stopSpeakingPlan: { numWords: 2 },
         messagePlan: {
           idleMessages: ['Still here — take your time.', "No rush, I'm still on the line."],
           idleTimeoutSeconds: 10,

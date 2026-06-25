@@ -107,10 +107,10 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(📋 **R40 dispatched 2026-06-24. T1: evening time-of-day framing (calls after 5 PM treat today as past). T2: moveEvent false confirmation fix. Do after R39 which is already merged.**)_ | `lib/vapi.ts`, `lib/briefing.ts`, `app/api/vapi/webhook/route.ts`, `app/api/vapi/tool-call/route.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **Pillar Security backlog EXHAUSTED (2268 green) — M4-5 ready for merge; idle.** M4-5 cron wiring done (`runWeeklySynthesisSweep` → Sunday 4am cron, 3 tests). All 3 pillars scanned: no open `(Security)` code items — remaining boxes are live-QA steps, mapped in `content/qa-log.md`. R21+R20 merged/deployed. Awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R40 dispatched 2026-06-24 — evening framing + move confirmation. R39+R36+R37+R38 all merged + deployed.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
-| 🎨 Design | `design` | _(📋 **R24 dispatched 2026-06-24 — "Add context" card visual design.** Coordinate with Core R36: Darren ships functional textarea first, Cam does design pass on top. glass-card + .input token + btn-primary + success/error inline states + 📝 user_note label in call notes.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R40 (T1–T4) ALL SHIPPED (2291 green) — ready for PM merge.** T1: evening TIME AWARENESS framing. T2: MOVE CONFIRMATION rule. T3: `stopSpeakingPlan{numWords:2}` so ambient noise can't interrupt Edge (webhook + scheduled-call configs). T4: Add-context limit 2000→6000. ⚠️ **Additive to Security-owned `lib/vapi.ts` + webhook — Vijay sync down.** Idle.)_ | `lib/vapi.ts`, `lib/briefing.ts`, `app/api/vapi/webhook/route.ts`, `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
+| 🔒 Security | `security` | _(🔨 **R22 cron wiring IN PROGRESS.** M4-5 weekly synthesis cron already wired (Sunday 4am, `runWeeklySynthesisSweep`). R22's "weekly context refresh" = that (done); now adding the MONTHLY consolidation cron (`runLifetimeSynthesis`, first Sunday of month UTC). R21+R20 merged/deployed.)_ | `lib/scheduler.ts` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🎨 Design | `design` | _(✅ **R24 SHIPPED — merged to master.** "Add context" card — glass-card, .input textarea, char counter, success/error inline, 📝 user_note label. Idle → pillar sweep next.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
 ---
 

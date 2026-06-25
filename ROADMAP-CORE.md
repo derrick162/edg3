@@ -33,7 +33,31 @@ After every ticket:
 
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 40 — Call time-of-day awareness + move confirmation)
 
-> `git merge master` first. Two tickets.
+> `git merge master` first. Three tickets.
+
+---
+
+### T3 — Reduce VAD sensitivity: background noise interrupts Edge mid-sentence (QUICK — 15m)
+
+**The bug:** Any ambient sound — chair bump, cough, background noise — triggers Vapi's voice activity detection and stops Edge mid-sentence, as if the user started talking. This makes calls feel brittle in any real-world environment.
+
+**Root cause:** Vapi's `stopSpeakingPlan.numWords` defaults to 0, meaning any audio signal (including non-speech noise) stops the assistant. Setting it to 2 means Vapi requires detecting at least 2 actual transcribed words before it considers the user to be interrupting — chair bumps and ambient noise produce 0 words and are ignored.
+
+**Fix — `app/api/vapi/webhook/route.ts`:**
+
+In the assistant config object (where `firstMessage`, `voice`, `model` etc. are set), add:
+
+```ts
+stopSpeakingPlan: {
+  numWords: 2,
+},
+```
+
+Add this to BOTH the briefing assistant config and the open call assistant config (the inbound call path). They should both have it.
+
+**Tests:**
+- Config includes `stopSpeakingPlan.numWords: 2` in both assistant configs
+- No regression to existing assistant config fields
 
 ---
 
@@ -3398,6 +3422,31 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R40 T3 + T4 SHIPPED (2291 green) — VAD sensitivity + Add-context char limit.**
+  - **T3 — VAD.** Ambient noise (cough, chair bump) was interrupting Edge mid-sentence. Added
+    `stopSpeakingPlan: { numWords: 2 }` so ≥2 words are required to stop it. Applied to the inbound
+    open-call config (`app/api/vapi/webhook/route.ts`) AND the scheduled-call `assistantOverrides` block
+    in `lib/vapi.ts` (the inline-assistant block already had it from earlier) — all three call-config paths
+    now covered (the dispatch named only the webhook, but the briefing/scheduled config lives in vapi.ts).
+  - **T4 — Add-context limit 2000 → 6000.** `app/api/memory/notes/route.ts` `MAX_NOTE` + dashboard textarea
+    `maxLength` both raised so a ~5500-char pasted brief isn't blocked. Extraction already handles 8000
+    (R39 T1). Route test updated (5500 → 200, 6001 → 400).
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` + webhook — Vijay sync down.**
+- **2026-06-24** — **R40 SHIPPED (2291 green) — call time-of-day awareness + move confirmation.**
+  - **T1 — evening framing.** A 9:45 PM call had Edge saying "you've got 3 blocks this afternoon" for events
+    that already happened. The prompts injected the date but not the current time. Fix: `lib/vapi.ts` now
+    computes `currentTimeStr`/`isEvening` and injects a **TIME AWARENESS** rule into the live-call system
+    prompt (after 5 PM → today's events have already happened; never "this afternoon"/"finish X today";
+    pivot to tomorrow). `buildOpenCallSystemPrompt` gained `currentTime`/`isEvening` params (EN + 廣東話),
+    passed from the inbound webhook. `lib/briefing.ts` adds the same evening rule (it already had `localTime`).
+    4 tests on `buildOpenCallSystemPrompt`.
+  - **T2 — moveEvent false confirmation.** Diagnosis: the `moveEvent` patch-failure paths already return the
+    `ERR_MOVE` constant (R32), the success path is the explicit "Moved and confirmed '…' to …", and
+    read-only/non-organizer pre-checks return honest non-confirming messages — so the gap was prompt
+    discipline. Added a **MOVE CONFIRMATION** rule to the HONEST FAILURE block: never say "Done" for a move
+    until the tool result confirms it; on "ERROR" tell the user it didn't go through. (Tool-side ERR_MOVE
+    coverage is already exercised by Security's `mutation-errors.test.ts`.)
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` (prompt content) + webhook — Vijay sync down.**
 - **2026-06-24** — **R39 SHIPPED (2287 green, CRITICAL) — memory extraction bug fixes (Jamie the dog + Gabby miscategorized).**
   - **T1 — truncation.** `lib/facts.ts` extraction read only `transcript.slice(0, 2000)` (~300 words / first
     minute) with `max_tokens: 600` — everything later in a 5–10 min call was silently dropped (Jamie the dog

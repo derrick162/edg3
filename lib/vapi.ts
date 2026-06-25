@@ -437,9 +437,22 @@ export function buildOpenCallSystemPrompt(opts: {
 
   language: string;
 
+  // R40 T1 — current wall-clock time + evening flag so the model frames an evening call correctly.
+  currentTime?: string;
+
+  isEvening?: boolean;
+
 }): string {
 
-  const { firstName, prioritiesText, memoryText, language } = opts;
+  const { firstName, prioritiesText, memoryText, language, currentTime, isEvening } = opts;
+
+  const timeAwarenessEn = currentTime
+    ? `\nTIME AWARENESS: It is currently ${currentTime} for ${firstName}.${isEvening ? ` This is an EVENING call — today's calendar events have ALREADY HAPPENED; never reference them as upcoming, never say "this afternoon" or "you have X today". Acknowledge the day, then pivot to tomorrow / the week.` : ` Standard daytime framing applies.`}\n`
+    : '';
+
+  const timeAwarenessYue = currentTime
+    ? `\n時間意識：${firstName} 而家係 ${currentTime}。${isEvening ? '呢個係夜晚嘅電話——今日嘅日曆活動已經發生咗，唔好當佢哋係未嚟，唔好講「今個下晝」或者「你今日有」。先回顧今日，再講聽日同埋呢個禮拜。' : '用平時嘅日間講法。'}\n`
+    : '';
 
 
 
@@ -451,8 +464,7 @@ export function buildOpenCallSystemPrompt(opts: {
 
     return `你係 Edge，${firstName} 嘅 AI 私人助理，講廣東話。${firstName} 主動打嚟——問下佢有咩想傾，幫佢搞掂任何嘢：日曆、重點，或者只係傾下偈。全部用廣東話，簡短自然。
 
-${memBlockYue}${prioBlockYue}
-
+${memBlockYue}${prioBlockYue}${timeAwarenessYue}
 工具紀律（TOOL CALL DISCIPLINE）——做咗先可以講做咗：
 
 - 喺收到工具成功回應之前，絕對唔好講「搞掂」「加咗」「改咗」「刪咗」呢類完成嘅說話。
@@ -477,7 +489,7 @@ ${memBlockYue}${prioBlockYue}
 
   return `You are Edge (pronounced "Edge"), ${firstName}'s AI chief of staff. ${firstName} called you — find out what's on their mind and help with whatever comes up: calendar, priorities, or just talking it through. Keep replies short and natural. Always call them ${firstName}.
 
-${memBlock}${prioBlock}
+${memBlock}${prioBlock}${timeAwarenessEn}
 
 TOOL CALL DISCIPLINE — NEVER CLAIM AN ACTION IS DONE UNLESS YOU DID IT:
 
@@ -567,6 +579,11 @@ export async function initiateCall(
   const userHour = userTzNow.getHours();
 
   const userDay = userTzNow.getDay(); // 0=Sun, 1=Mon...
+
+  // R40 T1 — current wall-clock time, so the model never treats an evening call as morning
+  // ("you've got 3 blocks this afternoon" at 9:45 PM, after they'd already happened).
+  const currentTimeStr = userTzNow.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const isEvening = userHour >= 17;
 
 
 
@@ -765,6 +782,10 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 - HONEST FAILURE: Report exactly what the tool returned — no event found → say so; conflict → tell them. Never say "done" unless the tool confirmed it. Never claim a field (location, description) was set unless the tool said so. If uncertain, say YOU'LL double-check it — never ask them to. A clear "I couldn't do that — I'll get it sorted" beats a false success, and NEVER punt the task back to the user ("do it yourself" / "do it in your calendar" is banned).
 
 - CRITICAL — NEVER FALSE-CONFIRM A CALENDAR ACTION: Never say "Done", "Booked", "Locked in", "Created", "Added", "Moved", "Deleted", or any confirmation of a calendar change UNLESS the matching tool has returned a SUCCESS result in THIS turn. Intending to make a change is not the same as making it. The correct sequence is: say "I'll book that now" → CALL the tool → wait for the result → only THEN say "Done" if (and only if) the result was a success. If the tool result starts with "ERROR" or otherwise reports it did not go through, tell the user honestly that it did NOT get booked and offer to retry — do NOT say it's done. A booking the user believes is locked in but isn't is the single worst failure you can cause.
+
+- MOVE CONFIRMATION: Never say "Done" or confirm a calendar MOVE until you have read the moveEvent tool result. The result on success reads "Moved and confirmed '<title>' to <time>" — only then is it done. If the result contains "ERROR" or does not contain that confirmation, tell ${firstName} the move did NOT go through and offer to try again. A verbal "Done" before the tool returns its result is a false confirmation.
+
+- TIME AWARENESS: It is currently ${currentTimeStr} for ${firstName}.${isEvening ? ` This is an EVENING call (after 5 PM): today's calendar events have ALREADY HAPPENED — never reference them as upcoming, never say "this afternoon" or "you have X today" or "finish X today" (unless ${firstName} says they're still working). Open with evening context — acknowledge the day, then pivot to what's ahead (tomorrow, the week).` : ` Standard daytime framing applies — today's remaining events are still ahead.`}
 
 - FAILED RETRY — CLOSE THE LOOP, DON'T GO SILENT: If an action fails and you try a second approach that ALSO fails, stop retrying. Say out loud, in one breath, that the second approach didn't work either and you'll flag it to get sorted — THEN ask if there's anything else you can help with. Never fall silent while stuck: silence is only for when THEY are thinking, never a stand-in for telling them an attempt failed. Do not drift into "no rush, I'm still here" or "should I stay or go" after a failure — that is for an idle user, not for you being stuck. The user must always hear the outcome and a clear next step.
 
@@ -1267,6 +1288,9 @@ Always end with warmth. This person is building something — remind them of tha
         ],
 
       },
+
+      // R40 T3 — 2 words required before Edge stops talking; ambient noise (cough/chair bump) is 0 words.
+      stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
 
       messagePlan: {
 
