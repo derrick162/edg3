@@ -3422,6 +3422,19 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C7 SHIPPED (2348 green) — M4-4 social mental models (mid-call update).**
+  - **Already shipped (R37):** (1) the sleep-time agent `updatePeopleModels` runs post-call in the
+    webhook (`peopleModelsP`), and (2) `buildPeopleModelBlock` injects a mentioned person's model
+    into the briefing when they appear on the calendar. Verified both wired.
+  - **NEW (3):** `rememberPreference` now updates `people_models` immediately when the saved fact
+    is about a person (`category:'person'` + `topic`). After the fact upsert it derives the
+    person's model fields deterministically via `derivePersonModelFields` (the just-saved
+    statement leads, so relationship_state + last_interaction reflect it) and calls
+    `peopleModelQueries.upsert`. So "Patrick is going through a hard time" mid-call is in his
+    model for tomorrow's briefing — no wait for the nightly pass. Non-person preferences create
+    no people_models row.
+  - New `people-model-update.test.ts` (3 tests: person fact → model row; non-person → no row;
+    second fact enriches goals). 2345 → 2348. tsc + next build clean.
 - **2026-06-24** — **C6 SHIPPED (2345 green) — M2-1 unknown-entity consolidation.**
   - **ROOT CAUSE of the 2026-06-23 bug** ("friend with bachelor party" → Patrick never retired):
     the sleep-time consolidation's unknown-entity resolver (R38 Part A) only treated facts with a

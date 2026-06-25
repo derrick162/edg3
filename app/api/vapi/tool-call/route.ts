@@ -16,10 +16,10 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries, peopleModelQueries } from '@/lib/db';
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
-import { enrichFact } from '@/lib/facts';
+import { enrichFact, derivePersonModelFields } from '@/lib/facts';
 import { friendlyError, isAlreadyGoneError } from '@/lib/calendarToolErrors';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
@@ -1585,6 +1585,20 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
           : factQueries.getByCategory(userId, cat).find(f => !f.entity && f.statement.slice(0, 80).toLowerCase() === statement.slice(0, 80).toLowerCase());
         if (newFact) recordUndo(userId, `saved fact${ent ? ` "${ent}"` : ''}`, [{ type: 'retireFact', userId, factId: newFact.id }]);
       } catch { /* non-critical */ }
+    }
+
+    // C7 (M4-4) — when the saved fact is about a PERSON, update their social model immediately
+    // so the next briefing reflects it without waiting for the nightly sleep-time pass. Derive
+    // fields deterministically from all that person's facts (newest = the one we just saved).
+    if (cat === 'person' && ent) {
+      try {
+        const personFacts = factQueries.getByCategory(userId, 'person')
+          .filter(f => f.entity?.toLowerCase() === ent.toLowerCase());
+        // Ensure the just-saved statement leads (relationshipState/lastInteraction use the newest).
+        const statements = [statement.trim(), ...personFacts.map(f => f.statement).filter(s => s.trim().toLowerCase() !== statement.trim().toLowerCase())];
+        const fields = derivePersonModelFields(statements);
+        peopleModelQueries.upsert(userId, ent, { ...fields, lastInteraction: statement.trim().slice(0, 300) });
+      } catch (e) { console.error('[rememberPreference] people-model update failed:', e instanceof Error ? e.message : e); }
     }
 
     const topicLabel = ent ? ` "${ent}"` : '';
