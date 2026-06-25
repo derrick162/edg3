@@ -3247,6 +3247,25 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R37 + R38 SHIPPED (2286 green) — social mental models + `(unknown)`-entity resolution.**
+  - **R37 (M4-4) — social mental models.** **T1:** new `lib/peopleModels.ts` `updatePeopleModels` —
+    fire-and-forget from the post-call webhook; for each person-category fact actually mentioned this
+    call (cap 5), one Haiku call merges the existing `people_models` row with new transcript signal
+    (preserving un-mentioned fields) and upserts. Degrades silently. 5 tests. **T2:** the briefing
+    read/inject path (`buildPeopleModelBlock` + injected `peopleModelBlock`) already existed from prior
+    M4-4 work — it was dormant only because nothing wrote models; T1 activates it. Enhanced the block with
+    `last_interaction` + added a PEOPLE CONTEXT mid-call note in `lib/vapi.ts`. (Found + removed a redundant
+    `formatPeopleContextBlock`/`getByName` I'd started before discovering the existing path.)
+  - **R38 — consolidation: `(unknown)`-entity resolution + event-as-entity guard.** **Part A:** added a
+    cross-entity pass to `runSleepTimeConsolidation` — a Haiku call matches active unknown/null-entity
+    PERSON facts against newly-named people; high-confidence → retire the unknown + re-file its statement
+    under the real name; medium → retire only if an identical statement already exists (conservative).
+    Scoped to `category='person'` so legit null-entity goals/preferences are never swept in. **Part B:**
+    pure `looksLikeEventEntity` + `reassignEventEntityFacts` in `extractAndUpsertFacts` — an event-title
+    entity ("Friend's Bachelor Party") is re-filed as an attribute of the single clearly-named person in
+    the call; ambiguous (0 or >1 people) → left as-is. 8 tests. Together these stop Patrick's context from
+    fragmenting across `(unknown)` + event-entity duplicates.
+  - **⚠️ Additive to webhook (Security) + `lib/vapi.ts` (Security prompt content) — Vijay sync down.**
 - **2026-06-24** — **R36 SHIPPED (2273 green) — "Add context" panel + inbox-review dedup.**
   - **T1 — manual memory context.** New `POST /api/memory/notes` (`{text}`, ≤2000 chars, 401/400 guards):
     runs the text through `extractAndUpsertFacts` (same pipeline as call transcripts → structured facts)
