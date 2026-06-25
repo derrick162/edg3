@@ -1206,6 +1206,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-25** — **DISPATCH S8 — rate-limit hardening (2394 green). S-queue (S1–S8) COMPLETE.** _(synced master first; DISPATCH.md item)_
+  - **(1) Bucket audit — all per-user/per-IP, none global** (keyed by the `checkRateLimit(type, id)` identifier; SQLite-backed; fails open). Documented in `content/security-audit.md`.
+  - **(2) Vapi webhook per-IP ceiling — added** `vapiWebhook` (1000/min/IP) after the secret gate in `/api/vapi/webhook`; replies **200 "received"** on breach (not 429 → no Vapi retry storm); idempotency stays the primary retry defense, this is a DoS backstop.
+  - **(3) Fact-extraction per-user ceiling — added** `factExtraction` (10/hr/user) gating the post-call `extractAndUpsertFacts` call (Haiku cost backstop; skips on breach).
+  - **Tests:** `lib/rateLimit.test.ts` +4. 162 files / 2394 green.
 - **2026-06-25** — **DISPATCH S7 — scheduler multi-user hardening (2391 green).** _(synced master first; DISPATCH.md item)_
   - **(2) Bounded concurrency — the one real change.** `checkAndInitiateCalls` placed calls sequentially (`await` per user), which could exceed the 55s dispatch-lock TTL when many users share a call time. Refactored into a filter pass (sequential, DB-only — preserves the once-a-day guard's consistent view) + a placement pass in **batches of `MAX_CONCURRENT_CALLS = 5`** (`Promise.all`), under Vapi's simultaneous-call limit. Per-user try/catch unchanged.
   - **(1) fires every due user, (3) double-dial prevention (`scheduler_lock` + per-user guard), (4) intended/actual/outcome log (`call_attempts` already records `scheduled_for`/`attempted_at`/`status` and feeds the digest)** — all verified already-present; documented in `content/security-audit.md` (no duplicate `scheduled_calls` table added).

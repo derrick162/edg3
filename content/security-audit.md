@@ -731,3 +731,26 @@ grep false-positive — `user/export` — is a thin re-export of the authed `acc
   `scheduled_calls` table would duplicate it, so it was not added.
 - **Tests:** `scheduler.hardening.test.ts` (S7 block) — 3 users same call time all fire; already-called
   → no double-dial; one failure doesn't sink the others; 7 users → 7 calls across batches.
+
+---
+
+## S8 — Rate-limit hardening (2026-06-25)
+
+- **(1) Per-user vs global audit — all buckets are scoped, none global.** Every entry in
+  `LIMITS` is keyed by the identifier passed to `checkRateLimit(type, id)` — a `user.id` for the
+  user buckets, `getClientIP(req)` for the public ones (login/signup/waitlist). There is no bucket
+  keyed by a constant, so none collapses into a shared global counter under multi-user load. The
+  store is SQLite-backed (survives restart, works across instances) and **fails open** on a DB
+  fault (never locks out a real user).
+- **(2) Vapi webhook per-IP ceiling — added.** New `vapiWebhook` bucket (**1000/min per source IP**)
+  checked right after the secret gate in `/api/vapi/webhook`. Because Vapi is a single upstream this
+  is a DoS backstop, not a tight limit — set far above realistic volume (~4–6 events/call) and, on
+  breach, replies **200 "received"** (not 429) so an over-limit request never triggers a Vapi retry
+  storm. The primary defense against legitimate retries remains the idempotency layer
+  (`claimWebhookEvent`); this only sheds a pathological flood.
+- **(3) Fact-extraction per-user ceiling — added.** New `factExtraction` bucket (**10/hour/user**)
+  gates the post-call `extractAndUpsertFacts` call in the webhook — on breach the Haiku call is
+  skipped (logged). Normal load is ~1/call and calls are already rate-limited, so this is a cost
+  backstop against a pathological extraction loop, not a routine limit.
+- **Tests:** `rateLimit.test.ts` (+4) — webhook ceiling config + per-IP key + blocked verdict;
+  factExtraction config + 11th-call block.

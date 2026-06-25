@@ -111,6 +111,28 @@ describe('checkRateLimit', () => {
     h.check.mockReturnValue({ allowed: false, count: 61, remaining: 0, resetAt: Date.now() + 1_000 });
     expect(checkRateLimit('vapiToolCall', '42').allowed).toBe(false);
   });
+
+  // S8 — Vapi webhook per-IP flood ceiling
+  it('vapiWebhook is a high per-IP/min ceiling (DoS backstop, not a tight limit)', () => {
+    expect(LIMITS.vapiWebhook.limit).toBe(1000);
+    expect(LIMITS.vapiWebhook.windowMs).toBe(60 * 1000);
+  });
+
+  it('vapiWebhook keys by source IP and surfaces a blocked verdict past the ceiling', () => {
+    h.check.mockReturnValue({ allowed: true, count: 1, remaining: 999, resetAt: 0 });
+    checkRateLimit('vapiWebhook', '203.0.113.7');
+    expect((h.check.mock.calls as any[])[0][0]).toBe('vapiWebhook:203.0.113.7');
+    h.check.mockReturnValue({ allowed: false, count: 1001, remaining: 0, resetAt: Date.now() + 1_000 });
+    expect(checkRateLimit('vapiWebhook', '203.0.113.7').allowed).toBe(false);
+  });
+
+  // S8 — per-user fact-extraction ceiling
+  it('factExtraction is 10/hour per user and blocks the 11th', () => {
+    expect(LIMITS.factExtraction.limit).toBe(10);
+    expect(LIMITS.factExtraction.windowMs).toBe(60 * 60 * 1000);
+    h.check.mockReturnValue({ allowed: false, count: 11, remaining: 0, resetAt: Date.now() + 1_000 });
+    expect(checkRateLimit('factExtraction', '42').allowed).toBe(false);
+  });
 });
 
 // ── rateLimitResponse ─────────────────────────────────────────────────────────

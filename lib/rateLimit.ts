@@ -82,6 +82,14 @@ export const LIMITS = {
   callFeedback:         { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R17 T2 — post-call 1–5 star rating)
   gratitudeMode:        { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R20 — gratitude-mode toggle)
   languageSetting:      { limit: 30, windowMs: 60 * 60 * 1000 },   // 30 / hour per user (R22 — call-language toggle)
+  // S8 — anti-flood ceiling on the Vapi webhook, keyed per source IP. Vapi is a single upstream, so
+  // this is effectively a DoS backstop, NOT a tight limit — set well above realistic multi-user
+  // volume (~4–6 events/call) and fail-open so a legit call-ended event is never dropped. The real
+  // retry defense is the idempotency layer (claimWebhookEvent); this only sheds a pathological flood.
+  vapiWebhook:          { limit: 1000, windowMs: 60 * 1000 },      // 1000 / MIN per source IP
+  // S8 — per-user post-call fact-extraction ceiling (Haiku cost). Normal load is ~1/call and calls
+  // are already rate-limited; this is a cost backstop against a pathological extraction loop.
+  factExtraction:       { limit: 10, windowMs: 60 * 60 * 1000 },   // 10 / hour per user
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

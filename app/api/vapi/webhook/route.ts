@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { briefingQueries, userQueries, taskQueries, vapiAuthLogQueries, factQueries, priorityQueries, backgroundJobFailureQueries, failedWebhookQueries, Briefing, getDb, effectiveTimezone, auditLogQueries } from '@/lib/db';
-import { checkInboundCallRateLimit } from '@/lib/rateLimit';
+import { checkInboundCallRateLimit, checkRateLimit, getClientIP } from '@/lib/rateLimit';
 import { dayPeriod, greetingYue } from '@/lib/greeting';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
@@ -37,6 +37,15 @@ export async function POST(req: NextRequest) {
       vapiAuthLogQueries.record('webhook', sec.status); // persist mismatches for admin monitoring
     }
     if (!sec.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
+    // S8 — per-IP flood ceiling. Vapi is a single upstream so this is a DoS backstop only (limit is
+    // far above realistic volume). Reply 200 "received" rather than 429 on breach so an over-limit
+    // request doesn't trigger a Vapi retry storm; the idempotency layer handles legitimate retries.
+    const webhookRl = checkRateLimit('vapiWebhook', getClientIP(req));
+    if (!webhookRl.allowed) {
+      console.warn(`[webhook] per-IP flood ceiling hit — shedding request from ${getClientIP(req)}`);
+      return NextResponse.json({ received: true });
+    }
 
     const body = await req.json();
     const payload = body.message || body;
@@ -295,7 +304,12 @@ export async function POST(req: NextRequest) {
           // Compounding memory: extract durable structured facts and deduplicate against
           // existing ones. Fire-and-forget — never blocks the webhook response.
           const t0 = Date.now();
-          const factsP = import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
+          // S8 — per-user/hour fact-extraction ceiling (Haiku cost backstop). Skip the Haiku call
+          // entirely on breach; normal load is ~1/call so this only trips on a pathological loop.
+          const factExtractRl = checkRateLimit('factExtraction', String(briefing.user_id));
+          const factsP = !factExtractRl.allowed
+            ? Promise.resolve(console.warn(`[webhook] fact extraction rate-limited for user ${briefing.user_id} — skipping`))
+            : import('@/lib/facts').then(m => m.extractAndUpsertFacts(briefing.user_id, transcript, user.name, briefing.id))
             .then((factsExtracted) => {
               const extractionMs = Date.now() - t0;
               const flagged = factsExtracted === 0;
