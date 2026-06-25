@@ -320,6 +320,10 @@ export async function POST(req: NextRequest) {
           // Fire-and-forget, fully self-guarding (never throws) — runs alongside the other learners.
           const peopleModelsP = import('@/lib/peopleModels').then(m => m.updatePeopleModels(briefing.user_id, transcript, user.name))
             .catch(err => { console.error('[webhook] People-model update failed:', err); });
+          // R41 T1 — Conversation State Engine: record how the user spoke (explicit emotional states) as
+          // pattern facts. Fire-and-forget, self-guarding.
+          const signalsP = import('@/lib/transcriptSignals').then(m => m.recordTranscriptSignals(briefing.user_id, transcript))
+            .catch(err => { console.error('[webhook] Transcript-signal recording failed:', err); });
           // Extract open loops / commitments from the call transcript.
           const loopsP = import('@/lib/openLoops').then(m => m.extractAndUpsertOpenLoops(briefing.user_id, { transcript }))
             .then(() => briefingQueries.updateLearningStatus(briefingId, { loops_ok: true }))
@@ -349,7 +353,7 @@ export async function POST(req: NextRequest) {
 
           // DC0-2: once all memory jobs settle, record total latency. A line the Security
           // health digest (T1-3) can scrape; warns when it exceeds the 2-minute target.
-          Promise.allSettled([taskP, factsP, consolidationP, loopsP, episodeP, peopleModelsP]).then(() => {
+          Promise.allSettled([taskP, factsP, consolidationP, loopsP, episodeP, peopleModelsP, signalsP]).then(() => {
             const postCallMs = Date.now() - postCallStart;
             briefingQueries.updateLearningStatus(briefingId, { post_call_ms: postCallMs });
             if (postCallMs > 120_000) {

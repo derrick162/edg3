@@ -3422,6 +3422,19 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R41 T0 + T1 SHIPPED (2300 green) — memory date tz fix + Conversation State Engine L3.**
+  - **T0 — memory date display.** SQLite `datetime('now')` returns `"YYYY-MM-DD HH:MM:SS"` (UTC, no tz
+    marker); `new Date()` parsed it as LOCAL, so a fact saved 10 PM EDT showed the next day. New pure
+    `parseDbTimestamp` in `lib/factSourceLabel.ts` normalizes to a real UTC instant (idempotent for strings
+    that already carry a tz); date-fns `format` then renders in the browser's local tz. Applied in
+    `factSourceLabel` + the dashboard "last updated" line. 3 tests.
+  - **T1 — Conversation State Engine, Layer 3.** New pure `detectTranscriptSignals(transcript)` in
+    `lib/transcriptSignals.ts` → `{ hesitationDensity (markers/100 user words), explicitStateDeclarations
+    [{topic,state}], questionDensity (user questions ÷ sentences) }`. Parses user-only turns from
+    role-prefixed transcripts. `recordTranscriptSignals` (fire-and-forget) persists the durable
+    explicit-state declarations as `pattern` facts, wired into the post-call webhook alongside the other
+    learners. 6 tests. **⚠️ Additive to Security-owned webhook — Vijay sync down.**
+  - **R41 T2/T3 next:** PILLAR-DAILY-CALL Tier 2, then PILLAR-MEMORY M4-3 (gated on ≥30 calls).
 - **2026-06-24** — **R40 T3 + T4 SHIPPED (2291 green) — VAD sensitivity + Add-context char limit.**
   - **T3 — VAD.** Ambient noise (cough, chair bump) was interrupting Edge mid-sentence. Added
     `stopSpeakingPlan: { numWords: 2 }` so ≥2 words are required to stop it. Applied to the inbound

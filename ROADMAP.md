@@ -107,8 +107,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R40 (T1–T4) ALL SHIPPED (2291 green) — ready for PM merge.** T1: evening TIME AWARENESS framing. T2: MOVE CONFIRMATION rule. T3: `stopSpeakingPlan{numWords:2}` so ambient noise can't interrupt Edge (webhook + scheduled-call configs). T4: Add-context limit 2000→6000. ⚠️ **Additive to Security-owned `lib/vapi.ts` + webhook — Vijay sync down.** Idle.)_ | `lib/vapi.ts`, `lib/briefing.ts`, `app/api/vapi/webhook/route.ts`, `app/api/memory/notes/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R41 T0+T1 MERGED TO MASTER (2300 green).** T0: memory date tz fix. T1: Conversation State Engine L3. T2/T3 assessed → nothing buildable (Tier-2 shipped, M4-3 gated). Idle.)_ | `lib/factSourceLabel.ts`, `lib/transcriptSignals.ts`, `app/api/vapi/webhook/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R22 MERGED TO MASTER (2298 green).** Monthly consolidation cron wired. Pillar-Trust scan clean. Idle — awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **D20 SHIPPED.** Memory tab UI polish: fact confidence display (low=italic+muted, medium=dot, high=none), learned-date timezone fix, category headings `text-xs uppercase tracking-widest`. 2291 green. Idle → pillar sweep next.)_ | `app/dashboard/page.tsx` | 2026-06-24 |
 
