@@ -16,11 +16,10 @@ const STEPS: Step[] = ['profile', 'consent', 'calendar', 'activation', 'hero', '
 
 // Activation + hero are hidden "wow" beats — shown as progress inside the
 // calendar step node, not as separate indicator steps.
-const INDICATOR_STEPS: Step[] = ['profile', 'calendar', 'priorities', 'calltime', 'connect'];
+const INDICATOR_STEPS: Step[] = ['profile', 'calendar', 'calltime', 'connect'];
 const INDICATOR_META: { label: string; icon: string }[] = [
   { label: 'About you',  icon: '👤' },
   { label: 'Calendar',   icon: '📅' },
-  { label: 'Focus',      icon: '🎯' },
   { label: 'Your call',  icon: '📞' },
   { label: 'Connect',    icon: '🔗' },
 ];
@@ -28,6 +27,7 @@ const INDICATOR_META: { label: string; icon: string }[] = [
 function indicatorIdx(step: Step): number {
   if (step === 'consent') return 0;
   if (step === 'activation' || step === 'hero') return 1;
+  if (step === 'priorities') return 2; // shown as part of call-time step
   return INDICATOR_STEPS.indexOf(step);
 }
 
@@ -155,9 +155,12 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
+      <p className="text-sm font-medium mb-3 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+        Edge calls you every weekday morning. In 3 minutes, it tells you what matters today, what to move, and what to protect — then it&apos;s done. The more it knows about you, the better that call gets.
+      </p>
       <h2 className="text-2xl font-bold mb-1">Let Edg3 get to know you</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        The more context you share, the sharper your briefings become from day one.
+        Share your context below — goals, strengths, what you&apos;re working on. The more you give, the sharper your first briefing.
       </p>
 
       {/* ChatGPT prompt instruction */}
@@ -329,9 +332,17 @@ function CalendarStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
   return (
     <StepFade>
       <h2 className="text-2xl font-bold mb-1">Connect your calendar</h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Edg3 reads your schedule to spot conflicts, score your day, and suggest what to move or block.
+      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+        Edge reads your schedule before it calls so it already knows what&apos;s coming — no briefing to fill out, no context to re-explain.
       </p>
+
+      {/* First-call preview */}
+      <div className="rounded-xl px-4 py-3 mb-5" style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-20)' }}>
+        <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-faint)' }}>What your first call sounds like</p>
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          &quot;Good morning — you&apos;ve got two meetings today. Your priority is fundraising and you have a free slot at 2pm. Want me to block it for that?&quot;
+        </p>
+      </div>
 
       <div
         className="rounded-xl p-5 mb-3"
@@ -410,18 +421,18 @@ function PrioritiesStep({ onNext }: { onNext: () => void }) {
     onNext();
   }
 
-  const rankLabels = ['Primary', 'Secondary', 'Third'];
+  const rankLabels = ['Most important', 'Second priority', 'Third priority'];
   const placeholders = [
-    'e.g. Extend my runway to 18 months',
-    'e.g. Get to 135 lbs',
-    'e.g. Ship Edg3 MVP by September',
+    'e.g. Get to first revenue by September',
+    'e.g. Get to 135 lbs by end of summer',
+    'e.g. Stop working past 7pm',
   ];
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">Adjust your priorities.</h2>
+      <h2 className="text-2xl font-bold mb-1">What are you trying to accomplish?</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Edg3 checks every briefing to make sure your calendar actually reflects these — not just your intentions.
+        Edge checks every briefing against these — it&apos;ll tell you honestly when your calendar doesn&apos;t match what you say matters.
       </p>
 
       {suggesting ? (
@@ -751,19 +762,19 @@ function CallTimeStep({ onNext }: { onNext: () => void }) {
 
   return (
     <StepFade>
-      <h2 className="text-2xl font-bold mb-1">When should Edg3 call you?</h2>
-      <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-        Edg3 calls you every morning — Monday through Friday. Pick the time that fits before you start work.
+      <h2 className="text-2xl font-bold mb-1">When should Edge call you?</h2>
+      <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
+        This is your standing appointment — Monday through Friday, before the day starts.
       </p>
 
-      {/* Suggested times note (Esther's copy) */}
+      {/* Appointment framing */}
       <div
         className="rounded-xl px-4 py-3 mb-5 flex items-start gap-2"
         style={{ background: 'var(--edg-accent-08)', border: '1px solid var(--edg-accent-15)' }}
       >
         <span className="text-xs mt-0.5 flex-shrink-0" style={{ color: 'var(--text-accent)' }}>✦</span>
         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Most design partners pick 7:30 or 8:00 AM — early enough to reshape the day before it starts.
+          Pick a time you&apos;ll actually answer — even on a bad morning. 7:30 or 8:00 AM works well for most people.
         </p>
       </div>
 
@@ -1047,7 +1058,7 @@ function OnboardingContent() {
         <div className="text-center mb-6">
           <span className="logo-text text-2xl">EDG3</span>
           <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
-            Step {Math.min(indicatorIdx(step) + 1, INDICATOR_STEPS.length)} of {INDICATOR_STEPS.length}
+            Step {Math.min(indicatorIdx(step) + 1, INDICATOR_STEPS.length)} of 4
           </p>
         </div>
 
