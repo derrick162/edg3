@@ -1289,6 +1289,9 @@ Always end with warmth. This person is building something — remind them of tha
 
       },
 
+      // R40 T3 — 2 words required before Edge stops talking; ambient noise (cough/chair bump) is 0 words.
+      stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.3, backoffSeconds: 1 },
+
       messagePlan: {
 
         idleMessages: [
