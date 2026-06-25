@@ -196,6 +196,17 @@ describe('extractFactsFromTranscript — userName injection', () => {
     expect(promptContent).toMatch(/assistant.*NOT a user preference|NOT a user preference/);
   });
 
+  // R39 T1/T2 — read more transcript (8000, not 2000) + person includes "friend" + explicit pet guidance.
+  it('reads up to 8000 transcript chars and includes friend + pet guidance (R39)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    const longTranscript = 'A'.repeat(2500) + ' JAMIE_THE_DOG_MARKER ' + 'B'.repeat(2500);
+    await extractFactsFromTranscript(longTranscript);
+    const prompt = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain('JAMIE_THE_DOG_MARKER'); // would have been cut by the old 2000-char slice
+    expect(prompt).toContain('friend, close friend');
+    expect(prompt).toMatch(/PETS/);
+  });
+
   // R34 T1 — commitments ("I'm going to tackle X today") are a first-class extraction category.
   it('includes the commitment category in the extraction prompt (R34)', async () => {
     h.create.mockResolvedValue(textResponse(JSON.stringify([])));

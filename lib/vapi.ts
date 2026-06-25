@@ -281,7 +281,7 @@ ${memBlockYue}${quoteInstructionYue}
 
 
 
-記低要求：如果 ${firstName} 講「幫我記住」、「記住」、「唔好唔記得」——就算喺感恩分享中途——即刻 call rememberPreference（topic 填返關於邊個人或者邊個地方），用一句簡短確認（「收到，我會記住」），然後返返去感恩嘅話題。呢個係唯一一樣同工作有關、但你永遠唔會押後嘅嘢。
+記低要求：如果 ${firstName} 講「幫我記住」、「記住」、「唔好唔記得」——就算喺感恩分享中途——即刻 call rememberPreference（topic 填返關於邊個人、寵物或者邊個地方；如果係人就用 category 'person'），用一句簡短確認（「收到，我會記住」），然後返返去感恩嘅話題。呢個係唯一一樣同工作有關、但你永遠唔會押後嘅嘢。
 
 重要：唔好轉去講工作、日曆或者優先事項。呢個係純粹嘅感恩分享。如果 ${firstName} 想講工作，溫柔咁帶返：「呢啲留返早上匯報先講——而家，仲有咩值得感恩？」`;
 
@@ -331,7 +331,7 @@ After all three items: call the recordGratitude tool with the three items verbat
 
 
 
-REMEMBER REQUESTS: If ${firstName} says "please remember", "remember that", "make a note that", or "don't forget" — even mid-gratitude — call rememberPreference IMMEDIATELY (topic = the person/place it's about), confirm in one short sentence ("Got it — I'll remember that"), then return to the gratitude flow. This is the one work-adjacent action you never defer.
+REMEMBER REQUESTS: If ${firstName} says "please remember", "remember that", "make a note that", or "don't forget" — even mid-gratitude — call rememberPreference IMMEDIATELY (topic = the person, pet, or place it's about; for a person use category 'person'), confirm in one short sentence ("Got it — I'll remember that"), then return to the gratitude flow. This is the one work-adjacent action you never defer.
 
 PEOPLE DEEPENING: If ${firstName} brings up a person you only know 1–2 facts about and it fits the warm flow, you may ask ONE natural follow-up to learn more — "how's Patrick doing these days?" — once per person, never an interrogation. If they answer, call rememberPreference (topic = that person) with what they share. Then return to gratitude.
 

@@ -3247,6 +3247,21 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R39 SHIPPED (2287 green, CRITICAL) — memory extraction bug fixes (Jamie the dog + Gabby miscategorized).**
+  - **T1 — truncation.** `lib/facts.ts` extraction read only `transcript.slice(0, 2000)` (~300 words / first
+    minute) with `max_tokens: 600` — everything later in a 5–10 min call was silently dropped (Jamie the dog
+    was never saved). → `slice(0, 8000)` + `max_tokens: 1000` + label updated. 1 test (a marker past the old
+    2000-char cutoff now reaches the prompt).
+  - **T2 — categories.** The `person` category listed only investor/client/colleague/family — "friend" was
+    missing, so Gabby landed in `fact`. Added friend/close friend/romantic partner. Added explicit PET
+    guidance to `fact` (dog/cat → `category:'fact'`, `entity`=pet name).
+  - **T3 — rememberPreference.** `tool-call/route.ts` `VALID_FACT_CATS` lacked `'person'`, so a mid-call
+    `rememberPreference(category:'person')` silently fell back to `'preference'`. Added `'person'`. Updated
+    both gratitude REMEMBER REQUESTS lines (EN + 廣東話) in `lib/vapi.ts` to "the person, pet, or place … for
+    a person use category 'person'".
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` (prompt content) + Shared `tool-call/route.ts` (Core tool
+    behavior) — Vijay sync down.** (R39 was dispatched before its roadmap commit landed on master — implemented
+    from the dispatch message; R36/R37/R38 were already shipped.)
 - **2026-06-24** — **R37 + R38 SHIPPED (2286 green) — social mental models + `(unknown)`-entity resolution.**
   - **R37 (M4-4) — social mental models.** **T1:** new `lib/peopleModels.ts` `updatePeopleModels` —
     fire-and-forget from the post-call webhook; for each person-category fact actually mentioned this

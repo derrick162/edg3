@@ -58,7 +58,9 @@ export async function extractFactsFromTranscript(
 
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
+      // R39 T1 — a 5–10 min call is 8–15k chars; 600 tokens over 2k chars dropped everything after the
+      // first minute (Jamie the dog was never saved). Read more transcript + allow more facts out.
+      max_tokens: 1000,
       messages: [{
         role: 'user',
         content: `Extract up to 10 DURABLE facts about the user from this call transcript.
@@ -67,11 +69,11 @@ ${userLine}${knownNamesLine}${existingFactsLine}
 Each item: {"category":"<category>","statement":"<one clear sentence>","entity":"<name or null>","confidence":"high"|"low"}
 
 Categories:
-- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
+- "person"     — a clearly-named HUMAN in a real relationship with the user (friend, close friend, romantic partner, investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
 - "project"    — a project or initiative the user is building or running
 - "goal"       — a stated goal, aspiration, or deadline
 - "preference" — how the user likes to work, communicate, or make decisions
-- "fact"       — any other durable fact about the user's life or business
+- "fact"       — any other durable fact about the user's life or business. PETS go here: a dog, cat, or other pet → category "fact", entity = the pet's name (e.g. "Jamie is Derrick's dog" → {"category":"fact","entity":"Jamie","statement":"Jamie is Derrick's dog"}).
 - "commitment" — something the user said THEY WILL DO, especially near-term ("I'm going to tackle the Railway fix today", "I'll call the bank tomorrow", "I plan to finish the deck this week", "I need to get to the gym"). Capture the action as the statement, entity null. These are NOT timeless — they're for next-call accountability, so do extract them even though they're time-bound (this overrides the "timeless only" rule for commitments). One commitment per distinct intention.
 
 Rules:
@@ -87,8 +89,8 @@ Rules:
 - DO capture preferences when the user expresses how they like to work, communicate, schedule, or decide ("I prefer mornings", "keep meetings short", "text me, don't call") — these are easy to miss but valuable.
 - Return [] if nothing durable found.
 
-Transcript (first 2000 chars):
-${transcript.slice(0, 2000)}`,
+Transcript (first 8000 chars):
+${transcript.slice(0, 8000)}`,
       }],
     });
 
