@@ -2431,6 +2431,15 @@ export const factQueries = {
     ).run(encryptField(statement), entity, id, userId);
   },
 
+  // C10 — flag an address fact whose geocode lookup failed. System action (not a user edit):
+  // rewrites the statement (caller appends " [address unverified]") and downgrades confidence to
+  // 'low' so the dashboard surfaces a ⚠ "please verify" badge. Never auto-corrects the address.
+  flagAddressUnverified: (userId: number, id: number, statement: string): void => {
+    getDb().prepare(
+      "UPDATE facts SET statement=?, confidence='low' WHERE id=? AND user_id=?"
+    ).run(encryptField(statement), id, userId);
+  },
+
   // R25 T6 — re-anchor a fact's learn date to the original (oldest) when a re-stated goal merges
   // into it, so the "learned MMM d" provenance stamp doesn't jump forward to today.
   updateLearnedAt: (userId: number, id: number, learnedAt: string): void => {

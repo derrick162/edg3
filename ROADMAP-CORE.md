@@ -3422,6 +3422,32 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-25** — **C10 SHIPPED (2422 green) — address-fact verification (flag unverified addresses).**
+  - **Problem:** STT mishears street names ("Queens Quay East" → "Queenskey East") and the wrong
+    address lands as a high-confidence fact. Fix: detect → verify → FLAG (never auto-correct).
+  - **Detection** (`lib/facts.ts`): pure `looksLikeAddress(text)` — requires a street number AND a
+    street-type word OR a trailing directional (East/West/North/South). The directional matters
+    because STT often garbles the street-type word itself, so it's the only surviving signal; the
+    leading-number requirement keeps "heads east" from matching. `addressQueryFromStatement` pulls
+    the geocodable span (first number onward).
+  - **Verification:** `verifyAddressViaNominatim(address)` hits the free OpenStreetMap Nominatim
+    geocoder (no key) with the required `User-Agent`, a 3s `AbortController` timeout, and full
+    try/catch — returns true (≥1 match) / false (0 matches) / null (error/timeout, inconclusive).
+  - **Flagging:** `flagUnverifiedAddressFacts(userId, scopeQueries?)` flags only definitively-
+    unresolved (false) addresses — appends ` [address unverified]` to the statement and downgrades
+    confidence to `low` via new additive `factQueries.flagAddressUnverified`. Never downgrades on a
+    null (inconclusive) result. Wired into `extractAndUpsertFacts` after consolidation, scoped to
+    addresses surfaced this call (no re-hitting Nominatim for the whole history); fully guarded so
+    it never blocks fact storage.
+  - **Dashboard** (`app/dashboard/page.tsx`): a fact whose statement contains `[address unverified]`
+    renders a distinct amber ⚠ "Address not verified — please edit" badge (the marker is stripped
+    from the displayed text and from the edit prefill); takes precedence over the generic
+    low-confidence verify badge.
+  - **No migration** — flag is encoded in the statement + existing confidence column. NEVER
+    auto-corrects; manual correction stays with the user.
+  - New `lib/address-verify.test.ts` — 11 tests (detection, query extraction, geocoder
+    true/false/null, flag-on-miss, leave-on-hit, no-downgrade-on-null, non-address ignored).
+    2411 → 2422. tsc + next build clean.
 - **2026-06-24** — **C9 SHIPPED (2352 green) — open-call tool reliability.**
   - **(1) All calendar tools on open calls:** outbound open calls go through `initiateCall` (shared
     toolIds list); inbound calls use `toolIds: CALENDAR_TOOL_IDS` in the webhook assistant-request

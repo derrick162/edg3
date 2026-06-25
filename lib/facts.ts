@@ -314,6 +314,80 @@ export function isVagueEntity(entity: string | null | undefined): boolean {
   return VAGUE_ENTITY_WORDS.has(core);
 }
 
+// C10 — address-fact verification. STT mishears street names ("Queens Quay East" → "Queenskey
+// East") and the wrong address lands as a high-confidence fact. We DETECT address-like facts,
+// VERIFY them against the free OpenStreetMap Nominatim geocoder, and FLAG (never auto-correct)
+// the ones that don't resolve, so the user can fix them.
+export const ADDRESS_UNVERIFIED_MARKER = '[address unverified]';
+// Street-type words OR a trailing directional (East/West/North/South) — STT often garbles the
+// street-type word itself ("Queens Quay East" → "Queenskey East"), so the directional is the
+// only surviving address signal. The leading-number requirement keeps "heads east" from matching.
+const STREET_TYPE_RE = /\b(street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|way|quay|lane|ln|court|ct|place|pl|crescent|cres|terrace|trail|parkway|pkwy|highway|hwy|circle|cir|square|sq|east|west|north|south)\b/i;
+
+/** True if a fact statement looks like it contains a street address (a number + a street-type word). */
+export function looksLikeAddress(text: string | null | undefined): boolean {
+  if (!text) return false;
+  if (text.includes(ADDRESS_UNVERIFIED_MARKER)) return false; // already flagged — don't re-check
+  // Require a street number AND a street-type word, so "ran 5 miles" / bare directions don't match.
+  return /\b\d{1,6}\b/.test(text) && STREET_TYPE_RE.test(text);
+}
+
+/** Extract the geocodable span (from the first street number onward) from a statement. */
+export function addressQueryFromStatement(text: string): string {
+  const m = text.match(/\d{1,6}\s+.*/);
+  return (m ? m[0] : text).slice(0, 200).trim();
+}
+
+/**
+ * Geocode an address via OpenStreetMap Nominatim (free, no key). Returns true if ≥1 match,
+ * false if 0 matches, null on error/timeout (can't tell — never downgrade a fact on null).
+ * 3s timeout; sends the User-Agent Nominatim requires.
+ */
+export async function verifyAddressViaNominatim(address: string): Promise<boolean | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'edg3-app/1.0' }, signal: controller.signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return null; // timeout / network error — inconclusive
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Verify the user's address-like facts and flag the ones that don't geocode. Never blocks fact
+ * storage (caller awaits inside a guarded fire-and-forget). `scopeQueries`, when given, limits the
+ * check to addresses surfaced this call (so we don't re-hit Nominatim for the whole history).
+ * Returns the number of facts flagged.
+ */
+export async function flagUnverifiedAddressFacts(userId: number, scopeQueries?: string[]): Promise<number> {
+  let flagged = 0;
+  try {
+    const active = factQueries.getAll(userId).filter(f => looksLikeAddress(f.statement));
+    for (const f of active) {
+      const query = addressQueryFromStatement(f.statement);
+      if (scopeQueries && !scopeQueries.some(c =>
+        f.statement.toLowerCase().includes(c.toLowerCase()) || query.toLowerCase().includes(c.toLowerCase())
+      )) continue;
+      const verdict = await verifyAddressViaNominatim(query);
+      if (verdict === false) { // definitively not found → flag (never auto-correct)
+        factQueries.flagAddressUnverified(userId, f.id, `${f.statement} ${ADDRESS_UNVERIFIED_MARKER}`);
+        flagged++;
+        console.warn(`[facts] address unverified for user ${userId}: "${query.slice(0, 60)}"`);
+      }
+      // verdict true → leave as-is; null → inconclusive, leave as-is.
+    }
+  } catch (e) {
+    console.error('[facts] address verification failed:', e instanceof Error ? e.message : e);
+  }
+  return flagged;
+}
+
 // R38 Part B — an entity that names an EVENT (a friend's bachelor party, a wedding) rather than a
 // person. These should be filed as an attribute of the person, not as their own entity.
 const EVENT_ENTITY_RE = /\b(party|trip|conference|wedding|meeting|summit|event|retreat|reunion|gala|offsite|getaway|bachelor|bachelorette)\b/i;
@@ -458,6 +532,12 @@ export async function extractAndUpsertFacts(
     const removed = consolidateFacts(userId);
     if (removed > 0) {
       console.log(`[facts] Consolidated ${removed} duplicate facts for user ${userId}`);
+    }
+    // C10 — verify any address-like facts surfaced this call (STT often garbles street names);
+    // flag the ones that don't geocode. Guarded + scoped — never blocks fact storage.
+    const addrQueries = facts.filter(f => looksLikeAddress(f.statement)).map(f => addressQueryFromStatement(f.statement));
+    if (addrQueries.length > 0) {
+      await flagUnverifiedAddressFacts(userId, addrQueries);
     }
     // Notify ONLY on genuinely NEW facts the user will actually see in the memory tab —
     // the net row increase after upserts (which UPDATE existing facts, not just insert) AND

@@ -3559,11 +3559,21 @@ function DashboardInner() {
                                   {!indented && f.entity && (
                                     <span className="font-semibold" style={{ color: f.confidence === 'low' ? 'var(--text-muted)' : 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
                                   )}
-                                  {correctName(factDisplayStatement(f.category, f.statement), firstName)}
+                                  {correctName(factDisplayStatement(f.category, f.statement.replace(/\s*\[address unverified\]\s*/i, ' ').trim()), firstName)}
                                   {f.confidence === 'medium' && (
                                     <span aria-hidden="true" className="ml-1.5" style={{ color: 'var(--text-faint)' }}>·</span>
                                   )}
-                                  {f.confidence === 'low' && (
+                                  {/* C10 — address fact whose geocode failed: distinct amber "please verify" badge. */}
+                                  {f.statement.includes('[address unverified]') ? (
+                                    <button
+                                      title="Address not verified — tap to edit"
+                                      onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement.replace(/\s*\[address unverified\]\s*/i, ' ').trim()); setDeletingFactId(null); }}
+                                      className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
+                                      style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1, fontStyle: 'normal' }}
+                                    >
+                                      &#x26A0; Address not verified — please edit
+                                    </button>
+                                  ) : f.confidence === 'low' && (
                                     <button
                                       title="Edg3 isn't sure it caught this right — tap to fix"
                                       onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
