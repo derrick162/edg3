@@ -49,6 +49,56 @@ more trusted/usable for September?"
 - For bigger UI changes, prefer handing Core a clear spec OR making the visual change yourself
   and coordinating — whichever keeps conflicts smallest. The PM/CTO will referee overlaps.
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 24 — "Add context" card visual design)
+
+> `git merge master` first. One ticket. **Coordinate with Core R36** — Darren is building the API and wiring the functional textarea; your job is the visual layer.
+
+---
+
+### T1 — Design the "Add context" card in the Memory tab (MEDIUM — 1.5h)
+
+**Context:** Core (Darren) is adding a free-form text input at the top of the Memory tab so Derrick can drop context directly into Edge's memory without needing a call. Darren owns the behavior (API call, fact extraction, success/error state logic). You own how it looks and feels.
+
+**Coordination rule:** Darren ships the functional card first (basic textarea + button, unstyled or minimally styled). You then do a design pass on the same section of `app/dashboard/page.tsx`. Claim `app/dashboard/page.tsx` in the Status Board, sync master after Darren merges, then apply your changes on top. If Darren hasn't merged yet when you start, build the card visually using placeholder handlers (`onSubmit={() => {}}`) and coordinate the merge order with the PM.
+
+**What to design:**
+
+The card sits at the top of the Memory tab, above "What Edge knows." It should feel like a natural place to drop a quick thought — low friction, not clinical.
+
+1. **Card shell:** Use the existing `glass-card` class. Keep it compact — this is a utility widget, not a hero element. No heavy header, no icon forest.
+
+2. **Label + textarea:**
+   - Label: `"Add context"` in the standard section-header style (same weight/size as "What Edge knows")
+   - Subtext: one line in muted color — `"Anything Edge should know — a person, a goal, an update"`
+   - Textarea: use the `.input` token class from `globals.css`. `rows=3`, `resize-y`. Placeholder: `"e.g. Patrick just moved back to Toronto and is looking for work in finance"`. Max 2000 chars; show a soft char counter near the bottom-right of the textarea when the user is within 200 chars of the limit (`text-muted`, small).
+
+3. **Save button:** `.btn-primary`, right-aligned. Label: `"Save"`. Disabled (`.btn-primary:disabled` opacity) when textarea is empty or mid-submit.
+
+4. **Confirmation state (success):** Inline below the textarea — a single line in `--edg-success` (or equivalent green token) with a checkmark: `"✓ Saved — extracted N fact(s)"`. Auto-fades after 4 seconds. No toast, no modal.
+
+5. **Error state:** Same position, `--edg-error` (or red token): `"Something went wrong — try again"`.
+
+6. **📝 label in call notes:** In the existing call notes list below, entries where `category === 'user_note'` should render with a `📝` prefix and `"Added manually"` replacing the call date. Style the prefix the same way the call-note date is styled — it's metadata, not content. No other change to the call note list layout.
+
+**Tokens to use (all in `app/globals.css`):**
+- Card: `.glass-card`
+- Input: `.input`
+- Button: `.btn-primary`
+- Muted text: `var(--edg-muted)` or existing muted class
+- Success color: check existing success/green token in `globals.css`; add `--edg-success` if missing
+- Error color: check existing error/red token; add `--edg-error` if missing
+
+**Do NOT add new component files** — this is contained within the Memory tab section of `app/dashboard/page.tsx` and `app/globals.css` token additions only.
+
+**Tests:**
+- Memory tab renders "Add context" card with label, subtext, textarea, and Save button
+- Save button has disabled styling when textarea empty
+- Confirmation line renders in success color
+- Error line renders in error color
+- `user_note` call notes show 📝 prefix
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-23 (ROUND 23 — Sidebar cleanup + score sparkline fix)
 
 > `git merge master` first. Two tickets. **Do both BEFORE R22.**
