@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **M4-6 SHIPPED (2249 green) — ready for PM merge** (R28–R35 + R29 Part D + M4-5 also awaiting merge). Memory Ranking Engine: pure `memoryRankScore` (goal align/recency/confidence/ref-freq/category) + `facts.reference_count` + wired into call-memory & briefing-pack context (top-20, ref-count bump). ⚠️ Additive to Shared `lib/db.ts`. ⚠️ M4-5 cron wiring still pending Security. Working the Memory pillar in order (M4-7 next).)_ | `lib/memorySalience.ts`, `lib/callMemory.ts`, `lib/briefing.ts`, `lib/db.ts` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R21 (T1+T2+T3) + R20 NANP timezone fallback ALL DONE (2196 green) — merged to master 2026-06-24; idle.** R21 T1: explicit `ERROR:` tool-call failure strings. T2: `work_schedule` schema. T3: QA sweep → `qa-log.md`. **R20:** `lib/phoneTimezone.ts` infers tz from NANP area code in `effectiveTimezone` before LA default.)_ | `lib/phoneTimezone.ts`, `lib/db.ts`, `app/api/vapi/tool-call/route.ts` | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R32–R34 dispatched 2026-06-24. Full flywheel sprint: trust fixes + memory depth + accountability + briefing hygiene. Priority order: R32 → R31 → R30 → R29 → R28 → R33 → R34.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R28–R35 + R29D + M4-5 + M4-6 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** Full flywheel sprint shipped: false-confirm fix, score mismatch fix, work hours, commitment tracking, people deepening, opener hygiene, prior-call continuity, structured grounding contract, hierarchical memory synthesis, Memory Ranking Engine, browser timezone auto-detect. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(✅ **Full sprint merged + deployed 2026-06-24. Both lanes idle. Next: Conversation State Engine (transcript layer) per Derrick memo — dispatch pending.**)_ | `ROADMAP.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R23 + R22 SHIPPED — merged to master.** R23: sidebar cleanup + sparkline. R22: briefings date grouping + score trust signals. Pillars exhausted. Idle.)_ | — | 2026-06-23 |
 
 ---
