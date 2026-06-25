@@ -289,6 +289,33 @@ export async function runNightlyScores(): Promise<void> {
   console.log(`[scheduler] Nightly scores: ${done}/${users.length} computed`);
 }
 
+// ── Weekly memory synthesis (M4-5) ───────────────────────────────────────────
+// Core ships the per-user synthesis logic (runWeeklySynthesis in lib/facts.ts); the cron wiring
+// is Security's. For each active user, produce a "week narrative" fact from the last 7 days of
+// calls. The per-user fn self-gates (≥3 calls) and is best-effort, so most users no-op cheaply.
+// Dynamic import keeps facts.ts's Anthropic/Haiku deps out of the scheduler's module-load graph.
+export async function runWeeklySynthesisSweep(): Promise<void> {
+  const FactsLib = await import('./facts');
+  const runWeeklySynthesis = (FactsLib as Record<string, unknown>)['runWeeklySynthesis'] as
+    ((userId: number) => Promise<boolean>) | undefined;
+
+  if (typeof runWeeklySynthesis !== 'function') {
+    console.log('[scheduler] runWeeklySynthesis not exported from lib/facts — skipping weekly synthesis');
+    return;
+  }
+
+  const users = getDb().prepare('SELECT id FROM users WHERE onboarding_complete = 1').all() as Array<{ id: number }>;
+  let written = 0;
+  for (const { id } of users) {
+    try { if (await runWeeklySynthesis(id)) written++; }
+    catch (e) {
+      console.error(`[scheduler] weekly synthesis failed for user ${id}:`, e);
+      backgroundJobFailureQueries.record('weekly_synthesis', id, String(e));
+    }
+  }
+  console.log(`[scheduler] Weekly synthesis: ${written}/${users.length} narratives written`);
+}
+
 // ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────
 // Decays confidence_score on active facts by category tier. Facts that decay below
 // 0.3 surface to Core's reconfirmation trigger during the next morning briefing.
@@ -464,9 +491,12 @@ export function startScheduler() {
     runNightlyScores().catch(e => console.error('[scheduler] runNightlyScores failed:', e));
   });
 
-  // Weekly at 4am UTC every Sunday: decay confidence scores on active facts.
+  // Weekly at 4am UTC every Sunday: decay confidence scores on active facts, then run the
+  // M4-5 memory synthesis sweep (independent — each guards its own errors so one can't block
+  // the other). Synthesis is dynamic-imported inside the sweep to keep its LLM deps lazy.
   cron.schedule('0 4 * * 0', () => {
     decayFactConfidenceScores();
+    runWeeklySynthesisSweep().catch(e => console.error('[scheduler] runWeeklySynthesisSweep failed:', e));
   });
 
   // R14 T2 — proactive push notifications. Every 30 min so we can hit local 7:30 (low-recovery)

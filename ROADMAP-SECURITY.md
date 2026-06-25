@@ -1206,6 +1206,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **M4-5 cron wiring — weekly memory synthesis scheduled (2268 green).** _(pillar backlog; synced master first)_
+  - Core shipped `runWeeklySynthesis(userId)` in `lib/facts.ts` (per-user "week narrative" from the last 7 days of calls, self-gates at ≥3 calls); the **scheduler wiring was Security's domain and was missing**.
+  - **Fix (`lib/scheduler.ts`):** new exported `runWeeklySynthesisSweep()` — loops `onboarding_complete` users, calls `runWeeklySynthesis` once each, per-user `try/catch` records `weekly_synthesis` job failures without aborting the sweep; dynamic `import('./facts')` + runtime function-check keeps the LLM deps lazy and degrades to a no-op if the export ever goes missing. Wired into the existing **Sunday 4am UTC** cron (`0 4 * * 0`) alongside the confidence-decay job (each guards its own errors).
+  - **Tests:** new `lib/weekly-synthesis-sweep.test.ts` (once-per-active-user; per-user failure recorded + sweep continues; empty set no-op). 148 files / 2268 green.
 - **2026-06-24** — **R20 follow-up — NANP area-code timezone fallback (2196 green).** _(Kevin greenlit the code-level defense)_
   - **Why:** `effectiveTimezone` defaulted to `America/Los_Angeles` for any user with no valid stored timezone — so a user who connects via a Vapi call before ever opening the dashboard gets greeted/scheduled in the wrong zone (the "Good afternoon at 7:37 PM" bug). Browser auto-detect is Core's durable fix (R35); this is the net for Vapi-first users.
   - **Fix:** new pure `lib/phoneTimezone.ts` — `timezoneFromPhone(phone)` maps a +1 NANP area code to an IANA zone (full US zones incl. Arizona/Alaska/Hawaii + all Canadian provinces; Toronto 416/647/… → `America/Toronto`). Wired into `effectiveTimezone` as the step BEFORE the LA default: `current_timezone → timezone → phone area code → LA`. Added `phone_number?` to the param type (additive; existing `User` callers already carry it). Unmapped/non-NANP numbers return null → unchanged LA default, so this only ever improves accuracy.
