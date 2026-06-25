@@ -16,6 +16,12 @@ import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, Calenda
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
 
+// D27 — beforeinstallprompt is not in the TS lib; extend Window
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 // Speech-to-text mis-hears the user's name (e.g. "Derek" for "Derrick"). Stored transcripts
 // and call-derived memories are verbatim, but we know the real spelling from the profile — so
 // for DISPLAY only, correct capitalized words that are clearly a mishearing of the user's first
@@ -1468,6 +1474,14 @@ function DashboardInner() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  // D27 — PWA install prompt
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+  const [installDismissed, setInstallDismissed] = useState(false);
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -2297,6 +2311,39 @@ function DashboardInner() {
       {linkedNotice && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 50, background: 'var(--edg-success-tint)', border: '1px solid var(--edg-success-border)', color: 'var(--edg-success)', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
           ✓ Google account linked
+        </div>
+      )}
+
+      {/* D27 — PWA install banner (mobile, once per session) */}
+      {installPrompt && !installDismissed && (
+        <div
+          className="toast-slide-in"
+          style={{
+            position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 80, background: 'var(--surface-card)', border: '1px solid var(--edg-accent-20)',
+            borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12,
+            boxShadow: '0 4px 24px rgba(0,0,0,0.3)', maxWidth: 'calc(100vw - 32px)',
+          }}
+        >
+          <span className="logo-text text-sm">E</span>
+          <p className="text-xs flex-1" style={{ color: 'var(--text-body)' }}>Add Edg3 to your home screen</p>
+          <button
+            className="btn-primary text-xs py-1.5 px-3"
+            onClick={() => {
+              (installPrompt as BeforeInstallPromptEvent).prompt();
+              setInstallDismissed(true);
+            }}
+          >
+            Install
+          </button>
+          <button
+            onClick={() => setInstallDismissed(true)}
+            className="text-xs"
+            style={{ color: 'var(--text-faint)' }}
+            aria-label="Dismiss install prompt"
+          >
+            ✕
+          </button>
         </div>
       )}
 
