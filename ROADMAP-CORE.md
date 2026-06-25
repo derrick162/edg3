@@ -31,6 +31,86 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 37 — Social mental models: per-person context)
+
+> `git merge master` first. Two tickets. **Do after R36.**
+
+---
+
+### T1 — Sleep-time agent: update person model after every call they're mentioned (HIGH — 1.5h)
+
+**Context:** The `people_models` table is already live (Vijay shipped the schema — `lib/db.ts` `peopleModelQueries`: `upsert`/`getForUser`/`listForUser`/`deleteForUser`, all four fields encrypted at rest). The table has four fields per person: `goals`, `communication_style`, `relationship_state`, `last_interaction`. Right now it's always empty because nothing writes to it. This ticket wires the write path.
+
+**Fix — `lib/facts.ts` (or a new `lib/peopleModels.ts`):**
+
+Add `updatePeopleModels(userId: number, transcript: string, userName: string): Promise<void>` — called fire-and-forget from the post-call pipeline in `app/api/vapi/webhook/route.ts` alongside `extractAndUpsertFacts`.
+
+Logic:
+1. From the transcript, extract the names of any people mentioned (reuse the people-category facts already being extracted — just look up `category='people'` facts updated in this call's extraction pass, or pass them in).
+2. For each person, fetch their existing `people_models` row (if any).
+3. Make one Haiku call with the transcript + existing model (if any) and ask it to return an updated model for that person:
+
+```
+You are updating a relationship model for a person named {name} based on a conversation transcript.
+
+Current model (may be empty):
+Goals: {existing.goals ?? 'unknown'}
+Communication style: {existing.communication_style ?? 'unknown'}
+Relationship state: {existing.relationship_state ?? 'unknown'}
+Last interaction: {existing.last_interaction ?? 'unknown'}
+
+Transcript excerpt (mentions of {name} only):
+{relevantExcerpts}
+
+Return ONLY a JSON object with these four fields. Only update a field if the transcript provides new signal — otherwise preserve the existing value. If nothing is known, use null.
+{
+  "goals": string | null,
+  "communication_style": string | null,
+  "relationship_state": string | null,
+  "last_interaction": string | null
+}
+```
+
+4. Call `peopleModelQueries.upsert(userId, name, updatedModel)`.
+5. Degrade silently on any error — never throw, never block the webhook response.
+
+**Scope guard:** Only process people who appear in `people`-category facts for this user (not arbitrary names from the transcript). Cap at 5 people per call to bound Haiku cost.
+
+**Tests:**
+- Transcript mentioning Patrick with new context → `people_models` row created/updated for Patrick
+- Transcript with no people-category facts → no Haiku call, no error
+- Haiku call fails → silent catch, no crash, existing model unchanged
+- Second call about same person → model merges (preserves prior fields not mentioned in new call)
+
+---
+
+### T2 — Briefing injection: surface person model when they're on tomorrow's calendar (HIGH — 1h)
+
+**Context:** Once person models are being written (T1), they need to show up in the briefing when relevant. The highest-value moment: when someone is on Derrick's calendar tomorrow, inject everything Edge knows about them so Edge can brief him on the relationship, not just the event.
+
+**Fix — `lib/briefing.ts`:**
+
+After the calendar fetch, for each person appearing on **tomorrow's** calendar events (extract first/last name from event summary/attendees), call `peopleModelQueries.getByName(userId, name)` (add this lookup to `peopleModelQueries` if it doesn't exist — case-insensitive name match).
+
+If a model exists and has at least one non-null field, build a `PEOPLE CONTEXT` block and inject it into the briefing prompt:
+
+```
+PEOPLE CONTEXT (for tomorrow's meetings — use this to brief Derrick on the relationship):
+- Patrick Chen (2pm call): Goals: job hunting in finance after moving back to Toronto. Relationship state: close friend, bachelor party coming up. Last interaction: discussed the move, seemed stressed about the transition.
+```
+
+Inject this block after the CALENDAR section and before the PRIORITIES section. Keep it compact — one line per person, max 3 people, only include people with a model. If no models exist, omit the block entirely (degrade silently).
+
+Also: in `lib/vapi.ts`, add a PEOPLE CONTEXT note to the MEMORY/GROUNDING section so Edge knows to reference this block when the person comes up mid-call ("Patrick's on your calendar today — I know he just moved back to Toronto, worth asking how the landing is going").
+
+**Tests:**
+- Tomorrow's calendar has Patrick → `PEOPLE CONTEXT` block injected with his model
+- Tomorrow's calendar has a person with no model → they don't appear in the block
+- No people models exist → block omitted, briefing unaffected
+- More than 3 people with models on tomorrow's calendar → only top 3 injected (by model completeness: count of non-null fields)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 36 — Manual memory context input + inbox dedup)
 
 > `git merge master` first. Two tickets.
