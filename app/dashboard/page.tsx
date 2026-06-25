@@ -805,11 +805,11 @@ function ActivityTab() {
 
   if (loading) return (
     <div className="space-y-3 mt-2">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="glass-card p-4 animate-pulse">
-          <div className="h-3 rounded w-1/3 mb-3" style={{ background: 'var(--edg-fill-04)' }} />
-          <div className="h-4 rounded w-3/4 mb-2" style={{ background: 'var(--edg-fill-04)' }} />
-          <div className="h-3 rounded w-1/2" style={{ background: 'var(--edg-fill-04)' }} />
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} className="glass-card p-4">
+          <div className="skeleton h-3 w-1/3 mb-3 rounded" />
+          <div className="skeleton h-4 w-3/4 mb-2 rounded" />
+          <div className="skeleton h-3 w-1/2 rounded" />
         </div>
       ))}
     </div>
@@ -2595,6 +2595,16 @@ export default function Dashboard() {
               </div>
             )}
 
+            {whoopConnected === false && (
+              <div className="px-2">
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                  Connect Whoop in{' '}
+                  <a href="/settings" style={{ color: 'var(--edg-indigo)' }}>Settings</a>{' '}
+                  to see your recovery data here.
+                </p>
+              </div>
+            )}
+
             {whoopConnected === true && (
               <div>
                 {whoopData && whoopData.recoveryScore !== null && whoopData.tier && (
@@ -4021,9 +4031,9 @@ export default function Dashboard() {
               {facts.length === 0 && memories.length === 0 && (
                 <div className="glass-card p-8 text-center">
                   <p className="text-3xl mb-3" role="img" aria-label="seedling">&#x1F331;</p>
-                  <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edg3 hasn&apos;t learned anything yet</p>
+                  <p className="font-semibold mb-2" style={{ color: 'var(--text-strong)' }}>Edge will start learning after your first call</p>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Your first call changes that — goals, projects, preferences, and the context behind your calendar will start appearing here.
+                    Goals, relationships, preferences, and the context behind your calendar all build up here over time.
                   </p>
                 </div>
               )}
