@@ -1307,7 +1307,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
 
   const systemPrompt = `You are EDG3, an AI Chief of Staff. You are proactive, direct, and deeply strategic.
 The user's local time is currently ${localTime} in ${userTimezone}. All time references must use their local timezone.
-${workHoursLine}
+${localHour >= 17 ? `TIME AWARENESS (it is ${localTime} — EVENING): today's calendar events have ALREADY HAPPENED. Do NOT reference them as upcoming, do NOT say "this afternoon" or "you have X today" or "finish X today". Acknowledge the day that's wrapping up, then frame everything forward — tomorrow and the week ahead.\n` : ''}${workHoursLine}
 IMPORTANT: Always open with "${greeting}, [name]." — never say "Good morning" if it is afternoon or evening.
 ${isFirstCall ? 'IMPORTANT: This is the first briefing. Lead with and address every stated weekly priority directly — do not substitute your own judgment for what matters most.' : ''}
 You speak like Jarvis from Iron Man — confident, sharp, and always one step ahead. You are a trusted advisor, not a critic.

@@ -3398,6 +3398,21 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R40 SHIPPED (2291 green) — call time-of-day awareness + move confirmation.**
+  - **T1 — evening framing.** A 9:45 PM call had Edge saying "you've got 3 blocks this afternoon" for events
+    that already happened. The prompts injected the date but not the current time. Fix: `lib/vapi.ts` now
+    computes `currentTimeStr`/`isEvening` and injects a **TIME AWARENESS** rule into the live-call system
+    prompt (after 5 PM → today's events have already happened; never "this afternoon"/"finish X today";
+    pivot to tomorrow). `buildOpenCallSystemPrompt` gained `currentTime`/`isEvening` params (EN + 廣東話),
+    passed from the inbound webhook. `lib/briefing.ts` adds the same evening rule (it already had `localTime`).
+    4 tests on `buildOpenCallSystemPrompt`.
+  - **T2 — moveEvent false confirmation.** Diagnosis: the `moveEvent` patch-failure paths already return the
+    `ERR_MOVE` constant (R32), the success path is the explicit "Moved and confirmed '…' to …", and
+    read-only/non-organizer pre-checks return honest non-confirming messages — so the gap was prompt
+    discipline. Added a **MOVE CONFIRMATION** rule to the HONEST FAILURE block: never say "Done" for a move
+    until the tool result confirms it; on "ERROR" tell the user it didn't go through. (Tool-side ERR_MOVE
+    coverage is already exercised by Security's `mutation-errors.test.ts`.)
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` (prompt content) + webhook — Vijay sync down.**
 - **2026-06-24** — **R39 SHIPPED (2287 green, CRITICAL) — memory extraction bug fixes (Jamie the dog + Gabby miscategorized).**
   - **T1 — truncation.** `lib/facts.ts` extraction read only `transcript.slice(0, 2000)` (~300 words / first
     minute) with `max_tokens: 600` — everything later in a 5–10 min call was silently dropped (Jamie the dog

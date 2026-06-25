@@ -106,11 +106,15 @@ export async function POST(req: NextRequest) {
       const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
       const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
 
+      // R40 T1 — current wall-clock time so an evening inbound call isn't framed as morning.
+      const currentTime = new Date().toLocaleTimeString('en-US', { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true });
       const systemPrompt = buildOpenCallSystemPrompt({
         firstName, userName: callerUser.name, timezone,
         prioritiesText: currentPrioritiesText(userId),
         memoryText: currentOpenCallMemoryText(userId),
         language,
+        currentTime,
+        isEvening: hour >= 17,
       });
       const ambientBase = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
       const assistantConfig = {
