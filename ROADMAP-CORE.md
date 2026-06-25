@@ -2981,6 +2981,21 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **M4-6 SHIPPED (2249 green) — Memory Ranking Engine ("PageRank for personal memory") [PILLAR-MEMORY].**
+  - New pure `memoryRankScore(fact, priorities, today)` (`lib/memorySalience.ts`) — 0–1 blend of goal
+    alignment 30% (token overlap vs top-3 priorities → 1.0/0.5/0), recency 20% (90-day linear decay off
+    `last_confirmed_at`/`learned_at`), confidence 20% (`confidence_score`), reference frequency 15%
+    (`reference_count`/10, caps at 10), category weight 15% (goal/commitment/lifetime = 1.0 … fact = 0.6).
+    `rankByMemoryScore(facts, priorities, today, topN)` sorts desc + caps. A runway-priority fact now
+    outranks a bachelor-party fact when assembling context.
+  - **Wired into both context paths:** `currentOpenCallMemoryText` (`lib/callMemory.ts`) ranks all facts →
+    top 20 (lifetime profile always kept) before building the structured block; `buildBriefingContextPack`
+    (`lib/briefing.ts`) re-ranks the salient set for the STRUCTURED FACTS block. Each surfaced fact's
+    `reference_count` is bumped fire-and-forget so frequently-used facts compound their rank.
+  - **Schema:** `facts.reference_count INTEGER DEFAULT 0` (CREATE TABLE + migration) + Fact type +
+    `factQueries.incrementReferenceCount`. 6 new tests (rank math + ordering + purity + live increment).
+  - **⚠️ Additive to Shared `lib/db.ts`** (column + query). Note: a distinct `RANK_CATEGORY_WEIGHTS` map is
+    used (the M4-6 spec's weights) so the older `scoreFact`/`topFacts` salience scorer is undisturbed.
 - **2026-06-24** — **R35 T1 SHIPPED (2243 green) — browser timezone auto-detect on dashboard load.**
   - Closes the failure class behind today's incident (unset `current_timezone` → `effectiveTimezone` fell
     back to LA → every time feature ran 3h behind). A mount `useEffect` in the main `Dashboard()` reads

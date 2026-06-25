@@ -307,7 +307,9 @@ export function initSchema(db: Database.Database) {
       valid_from         TEXT NOT NULL DEFAULT (datetime('now')),
       valid_until        TEXT,
       confidence_score   REAL NOT NULL DEFAULT 1.0,
-      last_confirmed_at  TEXT DEFAULT (datetime('now'))
+      last_confirmed_at  TEXT DEFAULT (datetime('now')),
+      -- M4-6 — times this fact has been surfaced into a call/briefing context (ranking signal).
+      reference_count    INTEGER NOT NULL DEFAULT 0
     );
 
     -- Immutable audit trail: snapshot of a fact's value before it was retired or updated.
@@ -744,6 +746,8 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // R33 — user work hours so Edge never suggests booking work blocks outside them. JSON:
   // {"start":<0-23>,"end":<1-24>,"days":[1..7]} (ISO weekdays, 1=Mon). Constant default = 9-18 Mon-Fri.
   "ALTER TABLE users ADD COLUMN work_schedule TEXT NOT NULL DEFAULT '{\"start\":9,\"end\":18,\"days\":[1,2,3,4,5]}'",
+  // M4-6 — Memory Ranking Engine: per-fact reference count (incremented when surfaced into context).
+  "ALTER TABLE facts ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -2180,6 +2184,9 @@ export interface Fact {
   // Below 0.3 = unverified, surfaced for reconfirmation. Optional: DB always populates; tests predate columns.
   confidence_score?: number;
   last_confirmed_at?: string | null;
+  // M4-6 — Memory Ranking Engine: how many times this fact has been injected into a call/briefing
+  // context. Frequently-surfaced facts rank higher over time. Optional: tests predate the column.
+  reference_count?: number;
 }
 
 // Whoop OAuth tokens. access_token + refresh_token are health-data PII → encrypted.
@@ -2372,6 +2379,14 @@ export const factQueries = {
     getDb().prepare(
       'UPDATE facts SET learned_at = ? WHERE id = ? AND user_id = ?'
     ).run(learnedAt, id, userId);
+  },
+
+  // M4-6 — Memory Ranking Engine: bump a fact's reference count when it's surfaced into a context
+  // pack / call memory block. Fire-and-forget; frequently-surfaced facts rank higher over time.
+  incrementReferenceCount: (userId: number, id: number): void => {
+    try {
+      getDb().prepare('UPDATE facts SET reference_count = reference_count + 1 WHERE id = ? AND user_id = ?').run(id, userId);
+    } catch { /* non-fatal — ranking signal only */ }
   },
 
   getById: (userId: number, id: number): Fact | undefined => {

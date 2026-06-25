@@ -78,4 +78,12 @@ describe('currentOpenCallMemoryText (R23 T1)', () => {
     briefingQueries.create(1, 'pending content', '2026-06-21T14:00:00Z'); // status defaults to 'pending'
     expect(currentOpenCallMemoryText(1)).not.toContain('RECENT CALL NOTES');
   });
+
+  it('M4-6 — increments reference_count for facts surfaced into the memory block', () => {
+    factQueries.upsertFact(1, 'goal', 'Reach 135 lbs by September', null, 'high');
+    const before = getDb().prepare("SELECT reference_count AS n FROM facts WHERE user_id = 1 AND category = 'goal'").get() as { n: number };
+    currentOpenCallMemoryText(1);
+    const after = getDb().prepare("SELECT reference_count AS n FROM facts WHERE user_id = 1 AND category = 'goal'").get() as { n: number };
+    expect(after.n).toBeGreaterThan(before.n);
+  });
 });

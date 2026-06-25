@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scoreFact, rankFacts, topFacts } from './memorySalience';
+import { scoreFact, rankFacts, topFacts, memoryRankScore, rankByMemoryScore } from './memorySalience';
 import type { Fact } from './db';
 
 const TODAY = '2026-06-15';
@@ -206,5 +206,48 @@ describe('topFacts', () => {
     const boundaryFact = fact({ id: 3, statement: 'Old goal', category: 'goal', learned_at: '2026-03-17' });
     const result = topFacts([boundaryFact], [], TODAY, { filterStale: true });
     expect(result).toHaveLength(0);
+  });
+});
+
+// ── M4-6 — memoryRankScore (PageRank for personal memory) ─────────────────────
+
+describe('memoryRankScore (M4-6)', () => {
+  const priorities = [{ text: 'Improve runway and extend to 18 months' }];
+
+  it('a goal-category fact matching a top priority, recent + confident, scores high (>= 0.8)', () => {
+    const s = memoryRankScore(
+      { statement: 'Improve runway by cutting burn', entity: 'runway', category: 'goal', confidence_score: 1.0, learned_at: TODAY, last_confirmed_at: TODAY, reference_count: 2 },
+      priorities, TODAY,
+    );
+    expect(s).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('an unrelated, low-confidence, old fact scores low (<= 0.3)', () => {
+    const s = memoryRankScore(
+      { statement: 'Patrick bachelor party in Vegas', entity: 'Patrick', category: 'fact', confidence_score: 0.2, learned_at: '2026-01-01', last_confirmed_at: '2026-01-01', reference_count: 0 },
+      priorities, TODAY,
+    );
+    expect(s).toBeLessThanOrEqual(0.3);
+  });
+
+  it('ranks a priority-aligned fact above an unrelated one', () => {
+    const aligned = { statement: 'runway extension plan', entity: 'runway', category: 'goal', confidence_score: 1.0, learned_at: TODAY, reference_count: 0 };
+    const trivia  = { statement: 'likes oat milk', entity: null, category: 'preference', confidence_score: 1.0, learned_at: TODAY, reference_count: 0 };
+    expect(memoryRankScore(aligned, priorities, TODAY)).toBeGreaterThan(memoryRankScore(trivia, priorities, TODAY));
+  });
+
+  it('is pure — no throw on missing optional fields', () => {
+    expect(() => memoryRankScore({ statement: 'x', entity: null, category: 'fact' }, [], TODAY)).not.toThrow();
+  });
+
+  it('rankByMemoryScore sorts descending and caps at topN', () => {
+    const facts = [
+      { statement: 'runway plan', entity: 'runway', category: 'goal', confidence_score: 1, learned_at: TODAY, reference_count: 0 },
+      { statement: 'oat milk', entity: null, category: 'preference', confidence_score: 1, learned_at: TODAY, reference_count: 0 },
+      { statement: 'old trivia', entity: null, category: 'fact', confidence_score: 0.2, learned_at: '2026-01-01', reference_count: 0 },
+    ];
+    const ranked = rankByMemoryScore(facts, priorities, TODAY, 2);
+    expect(ranked).toHaveLength(2);
+    expect(ranked[0].statement).toBe('runway plan');
   });
 });

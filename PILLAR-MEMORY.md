@@ -169,7 +169,12 @@ Store as `category: 'weekly_summary'`, `entity: week_of_YYYY-MM-DD`. Cap at 3 ac
 - 10+ weekly summaries → lifetime synthesis produces a `lifetime_profile` fact
 - Lifetime profile is the first item injected in `currentOpenCallMemoryText`
 
-### M4-6 — Memory Ranking Engine: surface the right memory at the right moment (Core)
+### M4-6 — Memory Ranking Engine: surface the right memory at the right moment (Core) — ✅ SHIPPED 2026-06-24
+
+> **Status:** `memoryRankScore` + `rankByMemoryScore` (`lib/memorySalience.ts`), `facts.reference_count`
+> column + `incrementReferenceCount`, and ranking wired into `currentOpenCallMemoryText` +
+> `buildBriefingContextPack` (top-20, reference-count bump on injection). 2249 green.
+
 
 **The insight (WEKA AI Memory Podcast, 2026):** Google won search with PageRank — ranking pages by importance, not just recency. Edg3's equivalent is: *which memories should influence this conversation right now?* Right now facts are sorted by recency + confidence. There's no signal for goal alignment, reference frequency, or decision relevance. A fact about Patrick's bachelor party and a fact about Derrick's runway both rank the same. They shouldn't.
 

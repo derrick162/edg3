@@ -14,7 +14,7 @@ import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetin
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, hasWhoopConnected, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
-import { topFacts } from './memorySalience';
+import { topFacts, rankByMemoryScore } from './memorySalience';
 import { selectReconfirmationFact, buildReconfirmationPromptBlock } from './factConfidence';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
 import { focusMilestoneQueries, dailyFocusQueries } from './db';
@@ -651,8 +651,13 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
   }
 
   if (salientFacts.length > 0) {
+    // M4-6 — re-rank the salient set by memory score (goal alignment / recency / confidence /
+    // reference frequency / category) so the most decision-relevant facts lead, and bump their
+    // reference counts (fire-and-forget) so frequently-surfaced facts compound their rank.
+    const rankedFacts = rankByMemoryScore(salientFacts, latestPriorities, today, 20);
+    for (const f of rankedFacts) { try { factQueries.incrementReferenceCount(userId, f.id); } catch { /* non-fatal */ } }
     const byCategory = new Map<string, typeof salientFacts>();
-    for (const f of salientFacts) {
+    for (const f of rankedFacts) {
       if (!byCategory.has(f.category)) byCategory.set(f.category, []);
       byCategory.get(f.category)!.push(f);
     }

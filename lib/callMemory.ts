@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { factQueries, openLoopQueries, briefingQueries, priorityQueries, userQueries } from './db';
 import { getWeekOf } from './briefing';
 import { parseWorkSchedule, formatWorkHours } from './workHours';
+import { rankByMemoryScore } from './memorySalience';
 
 // R23 T2 — the user's current top priorities as prompt text. Lives here (not just in scheduler) so
 // the inbound-call webhook can build a personalized prompt without importing scheduler's cron module.
@@ -27,7 +28,20 @@ export function currentOpenCallMemoryText(userId: number): string {
 
   // Section 1 — "WHAT EDGE KNOWS ABOUT YOU" as labelled sections, in priority order.
   try {
-    const facts = factQueries.getAll(userId);
+    const allFacts = factQueries.getAll(userId);
+    // M4-6 — rank by memory score (goal alignment / recency / confidence / reference frequency /
+    // category) and inject only the top 20, so the user's priority-relevant facts outrank trivia.
+    const today = new Date().toISOString().slice(0, 10);
+    const priorities = (() => {
+      try { const p = priorityQueries.getThisWeek(userId, getWeekOf()); return p.length ? p : priorityQueries.getMostRecent(userId); }
+      catch { return []; }
+    })();
+    let facts = rankByMemoryScore(allFacts, priorities, today, 20);
+    // Always keep the lifetime profile even if ranking would crowd it out (M4-5 guarantee).
+    const lifetimeFact = allFacts.find(f => f.category === 'lifetime_profile');
+    if (lifetimeFact && !facts.some(f => f.id === lifetimeFact.id)) facts = [lifetimeFact, ...facts].slice(0, 20);
+    // Reference-count bump (fire-and-forget): facts surfaced into context rank higher over time.
+    for (const f of facts) factQueries.incrementReferenceCount(userId, f.id);
 
     // M4-5 — the lifetime profile is the highest-signal, most-stable context: inject it FIRST.
     const lifetime = facts.find(f => f.category === 'lifetime_profile');
