@@ -1206,6 +1206,12 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **DISPATCH S3 — multi-user infrastructure audit (2373 green).** _(synced master first; DISPATCH.md item)_
+  - **(1) `lib/db.ts` query scoping audit — no cross-user leak.** Scanned every read/write on user-scoped tables: all are `user_id`-scoped, or intentional global prune/maintenance jobs, admin-auth all-user views, phone-keyed rate-limit counts, or server-internal PK updates (never user-supplied). No SQL string-interpolation of request data — all values are bound `?` params. Documented in `content/security-audit.md` (S3 section).
+  - **(2) Account-deletion cascade — already covered + drift-guarded** (`deleteUserData` + `USER_SCOPED_DELETE_ORDER` + `lib/db-account-deletion.test.ts`). New isolation test confirms deleting one user leaves the other intact.
+  - **(3) Admin users overview** — `GET /api/admin/users` already had call counts + last-call date; **added `total_facts`** (active-fact count per user).
+  - **(4) Per-user scheduler — verified not single-user.** `checkAndInitiateCalls` + every nightly/weekly sweep loop `WHERE onboarding_complete = 1` (all active users).
+  - **Tests:** new `lib/multi-user-isolation.test.ts` (two users — scoped fact/briefing/episode reads + deletion isolation). 160 files / 2373 green.
 - **2026-06-24** — **DISPATCH S2 — web push for health alerts (2370 green).** _(synced master first; DISPATCH.md item)_
   - **Most of S2 already shipped (R14/R17):** `lib/push.ts` `sendPushToUser`, encrypted `push_subscriptions` table, `web-push` dep, `POST /api/notifications/subscribe` (+ unsubscribe), and push already wired into the proactive low-recovery / priority-gap jobs. The gap was the **operator alert path** — DEGRADED health only logged to Railway.
   - **Added:** `pushSubscriptionQueries.allUserIds()` (distinct subscribers) + `sendPushToAllSubscribers(notification)` in `lib/push.ts` (best-effort fan-out; no-op without VAPID / subscribers; never throws). Wired into `runHealthDigest`: on **DEGRADED**, push `"Edg3 health: DEGRADED — <summary>"` to all subscribers. This single consolidated alert covers **all three** spec'd triggers — failed calls, `failed_webhooks` DLQ non-empty, and background-job failures — because each is one of the `issues[]` that produces DEGRADED (and the daily digest is the established single alert path, T1-3; per-event push would spam on routine no-answers).

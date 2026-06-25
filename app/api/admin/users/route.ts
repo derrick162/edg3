@@ -67,6 +67,11 @@ export async function GET(req: NextRequest) {
         SELECT COUNT(*) as count FROM briefings WHERE user_id = ? AND status = 'completed'
       `).get(user.id) as { count: number }).count;
 
+      // S3 — active-fact count per user, for the multi-user admin overview.
+      const totalFacts = (db.prepare(`
+        SELECT COUNT(*) as count FROM facts WHERE user_id = ? AND valid_until IS NULL
+      `).get(user.id) as { count: number }).count;
+
       const nextCall = user.call_time && user.timezone
         ? getNextCallTime(user.call_time, user.timezone)
         : null;
@@ -84,6 +89,7 @@ export async function GET(req: NextRequest) {
         next_call: nextCall,
         total_briefings: totalBriefings,
         completed_briefings: completedBriefings,
+        total_facts: totalFacts,
       };
     });
 

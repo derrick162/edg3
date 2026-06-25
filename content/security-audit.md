@@ -641,3 +641,41 @@ flow + the accounts-status field, now gone). `GmailScopeError` kept (read-path s
 genericized. `deleteDraft` retained permanently (`lib/undo.ts` backward-compat). **Net result:
 `gmail.readonly` is now the ONLY Gmail scope EDG3 requests** — no compose, no send, read-only inbox
 signal for briefings/Focus score/fact extraction. `/api/auth/accounts` dropped its `hasGmailScope` field.
+
+---
+
+## S3 — Multi-user infrastructure audit (2026-06-24)
+
+Pre-onboarding audit before Edg3 serves more than one user. Result: **no cross-user data leak found.**
+
+### (1) `lib/db.ts` query scoping
+Scanned every `SELECT`/`UPDATE`/`DELETE` touching a user-scoped table (`facts`, `briefings`,
+`episodes`, `tasks`, `priorities`, `memories`, `fact_history`, `calendar_scores`, `energy_log`,
+`open_loops`, `watched_threads`, `notifications`, `people_models`, `gratitude_entries`,
+`calendar_tokens`/`whoop_tokens`/`gmail_tokens`, `push_subscriptions`, `inbound_call_attempts`,
+`daily_focus`, `audit_log`). Every query falls into one of these **correct** buckets:
+- **Scoped by `user_id`** — the overwhelming majority (all user-facing reads/writes).
+- **Dynamic-clause queries** start with `user_id = ?` as clause[0] (verified `episodeQueries.search`).
+- **Maintenance/prune jobs** — intentionally global (`DELETE FROM watched_threads/open_loops/episodes/audit_log WHERE … < cutoff`). Cross-user by design; delete only stale/resolved rows.
+- **Admin all-user views** — `audit_log` list, admin stats/users. Admin-auth gated (`checkAdminAuth`).
+- **Phone-keyed** — `inbound_call_attempts` rate-limit count is keyed by `phone_number` (pre-user-lookup, correct).
+- **Server-internal PK updates** — `briefings … WHERE id = ?` (`update`/`updateLearningStatus`) use a server-derived briefingId during webhook processing, never user-supplied input. Not a user-facing read path.
+- **No SQL string interpolation of user input** — all values are bound parameters (`?`); the only `${…}` in SQL are fixed column/clause lists and retention-day constants, never request data.
+
+### (2) Account-deletion cascade
+Covered + guarded: `deleteUserData(userId)` iterates `USER_SCOPED_DELETE_ORDER`, and
+`lib/db-account-deletion.test.ts` is a **drift guard** — every table with a `user_id` column must
+appear in the order list or the test fails. New multi-user isolation test confirms deleting user 1
+leaves user 2's facts/briefings/episodes fully intact.
+
+### (3) Admin users overview
+`GET /api/admin/users` already lists all users with last-call date, next-call, and call counts;
+**added `total_facts`** (active-fact count per user) this pass for the multi-user overview.
+
+### (4) Per-user scheduler
+`checkAndInitiateCalls` and every nightly/weekly sweep loop `SELECT … FROM users WHERE
+onboarding_complete = 1` — all active users, not hardcoded to one. No single-user assumption found.
+
+### Tests
+`lib/multi-user-isolation.test.ts` — two users; fact/briefing/episode reads are scoped; account
+deletion of one leaves the other intact.
