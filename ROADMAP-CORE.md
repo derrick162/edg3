@@ -31,6 +31,41 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 35 — Browser timezone auto-detect)
+
+> `git merge master` first. One ticket. **Do after R34.**
+
+---
+
+### T1 — Auto-detect and save browser timezone on dashboard load (MEDIUM — 30m)
+
+**Root cause (observed 2026-06-24):** Derrick's `current_timezone` was unset, so `effectiveTimezone()` fell back to `America/Los_Angeles`. Every time-aware feature (greetings, calendar display, call scheduling) ran 3 hours behind. Vijay is fixing the Safety net (NANP area-code infer in `effectiveTimezone`) and the one-row DB fix for Derrick. This ticket makes it impossible for any future user to stay in this state.
+
+**Fix — `app/dashboard/page.tsx` (or equivalent client entry point):**
+
+On dashboard load, read `Intl.DateTimeFormat().resolvedOptions().timeZone` (browser-native, no library, no permission). If the user's stored `current_timezone` is empty/null, `POST /api/profile` with `{ timezone: detectedZone }` to save it. Silent and automatic — no UI change, no user action needed.
+
+```ts
+// Inside loadData() or a useEffect on mount, after user is confirmed logged in:
+if (!user.current_timezone) {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (tz) {
+    fetch('/api/profile', { method: 'POST', body: JSON.stringify({ timezone: tz }), headers: { 'Content-Type': 'application/json' } })
+      .catch(() => {}); // fire-and-forget, non-fatal
+  }
+}
+```
+
+Also consider updating timezone on every load when it differs — a user who moves cities should have it auto-update. Use `!user.current_timezone || user.current_timezone !== detectedZone` as the condition.
+
+**Tests:**
+- Dashboard load with no stored timezone → `POST /api/profile` fired with detected tz
+- Dashboard load with stored timezone matching browser → no POST fired
+- Dashboard load with stored timezone differing from browser → POST fired with new tz
+- `Intl.DateTimeFormat` unavailable (SSR/server context) → no error, no POST
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 34 — Accountability + memory depth + briefing hygiene)
 
 > `git merge master` first. Four tickets. **Do after R33.**
