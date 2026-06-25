@@ -853,7 +853,7 @@ function ActivityTab() {
       />
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-lg font-bold">Edg3&apos;s actions</h2>
-        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }}>↻ Refresh</button>
+        <button onClick={load} className="text-xs" style={{ color: 'var(--text-faint)' }} aria-label="Refresh activity log">↻ Refresh</button>
       </div>
       <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
         Every change Edg3 makes appears here — review it, undo it, or just keep the audit trail.
@@ -2425,7 +2425,7 @@ function DashboardInner() {
             <span className="logo-text text-lg">EDG3</span>
           </div>
 
-          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0">
+          <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0" aria-label="Dashboard navigation" role="tablist">
             {[
               { id: 'home', label: 'Today', icon: '✦' },
               { id: 'priorities', label: 'Focus', icon: '🎯' },
@@ -2438,7 +2438,9 @@ function DashboardInner() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
+                role="tab"
                 aria-label={tab.label}
+                aria-selected={activeTab === tab.id}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
                 className="flex-shrink-0 md:w-full flex flex-col md:flex-row items-center md:items-center gap-0 md:gap-3 px-2 md:px-3 py-1.5 md:py-2 rounded-lg text-sm font-medium transition-all text-left"
                 style={{
@@ -2716,7 +2718,7 @@ function DashboardInner() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
+        <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0" role="main" aria-label="Dashboard content">
           {/* Screen 7 — activation arrival banner (dismissible, non-gating) */}
           {showActivatedBanner && (() => {
             const day = new Date().getDay();
