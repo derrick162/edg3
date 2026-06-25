@@ -20,7 +20,7 @@ import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQ
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
 import { enrichFact } from '@/lib/facts';
-import { friendlyError } from '@/lib/calendarToolErrors';
+import { friendlyError, isAlreadyGoneError } from '@/lib/calendarToolErrors';
 import { type UndoOp, recordUndo, executeUndo, cleanForRecreate, parseUndoOps } from '@/lib/undo';
 import { claimEventCreate, buildEventDedupeKey, issueDeleteToken, consumeDeleteToken, claimToolCall, recordToolCallResult, getToolCallCached } from '@/lib/idempotency';
 import { isWritable, canUserReschedule } from '@/lib/calendarWritable';
@@ -570,11 +570,15 @@ Query: ${query}` }],
     }
 
     // Honest failure: only report an event as deleted if the Google call actually succeeded.
+    // C4: a 404/410 ("event already gone") is NOT a failure — the event is already off the
+    // calendar, which is the end state the user wanted. Report it as already-removed, not as a
+    // hard error ("it's still on your calendar"), which would be the opposite of the truth.
     const deleted: string[] = [];
+    const alreadyGone: string[] = [];
     const failedDel: string[] = [];
     const recreates: UndoOp[] = [];
     for (const { event: ev, calId } of toDelete) {
-      let ok = false;
+      const name = (ev.summary ?? ev.id!).replace(/^⚡\s*/, '');
       try {
         if (ev.recurringEventId && recurringScope === 'thisAndFollowing') {
           await cal.events.patch({ calendarId: calId, eventId: ev.recurringEventId, requestBody: { recurrence: [`RRULE:FREQ=DAILY;UNTIL=${date.replace(/-/g, '')}`] } });
@@ -583,28 +587,32 @@ Query: ${query}` }],
         } else {
           await cal.events.delete({ calendarId: calId, eventId: ev.id! });
         }
-        ok = true;
-      } catch (delErr) {
-        console.error(`[deleteEvent] failed calId=${calId} accessRole=${calMeta.get(calId)?.accessRole ?? 'unknown'}:`, delErr);
-        ok = false;
-      }
-      if (ok) {
-        deleted.push(ev.summary ?? ev.id!);
+        deleted.push(name);
         // Record undo (recreate) only for the non-recurring single events we ACTUALLY removed.
         if (!ev.recurringEventId) recreates.push({ type: 'recreate', calId, event: cleanForRecreate(ev) });
-      } else {
-        failedDel.push(ev.summary ?? ev.id!);
+      } catch (delErr) {
+        if (isAlreadyGoneError(delErr)) {
+          console.log(`[deleteEvent] already gone calId=${calId} eventId=${ev.id}: treating as removed`);
+          alreadyGone.push(name);
+        } else {
+          console.error(`[deleteEvent] failed calId=${calId} accessRole=${calMeta.get(calId)?.accessRole ?? 'unknown'}:`, delErr);
+          failedDel.push(name);
+        }
       }
     }
     if (recreates.length) recordUndo(userId, `deleted ${describeDeleteTargets(toDelete, recurringScope, tz)}`, recreates);
-    if (!deleted.length) {
-      return failedDel.length
-        ? ERR_DELETE
-        : `No event matching "${title}" on ${date}.`;
+    // Nothing actually removed AND nothing was already gone → real failure (or no match).
+    if (!deleted.length && !alreadyGone.length) {
+      return failedDel.length ? ERR_DELETE : `No event matching "${title}" on ${date}.`;
     }
-    return failedDel.length
-      ? `Deleted: ${deleted.join(', ')}. Hit a snag on ${failedDel.join(', ')} — couldn't remove ${failedDel.length > 1 ? 'those' : 'that one'} from here.`
-      : `Deleted: ${deleted.join(', ')}`;
+    const goneNote = alreadyGone.length
+      ? `${deleted.length ? ' ' : ''}${alreadyGone.join(', ')} ${alreadyGone.length > 1 ? 'were' : 'was'} already removed.`
+      : '';
+    const okPart = deleted.length ? `Deleted: ${deleted.join(', ')}.` : 'Nothing to remove —';
+    if (failedDel.length) {
+      return `${okPart}${goneNote} Hit a snag on ${failedDel.join(', ')} — couldn't remove ${failedDel.length > 1 ? 'those' : 'that one'} from here.`;
+    }
+    return `${okPart}${goneNote}`.trim();
 
   } else if (fn === 'moveEvent') {
     const { title: rawTitle, date, newStartDateTime, newEndDateTime, newStartDate, newEndDate, timezone, recurringScope, currentTime, targetEndDate } = args as { title: string; date: string; newStartDateTime: string; newEndDateTime: string; newStartDate?: string; newEndDate?: string; timezone: string; recurringScope?: 'this' | 'all'; currentTime?: string; targetEndDate?: string };
@@ -1483,8 +1491,14 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
         deleted.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
         recreates.push({ type: 'recreate', calId, event: cleanForRecreate(ev) });
       } catch (dupErr) {
-        console.error(`[cleanupDuplicates] delete failed calId=${calId}:`, dupErr);
-        failedDel.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+        // C4: a 404/410 means the duplicate is already gone — that's success for a cleanup.
+        if (isAlreadyGoneError(dupErr)) {
+          console.log(`[cleanupDuplicates] already gone calId=${calId} eventId=${ev.id}: counting as removed`);
+          deleted.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+        } else {
+          console.error(`[cleanupDuplicates] delete failed calId=${calId}:`, dupErr);
+          failedDel.push((ev.summary ?? ev.id!).replace(/^⚡\s*/, ''));
+        }
       }
     }
     if (recreates.length) recordUndo(userId, `removed ${recreates.length} duplicate event(s)`, recreates);

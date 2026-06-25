@@ -3422,6 +3422,26 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C1 SHIPPED (2335 green) — calendar tool reliability audit + test matrix.**
+  - **Audit deliverable:** `content/calendar-tool-audit.md` — per-tool table (success shape,
+    failure modes, honest-on-every-path) for all 9 calendar tools, plus the structural proof
+    of the honest-failure invariant: every handler result flows through the POST dispatcher,
+    which classifies `ERR_*` strings (via `FAILURE_RE`) and any thrown error (via
+    `friendlyError`) as `ok=false`. Success strings are reachable only after a validated Google
+    response id (`if (!ins || !ins.data.id) return ERR_*`). **Edge cannot narrate success for
+    an action that did not happen** — no silent "Done" path exists.
+  - **Gap found + fixed (also covers C4's 404 case):** `deleteEvent` and `cleanupDuplicates`
+    lumped a Google **404 (`notFound`) / 410 (`Resource has been deleted`)** into the generic
+    failure bucket, so Edge said "I couldn't remove that — it's still on your calendar" for an
+    event that was *already gone* (the opposite of the truth, and the exact end state the user
+    wanted). New pure helper `isAlreadyGoneError(err)` in `lib/calendarToolErrors.ts` (checks
+    numeric/string code, `response.status`, and message text). `deleteEvent` now reports an
+    already-gone event as "already removed" (counted as done, no undo recreate); a real failure
+    still returns `ERR_DELETE`. `cleanupDuplicates` counts already-gone toward removed.
+  - **Test matrix:** new `app/api/vapi/tool-call/calendar-reliability.test.ts` — happy path +
+    failure modes for create/edit/move/delete (no-id, conflict, read-only, non-organizer,
+    recurring-scope, 404, 410, 500). 15 new `isAlreadyGoneError` unit tests in
+    `calendarToolErrors.test.ts`. +28 tests (2307 → 2335). tsc + next build clean.
 - **2026-06-24** — **R41 T4 SHIPPED (2300 green) — self-reported energy (false "I'll change your energy to red" fix).**
   - **Part B already existed:** the `energy_log` table, `energyLogQueries`, the `setEnergyLevel` Vapi tool
     (handler + wired tool ID, created 2026-06-14), and `POST /api/energy/today` were all live. So the bug

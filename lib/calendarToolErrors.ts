@@ -5,6 +5,26 @@
 // Every string a failed mutation returns to the model MUST make it impossible to read the failure
 // as a success — lead with "ERROR" and an explicit "did NOT go through / do not say it's done".
 
+// C1/C4 — detect a Google "the event isn't there" failure (404 notFound or 410 Gone /
+// "Resource has been deleted"). For a DELETE this is not a failure at all: the event is
+// already gone, which is exactly the end state the user wanted. Treating it as a hard error
+// makes Edge say "I couldn't remove that — it's still on your calendar," the opposite of the
+// truth. googleapis surfaces the code on err.code / err.response.status and in the message.
+export function isAlreadyGoneError(err: unknown): boolean {
+  const status = (() => {
+    if (err && typeof err === 'object') {
+      const e = err as { code?: unknown; status?: unknown; response?: { status?: unknown } };
+      const c = e.code ?? e.status ?? e.response?.status;
+      if (typeof c === 'number') return c;
+      if (typeof c === 'string' && /^\d+$/.test(c)) return Number(c);
+    }
+    return undefined;
+  })();
+  if (status === 404 || status === 410) return true;
+  const msg = String((err as { message?: unknown })?.message ?? err);
+  return /\b404\b|\b410\b|notFound|not found|has been deleted|Resource has been deleted|already deleted/i.test(msg);
+}
+
 export function friendlyError(err: unknown): string {
   const msg = String(err);
   if (msg.includes('No calendar connected')) return "ERROR — that did NOT go through: I can't access your calendar right now (it may need reconnecting in the dashboard). Do not tell the user it's done.";
