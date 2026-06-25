@@ -107,8 +107,8 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R41 T0+T1 SHIPPED (2300 green) — ready for PM merge.** T0: memory date tz fix (`parseDbTimestamp`). T1: Conversation State Engine L3 (`lib/transcriptSignals.ts` + webhook-wired pattern facts). **T2/T3 assessed → nothing buildable:** PILLAR-DAILY-CALL Tier 2 (DC2-0…2-4) is fully shipped; PILLAR-MEMORY M4-3 is GATED on ≥30 calls (early testing → not met). Next genuinely-unshipped pillar items are Tier-4 OS-framework (DC4-1/2/3, Phase-2, Core+Design) — flagging for PM, not building unprompted. ⚠️ Additive to Security webhook — Vijay sync down. Idle.)_ | `lib/factSourceLabel.ts`, `lib/transcriptSignals.ts`, `app/api/vapi/webhook/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
-| 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
+| 🛠️ Core | `core` | _(✅ **R41 T0+T1 MERGED TO MASTER (2300 green).** T0: memory date tz fix. T1: Conversation State Engine L3. T2/T3 assessed → nothing buildable (Tier-2 shipped, M4-3 gated). Idle.)_ | `lib/factSourceLabel.ts`, `lib/transcriptSignals.ts`, `app/api/vapi/webhook/route.ts`, `app/dashboard/page.tsx` | 2026-06-24 |
+| 🔒 Security | `security` | _(✅ **R22 MERGED TO MASTER (2298 green).** Monthly consolidation cron wired. Pillar-Trust scan clean. Idle — awaiting next dispatch.)_ | `lib/scheduler.ts` | 2026-06-24 |
 | 🔧 PM/CoS | `master` | _(📋 **R41 dispatched — R40 merged + deployed. Loop active, auto-merging.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(✅ **R24 SHIPPED — merged to master.** "Add context" card — glass-card, .input textarea, char counter, success/error inline, 📝 user_note label. Idle → pillar sweep next.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
