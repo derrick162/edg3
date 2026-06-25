@@ -31,6 +31,135 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 36 — Manual memory context input + inbox dedup)
+
+> `git merge master` first. Two tickets.
+
+---
+
+### T1 — "Add context" panel in Memory tab: free-form text → structured facts (MEDIUM — 1.5h)
+
+**User need:** Derrick wants to drop context into Edge's memory without having to say it on a call. Example: type "Patrick just moved back to Toronto and is job hunting in finance" → Edge knows it on the next briefing.
+
+**Implementation — two parts:**
+
+**Part A — API route (`app/api/memory/notes/route.ts`):**
+
+New `POST /api/memory/notes` endpoint. Accepts `{ text: string }`. Validates: non-empty, max 2000 chars.
+
+1. Run `text` through `extractAndUpsertFacts(userId, text, 'user_note')` — same pipeline as call transcripts. This populates structured facts under People / Goals / Preferences / etc.
+2. Also store the raw note as a single fact:
+   ```ts
+   upsertFact(userId, {
+     category: 'user_note',
+     entity: 'context note',
+     statement: text.slice(0, 500), // truncate for display
+     source: 'manual',
+     confidence_score: 1.0,
+   });
+   ```
+3. Return `{ factsExtracted: number }` — count of structured facts extracted, shown in the confirmation message.
+
+**Tests:**
+- POST with valid text → calls `extractAndUpsertFacts` + stores raw note fact
+- POST with empty string → 400
+- POST with text > 2000 chars → 400
+- POST without auth → 401
+
+**Part B — UI in Memory tab (`app/dashboard/page.tsx`):**
+
+Add an "Add context" card at the top of the Memory tab, above the "What Edge knows" section. Keep it minimal:
+
+```
+┌─────────────────────────────────────────────────┐
+│ Add context                                      │
+│                                                  │
+│ ┌──────────────────────────────────────────────┐ │
+│ │ Type anything Edge should know — about a    │ │
+│ │ person, a goal, a preference, an update...  │ │
+│ │                                             │ │
+│ └──────────────────────────────────────────────┘ │
+│                                    [Save]        │
+│                                                  │
+│ ✓ Saved — extracted 3 facts   (shown after save) │
+└─────────────────────────────────────────────────┘
+```
+
+- Textarea: `rows=3`, resizable, max 2000 chars, placeholder as above
+- Save button: disabled while empty or submitting
+- On success: show `"✓ Saved — extracted N fact(s)"` inline below the textarea (auto-clear after 4s), clear the textarea, reload the facts section so new facts appear immediately
+- On error: show `"Something went wrong — try again"` inline
+- No modal, no separate page — stays in the Memory tab
+
+**User-note facts in the "Call notes" list:**
+
+In the existing call notes section (raw memories list), `category === 'user_note'` entries should render with a `📝` prefix and "Added manually" instead of a call date. This distinguishes them from call-derived notes at a glance.
+
+**Tests:**
+- Memory tab renders the "Add context" card
+- Submit fires POST /api/memory/notes
+- Success state shows extracted count, clears textarea
+- Error state shows error message
+
+---
+
+### T2 — Activity tab: deduplicate inbox review entries when no new emails (QUICK — 30m)
+
+**Bug (observed 2026-06-24):** The Activity tab shows two "Reviewed 20 inbox threads" entries 1 hour apart — both identical, same 20 threads. Happens when `getRecentEmailSignal` runs twice in a short window (briefing + retry-call, or two briefings), both bypassing the 24h metadata cache (`fullBodies: true`) and each writing an `email_signal_fetch` audit entry.
+
+**Root cause:** `lib/gmail.ts` `getRecentEmailSignal()` line ~330 — writes the audit entry whenever `items.length > 0`, with no check for whether those threads were already logged.
+
+**Fix — `lib/gmail.ts` `getRecentEmailSignal()` (around lines 326-338):**
+
+Add a `getPreviousEmailSubjects(userId)` helper (private, below `readEmailSignalCache`):
+
+```ts
+function getPreviousEmailSubjects(userId: number): Set<string> {
+  try {
+    const row = getDb().prepare(
+      "SELECT snapshot_after FROM audit_log WHERE user_id = ? AND action = 'email_signal_fetch' ORDER BY created_at DESC LIMIT 1"
+    ).get(userId) as { snapshot_after: string | null } | undefined;
+    if (!row?.snapshot_after) return new Set();
+    const parsed = JSON.parse(decryptField(row.snapshot_after)) as { subjects?: unknown };
+    const subjects = Array.isArray(parsed.subjects) ? parsed.subjects as string[] : [];
+    return new Set(subjects);
+  } catch { return new Set(); }
+}
+```
+
+Then replace the existing audit-log write block (lines 330-338) with:
+
+```ts
+if (items.length > 0) {
+  const prevSubjects = getPreviousEmailSubjects(userId);
+  const newItems = items.filter(i => !prevSubjects.has(i.subject));
+  // Only log if there are threads not seen in the last review.
+  if (newItems.length > 0) {
+    auditLogQueries.record({
+      userId,
+      action: 'email_signal_fetch',
+      argsJson: JSON.stringify({ days, threadCount: newItems.length }),
+      resultText: `${newItems.length} inbox thread${newItems.length === 1 ? '' : 's'} reviewed for prioritization`,
+      ok: true,
+      snapshotAfter: encryptField(JSON.stringify({ subjects: newItems.map(i => i.subject) })),
+    });
+  }
+}
+```
+
+**Result:**
+- Same threads as last time → no new audit entry → no duplicate in Activity
+- New threads arrived → logs only the new ones with the correct count
+- First-ever fetch → `getPreviousEmailSubjects` returns empty set → logs all threads normally
+
+**Tests:**
+- `getRecentEmailSignal` called twice with identical thread subjects → only one audit entry written
+- Second call with 2 new + 18 old threads → second entry logs `threadCount: 2`, subjects = new 2 only
+- First call (no prior entry) → logs all threads normally
+- `getPreviousEmailSubjects` with no prior audit row → returns empty Set
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 35 — Browser timezone auto-detect)
 
 > `git merge master` first. One ticket. **Do after R34.**
