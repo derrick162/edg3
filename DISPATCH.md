@@ -10,8 +10,6 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
-- [ ] **C5 — Calendar tool prompt tightening** — Read `lib/vapi.ts` calendar section end-to-end. Identify every place where Edge could plausibly skip calling a tool and just narrate an action. Add a global rule at the top of the calendar tools section: "GROUND TRUTH RULE: You never know if a calendar action succeeded until you see the tool result. Do not infer success from the user's request. Do not confirm until you have a result. If you did not call the tool, you did not take the action." Apply to all 8 calendar tools.
-
 - [ ] **C6 — M2-1 unknown entity consolidation** — Known production bug (observed 2026-06-23): when a call names a previously `(unknown)` entity (e.g., "friend with bachelor party" → Patrick), the old `(unknown)` fact is not retired. Fix in `lib/facts.ts` sleep-time consolidation: explicitly check "does any `(unknown)` or vague entity in stored facts now have a name in this call or in the new facts? If so, retire the old one and merge." Also block event-as-entity facts where the event is a property of a person (bachelor party → attribute of Patrick, not its own entity). Tests: (unknown) → named resolution retires old fact; event-as-entity is blocked.
 
 - [ ] **C7 — M4-4 social mental models** — Schema is ready (Vijay shipped `people_models` table). Build: (1) Sleep-time agent in `lib/facts.ts` — after every call, for each person mentioned, upsert their model: goals, communication style, relationship state, last interaction. (2) Briefing injection — when a person appears on tomorrow's calendar, inject their model into the briefing context: "Sarah (CIBC) — last interaction: tense negotiation Jun 20, she responds well to data-first framing." (3) `rememberPreference` — when user says something about a person mid-call ("Patrick is going through a hard time"), update their model immediately. Tests: person mentioned on 3 calls → model updates each time; person on tomorrow's calendar → model appears in briefing.
@@ -75,6 +73,7 @@ _(QA tester fills this section)_
 
 ## ✅ Completed
 
+- [x] **C5** — Calendar tool prompt tightening: global GROUND TRUTH RULE at top of CALENDAR TOOLS section (all 8 tools) — 2026-06-24 (Darren)
 - [x] **C4** — deleteEvent + cleanupEvents: verify-exists confirmed; 404/410 already-deleted handled (C1); cleanupDuplicates true-dup vs different-time + 404-during-cleanup tests added — 2026-06-24 (Darren)
 - [x] **C3** — moveEvent reliability: MOVE CONFIRMATION RULE v2 (echo result time) + confirmation grounded in patch result; recurring-scope + error paths verified with tests — 2026-06-24 (Darren)
 - [x] **C2** — createEvent reliability: CREATE CONFIRMATION prompt rule + writable-primary pre-check + confirmation grounded in calendar echo — 2026-06-24 (Darren)

@@ -3422,6 +3422,15 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C5 SHIPPED (2341 green) — calendar tool prompt tightening.**
+  - New **GROUND TRUTH RULE** at the very top of the CALENDAR TOOLS section in `lib/vapi.ts`,
+    above TOOL CALL DISCIPLINE: "You never know if a calendar action succeeded until you see the
+    tool result. Do not infer success from the user's request. Do not confirm until you have a
+    result. If you did not call the tool, you did not take the action." Names all calendar tools
+    explicitly (create/move/delete/edit/color/research/cleanupEvents/cleanupDuplicates) so it's
+    unambiguously global, and frames the rest of the section as building on it. Reinforces the
+    CREATE CONFIRMATION (C2) + MOVE CONFIRMATION v2 (C3) tool-specific rules with one umbrella
+    principle. (Open-call prompt gets the same rule in C9.) Prompt-only; 2341 green.
 - **2026-06-24** — **C4 SHIPPED (2341 green) — deleteEvent + cleanupDuplicates reliability.**
   - **(1) Verify-exists:** confirmed `deleteEvent` resolves the target from the live calendar
     (`eventsOnDay`) before the confirm-token gate — it never confirms a deletion for an event it
