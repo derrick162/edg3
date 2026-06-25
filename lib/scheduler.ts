@@ -316,6 +316,36 @@ export async function runWeeklySynthesisSweep(): Promise<void> {
   console.log(`[scheduler] Weekly synthesis: ${written}/${users.length} narratives written`);
 }
 
+// ── Monthly memory consolidation (M4-5 Tier 3 — first Sunday of the month, 4am UTC) ──────────
+// Core ships the per-user lifetime synthesis (runLifetimeSynthesis in lib/facts.ts): condense the
+// stored weekly summaries into a durable "who this person is" profile. Self-gates (needs enough
+// weekly summaries) and is best-effort. The cron fires every Sunday; this sweep no-ops unless it's
+// the FIRST Sunday of the month (UTC date 1–7 AND day-of-week Sunday), so it runs ~monthly.
+// `now` is injectable for deterministic tests.
+export async function runMonthlyConsolidationSweep(now: Date = new Date()): Promise<void> {
+  if (now.getUTCDay() !== 0 || now.getUTCDate() > 7) return; // first Sunday of the month only
+
+  const FactsLib = await import('./facts');
+  const runLifetimeSynthesis = (FactsLib as Record<string, unknown>)['runLifetimeSynthesis'] as
+    ((userId: number) => Promise<boolean>) | undefined;
+
+  if (typeof runLifetimeSynthesis !== 'function') {
+    console.log('[scheduler] runLifetimeSynthesis not exported from lib/facts — skipping monthly consolidation');
+    return;
+  }
+
+  const users = getDb().prepare('SELECT id FROM users WHERE onboarding_complete = 1').all() as Array<{ id: number }>;
+  let written = 0;
+  for (const { id } of users) {
+    try { if (await runLifetimeSynthesis(id)) written++; }
+    catch (e) {
+      console.error(`[scheduler] monthly consolidation failed for user ${id}:`, e);
+      backgroundJobFailureQueries.record('monthly_consolidation', id, String(e));
+    }
+  }
+  console.log(`[scheduler] Monthly consolidation: ${written}/${users.length} profiles written`);
+}
+
 // ── Weekly confidence decay job (4am UTC every Sunday) ───────────────────────
 // Decays confidence_score on active facts by category tier. Facts that decay below
 // 0.3 surface to Core's reconfirmation trigger during the next morning briefing.
@@ -497,6 +527,8 @@ export function startScheduler() {
   cron.schedule('0 4 * * 0', () => {
     decayFactConfidenceScores();
     runWeeklySynthesisSweep().catch(e => console.error('[scheduler] runWeeklySynthesisSweep failed:', e));
+    // Self-gates to the first Sunday of the month — runs the lifetime-profile consolidation ~monthly.
+    runMonthlyConsolidationSweep().catch(e => console.error('[scheduler] runMonthlyConsolidationSweep failed:', e));
   });
 
   // R14 T2 — proactive push notifications. Every 30 min so we can hit local 7:30 (low-recovery)

@@ -1206,6 +1206,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **R22 — monthly memory consolidation cron wired (2298 green).** _(synced master first)_
+  - **Naming reconciled:** the dispatch named `runWeeklyContextRefresh`/`runMonthlyConsolidation`; the actual functions are `runWeeklySynthesis` (already wired by M4-5 — Sunday 4am) and `runLifetimeSynthesis` (the lifetime-profile consolidation, **was unwired**). So R22's weekly half was already done; this ships the monthly half.
+  - **Fix (`lib/scheduler.ts`):** new exported `runMonthlyConsolidationSweep(now?)` — **self-gates to the first Sunday of the month** (`getUTCDay()===0 && getUTCDate()<=7`), then loops `onboarding_complete` users calling Core's `runLifetimeSynthesis`; per-user `try/catch` records `monthly_consolidation` job failures without aborting the sweep; dynamic `import('./facts')` keeps LLM deps lazy + degrades to a no-op if the export is absent. Added to the existing `0 4 * * 0` Sunday cron (fires every Sunday; self-gates to ~monthly). `now` injectable for deterministic tests.
+  - **Tests:** new `lib/monthly-consolidation-sweep.test.ts` (first Sunday → runs per user; later Sunday → no-op; non-Sunday → no-op; per-user failure recorded + sweep continues). 152 files / 2298 green.
 - **2026-06-24** — **M4-5 cron wiring — weekly memory synthesis scheduled (2268 green).** _(pillar backlog; synced master first)_
   - Core shipped `runWeeklySynthesis(userId)` in `lib/facts.ts` (per-user "week narrative" from the last 7 days of calls, self-gates at ≥3 calls); the **scheduler wiring was Security's domain and was missing**.
   - **Fix (`lib/scheduler.ts`):** new exported `runWeeklySynthesisSweep()` — loops `onboarding_complete` users, calls `runWeeklySynthesis` once each, per-user `try/catch` records `weekly_synthesis` job failures without aborting the sweep; dynamic `import('./facts')` + runtime function-check keeps the LLM deps lazy and degrades to a no-op if the export ever goes missing. Wired into the existing **Sunday 4am UTC** cron (`0 4 * * 0`) alongside the confidence-decay job (each guards its own errors).
