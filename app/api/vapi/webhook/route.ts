@@ -126,6 +126,12 @@ export async function POST(req: NextRequest) {
         isEvening: hour >= 17,
       });
       const ambientBase = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+      // Build server config once — used in both the assistantId override path and the
+      // inline-assistant path. Without this in assistantOverrides, the VAPI_ASSISTANT_ID
+      // path would use the server URL from the Vapi dashboard (no secret), causing
+      // call-started to be rejected and the vapi_call_id never linked to the briefing.
+      const inboundServer: { url: string; secret?: string } = { url: resolveWebhookUrl() };
+      if (process.env.VAPI_SERVER_SECRET) inboundServer.secret = process.env.VAPI_SERVER_SECRET;
       const assistantConfig = {
         firstMessage: isCantonese ? `${greetingYue(hour)}，${firstName}！我係 Edge——有咩想傾？` : opener,
         voice: effectiveVoice,
@@ -143,14 +149,13 @@ export async function POST(req: NextRequest) {
           idleTimeoutSeconds: 10,
           idleMessageMaxSpokenCount: 2,
         },
+        server: inboundServer,
       };
 
       if (process.env.VAPI_ASSISTANT_ID) {
         return NextResponse.json({ assistantId: process.env.VAPI_ASSISTANT_ID, assistantOverrides: assistantConfig });
       }
-      const inboundServer: { url: string; secret?: string } = { url: resolveWebhookUrl() };
-      if (process.env.VAPI_SERVER_SECRET) inboundServer.secret = process.env.VAPI_SERVER_SECRET;
-      return NextResponse.json({ assistant: { name: 'EDG3', server: inboundServer, ...assistantConfig } });
+      return NextResponse.json({ assistant: { name: 'EDG3', ...assistantConfig } });
     }
 
     if (!call?.id) return NextResponse.json({ received: true });
