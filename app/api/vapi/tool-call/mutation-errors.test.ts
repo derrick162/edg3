@@ -33,6 +33,9 @@ vi.mock('@/lib/idempotency', async () => await import('../../../../lib/idempoten
 vi.mock('@/lib/calendarWritable', async () => await import('../../../../lib/calendarWritable'));
 vi.mock('@/lib/rateLimit', async () => await import('../../../../lib/rateLimit'));
 vi.mock('@/lib/notifications', async () => await import('../../../../lib/notifications'));
+// Merge integration: the route also imports these (Core R29 enrichFact + R32 friendlyError) — remap too.
+vi.mock('@/lib/facts', async () => await import('../../../../lib/facts'));
+vi.mock('@/lib/calendarToolErrors', async () => await import('../../../../lib/calendarToolErrors'));
 
 const { getDb } = await import('../../../../lib/db');
 const { executeTool } = await import('./route');
