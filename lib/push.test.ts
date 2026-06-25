@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   subs: [] as Array<{ endpoint: string; p256dh: string; auth: string }>,
+  userIds: [] as number[],
   setVapidDetails: vi.fn(),
   sendNotification: vi.fn(async () => ({})),
   del: vi.fn(),
@@ -15,15 +16,17 @@ vi.mock('./db', () => ({
   pushSubscriptionQueries: {
     getAll: (_id: number) => h.subs,
     delete: (id: number, ep: string) => h.del(id, ep),
+    allUserIds: () => h.userIds,
   },
 }));
 
-const { sendPushToUser } = await import('./push');
+const { sendPushToUser, sendPushToAllSubscribers } = await import('./push');
 
 const ORIG = { pub: process.env.VAPID_PUBLIC_KEY, priv: process.env.VAPID_PRIVATE_KEY };
 beforeEach(() => {
   vi.clearAllMocks();
   h.subs = [];
+  h.userIds = [];
   process.env.VAPID_PUBLIC_KEY = 'test-pub';
   process.env.VAPID_PRIVATE_KEY = 'test-priv';
 });
@@ -78,5 +81,32 @@ describe('sendPushToUser', () => {
     h.subs = [{ endpoint: 'e', p256dh: 'k', auth: 'a' }];
     await sendPushToUser(1, { title: 'T', body: 'B' });
     expect(h.sendNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendPushToAllSubscribers (S2 — health broadcast)', () => {
+  it('fans out to every subscribed user (the simulated-failure alert path)', async () => {
+    h.userIds = [1, 2];
+    h.subs = [{ endpoint: 'e', p256dh: 'k', auth: 'a' }]; // each user resolves one device
+    await sendPushToAllSubscribers({ title: 'Edg3 health: DEGRADED', body: '2 webhook(s) in DLQ' });
+    // one send per user (each getAll returns the single mocked sub)
+    expect(h.sendNotification).toHaveBeenCalledTimes(2);
+    expect(h.sendNotification).toHaveBeenCalledWith(
+      { endpoint: 'e', keys: { p256dh: 'k', auth: 'a' } },
+      JSON.stringify({ title: 'Edg3 health: DEGRADED', body: '2 webhook(s) in DLQ' }),
+    );
+  });
+
+  it('no-op when nobody is subscribed', async () => {
+    h.userIds = [];
+    await sendPushToAllSubscribers({ title: 'T', body: 'B' });
+    expect(h.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('never throws even if a send rejects', async () => {
+    h.userIds = [1];
+    h.subs = [{ endpoint: 'e', p256dh: 'k', auth: 'a' }];
+    h.sendNotification.mockRejectedValueOnce(Object.assign(new Error('boom'), { statusCode: 500 }));
+    await expect(sendPushToAllSubscribers({ title: 'T', body: 'B' })).resolves.toBeUndefined();
   });
 });

@@ -3,7 +3,7 @@
 // can import it without dragging in scheduler's cron side-effects. Best-effort: each section degrades
 // to nothing on failure, never throwing.
 import { format } from 'date-fns';
-import { factQueries, openLoopQueries, briefingQueries, priorityQueries, userQueries } from './db';
+import { factQueries, openLoopQueries, briefingQueries, priorityQueries, userQueries, performanceLogQueries } from './db';
 import { getWeekOf } from './briefing';
 import { parseWorkSchedule, formatWorkHours } from './workHours';
 import { rankByMemoryScore } from './memorySalience';
@@ -24,6 +24,7 @@ export function currentPrioritiesText(userId: number): string {
 const KNOW_CHAR_BUDGET = 600;
 
 export function currentOpenCallMemoryText(userId: number): string {
+  const _perfStart = Date.now(); // S5 — benchmark memory retrieval (target <500ms)
   const sections: string[] = [];
 
   // Section 1 — "WHAT EDGE KNOWS ABOUT YOU" as labelled sections, in priority order.
@@ -116,5 +117,7 @@ export function currentOpenCallMemoryText(userId: number): string {
     if (lines.length) sections.push(`RECENT CALL NOTES (last 2 calls — use for continuity, don't repeat back verbatim):\n${lines.join('\n')}`);
   } catch { /* skip section */ }
 
+  // S5 (Security, additive instrumentation) — record memory-retrieval time for the health digest.
+  try { performanceLogQueries.record('memory_retrieval', Date.now() - _perfStart, Date.now()); } catch { /* best effort */ }
   return sections.join('\n\n');
 }

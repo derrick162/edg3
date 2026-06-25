@@ -21,6 +21,11 @@ export async function POST(req: NextRequest) {
   if (typeof endpoint !== 'string' || typeof p256dh !== 'string' || typeof auth !== 'string') {
     return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
   }
+  // S4 — bound the lengths (defense-in-depth: an authenticated client must not be able to bloat
+  // push_subscriptions). Real W3C push endpoints are short URLs; p256dh/auth are fixed-size base64.
+  if (endpoint.length > 1024 || !/^https?:\/\//.test(endpoint) || p256dh.length > 256 || auth.length > 256) {
+    return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
+  }
 
   pushSubscriptionQueries.upsert(user.id, endpoint, p256dh, auth);
   return NextResponse.json({ ok: true });

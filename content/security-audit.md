@@ -641,3 +641,116 @@ flow + the accounts-status field, now gone). `GmailScopeError` kept (read-path s
 genericized. `deleteDraft` retained permanently (`lib/undo.ts` backward-compat). **Net result:
 `gmail.readonly` is now the ONLY Gmail scope EDG3 requests** — no compose, no send, read-only inbox
 signal for briefings/Focus score/fact extraction. `/api/auth/accounts` dropped its `hasGmailScope` field.
+
+---
+
+## S3 — Multi-user infrastructure audit (2026-06-24)
+
+Pre-onboarding audit before Edg3 serves more than one user. Result: **no cross-user data leak found.**
+
+### (1) `lib/db.ts` query scoping
+Scanned every `SELECT`/`UPDATE`/`DELETE` touching a user-scoped table (`facts`, `briefings`,
+`episodes`, `tasks`, `priorities`, `memories`, `fact_history`, `calendar_scores`, `energy_log`,
+`open_loops`, `watched_threads`, `notifications`, `people_models`, `gratitude_entries`,
+`calendar_tokens`/`whoop_tokens`/`gmail_tokens`, `push_subscriptions`, `inbound_call_attempts`,
+`daily_focus`, `audit_log`). Every query falls into one of these **correct** buckets:
+- **Scoped by `user_id`** — the overwhelming majority (all user-facing reads/writes).
+- **Dynamic-clause queries** start with `user_id = ?` as clause[0] (verified `episodeQueries.search`).
+- **Maintenance/prune jobs** — intentionally global (`DELETE FROM watched_threads/open_loops/episodes/audit_log WHERE … < cutoff`). Cross-user by design; delete only stale/resolved rows.
+- **Admin all-user views** — `audit_log` list, admin stats/users. Admin-auth gated (`checkAdminAuth`).
+- **Phone-keyed** — `inbound_call_attempts` rate-limit count is keyed by `phone_number` (pre-user-lookup, correct).
+- **Server-internal PK updates** — `briefings … WHERE id = ?` (`update`/`updateLearningStatus`) use a server-derived briefingId during webhook processing, never user-supplied input. Not a user-facing read path.
+- **No SQL string interpolation of user input** — all values are bound parameters (`?`); the only `${…}` in SQL are fixed column/clause lists and retention-day constants, never request data.
+
+### (2) Account-deletion cascade
+Covered + guarded: `deleteUserData(userId)` iterates `USER_SCOPED_DELETE_ORDER`, and
+`lib/db-account-deletion.test.ts` is a **drift guard** — every table with a `user_id` column must
+appear in the order list or the test fails. New multi-user isolation test confirms deleting user 1
+leaves user 2's facts/briefings/episodes fully intact.
+
+### (3) Admin users overview
+`GET /api/admin/users` already lists all users with last-call date, next-call, and call counts;
+**added `total_facts`** (active-fact count per user) this pass for the multi-user overview.
+
+### (4) Per-user scheduler
+`checkAndInitiateCalls` and every nightly/weekly sweep loop `SELECT … FROM users WHERE
+onboarding_complete = 1` — all active users, not hardcoded to one. No single-user assumption found.
+
+### Tests
+`lib/multi-user-isolation.test.ts` — two users; fact/briefing/episode reads are scoped; account
+deletion of one leaves the other intact.
+
+---
+
+## S4 — OWASP sweep (2026-06-24)
+
+### (1) SQL injection
+**Clean.** Every value reaching SQL is a bound `?` parameter. The only `${…}` inside a
+`db.prepare()` template is `DELETE FROM ${table}` in `deleteUserData`, where `table` iterates the
+hardcoded `USER_SCOPED_DELETE_ORDER` constant — never request data. No string-concatenated values.
+
+### (2) Input validation (POST/PATCH)
+Audited the input-accepting routes. Validation is present and strong on the key paths:
+- `auth/signup` — email trim+lowercase, all-fields-required (400), password length 8–128, name ≤100.
+- `auth/login` — credential check, rate-limited per IP.
+- `profile/timezone` — `isValidTimeZone()` gate, rejects garbage.
+- `notifications/subscribe` — auth + rate-limit + `typeof` checks on endpoint/p256dh/auth.
+- `vapi/tool-call` — Vapi-secret gate; tool args type-checked per handler.
+- **Gap fixed:** `notifications/subscribe` type-checked but did not bound lengths — an authenticated
+  client could store a multi-MB endpoint/key and bloat `push_subscriptions`. **Added** an http(s)-URL
+  + length cap (endpoint ≤1024, keys ≤256) → 400. Tests added (`push-routes.test.ts`).
+
+### (3) Auth coverage on every route
+Scanned all `app/api/**/route.ts` for a session/secret/admin/rate-limit gate. **All protected** except
+the intentionally-public set: `auth/login`, `auth/signup`, OAuth callbacks (`auth/google|whoop|gmail/*`
+— CSRF-state protected), `vapi/webhook` + `vapi/tool-call` (Vapi-secret gated), `waitlist`. The one
+grep false-positive — `user/export` — is a thin re-export of the authed `account/export` GET
+(`getSession` + 401). No unprotected user-data route found.
+
+### Tests
+`push-routes.test.ts` +3 (non-URL endpoint, oversized endpoint, oversized key → 400).
+
+---
+
+## S7 — Scheduler multi-user hardening (2026-06-24)
+
+- **(1) Fires every due user — verified.** `checkAndInitiateCalls` loops all `onboarding_complete`
+  users with a phone + call_time, each in its own try/catch; it `continue`s past non-due users and
+  never breaks early. 10 users at 7am → 10 calls.
+- **(2) Bounded concurrency — added.** Calls were placed sequentially (`await` per user), which could
+  exceed the 55s dispatch-lock TTL once enough users shared a call time. Refactored into a filter
+  pass (sequential, DB-only) + a placement pass that fires in **batches of `MAX_CONCURRENT_CALLS=5`**
+  (`Promise.all` per batch). Under Vapi's simultaneous-call limit; per-user try/catch isolates failures.
+- **(3) Double-dial prevention — verified (double-guarded).** The minute-cron acquires `scheduler_lock`
+  (`DISPATCH_LOCK`, 55s TTL) before the sweep and releases after, so only one instance runs it across
+  replicas/restarts; and `findTodaysBlockingBriefing` + `scheduleBriefingCall`'s own guard block a
+  second call for an already-called user.
+- **(4) Intended/actual/outcome log — already covered by `call_attempts`.** That table records
+  `scheduled_for` (intended), `attempted_at` (actual), `status` (connected/failed/retrying) +
+  `fail_reason`, and the 6am digest reads `callAttemptQueries.failedCount(24)` → DEGRADED. A separate
+  `scheduled_calls` table would duplicate it, so it was not added.
+- **Tests:** `scheduler.hardening.test.ts` (S7 block) — 3 users same call time all fire; already-called
+  → no double-dial; one failure doesn't sink the others; 7 users → 7 calls across batches.
+
+---
+
+## S8 — Rate-limit hardening (2026-06-25)
+
+- **(1) Per-user vs global audit — all buckets are scoped, none global.** Every entry in
+  `LIMITS` is keyed by the identifier passed to `checkRateLimit(type, id)` — a `user.id` for the
+  user buckets, `getClientIP(req)` for the public ones (login/signup/waitlist). There is no bucket
+  keyed by a constant, so none collapses into a shared global counter under multi-user load. The
+  store is SQLite-backed (survives restart, works across instances) and **fails open** on a DB
+  fault (never locks out a real user).
+- **(2) Vapi webhook per-IP ceiling — added.** New `vapiWebhook` bucket (**1000/min per source IP**)
+  checked right after the secret gate in `/api/vapi/webhook`. Because Vapi is a single upstream this
+  is a DoS backstop, not a tight limit — set far above realistic volume (~4–6 events/call) and, on
+  breach, replies **200 "received"** (not 429) so an over-limit request never triggers a Vapi retry
+  storm. The primary defense against legitimate retries remains the idempotency layer
+  (`claimWebhookEvent`); this only sheds a pathological flood.
+- **(3) Fact-extraction per-user ceiling — added.** New `factExtraction` bucket (**10/hour/user**)
+  gates the post-call `extractAndUpsertFacts` call in the webhook — on breach the Haiku call is
+  skipped (logged). Normal load is ~1/call and calls are already rate-limited, so this is a cost
+  backstop against a pathological extraction loop, not a routine limit.
+- **Tests:** `rateLimit.test.ts` (+4) — webhook ceiling config + per-IP key + blocked verdict;
+  factExtraction config + 11th-call block.

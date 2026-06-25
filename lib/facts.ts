@@ -7,7 +7,7 @@
 // Design: always degrades safely — any failure is a no-op that never blocks post-call
 // processing. Extraction failure === no new facts stored, existing facts unchanged.
 
-import { factQueries, peopleProfileQueries, peopleModelQueries, briefingQueries, type Fact, type PeopleModelFields } from './db';
+import { factQueries, peopleProfileQueries, peopleModelQueries, briefingQueries, performanceLogQueries, type Fact, type PeopleModelFields } from './db';
 import { maybeCreateFactLearnedNotif } from './notifications';
 import { groundProperNouns, extractNamesFromEventTitles } from './grounding';
 import { matchesSelfName } from './selfName';
@@ -356,6 +356,7 @@ export async function extractAndUpsertFacts(
   sourceBriefingId?: number,
   calendarEventTitles?: string[],
 ): Promise<number> {
+  const _perfStart = Date.now(); // S5 — benchmark fact extraction (Haiku + upsert; target <5s)
   try {
     // Pass previously stored facts so the model returns only net-new items.
     // Also pass known person names so STT garbling is corrected (e.g. "Pfizer" → "Faiza").
@@ -466,6 +467,8 @@ export async function extractAndUpsertFacts(
     if (netNew > 0) {
       maybeCreateFactLearnedNotif(userId, netNew);
     }
+    // S5 (Security, additive instrumentation) — record extraction time for the health digest.
+    try { performanceLogQueries.record('fact_extraction', Date.now() - _perfStart, Date.now()); } catch { /* best effort */ }
     return stored;
   } catch (err) {
     console.error('[facts] extractAndUpsertFacts failed:', err);

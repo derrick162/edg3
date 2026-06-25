@@ -7,7 +7,16 @@ import { initiateCall, buildGratitudeSystemPrompt } from './vapi';
 import { getWeatherForecast, getWeatherToday } from './weather';
 import { currentOpenCallMemoryText } from './callMemory';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, performanceLogQueries, effectiveTimezone, User } from './db';
+
+// S5 — per-job performance targets (ms). A benchmarked job whose slowest run in the last 24h
+// exceeds its target flips the 6am health digest to DEGRADED. Job names must match the
+// `performanceLogQueries.record(job, …)` calls in the instrumented code paths.
+const PERF_TARGETS: Record<string, number> = {
+  briefing_generation: 3000,
+  memory_retrieval: 500,
+  fact_extraction: 5000,
+};
 import { isPrivacyMode } from './consent';
 import { greetingEn, greetingYue, dayPeriod } from './greeting';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
@@ -84,6 +93,11 @@ const STALE_CALLING_MS = 15 * 60 * 1000;
 // crashed between createPending() and the Vapi call. Past this age the slot is released
 // so the scheduler can retry instead of being permanently stuck.
 const STALE_PENDING_MS = 5 * 60 * 1000;
+
+// S7 — max simultaneous outbound calls placed per sweep. Vapi caps concurrent outbound calls;
+// 5 keeps us safely under it while letting a same-call-time cohort fire in parallel batches
+// (instead of a slow sequential await chain that could exceed the 55s dispatch-lock TTL).
+const MAX_CONCURRENT_CALLS = 5;
 
 /**
  * The once-a-day guard: is there a briefing for `dayPrefix` (a YYYY-MM-DD local date) that
@@ -428,6 +442,18 @@ export async function runHealthDigest(): Promise<void> {
     if (tokenFails > 0) issues.push(`${tokenFails} user(s) have calendar auth issues`);
   } catch (e) { issues.push(`calendar-auth check error: ${e}`); }
 
+  // S5 — performance regression: any benchmarked job that exceeded its target in the last 24h
+  // flips the digest to DEGRADED so a slow path is visible before users feel it.
+  try {
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const maxes = performanceLogQueries.recentMaxByJob(since);
+    for (const { job, max_ms } of maxes) {
+      const target = PERF_TARGETS[job];
+      if (target && max_ms > target) issues.push(`${job} slow: ${max_ms}ms (target ${target}ms) in last 24h`);
+    }
+    performanceLogQueries.prune();
+  } catch (e) { issues.push(`perf check error: ${e}`); }
+
   const status = issues.length === 0 ? 'ok' : 'degraded';
   const summary = issues.length === 0
     ? 'All systems nominal'
@@ -441,6 +467,14 @@ export async function runHealthDigest(): Promise<void> {
     console.log('[health] HEALTH: OK — All systems nominal');
   } else {
     console.error(`[health] HEALTH: DEGRADED — ${summary}`);
+    // S2 — surface DEGRADED to the operator's phone, not just the logs. This consolidated
+    // alert covers all three trigger conditions (failed calls, failed_webhooks DLQ, job
+    // failures) since each is one of the `issues` that produced the DEGRADED status.
+    // Best-effort: no-op when VAPID is unset or nobody is subscribed; never blocks the digest.
+    try {
+      const { sendPushToAllSubscribers } = await import('./push');
+      await sendPushToAllSubscribers({ title: 'Edg3 health: DEGRADED', body: summary.slice(0, 180) });
+    } catch (e) { console.error('[health] DEGRADED push failed:', e); }
   }
 }
 
@@ -564,6 +598,9 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
     AND call_time IS NOT NULL
   `).all() as User[];
 
+  // S7 — Pass 1: deterministically filter to the users DUE right now (cheap DB-only checks). This
+  // stays sequential so the once-a-day guard (findTodaysBlockingBriefing) sees a consistent view.
+  const dueCalls: Array<{ user: User; scheduledFor: string }> = [];
   for (const user of users) {
     try {
       const timezone = user.timezone || 'America/Vancouver';
@@ -597,14 +634,27 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
         `[scheduler] Calling user ${user.id} (${user.name}) — scheduled ${user.call_time} ${timezone}` +
         (deltaMins > 0 ? `, ${deltaMins}min late (cold-start/missed-tick catch-up)` : ' (on time)'),
       );
-      const scheduledFor = `${userToday}T${user.call_time}:00`;
-      await scheduleBriefingCall(user.id);
-      callAttemptQueries.record(user.id, scheduledFor, 'connected');
+      dueCalls.push({ user, scheduledFor: `${userToday}T${user.call_time}:00` });
     } catch (err) {
-      console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
-      const userToday2 = new Date(now.toLocaleString('en-US', { timeZone: user.timezone || 'America/Vancouver' })).toLocaleDateString('en-CA');
-      callAttemptQueries.record(user.id, `${userToday2}T${user.call_time}:00`, 'failed', String(err).slice(0, 500));
+      console.error(`[scheduler] Failed to evaluate user ${user.id} (${user.name}):`, err);
     }
+  }
+
+  // S7 — Pass 2: place the due calls with BOUNDED CONCURRENCY. Sequential `await` would serialize
+  // ~3s briefing-gen per user and could blow past the 55s dispatch-lock TTL once enough users share
+  // a call time; firing all at once would breach Vapi's simultaneous-call limit. Batches of
+  // MAX_CONCURRENT_CALLS thread the needle. Per-user try/catch — one failure never sinks the batch.
+  for (let i = 0; i < dueCalls.length; i += MAX_CONCURRENT_CALLS) {
+    const batch = dueCalls.slice(i, i + MAX_CONCURRENT_CALLS);
+    await Promise.all(batch.map(async ({ user, scheduledFor }) => {
+      try {
+        await scheduleBriefingCall(user.id);
+        callAttemptQueries.record(user.id, scheduledFor, 'connected');
+      } catch (err) {
+        console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
+        callAttemptQueries.record(user.id, scheduledFor, 'failed', String(err).slice(0, 500));
+      }
+    }));
   }
 
   // DB-flagged retries: missed calls whose retry_after timestamp has now passed.
