@@ -79,7 +79,8 @@
 ---
 
 ## 🐛 QA Findings
-_(QA tester fills this section)_
+
+- [ ] **BUG P1 [Design]** — Edg3 score trend still broken (reported by Derrick 2026-06-25). Two issues: (1) Trend graph line stops at Sunday — x-axis spans Sat→Today but no data points render for Mon/Tue/Wed/Today. Check whether the API is returning the full history and whether the chart is mapping ALL returned points to the x-axis (not just the first N). The x-axis must always extend to today and every day with data must have a plotted point. (2) Score displays "▲ 1" — this looks like the delta/change value is being shown as the primary score. The main number must be the absolute Edg3 score; "▲ 1 over 6d" is fine as secondary copy. `git merge master` first, fix both, `npm run preflight`, push.
 
 ---
 
