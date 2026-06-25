@@ -583,6 +583,17 @@ export function initSchema(db: Database.Database) {
       checked_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- S5 — performance benchmarks. One row per timed job run (briefing gen, memory retrieval,
+    -- fact extraction). System-wide observability (no PII, no user scoping) — fed into the 6am
+    -- health digest: any job exceeding its target in the last 24h flips the digest to DEGRADED.
+    CREATE TABLE IF NOT EXISTS performance_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job         TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      recorded_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_performance_log_job ON performance_log(job, recorded_at);
+
     -- Per-attempt log for every scheduled morning call (DC1-1). Written before Vapi
     -- is contacted so even early failures are captured. status = connected on success,
     -- failed on all-retries-exhausted, retrying on the first failure (retry pending).
@@ -1794,6 +1805,30 @@ export const healthLogQueries = {
       getDb().prepare(
         `DELETE FROM health_log WHERE checked_at < datetime('now', ?)`
       ).run(`-${keepDays} days`);
+    } catch { /* best effort */ }
+  },
+};
+
+// S5 — performance benchmark log. Best-effort throughout (observability must never break a request).
+export const performanceLogQueries = {
+  record: (job: string, durationMs: number, atMs: number): void => {
+    try {
+      getDb().prepare('INSERT INTO performance_log (job, duration_ms, recorded_at) VALUES (?, ?, ?)')
+        .run(job, Math.round(durationMs), atMs);
+    } catch { /* best effort — never block the timed job */ }
+  },
+  // Max duration per job since `sinceMs` — fed into the health digest's target check.
+  recentMaxByJob: (sinceMs: number): Array<{ job: string; max_ms: number }> => {
+    try {
+      return getDb().prepare(
+        'SELECT job, MAX(duration_ms) AS max_ms FROM performance_log WHERE recorded_at >= ? GROUP BY job'
+      ).all(sinceMs) as Array<{ job: string; max_ms: number }>;
+    } catch { return []; }
+  },
+  prune: (keepDays = 14, nowMs = Date.now()): void => {
+    try {
+      // recorded_at is unix ms — compute the cutoff in JS (no sqlite datetime juggling).
+      getDb().prepare('DELETE FROM performance_log WHERE recorded_at < ?').run(nowMs - keepDays * 86400_000);
     } catch { /* best effort */ }
   },
 };

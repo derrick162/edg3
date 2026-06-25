@@ -43,6 +43,11 @@ vi.mock('./db', () => ({
     prune: vi.fn(() => { h.healthPruned = true; }),
     getLatest: vi.fn(),
   },
+  // S5 — perf-target check reads these; default to no benchmarked jobs (no perf issue).
+  performanceLogQueries: {
+    recentMaxByJob: vi.fn(() => []),
+    prune: vi.fn(),
+  },
   callAttemptQueries: {
     failedCount: vi.fn((_hours: number) => h.failedCalls),
     prune: vi.fn(() => { h.callAttemptPruned = true; }),

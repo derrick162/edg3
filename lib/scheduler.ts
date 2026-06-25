@@ -7,7 +7,16 @@ import { initiateCall, buildGratitudeSystemPrompt } from './vapi';
 import { getWeatherForecast, getWeatherToday } from './weather';
 import { currentOpenCallMemoryText } from './callMemory';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
-import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, effectiveTimezone, User } from './db';
+import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, performanceLogQueries, effectiveTimezone, User } from './db';
+
+// S5 — per-job performance targets (ms). A benchmarked job whose slowest run in the last 24h
+// exceeds its target flips the 6am health digest to DEGRADED. Job names must match the
+// `performanceLogQueries.record(job, …)` calls in the instrumented code paths.
+const PERF_TARGETS: Record<string, number> = {
+  briefing_generation: 3000,
+  memory_retrieval: 500,
+  fact_extraction: 5000,
+};
 import { isPrivacyMode } from './consent';
 import { greetingEn, greetingYue, dayPeriod } from './greeting';
 import { deriveEnergySignal, formatEnergyForCall } from './energy';
@@ -427,6 +436,18 @@ export async function runHealthDigest(): Promise<void> {
     }
     if (tokenFails > 0) issues.push(`${tokenFails} user(s) have calendar auth issues`);
   } catch (e) { issues.push(`calendar-auth check error: ${e}`); }
+
+  // S5 — performance regression: any benchmarked job that exceeded its target in the last 24h
+  // flips the digest to DEGRADED so a slow path is visible before users feel it.
+  try {
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const maxes = performanceLogQueries.recentMaxByJob(since);
+    for (const { job, max_ms } of maxes) {
+      const target = PERF_TARGETS[job];
+      if (target && max_ms > target) issues.push(`${job} slow: ${max_ms}ms (target ${target}ms) in last 24h`);
+    }
+    performanceLogQueries.prune();
+  } catch (e) { issues.push(`perf check error: ${e}`); }
 
   const status = issues.length === 0 ? 'ok' : 'degraded';
   const summary = issues.length === 0

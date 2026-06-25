@@ -17,7 +17,7 @@ import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCo
 import { topFacts, rankByMemoryScore } from './memorySalience';
 import { selectReconfirmationFact, buildReconfirmationPromptBlock } from './factConfidence';
 import { deriveEnergySignal, formatEnergyForBriefing } from './energy';
-import { focusMilestoneQueries, dailyFocusQueries } from './db';
+import { focusMilestoneQueries, dailyFocusQueries, performanceLogQueries } from './db';
 // R31 — Clarity + Momentum score inputs (the briefing was computing Edge Score on only Focus+Energy).
 import { calendarQueries, whoopQueries, getDb } from './db';
 import { buildFocusProgress, formatFocusScoreboardForBriefing } from './focusProgress';
@@ -704,6 +704,7 @@ export async function buildBriefingContextPack(userId: number): Promise<string> 
 }
 
 export async function generateDailyBriefing(userId: number): Promise<string> {
+  const _perfStart = Date.now(); // S5 — benchmark briefing generation (target <3s)
   const user = userQueries.findById(userId);
   if (!user) throw new Error('User not found');
 
@@ -1511,12 +1512,16 @@ Write as flowing spoken language.`;
   }
 
   // Post-process: verify calendar references. Degrade gracefully if this step fails.
+  let _result: string;
   try {
-    return await sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
+    _result = await sanitizeCalendarReferences(briefingText, calendarEvents, weekEvents, userTimezone);
   } catch (err) {
     console.error('[briefing] sanitizeCalendarReferences failed — returning raw briefing:', err);
-    return briefingText;
+    _result = briefingText;
   }
+  // S5 (Security, additive instrumentation) — record total generation time for the health digest.
+  try { performanceLogQueries.record('briefing_generation', Date.now() - _perfStart, Date.now()); } catch { /* best effort */ }
+  return _result;
 }
 
 export async function generatePreviewBriefing(userId: number): Promise<string> {

@@ -1206,6 +1206,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **DISPATCH S5 — performance benchmarks (2380 green).** _(synced master first; DISPATCH.md item)_
+  - **Security infra:** new `performance_log` table (system-wide, no PII) + `performanceLogQueries` (`record`/`recentMaxByJob`/`prune`) in `lib/db.ts`. Wired into `runHealthDigest` (scheduler): `PERF_TARGETS` (briefing_generation 3s, memory_retrieval 500ms, fact_extraction 5s) — any job whose slowest run in the last 24h exceeds target flips the 6am digest to **DEGRADED** (→ push via S2). 4 tests (`lib/performance-log.test.ts`).
+  - ⚠️ **Additive instrumentation in Core-owned files (Darren sync down):** one-line timing + `performanceLogQueries.record(...)` hooks added to `generateDailyBriefing` (`lib/briefing.ts`), `currentOpenCallMemoryText` (`lib/callMemory.ts`), `extractAndUpsertFacts` (`lib/facts.ts`). Zero behaviour change — pure observability; required so the perf_log has producers. Job names match `PERF_TARGETS`.
+  - Updated `lib/health-digest.test.ts` db mock to include `performanceLogQueries`. 161 files / 2380 green.
 - **2026-06-24** — **DISPATCH S4 — OWASP sweep (2376 green).** _(synced master first; DISPATCH.md item)_
   - **(1) SQL injection — clean.** All values are bound `?` params; the only SQL template `${…}` is `DELETE FROM ${table}` over the hardcoded `USER_SCOPED_DELETE_ORDER` (not request data).
   - **(2) Input validation** — audited input routes (signup, login, profile/timezone, subscribe, vapi/tool-call): validation present + strong. **Gap fixed:** `notifications/subscribe` type-checked but didn't bound lengths → an authed client could bloat `push_subscriptions`; added http(s)-URL + length caps (endpoint ≤1024, keys ≤256) → 400, +3 tests.
