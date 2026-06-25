@@ -148,7 +148,9 @@ export async function POST(req: NextRequest) {
       if (process.env.VAPI_ASSISTANT_ID) {
         return NextResponse.json({ assistantId: process.env.VAPI_ASSISTANT_ID, assistantOverrides: assistantConfig });
       }
-      return NextResponse.json({ assistant: { name: 'EDG3', server: { url: resolveWebhookUrl() }, ...assistantConfig } });
+      const inboundServer: { url: string; secret?: string } = { url: resolveWebhookUrl() };
+      if (process.env.VAPI_SERVER_SECRET) inboundServer.secret = process.env.VAPI_SERVER_SECRET;
+      return NextResponse.json({ assistant: { name: 'EDG3', server: inboundServer, ...assistantConfig } });
     }
 
     if (!call?.id) return NextResponse.json({ received: true });
