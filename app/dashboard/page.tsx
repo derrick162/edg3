@@ -3110,7 +3110,7 @@ export default function Dashboard() {
                 <textarea
                   className="input w-full text-sm"
                   rows={3}
-                  maxLength={2000}
+                  maxLength={6000}
                   placeholder="Type anything Edge should know — about a person, a goal, a preference, an update…"
                   value={noteText}
                   onChange={e => setNoteText(e.target.value)}

@@ -46,8 +46,8 @@ describe('POST /api/memory/notes (R36 T1)', () => {
     expect((await POST(noteReq({}))).status).toBe(400);
   });
 
-  it('returns 400 when text exceeds 2000 chars', async () => {
-    const r = await POST(noteReq({ text: 'a'.repeat(2001) }));
+  it('returns 400 when text exceeds 6000 chars', async () => {
+    const r = await POST(noteReq({ text: 'a'.repeat(6001) }));
     expect(r.status).toBe(400);
   });
 

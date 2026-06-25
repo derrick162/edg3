@@ -7,7 +7,7 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 // R36 T1 — "Add context": free-form text the user types into the Memory tab. Runs through the same
 // extraction pipeline as a call transcript (→ structured People/Goals/Preferences facts) AND stores
 // the raw note as a single `user_note` fact so it shows in the Memory tab as "added manually".
-const MAX_NOTE = 2000;
+const MAX_NOTE = 6000;
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
