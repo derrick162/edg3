@@ -3422,6 +3422,17 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R41 T4 SHIPPED (2300 green) — self-reported energy (false "I'll change your energy to red" fix).**
+  - **Part B already existed:** the `energy_log` table, `energyLogQueries`, the `setEnergyLevel` Vapi tool
+    (handler + wired tool ID, created 2026-06-14), and `POST /api/energy/today` were all live. So the bug
+    wasn't a missing tool — it was Edge implying it could change the WHOOP indicator.
+  - **Part A (the real fix) — `lib/vapi.ts`:** added an "ENERGY — NEVER PROMISE TO CHANGE THE WHOOP
+    INDICATOR" rule: the Whoop score is API-fetched and can't be set by Edge; when the user states their
+    energy, acknowledge → call `setEnergyLevel` (logs self-reported energy) → factor into recommendations →
+    confirm it's NOTED, never that a dial/indicator changed.
+  - **Dashboard:** the energy card now labels a manual/override entry "(self-reported)" (complementing the
+    existing "(from Whoop)"), so self-reported energy is visually distinct from the Whoop tier.
+  - **No external step needed** — the `setEnergyLevel` Vapi tool already exists. ⚠️ Additive to Security-owned `lib/vapi.ts` — Vijay sync down.
 - **2026-06-24** — **R41 T0 + T1 SHIPPED (2300 green) — memory date tz fix + Conversation State Engine L3.**
   - **T0 — memory date display.** SQLite `datetime('now')` returns `"YYYY-MM-DD HH:MM:SS"` (UTC, no tz
     marker); `new Date()` parsed it as LOCAL, so a fact saved 10 PM EDT showed the next day. New pure

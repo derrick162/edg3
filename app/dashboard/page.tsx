@@ -2523,7 +2523,9 @@ export default function Dashboard() {
                   {energySignal.level === 'green' ? 'Full power — Edg3 will schedule high-focus work today.' :
                    energySignal.level === 'yellow' ? 'Moderate day — Edg3 will mix focused + lighter tasks.' :
                    'Low energy — Edg3 will protect your schedule and defer deep work.'}
-                  {energySignal.source === 'whoop' && <span className="ml-1 opacity-60">(from Whoop)</span>}
+                  {energySignal.source === 'whoop'
+                    ? <span className="ml-1 opacity-60">(from Whoop)</span>
+                    : <span className="ml-1 opacity-60">(self-reported)</span>}
                 </p>
               ) : (
                 <p className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
