@@ -160,3 +160,45 @@ describe('DB-flagged retry pickup', () => {
     expect(h.retryUpdate).toHaveBeenCalledWith(11);
   });
 });
+
+// S7 — multi-user fan-out: every due user fires (bounded concurrency), none double-dials.
+describe('multi-user dispatch (S7)', () => {
+  // 7:00 UTC; users on UTC with call_time 07:00 are inside the catch-up window.
+  const dueTime = () => new Date('2026-06-17T07:00:00.000Z');
+  const dueUsers = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: i + 1, name: `User ${i + 1}`, phone_number: `+1555000000${i}`,
+      call_time: '07:00', timezone: 'UTC', onboarding_complete: 1,
+    }));
+
+  it('fires a briefing for ALL three users sharing a call time', async () => {
+    h.usersAll.mockReturnValue(dueUsers(3));
+    h.alreadyCalled.mockReturnValue(undefined); // nobody called yet today
+    await checkAndInitiateCalls(dueTime());
+    expect(h.initiateCall).toHaveBeenCalledTimes(3);
+  });
+
+  it('does NOT double-dial a user already called today', async () => {
+    h.usersAll.mockReturnValue(dueUsers(3));
+    h.alreadyCalled.mockReturnValue({ status: 'completed', error_code: null }); // all blocked
+    await checkAndInitiateCalls(dueTime());
+    expect(h.initiateCall).not.toHaveBeenCalled();
+  });
+
+  it('one user failing does not stop the others (per-user isolation)', async () => {
+    h.usersAll.mockReturnValue(dueUsers(3));
+    h.alreadyCalled.mockReturnValue(undefined);
+    h.initiateCall
+      .mockRejectedValueOnce(new Error('Vapi 500'))
+      .mockResolvedValue({ id: 'ok' });
+    await expect(checkAndInitiateCalls(dueTime())).resolves.toBeUndefined();
+    expect(h.initiateCall).toHaveBeenCalledTimes(3); // all three attempted despite one failing
+  });
+
+  it('fires more than the concurrency cap across batches (e.g. 7 users → 7 calls)', async () => {
+    h.usersAll.mockReturnValue(dueUsers(7));
+    h.alreadyCalled.mockReturnValue(undefined);
+    await checkAndInitiateCalls(dueTime());
+    expect(h.initiateCall).toHaveBeenCalledTimes(7); // batched 5 + 2, all placed
+  });
+});

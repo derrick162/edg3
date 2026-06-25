@@ -709,3 +709,25 @@ grep false-positive — `user/export` — is a thin re-export of the authed `acc
 
 ### Tests
 `push-routes.test.ts` +3 (non-URL endpoint, oversized endpoint, oversized key → 400).
+
+---
+
+## S7 — Scheduler multi-user hardening (2026-06-24)
+
+- **(1) Fires every due user — verified.** `checkAndInitiateCalls` loops all `onboarding_complete`
+  users with a phone + call_time, each in its own try/catch; it `continue`s past non-due users and
+  never breaks early. 10 users at 7am → 10 calls.
+- **(2) Bounded concurrency — added.** Calls were placed sequentially (`await` per user), which could
+  exceed the 55s dispatch-lock TTL once enough users shared a call time. Refactored into a filter
+  pass (sequential, DB-only) + a placement pass that fires in **batches of `MAX_CONCURRENT_CALLS=5`**
+  (`Promise.all` per batch). Under Vapi's simultaneous-call limit; per-user try/catch isolates failures.
+- **(3) Double-dial prevention — verified (double-guarded).** The minute-cron acquires `scheduler_lock`
+  (`DISPATCH_LOCK`, 55s TTL) before the sweep and releases after, so only one instance runs it across
+  replicas/restarts; and `findTodaysBlockingBriefing` + `scheduleBriefingCall`'s own guard block a
+  second call for an already-called user.
+- **(4) Intended/actual/outcome log — already covered by `call_attempts`.** That table records
+  `scheduled_for` (intended), `attempted_at` (actual), `status` (connected/failed/retrying) +
+  `fail_reason`, and the 6am digest reads `callAttemptQueries.failedCount(24)` → DEGRADED. A separate
+  `scheduled_calls` table would duplicate it, so it was not added.
+- **Tests:** `scheduler.hardening.test.ts` (S7 block) — 3 users same call time all fire; already-called
+  → no double-dial; one failure doesn't sink the others; 7 users → 7 calls across batches.

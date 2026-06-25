@@ -94,6 +94,11 @@ const STALE_CALLING_MS = 15 * 60 * 1000;
 // so the scheduler can retry instead of being permanently stuck.
 const STALE_PENDING_MS = 5 * 60 * 1000;
 
+// S7 — max simultaneous outbound calls placed per sweep. Vapi caps concurrent outbound calls;
+// 5 keeps us safely under it while letting a same-call-time cohort fire in parallel batches
+// (instead of a slow sequential await chain that could exceed the 55s dispatch-lock TTL).
+const MAX_CONCURRENT_CALLS = 5;
+
 /**
  * The once-a-day guard: is there a briefing for `dayPrefix` (a YYYY-MM-DD local date) that
  * should block placing a NEW morning briefing call right now? Returns the blocking row, or
@@ -593,6 +598,9 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
     AND call_time IS NOT NULL
   `).all() as User[];
 
+  // S7 — Pass 1: deterministically filter to the users DUE right now (cheap DB-only checks). This
+  // stays sequential so the once-a-day guard (findTodaysBlockingBriefing) sees a consistent view.
+  const dueCalls: Array<{ user: User; scheduledFor: string }> = [];
   for (const user of users) {
     try {
       const timezone = user.timezone || 'America/Vancouver';
@@ -626,14 +634,27 @@ export async function checkAndInitiateCalls(now: Date = new Date()) {
         `[scheduler] Calling user ${user.id} (${user.name}) — scheduled ${user.call_time} ${timezone}` +
         (deltaMins > 0 ? `, ${deltaMins}min late (cold-start/missed-tick catch-up)` : ' (on time)'),
       );
-      const scheduledFor = `${userToday}T${user.call_time}:00`;
-      await scheduleBriefingCall(user.id);
-      callAttemptQueries.record(user.id, scheduledFor, 'connected');
+      dueCalls.push({ user, scheduledFor: `${userToday}T${user.call_time}:00` });
     } catch (err) {
-      console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
-      const userToday2 = new Date(now.toLocaleString('en-US', { timeZone: user.timezone || 'America/Vancouver' })).toLocaleDateString('en-CA');
-      callAttemptQueries.record(user.id, `${userToday2}T${user.call_time}:00`, 'failed', String(err).slice(0, 500));
+      console.error(`[scheduler] Failed to evaluate user ${user.id} (${user.name}):`, err);
     }
+  }
+
+  // S7 — Pass 2: place the due calls with BOUNDED CONCURRENCY. Sequential `await` would serialize
+  // ~3s briefing-gen per user and could blow past the 55s dispatch-lock TTL once enough users share
+  // a call time; firing all at once would breach Vapi's simultaneous-call limit. Batches of
+  // MAX_CONCURRENT_CALLS thread the needle. Per-user try/catch — one failure never sinks the batch.
+  for (let i = 0; i < dueCalls.length; i += MAX_CONCURRENT_CALLS) {
+    const batch = dueCalls.slice(i, i + MAX_CONCURRENT_CALLS);
+    await Promise.all(batch.map(async ({ user, scheduledFor }) => {
+      try {
+        await scheduleBriefingCall(user.id);
+        callAttemptQueries.record(user.id, scheduledFor, 'connected');
+      } catch (err) {
+        console.error(`[scheduler] Failed to call user ${user.id} (${user.name}):`, err);
+        callAttemptQueries.record(user.id, scheduledFor, 'failed', String(err).slice(0, 500));
+      }
+    }));
   }
 
   // DB-flagged retries: missed calls whose retry_after timestamp has now passed.

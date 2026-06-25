@@ -1206,6 +1206,10 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-25** — **DISPATCH S7 — scheduler multi-user hardening (2391 green).** _(synced master first; DISPATCH.md item)_
+  - **(2) Bounded concurrency — the one real change.** `checkAndInitiateCalls` placed calls sequentially (`await` per user), which could exceed the 55s dispatch-lock TTL when many users share a call time. Refactored into a filter pass (sequential, DB-only — preserves the once-a-day guard's consistent view) + a placement pass in **batches of `MAX_CONCURRENT_CALLS = 5`** (`Promise.all`), under Vapi's simultaneous-call limit. Per-user try/catch unchanged.
+  - **(1) fires every due user, (3) double-dial prevention (`scheduler_lock` + per-user guard), (4) intended/actual/outcome log (`call_attempts` already records `scheduled_for`/`attempted_at`/`status` and feeds the digest)** — all verified already-present; documented in `content/security-audit.md` (no duplicate `scheduled_calls` table added).
+  - **Tests:** `scheduler.hardening.test.ts` S7 block (+4): 3 users same time all fire; already-called → no double-dial; one failure doesn't sink the batch; 7 users → 7 calls across batches. 162 files / 2391 green.
 - **2026-06-24** — **DISPATCH S6 — Litestream activation package (2387 green).** _(synced master first; DISPATCH.md item)_
   - **(1) `scripts/activate-litestream.sh`** — pre-flight validator: required-env-var presence, DB-path writability + persistent-volume hint, litestream-binary presence, and a live S3 auth/write test via `litestream snapshots`/`replicate`. PASS/FAIL per step; non-zero exit on any failure so it can gate a deploy.
   - **(2) `content/litestream-setup-guide.md`** — step-by-step: create the `/data` Railway volume, create the bucket + scoped IAM key, set the 3 required (+3 optional) env vars, verify with the script, run the restore drill, confirm the post-deploy log signal.
