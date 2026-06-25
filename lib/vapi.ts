@@ -491,6 +491,8 @@ ${memBlockYue}${prioBlockYue}${timeAwarenessYue}
 
 ${memBlock}${prioBlock}${timeAwarenessEn}
 
+GROUND TRUTH RULE (applies to ALL calendar tools — createEvent, moveEvent, deleteEvent, editEvent, and every other calendar action): You never know if a calendar action succeeded until you see the tool result. Do not infer success from ${firstName}'s request. Do not confirm until you have a result. If you did not call the tool, you did not take the action.
+
 TOOL CALL DISCIPLINE — NEVER CLAIM AN ACTION IS DONE UNLESS YOU DID IT:
 
 - NEVER say "Done", "Locked in", "Created", "Added", "Moved", "Deleted", or any completion language before you have received a successful tool response.

@@ -3422,6 +3422,21 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **C9 SHIPPED (2352 green) — open-call tool reliability.**
+  - **(1) All calendar tools on open calls:** outbound open calls go through `initiateCall` (shared
+    toolIds list); inbound calls use `toolIds: CALENDAR_TOOL_IDS` in the webhook assistant-request
+    config. Verified `CALENDAR_TOOL_IDS` is the same UUID set as the outbound list — including
+    `rememberPreference` (`54e47823…`).
+  - **(2) GROUND TRUTH RULE parity:** outbound open calls reuse the main systemPrompt (got the rule
+    in C5). Inbound calls use `buildOpenCallSystemPrompt`, which had TOOL CALL DISCIPLINE but NOT
+    the GROUND TRUTH RULE — added it (EN + applies to the yue branch via the shared English label).
+  - **(3) rememberPreference on open calls:** in the tool list (above) and handled by the tool-call
+    route for any briefings row regardless of call type.
+  - **(4) Post-call pipeline on open calls:** verified in C8 (open/gratitude rows run the full
+    learner set).
+  - New tests in `vapi-opencall.test.ts`: GROUND TRUTH RULE + TOOL CALL DISCIPLINE present (EN +
+    yue); `CALENDAR_TOOL_IDS` contains rememberPreference, is >20 tools, no dupes, all valid UUIDs.
+  - +3 tests (2349 → 2352). tsc + next build clean. **C1–C9 complete.**
 - **2026-06-24** — **C8 SHIPPED (2349 green) — gratitude/open-call memory integration (verified + locked in).**
   - **Finding:** the dispatch premise ("gratitude call doesn't feed memory; wire `extractAndUpsertFacts`
     in") is outdated. A gratitude/open call creates a `briefings` row (is_open_call = 1) with a

@@ -10,7 +10,7 @@
 
 ## 🛠️ Core (Darren) — branch `core`
 
-- [ ] **C9 — Open call tool reliability** — Open calls (user-initiated, non-briefing) should have the same tool reliability as briefing calls. Verify: (1) All calendar tools are available on open calls. (2) The same GROUND TRUTH RULE (C5) applies. (3) `rememberPreference` fires correctly on open calls. (4) Post-call memory pipeline runs for open calls, not just briefing calls. Check the webhook handler — does it run `extractAndUpsertFacts` for `callType === 'open'`? If not, fix it.
+_(✅ **C1–C9 ALL SHIPPED (2352 green) — calendar reliability + memory tickets. Pushed to origin/core, ready for PM merge.** Loop holding for next dispatch.)_
 
 ---
 
@@ -67,6 +67,7 @@ _(QA tester fills this section)_
 
 ## ✅ Completed
 
+- [x] **C9** — Open call tool reliability: (1) inbound uses `CALENDAR_TOOL_IDS` (= outbound set, incl. rememberPreference); (2) GROUND TRUTH RULE added to inbound `buildOpenCallSystemPrompt`; (3)+(4) verified; tests in `vapi-opencall.test.ts` — 2026-06-24 (Darren)
 - [x] **C8** — Gratitude call memory integration: VERIFIED gratitude/open calls already run the full memory pipeline (factsP + peopleModelsP + signalsP) — they create a briefings row processed by the unconditional learning block. Added `gratitude-memory.test.ts` regression guard — 2026-06-24 (Darren)
 - [x] **C7** — M4-4 social mental models: (1) sleep-time `updatePeopleModels` + (2) briefing `buildPeopleModelBlock` already shipped (R37); (3) NEW — `rememberPreference` now updates `people_models` immediately for person facts — 2026-06-24 (Darren)
 - [x] **C6** — M2-1 unknown entity consolidation: `isVagueEntity` broadens placeholder detection (friend/buddy/coworker/…) so sleep-time consolidation retires them when a call names the person; event-as-entity block (R38 Part B) verified — 2026-06-24 (Darren)
