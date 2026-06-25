@@ -1206,6 +1206,11 @@ Ship small / green / full preflight / log changelog.
 ---
 
 ## Changelog
+- **2026-06-24** — **DISPATCH S4 — OWASP sweep (2376 green).** _(synced master first; DISPATCH.md item)_
+  - **(1) SQL injection — clean.** All values are bound `?` params; the only SQL template `${…}` is `DELETE FROM ${table}` over the hardcoded `USER_SCOPED_DELETE_ORDER` (not request data).
+  - **(2) Input validation** — audited input routes (signup, login, profile/timezone, subscribe, vapi/tool-call): validation present + strong. **Gap fixed:** `notifications/subscribe` type-checked but didn't bound lengths → an authed client could bloat `push_subscriptions`; added http(s)-URL + length caps (endpoint ≤1024, keys ≤256) → 400, +3 tests.
+  - **(3) Auth coverage** — every `app/api/**` route has a session/secret/admin gate except the intentionally-public set (login, signup, OAuth callbacks (CSRF-state), vapi webhook/tool-call (Vapi-secret), waitlist); the lone grep miss (`user/export`) is a re-export of the authed `account/export`. No unprotected user-data route.
+  - Full sweep documented in `content/security-audit.md` (S4 section). 160 files / 2376 green.
 - **2026-06-24** — **DISPATCH S3 — multi-user infrastructure audit (2373 green).** _(synced master first; DISPATCH.md item)_
   - **(1) `lib/db.ts` query scoping audit — no cross-user leak.** Scanned every read/write on user-scoped tables: all are `user_id`-scoped, or intentional global prune/maintenance jobs, admin-auth all-user views, phone-keyed rate-limit counts, or server-internal PK updates (never user-supplied). No SQL string-interpolation of request data — all values are bound `?` params. Documented in `content/security-audit.md` (S3 section).
   - **(2) Account-deletion cascade — already covered + drift-guarded** (`deleteUserData` + `USER_SCOPED_DELETE_ORDER` + `lib/db-account-deletion.test.ts`). New isolation test confirms deleting one user leaves the other intact.

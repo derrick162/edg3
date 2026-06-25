@@ -63,6 +63,26 @@ describe('POST /api/notifications/subscribe', () => {
     h.allowed = false;
     expect((await subscribe(req({ endpoint: 'e', keys: { p256dh: 'p', auth: 'a' } }))).status).toBe(429);
   });
+
+  // S4 — length / format bounds (defense-in-depth against an authenticated client bloating the table)
+  it('400 when the endpoint is not an http(s) URL', async () => {
+    const res = await subscribe(req({ endpoint: 'javascript:alert(1)', keys: { p256dh: 'P', auth: 'A' } }));
+    expect(res.status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it('400 when the endpoint exceeds the length cap', async () => {
+    const huge = 'https://push/' + 'x'.repeat(2000);
+    const res = await subscribe(req({ endpoint: huge, keys: { p256dh: 'P', auth: 'A' } }));
+    expect(res.status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it('400 when a key exceeds the length cap', async () => {
+    const res = await subscribe(req({ endpoint: 'https://push/e', keys: { p256dh: 'x'.repeat(300), auth: 'A' } }));
+    expect(res.status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/notifications/unsubscribe', () => {

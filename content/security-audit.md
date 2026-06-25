@@ -679,3 +679,33 @@ onboarding_complete = 1` — all active users, not hardcoded to one. No single-u
 ### Tests
 `lib/multi-user-isolation.test.ts` — two users; fact/briefing/episode reads are scoped; account
 deletion of one leaves the other intact.
+
+---
+
+## S4 — OWASP sweep (2026-06-24)
+
+### (1) SQL injection
+**Clean.** Every value reaching SQL is a bound `?` parameter. The only `${…}` inside a
+`db.prepare()` template is `DELETE FROM ${table}` in `deleteUserData`, where `table` iterates the
+hardcoded `USER_SCOPED_DELETE_ORDER` constant — never request data. No string-concatenated values.
+
+### (2) Input validation (POST/PATCH)
+Audited the input-accepting routes. Validation is present and strong on the key paths:
+- `auth/signup` — email trim+lowercase, all-fields-required (400), password length 8–128, name ≤100.
+- `auth/login` — credential check, rate-limited per IP.
+- `profile/timezone` — `isValidTimeZone()` gate, rejects garbage.
+- `notifications/subscribe` — auth + rate-limit + `typeof` checks on endpoint/p256dh/auth.
+- `vapi/tool-call` — Vapi-secret gate; tool args type-checked per handler.
+- **Gap fixed:** `notifications/subscribe` type-checked but did not bound lengths — an authenticated
+  client could store a multi-MB endpoint/key and bloat `push_subscriptions`. **Added** an http(s)-URL
+  + length cap (endpoint ≤1024, keys ≤256) → 400. Tests added (`push-routes.test.ts`).
+
+### (3) Auth coverage on every route
+Scanned all `app/api/**/route.ts` for a session/secret/admin/rate-limit gate. **All protected** except
+the intentionally-public set: `auth/login`, `auth/signup`, OAuth callbacks (`auth/google|whoop|gmail/*`
+— CSRF-state protected), `vapi/webhook` + `vapi/tool-call` (Vapi-secret gated), `waitlist`. The one
+grep false-positive — `user/export` — is a thin re-export of the authed `account/export` GET
+(`getSession` + 401). No unprotected user-data route found.
+
+### Tests
+`push-routes.test.ts` +3 (non-URL endpoint, oversized endpoint, oversized key → 400).
