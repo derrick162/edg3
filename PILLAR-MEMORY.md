@@ -162,6 +162,65 @@ Store as `category: 'weekly_summary'`, `entity: week_of_YYYY-MM-DD`. Cap at 3 ac
 - 10+ weekly summaries → lifetime synthesis produces a `lifetime_profile` fact
 - Lifetime profile is the first item injected in `currentOpenCallMemoryText`
 
+### M4-6 — Memory Ranking Engine: surface the right memory at the right moment (Core)
+
+**The insight (WEKA AI Memory Podcast, 2026):** Google won search with PageRank — ranking pages by importance, not just recency. Edg3's equivalent is: *which memories should influence this conversation right now?* Right now facts are sorted by recency + confidence. There's no signal for goal alignment, reference frequency, or decision relevance. A fact about Patrick's bachelor party and a fact about Derrick's runway both rank the same. They shouldn't.
+
+**The goal:** a `memoryRankScore(fact, context)` function that produces a 0–1 score per fact, used to sort/filter what gets injected into the call context. The LLM only ever sees the top-N highest-ranked facts — not all of them.
+
+**Scoring factors (weighted):**
+
+| Factor | Weight | How to compute |
+|---|---|---|
+| Goal alignment | 30% | Does this fact's entity or statement text match any of the user's top 3 priority texts? Exact/fuzzy match → 1.0, partial → 0.5, none → 0 |
+| Recency | 20% | Days since `last_confirmed_at` or `created_at` — linear decay to 0 at 90 days |
+| Confidence | 20% | `confidence_score` from facts table (already exists) |
+| Reference frequency | 15% | How many briefings in the last 30 days included this entity? Add `reference_count INT DEFAULT 0` column to facts, increment when a fact is injected into a context pack or call |
+| Category weight | 15% | Person = 0.9, goal = 1.0, commitment = 1.0, preference = 0.7, fact = 0.6, pattern = 0.8 |
+
+**Implementation — `lib/memorySalience.ts`:**
+
+Add `memoryRankScore(fact, priorities, recentBriefingCount)` — pure function, no I/O:
+
+```ts
+export function memoryRankScore(
+  fact: { statement: string; entity: string | null; category: string; confidence_score: number; last_confirmed_at: string | null; created_at: string; reference_count: number },
+  priorities: Array<{ text: string }>,
+  today: string,
+): number {
+  const goalAlignment = computeGoalAlignment(fact, priorities);   // 0–1
+  const recency       = computeRecency(fact, today);              // 0–1
+  const confidence    = fact.confidence_score ?? 0.5;             // 0–1
+  const frequency     = Math.min(fact.reference_count / 10, 1);   // 0–1, caps at 10 refs
+  const catWeight     = CATEGORY_WEIGHTS[fact.category] ?? 0.6;   // 0–1
+
+  return (goalAlignment * 0.30)
+       + (recency       * 0.20)
+       + (confidence    * 0.20)
+       + (frequency     * 0.15)
+       + (catWeight     * 0.15);
+}
+```
+
+**Wire into context assembly — two places:**
+
+1. `currentOpenCallMemoryText` / `currentPreferencesText` in `lib/scheduler.ts`: after loading facts, sort by `memoryRankScore` descending, take top 20.
+2. `buildBriefingContextPack` in `lib/briefing.ts`: same — rank before injecting into the structured grounding block.
+
+**Increment `reference_count`:** when a fact is included in a context pack or call memory block, run `factQueries.incrementReferenceCount(factId)` (fire-and-forget). This makes frequently-surfaced facts rank higher over time.
+
+**Schema change (`lib/db.ts`):**
+```sql
+ALTER TABLE facts ADD COLUMN reference_count INTEGER DEFAULT 0;
+```
+
+**Tests:**
+- Fact with entity matching a top priority scores ≥ 0.8
+- Fact with no goal match, low confidence, old → scores ≤ 0.3
+- `memoryRankScore` is pure (no I/O, no throws)
+- `currentOpenCallMemoryText` returns facts sorted by score, top 20 only
+- `reference_count` increments when fact is injected into context
+
 ---
 
 ## QA Checklist — run when pillar backlog is exhausted
