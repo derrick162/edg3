@@ -1158,7 +1158,7 @@ interface Fact {
   entity: string | null;
   learned_at: string;
   // Core populates these when available
-  confidence?: 'low' | null;
+  confidence?: 'high' | 'medium' | 'low' | null;
   source_briefing_id?: number | null;
   source?: string | null;
   last_updated_at?: string | null;
@@ -3419,17 +3419,23 @@ export default function Dashboard() {
                               <p className="text-xs font-medium" style={{ color: 'var(--edg-success)' }}>✓ Edg3 updated</p>
                             ) : (
                               <>
-                                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+                                <p className="text-sm leading-relaxed" style={{
+                                  color: f.confidence === 'low' ? 'var(--text-muted)' : 'var(--text-body)',
+                                  fontStyle: f.confidence === 'low' ? 'italic' : undefined,
+                                }}>
                                   {!indented && f.entity && (
-                                    <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
+                                    <span className="font-semibold" style={{ color: f.confidence === 'low' ? 'var(--text-muted)' : 'var(--text-strong)' }}>{correctName(f.entity, firstName)}: </span>
                                   )}
                                   {correctName(factDisplayStatement(f.category, f.statement), firstName)}
+                                  {f.confidence === 'medium' && (
+                                    <span aria-hidden="true" className="ml-1.5" style={{ color: 'var(--text-faint)' }}>·</span>
+                                  )}
                                   {f.confidence === 'low' && (
                                     <button
                                       title="Edg3 isn't sure it caught this right — tap to fix"
                                       onClick={() => { setEditingFactId(f.id); setEditFactText(f.statement); setDeletingFactId(null); }}
                                       className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs align-middle"
-                                      style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1 }}
+                                      style={{ background: 'var(--edg-warning-tint)', color: 'var(--edg-warning)', border: '1px solid var(--edg-warning-border)', lineHeight: 1, fontStyle: 'normal' }}
                                     >
                                       &#x26A0; verify
                                     </button>
@@ -3439,12 +3445,15 @@ export default function Dashboard() {
                                   const src = factSourceLabel(f);
                                   const updatedAt = f.last_updated_at;
                                   const showUpdated = updatedAt && updatedAt.slice(0, 10) !== f.learned_at.slice(0, 10);
+                                  const tz = user?.timezone || 'UTC';
+                                  const learnedDate = new Date(f.learned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
+                                  const srcText = src.text.replace(/^learned \w+ \d+/, `learned ${learnedDate}`);
                                   return (
                                     <>
                                       {src.href ? (
-                                        <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{src.text} ↗</a>
+                                        <a href={src.href} className="text-xs mt-0.5 block hover:underline" style={{ color: 'var(--text-faint)' }}>{srcText} ↗</a>
                                       ) : (
-                                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{src.text}</p>
+                                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{srcText}</p>
                                       )}
                                       {showUpdated && (
                                         <button
@@ -3521,12 +3530,12 @@ export default function Dashboard() {
                             <button
                               onClick={() => toggleMemorySection(cat)}
                               aria-expanded={!secCollapsed}
-                              className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
-                              style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest mt-6 mb-2 w-full text-left"
+                              style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                             >
                               <span aria-hidden="true">{meta.icon}</span>
                               {meta.label}
-                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
+                              <span className="ml-1 font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
                               <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
                             </button>
                             {!secCollapsed && <div className="space-y-2">
@@ -3636,12 +3645,12 @@ export default function Dashboard() {
                             <button
                               onClick={() => toggleMemorySection(cat)}
                               aria-expanded={!secCollapsed}
-                              className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
-                              style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest mt-6 mb-2 w-full text-left"
+                              style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                             >
                               <span aria-hidden="true">{meta.icon}</span>
                               {meta.label}
-                              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
+                              <span className="ml-1 font-normal" style={{ color: 'var(--text-faint)' }}>· {entities.length} {entities.length === 1 ? 'person' : 'people'}</span>
                               <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
                             </button>
                             {!secCollapsed && <div className="space-y-2">
@@ -3706,12 +3715,12 @@ export default function Dashboard() {
                           <button
                             onClick={() => toggleMemorySection(cat)}
                             aria-expanded={!secCollapsed}
-                            className="flex items-center gap-1.5 text-sm font-semibold mb-3 w-full text-left"
-                            style={{ color: 'var(--text-body)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                            className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest mt-6 mb-2 w-full text-left"
+                            style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                           >
                             <span aria-hidden="true">{meta.icon}</span>
                             {meta.label}
-                            <span className="ml-1 text-xs font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
+                            <span className="ml-1 font-normal" style={{ color: 'var(--text-faint)' }}>· {catItems.length}</span>
                             <span className="ml-auto" aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 10 }}>{secCollapsed ? '▸' : '▾'}</span>
                           </button>
                           {!secCollapsed && <div className="space-y-1.5">
