@@ -299,7 +299,7 @@ export function initSchema(db: Database.Database) {
       -- ephemeral volume and initializes fresh with THIS CHECK, so new categories work in prod; a
       -- deliberate facts rebuild for any persistent dev DB is deferred/flagged (not done unprompted on
       -- the core memory table). Fact inserts are best-effort (try/catch), so no crash either way.
-      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern','commitment','weekly_summary','lifetime_profile')),
+      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern','commitment','weekly_summary','lifetime_profile','user_note')),
       statement          TEXT NOT NULL,
       entity             TEXT,
       learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -2187,7 +2187,7 @@ export interface GmailDraftLog {
 export interface Fact {
   id: number;
   user_id: number;
-  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern' | 'commitment' | 'weekly_summary' | 'lifetime_profile';
+  category: 'person' | 'project' | 'goal' | 'preference' | 'fact' | 'pattern' | 'commitment' | 'weekly_summary' | 'lifetime_profile' | 'user_note';
   statement: string;
   entity: string | null;
   learned_at: string;

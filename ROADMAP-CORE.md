@@ -3110,7 +3110,22 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
-- **2026-06-24** — **M4-6 SHIPPED (2249 green) — Memory Ranking Engine ("PageRank for personal memory") [PILLAR-MEMORY].**
+- **2026-06-24** — **R36 SHIPPED (2273 green) — "Add context" panel + inbox-review dedup.**
+  - **T1 — manual memory context.** New `POST /api/memory/notes` (`{text}`, ≤2000 chars, 401/400 guards):
+    runs the text through `extractAndUpsertFacts` (same pipeline as call transcripts → structured facts)
+    AND stores the raw note as a `user_note` fact; returns `{factsExtracted}`. Dashboard Memory tab gets an
+    "Add context" card (textarea + Save + inline "✓ Saved — extracted N fact(s)" / error, auto-clear, reloads
+    facts). New `user_note` fact category (Fact type + CHECK + weight maps + 📝 icon). 5 route tests.
+    _(Cam/Design R24 will polish the card visual + the "📝 Added manually" call-notes treatment.)_
+  - **T2 — inbox-review dedup.** `lib/gmail.ts` `getRecentEmailSignal` wrote an identical "Reviewed N inbox
+    threads" Activity entry on every fetch (briefing + retry-call). Added `getPreviousEmailSubjects` +
+    pure `selectNewInboxSubjects` — only records a receipt when the fetch surfaced threads the last review
+    didn't; count/text reflect the new threads. **Corrected the dispatch's snippet:** it stored only the
+    *new* subjects in the snapshot, which would shrink the comparison set and re-log older threads next time
+    (and break the 24h cache) — I store the FULL inbox subjects in the snapshot instead. 3 tests.
+  - **⚠️ `lib/gmail.ts` is Security-owned** — additive (`getPreviousEmailSubjects` + `selectNewInboxSubjects`
+    + the receipt guard), PM-dispatched to Core; Vijay sync down. Reused the `profileUpdate` rate-limit
+    bucket for the notes route to avoid a Security-owned `rateLimit.ts` edit. **Additive to Shared `lib/db.ts`** (user_note category).
   - New pure `memoryRankScore(fact, priorities, today)` (`lib/memorySalience.ts`) — 0–1 blend of goal
     alignment 30% (token overlap vs top-3 priorities → 1.0/0.5/0), recency 20% (90-day linear decay off
     `last_confirmed_at`/`learned_at`), confidence 20% (`confidence_score`), reference frequency 15%
