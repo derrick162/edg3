@@ -211,6 +211,28 @@ function readEmailSignalCache(userId: number): EmailSignal | null {
   }
 }
 
+// R36 T2 — pure dedup decision: the subjects in `current` not present in `previous`. Exported for tests.
+export function selectNewInboxSubjects(current: string[], previous: Set<string>): string[] {
+  return current.filter(s => !previous.has(s));
+}
+
+// R36 T2 — the set of subjects from the most recent email_signal_fetch audit entry (any age), used to
+// dedupe "Reviewed N inbox threads" Activity entries: a fresh fetch with the SAME threads (briefing +
+// retry-call, or two briefings in a window) shouldn't write an identical receipt. Empty set on any miss.
+function getPreviousEmailSubjects(userId: number): Set<string> {
+  try {
+    const row = getDb().prepare(
+      "SELECT snapshot_after FROM audit_log WHERE user_id = ? AND action = 'email_signal_fetch' ORDER BY created_at DESC LIMIT 1"
+    ).get(userId) as { snapshot_after: string | null } | undefined;
+    if (!row?.snapshot_after) return new Set();
+    const parsed = JSON.parse(decryptField(row.snapshot_after)) as { subjects?: unknown };
+    const subjects = Array.isArray(parsed.subjects)
+      ? (parsed.subjects as unknown[]).filter((s): s is string => typeof s === 'string')
+      : [];
+    return new Set(subjects);
+  } catch { return new Set(); }
+}
+
 /**
  * Return a compact prioritization digest of the user's recent inbox threads.
  *
@@ -327,15 +349,27 @@ export async function getRecentEmailSignal(
   // R12 Part B — only record when there's something to report: a zero-thread fetch is a
   // no-op and shouldn't clutter the Activity tab (and writing it would also poison the
   // 24h cache with an empty receipt).
+  // R36 T2 — dedupe: only record a receipt for threads NOT already in the last review. A repeat fetch
+  // of the identical inbox (briefing + retry-call, two briefings) wrote a second identical "Reviewed N
+  // threads" Activity entry. Compare against the previous receipt's subjects; skip if nothing is new.
   if (items.length > 0) {
-    auditLogQueries.record({
-      userId,
-      action: 'email_signal_fetch',
-      argsJson: JSON.stringify({ days, threadCount: items.length }),
-      resultText: `${items.length} inbox threads reviewed for prioritization`,
-      ok: true,
-      snapshotAfter: encryptField(JSON.stringify({ subjects: items.map(i => i.subject) })),
-    });
+    const prevSubjects = getPreviousEmailSubjects(userId);
+    const newSubjectSet = new Set(selectNewInboxSubjects(items.map(i => i.subject), prevSubjects));
+    const newItems = items.filter(i => newSubjectSet.has(i.subject));
+    // Only write a receipt when this fetch surfaced threads the last review didn't (no new threads →
+    // identical fetch → don't clutter the Activity tab). The count/text reflect only the new threads,
+    // but the snapshot stores the FULL current inbox so the 24h cache stays whole AND the next dedup
+    // compares against the complete set (storing only the delta would re-log older threads next time).
+    if (newItems.length > 0) {
+      auditLogQueries.record({
+        userId,
+        action: 'email_signal_fetch',
+        argsJson: JSON.stringify({ days, threadCount: newItems.length }),
+        resultText: `${newItems.length} inbox thread${newItems.length === 1 ? '' : 's'} reviewed for prioritization`,
+        ok: true,
+        snapshotAfter: encryptField(JSON.stringify({ subjects: items.map(i => i.subject) })),
+      });
+    }
   }
 
   return { items, fetchedAt, scopeMissing: false };

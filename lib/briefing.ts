@@ -103,6 +103,8 @@ export function buildPeopleModelBlock(
       if (m.goals) parts.push(m.goals);
       if (m.communication_style) parts.push(m.communication_style);
       if (m.relationship_state && m.relationship_state !== m.goals) parts.push(`last I knew: ${m.relationship_state}`);
+      // R37 T2 — include the last-interaction texture so Edge can open on the relationship, not the event.
+      if (m.last_interaction && m.last_interaction !== m.relationship_state) parts.push(`last time: ${m.last_interaction}`);
       return parts.length ? `- ${m.person_name}: ${parts.join(' · ')}` : '';
     })
     .filter(Boolean);

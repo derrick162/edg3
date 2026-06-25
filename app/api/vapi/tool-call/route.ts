@@ -1505,7 +1505,9 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
     // the next briefing is already correct without waiting for sleep-time consolidation.
     const { statement, topic, category } = args as { statement: string; topic?: string; category?: string };
     if (!statement?.trim()) return "What preference should I remember? Tell me in one sentence.";
-    const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact']);
+    // R39 T3 — 'person' was missing, so mid-call rememberPreference(category:'person') silently fell
+    // back to 'preference' and people landed in the wrong bucket.
+    const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact', 'person']);
     const cat = VALID_FACT_CATS.has(category ?? '') ? (category as string) : 'preference';
     const ent = topic?.trim().slice(0, 200) || null;
 

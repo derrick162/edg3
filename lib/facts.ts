@@ -58,7 +58,9 @@ export async function extractFactsFromTranscript(
 
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
+      // R39 T1 — a 5–10 min call is 8–15k chars; 600 tokens over 2k chars dropped everything after the
+      // first minute (Jamie the dog was never saved). Read more transcript + allow more facts out.
+      max_tokens: 1000,
       messages: [{
         role: 'user',
         content: `Extract up to 10 DURABLE facts about the user from this call transcript.
@@ -67,11 +69,11 @@ ${userLine}${knownNamesLine}${existingFactsLine}
 Each item: {"category":"<category>","statement":"<one clear sentence>","entity":"<name or null>","confidence":"high"|"low"}
 
 Categories:
-- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
+- "person"     — a clearly-named HUMAN in a real relationship with the user (friend, close friend, romantic partner, investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
 - "project"    — a project or initiative the user is building or running
 - "goal"       — a stated goal, aspiration, or deadline
 - "preference" — how the user likes to work, communicate, or make decisions
-- "fact"       — any other durable fact about the user's life or business
+- "fact"       — any other durable fact about the user's life or business. PETS go here: a dog, cat, or other pet → category "fact", entity = the pet's name (e.g. "Jamie is Derrick's dog" → {"category":"fact","entity":"Jamie","statement":"Jamie is Derrick's dog"}).
 - "commitment" — something the user said THEY WILL DO, especially near-term ("I'm going to tackle the Railway fix today", "I'll call the bank tomorrow", "I plan to finish the deck this week", "I need to get to the gym"). Capture the action as the statement, entity null. These are NOT timeless — they're for next-call accountability, so do extract them even though they're time-bound (this overrides the "timeless only" rule for commitments). One commitment per distinct intention.
 
 Rules:
@@ -87,8 +89,8 @@ Rules:
 - DO capture preferences when the user expresses how they like to work, communicate, schedule, or decide ("I prefer mornings", "keep meetings short", "text me, don't call") — these are easy to miss but valuable.
 - Return [] if nothing durable found.
 
-Transcript (first 2000 chars):
-${transcript.slice(0, 2000)}`,
+Transcript (first 8000 chars):
+${transcript.slice(0, 8000)}`,
       }],
     });
 
@@ -292,6 +294,34 @@ function isActivityEntity(entity: string | null | undefined): boolean {
   return ACTIVITY_WORDS.has(entity.trim().toLowerCase());
 }
 
+// R38 Part B — an entity that names an EVENT (a friend's bachelor party, a wedding) rather than a
+// person. These should be filed as an attribute of the person, not as their own entity.
+const EVENT_ENTITY_RE = /\b(party|trip|conference|wedding|meeting|summit|event|retreat|reunion|gala|offsite|getaway|bachelor|bachelorette)\b/i;
+export function looksLikeEventEntity(entity: string | null | undefined): boolean {
+  return !!entity && EVENT_ENTITY_RE.test(entity);
+}
+
+/**
+ * R38 Part B — conservative event-as-entity guard. If an extracted fact's entity looks like an event
+ * title AND there is EXACTLY ONE clearly-named person among this call's extracted facts, re-file the
+ * event fact as an attribute of that person (category 'person', entity = the person). Ambiguous (zero
+ * or multiple named people) → leave everything as-is; never guess. Pure; exported for tests.
+ */
+export function reassignEventEntityFacts(facts: ExtractedFact[]): ExtractedFact[] {
+  const namedPeople = [...new Set(
+    facts
+      .filter(f => f.category === 'person' && f.entity?.trim() && !looksLikeEventEntity(f.entity))
+      .map(f => f.entity!.trim()),
+  )];
+  if (namedPeople.length !== 1) return facts; // no clear single person → don't reassign
+  const person = namedPeople[0];
+  return facts.map(f =>
+    (f.entity && looksLikeEventEntity(f.entity) && !(f.category === 'person' && f.entity.trim() === person))
+      ? { ...f, category: 'person' as const, entity: person }
+      : f,
+  );
+}
+
 /**
  * Extract facts from transcript and upsert them for the given user.
  * Fire-and-forget safe: any error is logged but never propagated.
@@ -352,7 +382,9 @@ export async function extractAndUpsertFacts(
 
     // Pass allCanonical (not just knownNames) so the Haiku model uses exact event-title
     // spellings when a transcribed name is a near-miss (e.g. event "1:1 Jim" → prefer "Jim").
-    const facts = await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts);
+    // R38 Part B — re-file event-title-entity facts ("Friend's Bachelor Party") as an attribute of the
+    // single named person in this call, before dedup/upsert, so they join that person's fact cluster.
+    const facts = reassignEventEntityFacts(await extractFactsFromTranscript(groundedTranscript, userName, allCanonical, storedFacts));
 
     // R29 — universally cumulative memory: when extraction surfaces new info about a subject we
     // already have an active fact for, ENRICH (merge) it rather than overwrite. Entity-keyed facts
@@ -920,6 +952,60 @@ Only return HIGH-CONFIDENCE changes where the user explicitly stated the change.
 
     if (applied > 0) {
       console.log(`[facts] Sleep-time consolidation: ${applied} updates applied for user ${userId}`);
+    }
+
+    // R38 Part A — cross-entity identity upgrade: when a vague/unknown PERSON fact now matches a
+    // newly-named person, retire the unknown and re-file its statement under the real name so it joins
+    // that person's cluster (instead of lingering as a duplicate). Scoped to category='person' so legit
+    // null-entity goals/preferences are never swept in.
+    try {
+      const active = factQueries.getAll(userId);
+      const unknownFacts = active.filter(f => f.category === 'person' && (!f.entity?.trim() || /unknown/i.test(f.entity)));
+      const namedPeople = active.filter(f => f.category === 'person' && f.entity?.trim() && !/unknown/i.test(f.entity));
+      if (unknownFacts.length && namedPeople.length) {
+        const matchRes = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 400,
+          messages: [{
+            role: 'user',
+            content: `You are resolving vague entities in a user's memory.
+
+Named people facts:
+${namedPeople.slice(0, 20).map(f => `[${f.entity}] ${f.statement}`).join('\n')}
+
+Facts with unknown/vague entities (id: statement):
+${unknownFacts.slice(0, 20).map(f => `${f.id}: ${f.statement}`).join('\n')}
+
+For each unknown fact, does ONE named person clearly match (same event, context, relationship)? When in doubt, do NOT match.
+Return ONLY a JSON array: [{"unknownFactId":number,"matchedEntity":string,"confidence":"high"|"medium"}]. Only high/medium confidence. Return [] if nothing matches.`,
+          }],
+        });
+        const mraw = matchRes.content.filter((b: { type: string }) => b.type === 'text').map((b: { type: string; text?: string }) => b.text ?? '').join('').trim();
+        const mmatch = mraw.match(/\[[\s\S]*\]/);
+        if (mmatch) {
+          const matches = JSON.parse(mmatch[0]) as Array<{ unknownFactId: number; matchedEntity: string; confidence: 'high' | 'medium' }>;
+          let resolved = 0;
+          for (const m of matches) {
+            const uf = unknownFacts.find(f => f.id === m.unknownFactId);
+            const entity = m.matchedEntity?.trim();
+            if (!uf || !entity) continue;
+            if (m.confidence === 'high') {
+              factQueries.retire(userId, uf.id);
+              factQueries.upsertFact(userId, 'person', uf.statement.slice(0, 500), entity, 'high');
+              resolved++;
+            } else if (m.confidence === 'medium') {
+              // Conservative: only retire a medium match if an identical statement already lives under that entity.
+              const dup = factQueries.getByCategory(userId, 'person').some(f =>
+                f.entity?.toLowerCase() === entity.toLowerCase() &&
+                f.statement.trim().toLowerCase() === uf.statement.trim().toLowerCase());
+              if (dup) { factQueries.retire(userId, uf.id); resolved++; }
+            }
+          }
+          if (resolved > 0) console.log(`[facts] consolidation: resolved ${resolved} unknown-entity fact(s) for user ${userId}`);
+        }
+      }
+    } catch (e) {
+      console.error('[facts] unknown-entity resolution failed:', e instanceof Error ? e.message : e);
     }
 
     // M4-4: keep social mental models in sync with person facts. After consolidation, rebuild each

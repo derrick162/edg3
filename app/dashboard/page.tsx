@@ -1469,6 +1469,10 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
+  // R36 T1 — "Add context" panel state.
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteResult, setNoteResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [people, setPeople] = useState<{ canonical_name: string; interaction_count: number; last_interaction: string | null; upcoming_interaction: string | null; goals?: string | null; communication_style?: string | null }[]>([]);
   const [patterns, setPatterns] = useState<{ type: string; summary: string; confidence: string; sampleDays: number }[]>([]);
   const [accountability, setAccountability] = useState<{ done: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; stillOpen: { id: number; text: string; source: string; madeAt: string; dueDate: string | null; outcome: string; resolvedAt: string | null; daysOpen: number }[]; completionRate: number | null; lookbackDays: number } | null>(null);
@@ -1720,6 +1724,35 @@ export default function Dashboard() {
     setFacts(prev => prev.filter(f => f.id !== id));
     setDeletingFactId(null);
     await fetch(`/api/memory/facts/${id}`, { method: 'DELETE' });
+  }
+
+  // R36 T1 — "Add context": send free-form text through the extraction pipeline + store the raw note.
+  async function submitNote() {
+    const text = noteText.trim();
+    if (!text || noteSaving) return;
+    setNoteSaving(true);
+    setNoteResult(null);
+    try {
+      const r = await fetch('/api/memory/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (r.ok) {
+        const d = await r.json().catch(() => ({ factsExtracted: 0 }));
+        const n = d.factsExtracted ?? 0;
+        setNoteResult({ ok: true, msg: `✓ Saved — extracted ${n} fact${n === 1 ? '' : 's'}` });
+        setNoteText('');
+        loadData(); // reload so the new facts appear immediately
+        setTimeout(() => setNoteResult(null), 4000);
+      } else {
+        setNoteResult({ ok: false, msg: 'Something went wrong — try again' });
+      }
+    } catch {
+      setNoteResult({ ok: false, msg: 'Something went wrong — try again' });
+    } finally {
+      setNoteSaving(false);
+    }
   }
 
   async function loadFactHistory(id: number) {
@@ -3070,6 +3103,37 @@ export default function Dashboard() {
                 id="memory"
                 text="Everything Edg3 has learned from your calls — the memory it draws on. Edit or remove anything that's off."
               />
+
+              {/* R36 T1 — Add context: free-form text → structured facts (Design to polish in R24). */}
+              <div className="glass-card p-4 mb-6">
+                <p className="text-sm font-semibold mb-2">Add context</p>
+                <textarea
+                  className="input w-full text-sm"
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Type anything Edge should know — about a person, a goal, a preference, an update…"
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  style={{ resize: 'vertical' }}
+                />
+                <div className="flex items-center justify-between gap-3 mt-2">
+                  <span
+                    className="text-xs"
+                    style={{ color: noteResult ? (noteResult.ok ? 'var(--edg-success, #4ade80)' : 'var(--edg-danger)') : 'var(--text-faint)' }}
+                  >
+                    {noteResult?.msg ?? ''}
+                  </span>
+                  <button
+                    onClick={submitNote}
+                    disabled={!noteText.trim() || noteSaving}
+                    className="btn-primary text-sm py-1.5 px-4"
+                    style={{ opacity: (!noteText.trim() || noteSaving) ? 0.5 : 1 }}
+                  >
+                    {noteSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap">
                 <h2 className="text-lg font-bold">Here&apos;s what Edg3 knows about you</h2>
                 {facts.length > 0 && (
@@ -3088,7 +3152,7 @@ export default function Dashboard() {
                   .sort((a, b) => new Date(b.learned_at).getTime() - new Date(a.learned_at).getTime())
                   .slice(0, 5);
                 const CATEGORY_ICONS: Record<string, string> = {
-                  goal: '🎯', project: '🗂', person: '👤', preference: '⚡', fact: '📌', pattern: '📈',
+                  goal: '🎯', project: '🗂', person: '👤', preference: '⚡', fact: '📌', pattern: '📈', user_note: '📝',
                 };
                 const firstName = (user?.name || '').split(' ')[0];
                 return (

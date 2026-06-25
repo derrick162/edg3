@@ -65,7 +65,7 @@ vi.mock('./db', async (importOriginal) => {
   };
 });
 
-import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation, derivePersonModelFields } from './facts';
+import { extractFactsFromTranscript, extractAndUpsertFacts, extractAndUpsertFactsFromEmail, linkEventsToFacts, buildPreferencesPrompt, consolidateFacts, cleanupPeopleFacts, runSleepTimeConsolidation, derivePersonModelFields, looksLikeEventEntity, reassignEventEntityFacts } from './facts';
 import { factQueries, peopleProfileQueries, type Fact } from './db';
 import type { EmailSignal, EmailSignalItem } from './gmail';
 
@@ -194,6 +194,17 @@ describe('extractFactsFromTranscript — userName injection', () => {
     expect(promptContent).toContain('ATTRIBUTION');
     expect(promptContent).toMatch(/USER stated/);
     expect(promptContent).toMatch(/assistant.*NOT a user preference|NOT a user preference/);
+  });
+
+  // R39 T1/T2 — read more transcript (8000, not 2000) + person includes "friend" + explicit pet guidance.
+  it('reads up to 8000 transcript chars and includes friend + pet guidance (R39)', async () => {
+    h.create.mockResolvedValue(textResponse(JSON.stringify([])));
+    const longTranscript = 'A'.repeat(2500) + ' JAMIE_THE_DOG_MARKER ' + 'B'.repeat(2500);
+    await extractFactsFromTranscript(longTranscript);
+    const prompt = h.create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain('JAMIE_THE_DOG_MARKER'); // would have been cut by the old 2000-char slice
+    expect(prompt).toContain('friend, close friend');
+    expect(prompt).toMatch(/PETS/);
   });
 
   // R34 T1 — commitments ("I'm going to tackle X today") are a first-class extraction category.
@@ -994,5 +1005,86 @@ describe('derivePersonModelFields (M4-4)', () => {
     expect(f.goals).toContain('raise a bridge round');
     expect(f.communicationStyle).toContain('detailed written updates');
     expect(f.relationshipState).toBe('Alice is the CFO');
+  });
+});
+
+// ── R38 Part B — event-as-entity guard ────────────────────────────────────────
+describe('looksLikeEventEntity (R38)', () => {
+  it('flags event-title entities', () => {
+    expect(looksLikeEventEntity("Friend's Bachelor Party")).toBe(true);
+    expect(looksLikeEventEntity('Vegas Trip')).toBe(true);
+    expect(looksLikeEventEntity('Sarah and Mike Wedding')).toBe(true);
+  });
+  it('does not flag plain person names', () => {
+    expect(looksLikeEventEntity('Patrick')).toBe(false);
+    expect(looksLikeEventEntity('Sarah Chen')).toBe(false);
+    expect(looksLikeEventEntity(null)).toBe(false);
+  });
+});
+
+describe('reassignEventEntityFacts (R38)', () => {
+  it('re-files an event-entity fact under the single named person in the call', () => {
+    const out = reassignEventEntityFacts([
+      { category: 'person', entity: 'Patrick', statement: 'Patrick is a friend' },
+      { category: 'fact', entity: "Friend's Bachelor Party", statement: 'bachelor party in Vegas' },
+    ]);
+    const moved = out.find(f => f.statement === 'bachelor party in Vegas');
+    expect(moved!.entity).toBe('Patrick');
+    expect(moved!.category).toBe('person');
+  });
+
+  it('leaves entities as-is when there is no single clear person (ambiguous)', () => {
+    const input = [
+      { category: 'person' as const, entity: 'Patrick', statement: 'a friend' },
+      { category: 'person' as const, entity: 'Sarah', statement: 'an investor' },
+      { category: 'fact' as const, entity: 'Vegas Trip', statement: 'trip in June' },
+    ];
+    const out = reassignEventEntityFacts(input);
+    expect(out.find(f => f.statement === 'trip in June')!.entity).toBe('Vegas Trip');
+  });
+
+  it('leaves entities as-is when no named person exists at all', () => {
+    const out = reassignEventEntityFacts([
+      { category: 'fact', entity: 'Wedding', statement: 'a wedding in fall' },
+    ]);
+    expect(out[0].entity).toBe('Wedding');
+  });
+});
+
+// ── R38 Part A — unknown-entity resolution in sleep-time consolidation ─────────
+describe('runSleepTimeConsolidation — unknown-entity resolution (R38 Part A)', () => {
+  it('retires an unknown person fact and re-files it under a newly-named person (high confidence)', async () => {
+    const unknownFact = makeFact(10, 'person', null, 'friend with a bachelor party in Vegas');
+    const patrickFact = makeFact(11, 'person', 'Patrick', 'Patrick is a friend');
+    vi.mocked(factQueries.getAll).mockReturnValue([unknownFact, patrickFact]);
+    h.create
+      .mockResolvedValueOnce(textResponse('[]')) // consolidation pass: no contradictions
+      .mockResolvedValueOnce(textResponse(JSON.stringify([{ unknownFactId: 10, matchedEntity: 'Patrick', confidence: 'high' }])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).toHaveBeenCalledWith(1, 10);
+    expect(factQueries.upsertFact).toHaveBeenCalledWith(1, 'person', 'friend with a bachelor party in Vegas', 'Patrick', 'high');
+  });
+
+  it('leaves the unknown fact untouched when no person matches ([])', async () => {
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      makeFact(10, 'person', null, 'someone mentioned once'),
+      makeFact(11, 'person', 'Patrick', 'Patrick is a friend'),
+    ]);
+    h.create.mockResolvedValueOnce(textResponse('[]')).mockResolvedValueOnce(textResponse('[]'));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).not.toHaveBeenCalledWith(1, 10);
+  });
+
+  it('does NOT retire a medium-confidence match unless an identical statement already exists', async () => {
+    vi.mocked(factQueries.getAll).mockReturnValue([
+      makeFact(10, 'person', null, 'maybe related to Patrick'),
+      makeFact(11, 'person', 'Patrick', 'Patrick is a friend'),
+    ]);
+    // getByCategory returns the real store (empty) → no identical statement under Patrick → no retire.
+    h.create
+      .mockResolvedValueOnce(textResponse('[]'))
+      .mockResolvedValueOnce(textResponse(JSON.stringify([{ unknownFactId: 10, matchedEntity: 'Patrick', confidence: 'medium' }])));
+    await runSleepTimeConsolidation(1, 'x'.repeat(100), 'Derrick');
+    expect(factQueries.retire).not.toHaveBeenCalledWith(1, 10);
   });
 });

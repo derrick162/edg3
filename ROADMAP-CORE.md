@@ -3331,7 +3331,56 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
-- **2026-06-24** — **M4-6 SHIPPED (2249 green) — Memory Ranking Engine ("PageRank for personal memory") [PILLAR-MEMORY].**
+- **2026-06-24** — **R39 SHIPPED (2287 green, CRITICAL) — memory extraction bug fixes (Jamie the dog + Gabby miscategorized).**
+  - **T1 — truncation.** `lib/facts.ts` extraction read only `transcript.slice(0, 2000)` (~300 words / first
+    minute) with `max_tokens: 600` — everything later in a 5–10 min call was silently dropped (Jamie the dog
+    was never saved). → `slice(0, 8000)` + `max_tokens: 1000` + label updated. 1 test (a marker past the old
+    2000-char cutoff now reaches the prompt).
+  - **T2 — categories.** The `person` category listed only investor/client/colleague/family — "friend" was
+    missing, so Gabby landed in `fact`. Added friend/close friend/romantic partner. Added explicit PET
+    guidance to `fact` (dog/cat → `category:'fact'`, `entity`=pet name).
+  - **T3 — rememberPreference.** `tool-call/route.ts` `VALID_FACT_CATS` lacked `'person'`, so a mid-call
+    `rememberPreference(category:'person')` silently fell back to `'preference'`. Added `'person'`. Updated
+    both gratitude REMEMBER REQUESTS lines (EN + 廣東話) in `lib/vapi.ts` to "the person, pet, or place … for
+    a person use category 'person'".
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` (prompt content) + Shared `tool-call/route.ts` (Core tool
+    behavior) — Vijay sync down.** (R39 was dispatched before its roadmap commit landed on master — implemented
+    from the dispatch message; R36/R37/R38 were already shipped.)
+- **2026-06-24** — **R37 + R38 SHIPPED (2286 green) — social mental models + `(unknown)`-entity resolution.**
+  - **R37 (M4-4) — social mental models.** **T1:** new `lib/peopleModels.ts` `updatePeopleModels` —
+    fire-and-forget from the post-call webhook; for each person-category fact actually mentioned this
+    call (cap 5), one Haiku call merges the existing `people_models` row with new transcript signal
+    (preserving un-mentioned fields) and upserts. Degrades silently. 5 tests. **T2:** the briefing
+    read/inject path (`buildPeopleModelBlock` + injected `peopleModelBlock`) already existed from prior
+    M4-4 work — it was dormant only because nothing wrote models; T1 activates it. Enhanced the block with
+    `last_interaction` + added a PEOPLE CONTEXT mid-call note in `lib/vapi.ts`. (Found + removed a redundant
+    `formatPeopleContextBlock`/`getByName` I'd started before discovering the existing path.)
+  - **R38 — consolidation: `(unknown)`-entity resolution + event-as-entity guard.** **Part A:** added a
+    cross-entity pass to `runSleepTimeConsolidation` — a Haiku call matches active unknown/null-entity
+    PERSON facts against newly-named people; high-confidence → retire the unknown + re-file its statement
+    under the real name; medium → retire only if an identical statement already exists (conservative).
+    Scoped to `category='person'` so legit null-entity goals/preferences are never swept in. **Part B:**
+    pure `looksLikeEventEntity` + `reassignEventEntityFacts` in `extractAndUpsertFacts` — an event-title
+    entity ("Friend's Bachelor Party") is re-filed as an attribute of the single clearly-named person in
+    the call; ambiguous (0 or >1 people) → left as-is. 8 tests. Together these stop Patrick's context from
+    fragmenting across `(unknown)` + event-entity duplicates.
+  - **⚠️ Additive to webhook (Security) + `lib/vapi.ts` (Security prompt content) — Vijay sync down.**
+- **2026-06-24** — **R36 SHIPPED (2273 green) — "Add context" panel + inbox-review dedup.**
+  - **T1 — manual memory context.** New `POST /api/memory/notes` (`{text}`, ≤2000 chars, 401/400 guards):
+    runs the text through `extractAndUpsertFacts` (same pipeline as call transcripts → structured facts)
+    AND stores the raw note as a `user_note` fact; returns `{factsExtracted}`. Dashboard Memory tab gets an
+    "Add context" card (textarea + Save + inline "✓ Saved — extracted N fact(s)" / error, auto-clear, reloads
+    facts). New `user_note` fact category (Fact type + CHECK + weight maps + 📝 icon). 5 route tests.
+    _(Cam/Design R24 will polish the card visual + the "📝 Added manually" call-notes treatment.)_
+  - **T2 — inbox-review dedup.** `lib/gmail.ts` `getRecentEmailSignal` wrote an identical "Reviewed N inbox
+    threads" Activity entry on every fetch (briefing + retry-call). Added `getPreviousEmailSubjects` +
+    pure `selectNewInboxSubjects` — only records a receipt when the fetch surfaced threads the last review
+    didn't; count/text reflect the new threads. **Corrected the dispatch's snippet:** it stored only the
+    *new* subjects in the snapshot, which would shrink the comparison set and re-log older threads next time
+    (and break the 24h cache) — I store the FULL inbox subjects in the snapshot instead. 3 tests.
+  - **⚠️ `lib/gmail.ts` is Security-owned** — additive (`getPreviousEmailSubjects` + `selectNewInboxSubjects`
+    + the receipt guard), PM-dispatched to Core; Vijay sync down. Reused the `profileUpdate` rate-limit
+    bucket for the notes route to avoid a Security-owned `rateLimit.ts` edit. **Additive to Shared `lib/db.ts`** (user_note category).
   - New pure `memoryRankScore(fact, priorities, today)` (`lib/memorySalience.ts`) — 0–1 blend of goal
     alignment 30% (token overlap vs top-3 priorities → 1.0/0.5/0), recency 20% (90-day linear decay off
     `last_confirmed_at`/`learned_at`), confidence 20% (`confidence_score`), reference frequency 15%

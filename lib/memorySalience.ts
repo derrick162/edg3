@@ -29,6 +29,7 @@ const CATEGORY_WEIGHTS: Record<Fact['category'], number> = {
   commitment: 0.3,  // R34 — time-bound; surfaced by its own briefing block, not general salience
   weekly_summary:   0.85, // M4-5 — synthesized cross-call narrative, high signal
   lifetime_profile: 1.0,  // M4-5 — the most stable, highest-signal context Edge has
+  user_note:        0.5,  // R36 — raw manual note; structured facts extracted from it carry the signal
 };
 
 // Bonus for facts that touch high-stakes domains, regardless of category.
