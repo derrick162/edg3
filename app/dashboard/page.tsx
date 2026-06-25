@@ -3333,35 +3333,6 @@ function DashboardInner() {
                 text="Everything Edg3 has learned from your calls — the memory it draws on. Edit or remove anything that's off."
               />
 
-              {/* R36 T1 — Add context: free-form text → structured facts (Design to polish in R24). */}
-              <div className="glass-card p-4 mb-6">
-                <p className="text-sm font-semibold mb-2">Add context</p>
-                <textarea
-                  className="input w-full text-sm"
-                  rows={3}
-                  maxLength={6000}
-                  placeholder="Type anything Edge should know — about a person, a goal, a preference, an update…"
-                  value={noteText}
-                  onChange={e => setNoteText(e.target.value)}
-                  style={{ resize: 'vertical' }}
-                />
-                <div className="flex items-center justify-between gap-3 mt-2">
-                  <span
-                    className="text-xs"
-                    style={{ color: noteResult ? (noteResult.ok ? 'var(--edg-success, #4ade80)' : 'var(--edg-danger)') : 'var(--text-faint)' }}
-                  >
-                    {noteResult?.msg ?? ''}
-                  </span>
-                  <button
-                    onClick={submitNote}
-                    disabled={!noteText.trim() || noteSaving}
-                    className="btn-primary text-sm py-1.5 px-4"
-                    style={{ opacity: (!noteText.trim() || noteSaving) ? 0.5 : 1 }}
-                  >
-                    {noteSaving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-              </div>
 
               <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap">
                 <h2 className="text-lg font-bold">Here&apos;s what Edg3 knows about you</h2>
