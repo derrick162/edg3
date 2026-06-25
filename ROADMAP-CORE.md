@@ -31,6 +31,73 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 40 — Call time-of-day awareness + move confirmation)
+
+> `git merge master` first. Two tickets.
+
+---
+
+### T1 — Briefing/open call must know current time and treat past events as done (HIGH — 1h)
+
+**The bug (live call, 9:45 PM):** Derrick did a call at 9:45 PM. Edge opened with "You've got 3 back-to-back blocks this afternoon" — but those blocks had already happened hours ago. The briefing content is built without injecting the ACTUAL current time, so the model treats the call as if it's still morning.
+
+**Root cause:** The briefing prompt and open call system prompt inject today's date but not the current time. The model has no way to know it's evening vs morning, so it always speaks about today's calendar as upcoming.
+
+**Fix — two parts:**
+
+**Part A — inject current time into both briefing and open call prompts:**
+
+In `lib/briefing.ts`, the briefing prompt already has `today` (date string). Add `currentHour` (0–23, in user's timezone) to the context block injected into the prompt:
+```
+Current time: 9:45 PM (Thursday Jun 26)
+```
+
+In `lib/vapi.ts` `buildOpenCallSystemPrompt`, add a `currentTime` param (passed from the webhook at call-start time) and inject it into the system prompt header alongside the date.
+
+In `app/api/vapi/webhook/route.ts`, when building the open call system prompt, derive the current time in the user's timezone and pass it in.
+
+**Part B — add an EVENING FRAMING rule to `lib/vapi.ts`:**
+
+In the briefing/open call system prompt, add this rule after the GROUNDED section:
+
+```
+TIME AWARENESS: You always know the current time (injected above). If the current time is 5 PM or later:
+- Today's calendar events have ALREADY HAPPENED — do not reference them as upcoming or suggest acting on them today.
+- Open with the evening context: acknowledge what's been done, pivot to what's ahead (tomorrow, the week).
+- Never say "this afternoon" or "today you have X" when it's evening.
+- Never suggest "finish X today" when it's past 5 PM unless the user explicitly says they're still working.
+If the current time is before 5 PM: standard briefing framing applies.
+```
+
+**Tests:**
+- Open call at 9 PM → calendar events from today are referenced as past, framing shifts to tomorrow
+- Open call at 8 AM → standard morning framing, no change
+- Briefing at 9 PM (unusual but possible) → same evening framing rule applies
+
+---
+
+### T2 — Move confirmation without tool success: Edge says "Done" before verifying (HIGH — 45m)
+
+**The bug (live call):** Edge said "Done. Move Scandia cash flow to Thursday 10 to 11 AM." — the move never happened on the calendar. Root cause: same false-confirmation pattern as R32 — the model says "Done" before reading the tool result, or calls the tool but ignores an error response.
+
+**Diagnosis to do first:** Check `lib/vapi.ts` for the HONEST FAILURE / NEVER FALSE CONFIRM rule. Confirm whether `moveEvent` tool results include an explicit `ERROR:` string on failure (they should from R32 — check `app/api/vapi/tool-call/route.ts` `ERR_MOVE` constant). If the tool IS returning an error but the model is ignoring it, this is a prompt issue. If the tool isn't being called at all, this is a model hallucination issue.
+
+**Fix A — if the prompt rule is missing or weak:** In `lib/vapi.ts`, add to the HONEST FAILURE block:
+```
+MOVE CONFIRMATION: Never say "Done" or confirm a calendar move until you have read the moveEvent tool result. If the result contains "ERROR" or does not contain a confirmation, tell the user the move didn't go through and offer to try again. A verbal "Done" before the tool returns is a false confirmation — it destroys trust.
+```
+
+**Fix B — if `ERR_MOVE` isn't being returned correctly:** In `app/api/vapi/tool-call/route.ts`, verify the `moveEvent` handler returns `ERR_MOVE` (the constant, not an inline string) on all failure paths — patch failure, organizer check failure, calendar not writable. Confirm `FAILURE_RE` catches `ERR_MOVE`.
+
+**Fix C — add a success confirmation string:** The `moveEvent` success path should return an explicit confirmation string that the model can read: e.g. `"Moved '${title}' to ${newTime}."` — not just a partial description. This makes it unambiguous whether the move succeeded.
+
+**Tests:**
+- `moveEvent` called, Google API returns success → model says "Moved X to Y" (not before)
+- `moveEvent` called, Google API returns 403 → model says it didn't work, does not say "Done"
+- `moveEvent` tool not called at all → model should not say the move happened (prompt rule)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 39 — Memory extraction: transcript truncation + person/pet category fixes)
 
 > `git merge master` first. Three tickets. **Do before R38, R37, R36 — these are blocking bugs.**

@@ -107,9 +107,9 @@ other lane and the PM can see live ownership claims.
 
 | Lane | Branch | Now working on | Touching files | Updated |
 |---|---|---|---|---|
-| 🛠️ Core | `core` | _(✅ **R39 + R36 + R37 + R38 ALL SHIPPED (2287 green) — merged to master 2026-06-24.** R39: transcript truncation 2000→8000 + max_tokens 1000 (Jamie fix), "friend" in person category (Gabby fix), `VALID_FACT_CATS` adds `'person'`. R36: add-context panel + inbox dedup. R37: social models write path. R38: (unknown)-entity resolution. Idle.)_ | — | 2026-06-24 |
+| 🛠️ Core | `core` | _(📋 **R40 dispatched 2026-06-24. T1: evening time-of-day framing (calls after 5 PM treat today as past). T2: moveEvent false confirmation fix. Do after R39 which is already merged.**)_ | `lib/vapi.ts`, `lib/briefing.ts`, `app/api/vapi/webhook/route.ts`, `app/api/vapi/tool-call/route.ts` | 2026-06-24 |
 | 🔒 Security | `security` | _(✅ **R21 + R20 ALL MERGED TO MASTER + DEPLOYED 2026-06-24 (2265 green).** R21: explicit ERROR strings + work_schedule schema + QA sweep. R20: NANP timezone infer. Idle — awaiting next dispatch.)_ | — | 2026-06-24 |
-| 🔧 PM/CoS | `master` | _(📋 **R39 dispatched 2026-06-24 — critical memory extraction bugs. Root causes: transcript.slice(0,2000) cuts off late-call facts; "friend" missing from person category; rememberPreference VALID_FACT_CATS excludes 'person'. Priority: R39 → R36 → R37 → R38.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
+| 🔧 PM/CoS | `master` | _(📋 **R40 dispatched 2026-06-24 — evening framing + move confirmation. R39+R36+R37+R38 all merged + deployed.**)_ | `ROADMAP.md`, `ROADMAP-CORE.md` | 2026-06-24 |
 | 🎨 Design | `design` | _(📋 **R24 dispatched 2026-06-24 — "Add context" card visual design.** Coordinate with Core R36: Darren ships functional textarea first, Cam does design pass on top. glass-card + .input token + btn-primary + success/error inline states + 📝 user_note label in call notes.)_ | `app/dashboard/page.tsx`, `app/globals.css` | 2026-06-24 |
 
 ---
