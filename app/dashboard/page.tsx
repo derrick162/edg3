@@ -980,10 +980,10 @@ function ActivityTab() {
                       </div>
 
                       {/* Expanded detail panel */}
-                      {isExpanded && item.detail && (
+                      {item.detail && (
                         <div
-                          className="px-4 pb-4"
-                          style={{ borderTop: '1px solid var(--edg-hairline)' }}
+                          className={`row-expand px-4 pb-4 ${isExpanded ? 'expanded' : 'collapsed'}`}
+                          style={{ borderTop: isExpanded ? '1px solid var(--edg-hairline)' : 'none' }}
                         >
                           {/* Email receipt — lazy-fetched on expand */}
                           {item.emailReceiptId && (() => {
@@ -1112,6 +1112,7 @@ function ActivityTab() {
             </div>
           ))}
         </div>
+
       )}
     </div>
   );
@@ -1506,6 +1507,7 @@ function DashboardInner() {
   const [callStage, setCallStage] = useState('');
   const [openingCall, setOpeningCall] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
+  const [tabSlideDir, setTabSlideDir] = useState<'left' | 'right' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [memoryPage, setMemoryPage] = useState(1);
   const [contextNote, setContextNote] = useState('');
@@ -2426,18 +2428,26 @@ function DashboardInner() {
           </div>
 
           <nav className="flex md:flex-col overflow-x-auto gap-1 md:gap-0 md:space-y-1 no-scrollbar -mx-1 px-1 pb-1 md:pb-0" aria-label="Dashboard navigation" role="tablist">
-            {[
-              { id: 'home', label: 'Today', icon: '✦' },
-              { id: 'priorities', label: 'Focus', icon: '🎯' },
-              { id: 'memory', label: 'Memory', icon: '🧠' },
-              { id: 'activity', label: 'Activity', icon: '📊' },
-              { id: 'briefings', label: 'Briefings', icon: '📋' },
-              { id: 'profile', label: 'Profile', icon: '👤' },
-              { id: 'help', label: 'Help', icon: '?' },
-            ].map(tab => (
+            {(() => {
+              const NAV_TABS = [
+                { id: 'home', label: 'Today', icon: '✦' },
+                { id: 'priorities', label: 'Focus', icon: '🎯' },
+                { id: 'memory', label: 'Memory', icon: '🧠' },
+                { id: 'activity', label: 'Activity', icon: '📊' },
+                { id: 'briefings', label: 'Briefings', icon: '📋' },
+                { id: 'profile', label: 'Profile', icon: '👤' },
+                { id: 'help', label: 'Help', icon: '?' },
+              ];
+              const TAB_ORDER = NAV_TABS.map(t => t.id);
+              return NAV_TABS.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => {
+                  const fromIdx = TAB_ORDER.indexOf(activeTab);
+                  const toIdx = TAB_ORDER.indexOf(tab.id);
+                  setTabSlideDir(toIdx > fromIdx ? 'right' : 'left');
+                  setActiveTab(tab.id as any);
+                }}
                 role="tab"
                 aria-label={tab.label}
                 aria-selected={activeTab === tab.id}
@@ -2453,7 +2463,8 @@ function DashboardInner() {
                 <span className="text-[9px] md:hidden block leading-none mt-0.5 opacity-70">{tab.label}</span>
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
-            ))}
+              ));
+            })()}
           </nav>
 
           {/* Mobile-only: compact Next Call strip below nav */}
@@ -2801,6 +2812,9 @@ function DashboardInner() {
             </div>
           )}
 
+          {/* Tab slide animation wrapper — key forces remount on tab change */}
+          <div key={activeTab} className={tabSlideDir === 'right' ? 'tab-slide-right' : tabSlideDir === 'left' ? 'tab-slide-left' : 'fade-in'}>
+
           {/* ── Home tab — morning cockpit ──────────────────────────── */}
           {activeTab === 'home' && (
             <div className="space-y-6">
@@ -3012,7 +3026,7 @@ function DashboardInner() {
                     acc.push(
                     <div
                       key={b.id}
-                      className="glass-card glass-card-hover p-5 cursor-pointer"
+                      className="glass-card glass-card-hover card-lift p-5 cursor-pointer"
                       onClick={() => setSelectedBriefing(selectedBriefing?.id === b.id ? null : b)}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -4102,6 +4116,8 @@ function DashboardInner() {
               <HelpSupportSection />
             </div>
           )}
+
+          </div>{/* end tab slide animation wrapper */}
         </main>
       </div>
 
