@@ -31,6 +31,143 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 38 — Consolidation: unknown entity resolution)
+
+> `git merge master` first. One ticket. **Do after R37.**
+
+---
+
+### T1 — Fix consolidation: retire `(unknown)` entities when they get named later (HIGH — 1h)
+
+**The bug (observed repeatedly):** Call A extracts `entity: '(unknown)', statement: 'friend with bachelor party in Vegas'`. Call B names the person: `entity: 'Patrick', statement: 'bachelor party in Vegas with Patrick'`. Two things go wrong: (1) the `(unknown)` fact is never retired — it stays active alongside the Patrick fact as a duplicate. (2) `Friend's Bachelor Party` gets created as its own entity-fact instead of being stored as an attribute of Patrick. Result: facts pile up, context is diluted, Edge appears to forget things it actually knows.
+
+**Root cause:** `runSleepTimeConsolidation` in `lib/facts.ts` doesn't ask "do any existing `(unknown)` or vague-entity facts now have a real name?" — it only reconciles facts within the same entity/category, never across entity boundaries.
+
+**Fix — `lib/facts.ts` `runSleepTimeConsolidation` (and/or the Haiku consolidation prompt):**
+
+**Part A — `(unknown)` entity resolution pass:**
+
+After the standard consolidation step, add a second pass specifically for cross-entity identity upgrades:
+
+1. Fetch all active facts where `entity IS NULL OR entity = '(unknown)' OR entity LIKE '%(unknown)%'` for this user.
+2. Fetch all `category='people'` facts extracted from this call (the newly landed ones).
+3. Make one Haiku call:
+
+```
+You are resolving vague entities in a user's memory.
+
+Newly learned people facts from this call:
+{newPeopleFacts}
+
+Existing facts with unknown/vague entities:
+{unknownFacts}
+
+For each unknown fact, determine: does one of the newly named people clearly match?
+Match criteria: same event, same context, same relationship. When in doubt, do NOT match.
+
+Return a JSON array of matches:
+[{ "unknownFactId": number, "matchedEntity": string, "confidence": "high" | "medium" }]
+Only return high or medium confidence matches. Return [] if nothing matches.
+```
+
+4. For each high-confidence match: retire the `(unknown)` fact + upsert its statement under the matched entity name (so it joins that person's fact cluster).
+5. For medium: only retire if an identical statement already exists under the matched entity (true duplicate).
+
+**Part B — prevent event-as-entity facts:**
+
+In `extractAndUpsertFacts`, add a guard: if an extracted fact's entity looks like an event title rather than a person name (heuristic: contains "party", "trip", "conference", "wedding", "meeting", "summit", "event", "retreat") AND a people-category fact exists for a related person in this call — store it as an attribute of that person instead of as its own entity. Concretely: change `entity: 'Friend's Bachelor Party'` to `entity: 'Patrick', statement: 'has a bachelor party in Vegas'`.
+
+This heuristic should be conservative — only fire when there's a clear person match in the same call. When uncertain, leave the entity as-is (don't guess).
+
+**Tests:**
+- Call A extracts `(unknown)` "friend with bachelor party"; Call B names Patrick → `(unknown)` fact retired, Patrick fact updated
+- No name match → `(unknown)` fact left untouched
+- Event-entity heuristic: "Friend's Bachelor Party" + Patrick in same call → stored as Patrick attribute
+- Event-entity heuristic: no clear person match → entity left as-is
+- Medium-confidence match with no identical statement → NOT retired (conservative)
+
+---
+
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 37 — Social mental models: per-person context)
+
+> `git merge master` first. Two tickets. **Do after R36.**
+
+---
+
+### T1 — Sleep-time agent: update person model after every call they're mentioned (HIGH — 1.5h)
+
+**Context:** The `people_models` table is already live (Vijay shipped the schema — `lib/db.ts` `peopleModelQueries`: `upsert`/`getForUser`/`listForUser`/`deleteForUser`, all four fields encrypted at rest). The table has four fields per person: `goals`, `communication_style`, `relationship_state`, `last_interaction`. Right now it's always empty because nothing writes to it. This ticket wires the write path.
+
+**Fix — `lib/facts.ts` (or a new `lib/peopleModels.ts`):**
+
+Add `updatePeopleModels(userId: number, transcript: string, userName: string): Promise<void>` — called fire-and-forget from the post-call pipeline in `app/api/vapi/webhook/route.ts` alongside `extractAndUpsertFacts`.
+
+Logic:
+1. From the transcript, extract the names of any people mentioned (reuse the people-category facts already being extracted — just look up `category='people'` facts updated in this call's extraction pass, or pass them in).
+2. For each person, fetch their existing `people_models` row (if any).
+3. Make one Haiku call with the transcript + existing model (if any) and ask it to return an updated model for that person:
+
+```
+You are updating a relationship model for a person named {name} based on a conversation transcript.
+
+Current model (may be empty):
+Goals: {existing.goals ?? 'unknown'}
+Communication style: {existing.communication_style ?? 'unknown'}
+Relationship state: {existing.relationship_state ?? 'unknown'}
+Last interaction: {existing.last_interaction ?? 'unknown'}
+
+Transcript excerpt (mentions of {name} only):
+{relevantExcerpts}
+
+Return ONLY a JSON object with these four fields. Only update a field if the transcript provides new signal — otherwise preserve the existing value. If nothing is known, use null.
+{
+  "goals": string | null,
+  "communication_style": string | null,
+  "relationship_state": string | null,
+  "last_interaction": string | null
+}
+```
+
+4. Call `peopleModelQueries.upsert(userId, name, updatedModel)`.
+5. Degrade silently on any error — never throw, never block the webhook response.
+
+**Scope guard:** Only process people who appear in `people`-category facts for this user (not arbitrary names from the transcript). Cap at 5 people per call to bound Haiku cost.
+
+**Tests:**
+- Transcript mentioning Patrick with new context → `people_models` row created/updated for Patrick
+- Transcript with no people-category facts → no Haiku call, no error
+- Haiku call fails → silent catch, no crash, existing model unchanged
+- Second call about same person → model merges (preserves prior fields not mentioned in new call)
+
+---
+
+### T2 — Briefing injection: surface person model when they're on tomorrow's calendar (HIGH — 1h)
+
+**Context:** Once person models are being written (T1), they need to show up in the briefing when relevant. The highest-value moment: when someone is on Derrick's calendar tomorrow, inject everything Edge knows about them so Edge can brief him on the relationship, not just the event.
+
+**Fix — `lib/briefing.ts`:**
+
+After the calendar fetch, for each person appearing on **tomorrow's** calendar events (extract first/last name from event summary/attendees), call `peopleModelQueries.getByName(userId, name)` (add this lookup to `peopleModelQueries` if it doesn't exist — case-insensitive name match).
+
+If a model exists and has at least one non-null field, build a `PEOPLE CONTEXT` block and inject it into the briefing prompt:
+
+```
+PEOPLE CONTEXT (for tomorrow's meetings — use this to brief Derrick on the relationship):
+- Patrick Chen (2pm call): Goals: job hunting in finance after moving back to Toronto. Relationship state: close friend, bachelor party coming up. Last interaction: discussed the move, seemed stressed about the transition.
+```
+
+Inject this block after the CALENDAR section and before the PRIORITIES section. Keep it compact — one line per person, max 3 people, only include people with a model. If no models exist, omit the block entirely (degrade silently).
+
+Also: in `lib/vapi.ts`, add a PEOPLE CONTEXT note to the MEMORY/GROUNDING section so Edge knows to reference this block when the person comes up mid-call ("Patrick's on your calendar today — I know he just moved back to Toronto, worth asking how the landing is going").
+
+**Tests:**
+- Tomorrow's calendar has Patrick → `PEOPLE CONTEXT` block injected with his model
+- Tomorrow's calendar has a person with no model → they don't appear in the block
+- No people models exist → block omitted, briefing unaffected
+- More than 3 people with models on tomorrow's calendar → only top 3 injected (by model completeness: count of non-null fields)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 36 — Manual memory context input + inbox dedup)
 
 > `git merge master` first. Two tickets.
