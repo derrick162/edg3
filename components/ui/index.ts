@@ -41,3 +41,4 @@ export { NotificationHistoryPanel } from './NotificationHistoryPanel';
 export type { NotificationHistoryPanelProps } from './NotificationHistoryPanel';
 export { ScoreSparkline } from './ScoreSparkline';
 export type { ScoreSparklineProps } from './ScoreSparkline';
+export { ToastProvider } from './Toast';

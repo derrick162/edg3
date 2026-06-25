@@ -10,7 +10,8 @@ import { factDisplayStatement } from '@/lib/factDisplay';
 import { factSourceLabel, parseDbTimestamp } from '@/lib/factSourceLabel';
 import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
 import { pickTimezoneUpdate } from '@/lib/timezoneDetect';
-import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard } from '@/components/ui';
+import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard, ToastProvider } from '@/components/ui';
+import { useToast } from '@/lib/toast';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
 import { PriorityDerivationCard, PriorityDerivationLoadingCard } from '@/components/ui/PriorityDerivationCard';
 import { DataConsentToggle, type DataConsent } from '@/components/ui/DataConsentCard';
@@ -1462,7 +1463,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
-export default function Dashboard() {
+function DashboardInner() {
+  const { showToast } = useToast();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -2187,9 +2189,11 @@ export default function Dashboard() {
       if (r.ok) {
         setContextNote('');
         setContextResult({ ok: true, message: `✓ Saved — extracted ${d.factsExtracted ?? 0} fact${(d.factsExtracted ?? 0) !== 1 ? 's' : ''}` });
+        showToast(`Saved — extracted ${d.factsExtracted ?? 0} fact${(d.factsExtracted ?? 0) !== 1 ? 's' : ''}`, 'success');
         loadData();
       } else {
         setContextResult({ ok: false, message: d.error || 'Something went wrong — try again' });
+        showToast(d.error || 'Something went wrong — try again', 'error');
       }
     } catch {
       setContextResult({ ok: false, message: 'Something went wrong — try again' });
@@ -4099,5 +4103,13 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <ToastProvider>
+      <DashboardInner />
+    </ToastProvider>
   );
 }

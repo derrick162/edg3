@@ -505,9 +505,15 @@ select.input option { background: var(--edg-bg-select); color: var(--text-strong
   from { width: 100%; }
   to   { width: 0%; }
 }
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @media (prefers-reduced-motion: reduce) {
   .toast-countdown-bar { animation: none !important; width: 100%; }
+  .toast-slide-in { animation: none !important; }
 }
+.toast-slide-in { animation: toast-slide-in 0.22s ease both; }
 
 .badge {
   display: inline-flex;
