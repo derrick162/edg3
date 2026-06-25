@@ -3422,6 +3422,16 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-06-24** — **R40 T3 + T4 SHIPPED (2291 green) — VAD sensitivity + Add-context char limit.**
+  - **T3 — VAD.** Ambient noise (cough, chair bump) was interrupting Edge mid-sentence. Added
+    `stopSpeakingPlan: { numWords: 2 }` so ≥2 words are required to stop it. Applied to the inbound
+    open-call config (`app/api/vapi/webhook/route.ts`) AND the scheduled-call `assistantOverrides` block
+    in `lib/vapi.ts` (the inline-assistant block already had it from earlier) — all three call-config paths
+    now covered (the dispatch named only the webhook, but the briefing/scheduled config lives in vapi.ts).
+  - **T4 — Add-context limit 2000 → 6000.** `app/api/memory/notes/route.ts` `MAX_NOTE` + dashboard textarea
+    `maxLength` both raised so a ~5500-char pasted brief isn't blocked. Extraction already handles 8000
+    (R39 T1). Route test updated (5500 → 200, 6001 → 400).
+  - **⚠️ Additive to Security-owned `lib/vapi.ts` + webhook — Vijay sync down.**
 - **2026-06-24** — **R40 SHIPPED (2291 green) — call time-of-day awareness + move confirmation.**
   - **T1 — evening framing.** A 9:45 PM call had Edge saying "you've got 3 blocks this afternoon" for events
     that already happened. The prompts injected the date but not the current time. Fix: `lib/vapi.ts` now

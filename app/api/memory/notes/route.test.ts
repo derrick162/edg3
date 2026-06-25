@@ -46,9 +46,9 @@ describe('POST /api/memory/notes (R36 T1)', () => {
     expect((await POST(noteReq({}))).status).toBe(400);
   });
 
-  it('returns 400 when text exceeds 2000 chars', async () => {
-    const r = await POST(noteReq({ text: 'a'.repeat(2001) }));
-    expect(r.status).toBe(400);
+  it('accepts a long pasted brief (~5500 chars) and rejects only beyond 6000 (R40 T4)', async () => {
+    expect((await POST(noteReq({ text: 'a'.repeat(5500) }))).status).toBe(200);
+    expect((await POST(noteReq({ text: 'a'.repeat(6001) }))).status).toBe(400);
   });
 
   it('extracts structured facts, stores the raw user_note fact, and returns the count', async () => {
