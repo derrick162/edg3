@@ -31,9 +31,93 @@ After every ticket:
 4. When all three pillars are exhausted → run the QA checklists in all three pillar files
 5. Log QA results in `content/qa-log.md` (create if it doesn't exist)
 
+## 📥 PM DISPATCH — 2026-06-24 (ROUND 39 — Memory extraction: transcript truncation + person/pet category fixes)
+
+> `git merge master` first. Three tickets. **Do before R38, R37, R36 — these are blocking bugs.**
+
+---
+
+### T1 — Fix transcript truncation: `transcript.slice(0, 2000)` cuts off late-call memory (CRITICAL — 30m)
+
+**The bug (confirmed from live call):** Derrick asked Edge mid-gratitude-call "Could you remember that I have a dog named Jamie?" — Edge verbally confirmed it, but nothing appeared in memory. Root cause: `extractFactsFromTranscript` in `lib/facts.ts` line 91 truncates the transcript to 2000 chars before sending to Haiku. A 5–10 min call easily generates 8,000–15,000 chars (both speakers combined). Anything said after the first ~300–400 words is silently discarded and never extracted.
+
+**Fix — `lib/facts.ts` two changes:**
+
+1. Line 91: `transcript.slice(0, 2000)` → `transcript.slice(0, 8000)` (covers ~15 min calls). Update the label on line 90 from `"Transcript (first 2000 chars):"` → `"Transcript (first 8000 chars):"`.
+
+2. Line 61: `max_tokens: 600` → `max_tokens: 1000` — larger input needs more room to return up to 10 facts in JSON.
+
+**Tests:**
+- Facts mentioned at character positions 2000–4000 in a long transcript are now extracted
+- Facts at position 0–2000 still extracted (no regression)
+- Extraction still returns [] for empty transcript
+
+---
+
+### T2 — Fix person category: add "friend" + pet guidance to extraction prompt (HIGH — 30m)
+
+**Two sub-bugs:**
+
+**Sub-bug A — Gabby filed as 'fact' not 'person':** The extraction prompt's `"person"` category lists only "investor, client, colleague, family member" as examples. The Haiku model classified Gabby ("a really good friend who lives in Hong Kong") as `category: 'fact'` because "friend" isn't in the list. She appears in "Recently Learned" with the wrong icon (⚡ not 👤) and doesn't appear in the People section.
+
+**Sub-bug B — Jamie the dog has no extraction path:** The extraction prompt gives no guidance for pets. Even with the MANDATORY REMEMBER REQUESTS rule (which should have caught "Could you remember I have a dog named Jamie"), there's no example that tells the model how to categorize or entity-tag a pet fact.
+
+**Fix — `lib/facts.ts` extraction prompt (two lines to change):**
+
+Line 70 — person category: Change:
+```
+- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
+```
+to:
+```
+- "person"     — a clearly-named HUMAN in a real relationship with the user (investor, client, colleague, family member, friend, close friend, romantic partner). NOT the user themselves. NOT the AI assistant (Edge/Edg3). NOT activities or objects (gym, lunch, workout, class). NOT companies (use "fact" for orgs).
+```
+
+Line 74 — fact category: Change:
+```
+- "fact"       — any other durable fact about the user's life or business
+```
+to:
+```
+- "fact"       — any other durable fact about the user's life or business. Includes PETS — a pet is a fact (e.g. "Derrick has a dog named Jamie, a puggle-Shih Tzu mix" → {"category":"fact","entity":"Jamie","statement":"Derrick has a dog named Jamie, a puggle-Shih Tzu mix","confidence":"high"}).
+```
+
+**Tests:**
+- Transcript "my good friend Gabby lives in Hong Kong" → extracted as `{"category":"person","entity":"Gabby",...}`
+- Transcript "I have a dog named Jamie, a puggle and Shih Tzu mix" → extracted as `{"category":"fact","entity":"Jamie",...}`
+- Existing investor/colleague/family member facts still extracted correctly (no regression)
+
+---
+
+### T3 — Fix `rememberPreference` handler: add 'person' to VALID_FACT_CATS (HIGH — 20m)
+
+**The bug:** `rememberPreference` in `app/api/vapi/tool-call/route.ts` line 1508 defines `VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact'])`. The `'person'` category is NOT in this set. If Edge calls `rememberPreference` with `category: 'person'` (e.g. during the PEOPLE DEEPENING flow when Derrick mentions Gabby), the handler silently falls back to `'preference'`, storing Gabby's fact in the wrong category where it won't appear in the People section.
+
+**Fix — `app/api/vapi/tool-call/route.ts` line 1508:**
+
+Change:
+```ts
+const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact']);
+```
+to:
+```ts
+const VALID_FACT_CATS = new Set(['preference', 'goal', 'project', 'fact', 'person']);
+```
+
+No other changes needed — the existing upsert logic at line 1532 works for any category already in VALID_CATEGORIES.
+
+Also in `lib/vapi.ts`, update the two gratitude prompt REMEMBER REQUESTS lines (English ~line 334, Cantonese ~line 284) where it says `"topic = the person/place it's about"` → `"topic = the person, pet, or place it's about"` so the model knows to call `rememberPreference` when Derrick mentions a pet.
+
+**Tests:**
+- `rememberPreference` called with `category: 'person'`, `topic: 'Gabby'` → fact stored as `category='person'`, entity='Gabby'
+- `rememberPreference` called with no category → still defaults to 'preference' (existing behavior preserved)
+- `rememberPreference` called with `category: 'preference'` → still stored as preference (no regression)
+
+---
+
 ## 📥 PM DISPATCH — 2026-06-24 (ROUND 38 — Consolidation: unknown entity resolution)
 
-> `git merge master` first. One ticket. **Do after R37.**
+> `git merge master` first. One ticket. **Do after R39.**
 
 ---
 
