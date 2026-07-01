@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall } from './vapi';
+import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS } from './vapi';
 
 // checkVapiSecret reads process.env — stub it cleanly per test.
 const env = process.env;
@@ -204,5 +204,57 @@ describe('initiateCall voice override', () => {
     await call('+15551234567', 'Hello', 'Test User');
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.assistant.model.systemPrompt).toContain('TOOL CALL DISCIPLINE');
+  });
+});
+
+describe('vapiCallDurationSeconds', () => {
+  it('returns null for null/undefined/empty input', () => {
+    expect(vapiCallDurationSeconds(null)).toBeNull();
+    expect(vapiCallDurationSeconds(undefined)).toBeNull();
+    expect(vapiCallDurationSeconds({})).toBeNull();
+  });
+
+  it('prefers an explicit durationSeconds', () => {
+    expect(vapiCallDurationSeconds({ durationSeconds: 42 })).toBe(42);
+    expect(vapiCallDurationSeconds({ durationSeconds: 0 })).toBe(0);
+  });
+
+  it('reads durationSeconds from a nested call object', () => {
+    expect(vapiCallDurationSeconds({ call: { durationSeconds: 12 } })).toBe(12);
+  });
+
+  it('computes endedAt − startedAt when no explicit duration', () => {
+    expect(vapiCallDurationSeconds({
+      startedAt: '2026-07-01T08:00:00.000Z',
+      endedAt: '2026-07-01T08:00:15.000Z',
+    })).toBe(15);
+  });
+
+  it('computes duration from a nested call object timestamps', () => {
+    expect(vapiCallDurationSeconds({
+      call: { startedAt: '2026-07-01T08:00:00.000Z', endedAt: '2026-07-01T08:03:00.000Z' },
+    })).toBe(180);
+  });
+
+  it('returns null on unparseable or reversed timestamps', () => {
+    expect(vapiCallDurationSeconds({ startedAt: 'nope', endedAt: 'also-nope' })).toBeNull();
+    expect(vapiCallDurationSeconds({
+      startedAt: '2026-07-01T08:00:15.000Z',
+      endedAt: '2026-07-01T08:00:00.000Z',
+    })).toBeNull();
+  });
+
+  it('a declined/instant call falls under the completed-call threshold', () => {
+    const dur = vapiCallDurationSeconds({
+      startedAt: '2026-07-01T08:00:00.000Z',
+      endedAt: '2026-07-01T08:00:03.000Z',
+    });
+    expect(dur).not.toBeNull();
+    expect(dur! < MIN_COMPLETED_CALL_SECONDS).toBe(true);
+  });
+
+  it('a real briefing clears the completed-call threshold', () => {
+    const dur = vapiCallDurationSeconds({ durationSeconds: 125 });
+    expect(dur! >= MIN_COMPLETED_CALL_SECONDS).toBe(true);
   });
 });

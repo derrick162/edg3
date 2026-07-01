@@ -144,6 +144,40 @@ describe('factQueries — bi-temporal (T1)', () => {
       expect(updateRun).toBeTruthy();
     });
 
+    it('edge-call-feedback — enriching a known fact bumps last_confirmed_at, NOT learned_at', () => {
+      // Re-mentioning an existing person mid-call must not make the memory look "learned today"
+      // on the dashboard — learned_at is the first-learned date shown to the user.
+      m.get.mockReturnValue({
+        id: 10,
+        statement: 'Patrick is a friend',
+        confidence: 'high',
+      });
+
+      factQueries.upsertFact(1, 'person', 'Patrick grew up in Dallas', 'Patrick', 'high');
+
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+      const enrichUpdate = prepareCalls.find(s => s.includes('UPDATE facts SET statement'));
+      expect(enrichUpdate).toBeTruthy();
+      expect(enrichUpdate).toContain('last_confirmed_at');
+      expect(enrichUpdate).not.toContain('learned_at');
+    });
+
+    it('edge-call-feedback — an identical re-mention refreshes last_confirmed_at, NOT learned_at', () => {
+      m.get.mockReturnValue({
+        id: 10,
+        statement: 'gym is at 7am',
+        confidence: 'high',
+      });
+
+      factQueries.upsertFact(1, 'preference', 'gym is at 7am', 'gym schedule', 'high');
+
+      const prepareCalls = (m.prepare.mock.calls as unknown as Array<[string]>).map(([sql]) => sql);
+      const freshnessUpdate = prepareCalls.find(s => s.includes('last_confirmed_at'));
+      expect(freshnessUpdate).toBeTruthy();
+      // No UPDATE anywhere in this path should touch learned_at.
+      expect(prepareCalls.some(s => s.includes('learned_at'))).toBe(false);
+    });
+
     it('R29 — a LOW-confidence re-extraction never overwrites/merges a user-corrected fact', () => {
       m.get.mockReturnValue({
         id: 10,

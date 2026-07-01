@@ -73,7 +73,12 @@ Categories:
 - "project"    — a project or initiative the user is building or running
 - "goal"       — a stated goal, aspiration, or deadline
 - "preference" — how the user likes to work, communicate, or make decisions
-- "fact"       — any other durable fact about the user's life or business. PETS go here: a dog, cat, or other pet → category "fact", entity = the pet's name (e.g. "Jamie is Derrick's dog" → {"category":"fact","entity":"Jamie","statement":"Jamie is Derrick's dog"}).
+- "fact"       — any other durable fact about the user's life or business. This is a broad catch-all — capture it even when the detail is light. Examples:
+    • PETS: a dog, cat, or other pet → entity = the pet's name (e.g. "Jamie is Derrick's dog" → {"category":"fact","entity":"Jamie","statement":"Jamie is Derrick's dog"}).
+    • PROPERTIES / PLACES the user owns or frequents: a cottage, second home, cabin, condo, boat, office (e.g. "I have a cottage up north" → {"category":"fact","entity":"cottage","statement":"Derrick has a cottage up north"}). Capture it even if the location is vague — a partial place fact is still worth remembering.
+    • POSSESSIONS / VEHICLES worth remembering: a car, motorcycle, instrument.
+    • BACKGROUND: where they grew up, where they live, schools, hometowns.
+    Prefer a named entity when one exists; otherwise use a short noun for the entity (e.g. "cottage", "car") rather than dropping the fact.
 - "commitment" — something the user said THEY WILL DO, especially near-term ("I'm going to tackle the Railway fix today", "I'll call the bank tomorrow", "I plan to finish the deck this week", "I need to get to the gym"). Capture the action as the statement, entity null. These are NOT timeless — they're for next-call accountability, so do extract them even though they're time-bound (this overrides the "timeless only" rule for commitments). One commitment per distinct intention.
 
 Rules:

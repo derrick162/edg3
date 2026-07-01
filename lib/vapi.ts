@@ -1418,3 +1418,35 @@ export function extractUserResponseFromTranscript(transcript: string): string | 
 
 }
 
+
+// Best-effort call duration in seconds from a Vapi webhook payload / call object.
+// Returns null when no timing data is available — callers must NOT gate on an unknown
+// duration (fall back to prior behavior) so a missing field never drops a real call.
+// Prefers an explicit durationSeconds, then computes endedAt − startedAt (also checks a
+// nested `call` object, since the report payload and the raw call object differ in shape).
+export function vapiCallDurationSeconds(
+  src: {
+    durationSeconds?: number;
+    startedAt?: string;
+    endedAt?: string;
+    call?: { startedAt?: string; endedAt?: string; durationSeconds?: number };
+  } | null | undefined,
+): number | null {
+  if (!src) return null;
+  const explicit = src.durationSeconds ?? src.call?.durationSeconds;
+  if (typeof explicit === 'number' && isFinite(explicit) && explicit >= 0) return explicit;
+  const start = src.startedAt ?? src.call?.startedAt;
+  const end = src.endedAt ?? src.call?.endedAt;
+  if (start && end) {
+    const s = Date.parse(start);
+    const e = Date.parse(end);
+    if (!isNaN(s) && !isNaN(e) && e >= s) return (e - s) / 1000;
+  }
+  return null;
+}
+
+// A briefing call must run at least this long to count as a real, completed call.
+// Below this we treat it as missed (declined / answered-and-hung-up) so it never inflates
+// the streak or the "Nth call in a row" count. (edge-call-feedback)
+export const MIN_COMPLETED_CALL_SECONDS = 20;
+
