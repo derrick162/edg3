@@ -4,16 +4,18 @@ import { checkInboundCallRateLimit, checkRateLimit, getClientIP } from '@/lib/ra
 import { dayPeriod, greetingYue } from '@/lib/greeting';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
-import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, type VoiceSpeedPref } from '@/lib/vapi';
+import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, type VoiceSpeedPref } from '@/lib/vapi';
 import { currentOpenCallMemoryText, currentPrioritiesText } from '@/lib/callMemory';
 import { claimWebhookEvent } from '@/lib/idempotency';
 import { withRetry } from '@/lib/retry';
 import Anthropic from '@anthropic-ai/sdk';
 
-// Reasons that indicate the user didn't answer — worth retrying
+// Reasons that indicate the user didn't answer or actively rejected the call — worth retrying.
+// 'declined'/'rejected' cover the case where the user hits decline: previously these fell through
+// to the transcript>50 gate and counted as a completed call, inflating the streak. (edge-call-feedback)
 const MISSED_CALL_REASONS = [
   'no-answer', 'busy', 'voicemail', 'failed', 'customer-did-not-answer',
-  'pipeline-error', 'twilio-failed-to-connect-call',
+  'pipeline-error', 'twilio-failed-to-connect-call', 'declined', 'rejected',
 ];
 
 // Schedule a retry by stamping retry_after in the DB. The minute-cron in lib/scheduler.ts
@@ -203,27 +205,37 @@ export async function POST(req: NextRequest) {
       // T1-1: retry the fetch (3 attempts, exponential backoff) so a transient Vapi 5xx /
       // network blip doesn't drop us to the partial transcript. Non-fatal on final failure.
       let transcript = call.transcript || payload.transcript || '';
+      // Duration: prefer whatever the webhook payload already carries; the full-call fetch below
+      // overrides it with the authoritative value when available.
+      let durationSec = vapiCallDurationSeconds(payload) ?? vapiCallDurationSeconds({ call });
       try {
-        const fullTranscript = await withRetry(async () => {
+        const vapiCall = await withRetry(async () => {
           const vapiRes = await fetch(`https://api.vapi.ai/call/${call.id}`, {
             headers: { 'Authorization': `Bearer ${process.env.VAPI_API_KEY}` },
           });
           if (!vapiRes.ok) throw new Error(`Vapi call fetch HTTP ${vapiRes.status}`);
-          const vapiCall = await vapiRes.json();
-          return (vapiCall.transcript || vapiCall.artifact?.transcript || '') as string;
+          return await vapiRes.json();
         }, { attempts: 3, label: 'transcript fetch' });
+        const fullTranscript = (vapiCall.transcript || vapiCall.artifact?.transcript || '') as string;
         if (fullTranscript.length > transcript.length) {
           transcript = fullTranscript;
           console.log(`[webhook] Fetched full transcript from Vapi API (${transcript.length} chars)`);
         }
+        const fetchedDur = vapiCallDurationSeconds(vapiCall);
+        if (fetchedDur != null) durationSec = fetchedDur;
       } catch (err) {
         console.error('[webhook] Failed to fetch full transcript after retries:', err);
       }
 
       const endedReason = payload.endedReason || call.endedReason || '';
       const wasMissed = MISSED_CALL_REASONS.some(r => endedReason.toLowerCase().includes(r));
+      // A call the user declined or hung up on within a few seconds isn't a real briefing.
+      // Only gate on a KNOWN duration — an unknown duration falls back to the transcript>50 gate
+      // below so we never drop a legitimate call over a missing timing field. (edge-call-feedback)
+      const tooShort = durationSec != null && durationSec < MIN_COMPLETED_CALL_SECONDS;
+      const treatAsMissed = wasMissed || tooShort;
 
-      console.log(`[webhook] Call ended. reason="${endedReason}" missed=${wasMissed} transcript_length=${transcript.length}`);
+      console.log(`[webhook] Call ended. reason="${endedReason}" missed=${wasMissed} tooShort=${tooShort} duration=${durationSec ?? 'unknown'}s transcript_length=${transcript.length}`);
 
       // Quota errors won't self-heal with a retry — skip retry and mark missed.
       // (e.g. 'pipeline-error-eleven-labs-quota-exceeded' matches MISSED_CALL_REASONS
@@ -231,14 +243,14 @@ export async function POST(req: NextRequest) {
       //  quota is topped up — 14 consecutive failures on 2026-06-22.)
       const isQuotaError = endedReason.toLowerCase().includes('quota');
 
-      if (wasMissed && !briefing.retry_attempted && !isQuotaError) {
+      if (treatAsMissed && !briefing.retry_attempted && !isQuotaError) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
         scheduleRetry(db, briefing.id, briefing.user_id);
         return NextResponse.json({ received: true });
       }
       // Quota error or already retried — just mark missed, no retry.
-      if (wasMissed) {
+      if (treatAsMissed) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         if (isQuotaError) console.warn(`[webhook] Quota error — call ${call.id} marked missed, no retry scheduled`);
         return NextResponse.json({ received: true });

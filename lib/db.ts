@@ -2382,14 +2382,17 @@ export const factQueries = {
         if (confidence === 'high' && !sameStatement && !newContained) {
           const merged = `${existingStatement} ${statement}`.trim().slice(0, 500);
           snapshotFactToHistory(existingId, userId, 'enrich-merge');
-          db.prepare("UPDATE facts SET statement=?, learned_at=datetime('now') WHERE id=? AND user_id=?")
+          // Bump last_confirmed_at (freshness), NOT learned_at: learned_at is the "when Edge first
+          // learned this" date shown to the user, so enriching a known fact mid-call must not make it
+          // resurface as "learned today". (edge-call-feedback: re-mentioned memories looked brand-new.)
+          db.prepare("UPDATE facts SET statement=?, last_confirmed_at=datetime('now') WHERE id=? AND user_id=?")
             .run(encryptField(merged), existingId, userId);
           return;
         }
         // Otherwise — same statement, already-contained, or a LOW-confidence re-extraction (which has
         // nothing authoritative to add) — keep the user-corrected fact intact and just refresh
-        // freshness so it doesn't drift toward "stale".
-        if (sameStatement) db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
+        // freshness (last_confirmed_at) so it doesn't drift toward "stale". learned_at is preserved.
+        if (sameStatement) db.prepare("UPDATE facts SET last_confirmed_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
         return;
       }
       if (!sameStatement) {
@@ -2403,8 +2406,8 @@ export const factQueries = {
         // M4-3b: log the new fact creation to fact_history.
         snapshotFactToHistory(Number((info as { lastInsertRowid: number | bigint }).lastInsertRowid), userId, 'created');
       } else {
-        // Same statement, low confidence: just refresh freshness.
-        db.prepare("UPDATE facts SET learned_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
+        // Same statement, low confidence: just refresh freshness (last_confirmed_at, not learned_at).
+        db.prepare("UPDATE facts SET last_confirmed_at=datetime('now') WHERE id=? AND user_id=?").run(existingId, userId);
       }
     } else {
       const info = db.prepare(

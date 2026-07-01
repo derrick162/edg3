@@ -3422,6 +3422,26 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-01** — **Call-feedback batch (2435 green) — streak gate + memory freshness + capture breadth.** _(branch `claude/edge-call-feedback-v38s51` — awaiting PM integration to master.)_
+  - **[#1 BUG] Declined/short calls counted toward the streak.** Root cause: the webhook marked a
+    briefing `completed` on the single gate `transcript.length > 50` (`app/api/vapi/webhook/route.ts`),
+    with no duration or decline check — so a declined call carrying >50 chars of Edge's greeting
+    counted as a full call, inflating the streak and "Nth call in a row" (both read `status='completed'`).
+    **Fix:** new pure `vapiCallDurationSeconds()` + `MIN_COMPLETED_CALL_SECONDS=20` in `lib/vapi.ts`;
+    webhook now treats a call as missed when duration `< 20s` (gates only on a KNOWN duration — unknown
+    falls back to the old transcript gate, so no legit call is dropped) and expands `MISSED_CALL_REASONS`
+    with `declined`/`rejected`. 8 new helper tests.
+  - **[#2 BUG] Re-mentioned memories showed as "learned today."** Root cause: `upsertFact` bumped
+    `learned_at` (the first-learned date shown on the dashboard) on every re-mention/enrich, so an old
+    fact (e.g. Gabby/Patrick coming up on a call) resurfaced as brand-new. **Fix (`lib/db.ts`):**
+    re-mention/enrich now bumps `last_confirmed_at` (freshness), preserving `learned_at`. 2 new tests.
+  - **[#3 PROMPT] Broadened fact capture** (`lib/facts.ts` extraction prompt): the `"fact"` catch-all
+    now lists properties/places (cottage, second home), possessions/vehicles, and background — so
+    "I have a cottage up north" is captured instead of dropped as too vague.
+  - ⚠️ **Shared file:** `app/api/vapi/webhook/route.ts` (Security owns webhook auth/integrity). Change
+    is additive — a duration/decline gate on the completed-status branch only. Flag Vijay to sync down.
+  - 2435/2435 green, tsc clean. Still prompt/UX-tuning candidates from the same feedback (NOT shipped):
+    filler-while-processing "hmm", gratitude awkward-goodbye/re-summarize, acknowledgement:insight ratio.
 - **2026-06-25** — **C10 SHIPPED (2422 green) — address-fact verification (flag unverified addresses).**
   - **Problem:** STT mishears street names ("Queens Quay East" → "Queenskey East") and the wrong
     address lands as a high-confidence fact. Fix: detect → verify → FLAG (never auto-correct).
