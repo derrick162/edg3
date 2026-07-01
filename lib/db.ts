@@ -2947,6 +2947,15 @@ export const dailyFocusQueries = {
     ).run(userId, date);
   },
 
+  // Overwrite focus_areas for a day WITHOUT touching `confirmed` (unlike upsert, which resets it).
+  // Used by the complete/dismiss routes to piggyback per-item state (completed) + replacements into
+  // the existing JSON. Structural param type avoids a circular import of FocusArea from lib/.
+  updateAreas: (userId: number, date: string, areas: Array<{ title: string; rationale: string; confidence: string; anchor?: string; completed?: boolean }>): void => {
+    getDb().prepare(
+      `UPDATE daily_focus SET focus_areas = ? WHERE user_id = ? AND date = ?`
+    ).run(encryptField(JSON.stringify(areas)), userId, date);
+  },
+
   addDismissed: (userId: number, date: string, title: string): void => {
     const db = getDb();
     const row = db.prepare(

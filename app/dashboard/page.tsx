@@ -1611,6 +1611,7 @@ function DashboardInner() {
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
   const [focusLockedAreas, setFocusLockedAreas] = useState<FocusRecommendationArea[] | null>(null);
+  const [dismissingFocusTitle, setDismissingFocusTitle] = useState<string | null>(null);
   const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -1837,6 +1838,36 @@ function DashboardInner() {
         setTimeout(() => setEdgeScoreCelebrating(false), 1500);
       }
     }).catch(() => {});
+  }
+
+  // Mark a locked-in focus area done — optimistic (strikethrough), revert on error.
+  async function handleCompleteFocus(title: string) {
+    setFocusLockedAreas(prev => prev ? prev.map(a => a.title === title ? { ...a, completed: true } : a) : prev);
+    try {
+      const res = await fetch('/api/focus/complete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error('failed');
+    } catch {
+      setFocusLockedAreas(prev => prev ? prev.map(a => a.title === title ? { ...a, completed: false } : a) : prev);
+    }
+  }
+
+  // Dismiss a locked-in focus area — spinner on that row while the replacement is generated.
+  async function handleDismissFocus(title: string) {
+    setDismissingFocusTitle(title);
+    try {
+      const res = await fetch('/api/focus/dismiss', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json();
+      if (Array.isArray(data.areas)) setFocusLockedAreas(data.areas);
+    } catch {
+      showToast('Couldn’t refresh — try again', 'error');
+    } finally {
+      setDismissingFocusTitle(null);
+    }
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -2847,11 +2878,13 @@ function DashboardInner() {
                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s Focus · Locked in</span>
                   </div>
                   <ol className="list-none space-y-2">
-                    {focusLockedAreas.map((a, i) => (
-                      <li key={i} className="flex gap-2" style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                    {focusLockedAreas.map((a, i) => {
+                      const isDismissing = dismissingFocusTitle === a.title;
+                      return (
+                      <li key={i} className="flex gap-2 items-start" style={{ color: 'var(--text-primary)', fontSize: '0.875rem', opacity: a.completed ? 0.5 : 1 }}>
                         <span style={{ color: 'var(--edg-success)', fontWeight: 700, flexShrink: 0 }}>✓</span>
                         <div className="flex-1 min-w-0">
-                          <span style={{ fontWeight: 500 }}>{a.title}</span>
+                          <span style={{ fontWeight: 500, textDecoration: a.completed ? 'line-through' : undefined }}>{a.title}</span>
                           {/* Ticket 2: one-line context so the focus list isn't a bare to-do list */}
                           {a.rationale?.trim() && (
                             <p style={{ color: 'var(--text-faint)', fontSize: '0.75rem', marginTop: '0.125rem', lineHeight: 1.4 }}>
@@ -2859,8 +2892,34 @@ function DashboardInner() {
                             </p>
                           )}
                         </div>
+                        {/* C11 — per-item done / dismiss controls */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {isDismissing ? (
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }} aria-label="Refreshing">⟳</span>
+                          ) : (
+                            <>
+                              {!a.completed && (
+                                <button
+                                  title="Mark done"
+                                  aria-label={`Mark "${a.title}" done`}
+                                  onClick={() => handleCompleteFocus(a.title)}
+                                  className="p-1 rounded"
+                                  style={{ color: 'var(--edg-success)', lineHeight: 1 }}
+                                >✓</button>
+                              )}
+                              <button
+                                title="No longer relevant"
+                                aria-label={`Dismiss "${a.title}"`}
+                                onClick={() => handleDismissFocus(a.title)}
+                                className="p-1 rounded"
+                                style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                              >✕</button>
+                            </>
+                          )}
+                        </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ol>
                 </div>
               ) : !focusRecDismissed && (

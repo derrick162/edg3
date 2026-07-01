@@ -3422,6 +3422,29 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-01** — **Today's Focus per-item ✓/✗ buttons + call-time dismissal guidance (2441 green).**
+  - **Types:** `FocusArea.completed?: boolean` (`lib/focusRecommendation.ts`) +
+    `FocusRecommendationArea.completed?` (`components/ui/FocusRecommendationCard.tsx`) — piggybacked
+    in the existing `focus_areas` JSON, no schema migration.
+  - **DB:** new `dailyFocusQueries.updateAreas(userId, date, areas)` — overwrites `focus_areas`
+    (encrypted) WITHOUT resetting `confirmed` (unlike `upsert`).
+  - **`POST /api/focus/complete`:** now accepts `{ title }` (legacy `idOrTitle` kept), finds the item
+    case-insensitively, sets `completed:true`, persists via `updateAreas`, returns `{ ok, areas }`.
+  - **`POST /api/focus/dismiss`:** accepts `{ title }`, records the dismissal FIRST (so
+    `recommendFocusAreas` — which reads `dismissed_titles` — won't re-suggest it), trims the item,
+    then generates a replacement (energy + calendar + anchors + email opts, same as the recommend
+    route) and appends the first area not already present. Returns the updated list (3 items if a
+    replacement was found, 2 if not). LLM call guarded — degrades to the trimmed list.
+  - **Dashboard locked-in view:** each focus row gets a done (✓) button (optimistic strikethrough +
+    50% opacity, reverts on error) and a dismiss (✕) button (per-row ⟳ spinner via
+    `dismissingFocusTitle` state while the replacement generates; replaces the list on success,
+    toast on error). Completed items stay visible, struck through.
+  - **Vapi prompt:** new bullet — if the user says a focus area is "no longer relevant"/"skip
+    that"/"cross that off", Edge tells them to tap the X on the dashboard card after the call; does
+    NOT call a tool or mutate focus mid-call.
+  - New `app/api/focus/focus-actions.test.ts` (6 tests: updateAreas round-trip + confirmed
+    preserved; complete sets/persists completed + legacy param; dismiss removes+replaces to 3,
+    graceful 2-item when no replacement, no duplicate replacement). +6 tests. tsc + next build clean.
 - **2026-07-01** — **Call-feedback batch (2435 green) — streak gate + memory freshness + capture breadth.** _(branch `claude/edge-call-feedback-v38s51` — awaiting PM integration to master.)_
   - **[#1 BUG] Declined/short calls counted toward the streak.** Root cause: the webhook marked a
     briefing `completed` on the single gate `transcript.length > 50` (`app/api/vapi/webhook/route.ts`),

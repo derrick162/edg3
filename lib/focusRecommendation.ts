@@ -22,6 +22,7 @@ export interface FocusArea {
   rationale: string;     // one honest sentence citing evidence
   confidence: 'high' | 'medium' | 'low';
   anchor?: string;       // which stable overarching priority this serves
+  completed?: boolean;   // user marked this focus done today (piggybacked in focus_areas JSON — no schema change)
 }
 
 export interface FocusRecommendation {
