@@ -1690,7 +1690,11 @@ function DashboardInner() {
       }
     }).catch(() => {});
     setDayPlanLoading(true);
-    fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
+    fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => {
+      // "Not now" suppresses the Edge Assessment for the rest of the day (per-day localStorage flag).
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: user?.timezone || 'UTC' });
+      if (localStorage.getItem('dayPlanDismissedDate') !== today) setDayPlan(d ?? null);
+    }).catch(() => {}).finally(() => setDayPlanLoading(false));
     fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {}).finally(() => setOpenLoopsLoaded(true));
     fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.isFresh && d.recentFacts?.length > 0) {
@@ -1868,6 +1872,13 @@ function DashboardInner() {
     } finally {
       setDismissingFocusTitle(null);
     }
+  }
+
+  // "Not now" on the Edge Assessment: hide it AND remember so it stays gone for the rest of today.
+  function handleDismissDayPlan() {
+    setDayPlan(null);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: user?.timezone || 'UTC' });
+    try { localStorage.setItem('dayPlanDismissedDate', today); } catch { /* localStorage unavailable — non-fatal */ }
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -2955,7 +2966,7 @@ function DashboardInner() {
                   plan={dayPlan}
                   loading={dayPlanLoading}
                   onConfirm={handleConfirmDayPlan}
-                  onDismiss={() => setDayPlan(null)}
+                  onDismiss={handleDismissDayPlan}
                   applied={dayPlanApplied}
                   appliedScore={dayPlanAppliedScore}
                   changeLines={dayPlanChangeLines}
