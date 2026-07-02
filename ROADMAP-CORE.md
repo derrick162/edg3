@@ -3422,6 +3422,18 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-01** — **[BUG] Edge Score card blanked to first-run state on rate-limit / fetch failure (2441 green).**
+  - **Root cause:** `/api/scores` is rate-limited per user; the dashboard refetches on load +
+    confirm-focus + confirm-plan + undo + tab-focus, so a busy session hit the cap. On 429 the
+    handlers left `calendarFit` null → `EdgeScoreCard` rendered its `!fit` first-run empty state,
+    reading like the user's data was gone.
+  - **Fix (`app/dashboard/page.tsx`):** cache the last good scores in `localStorage['lastScores']`
+    after every successful `/api/scores` fetch (load, confirm-focus, undo ×2, tab-visibility); on a
+    failed/non-ok load, `hydrateScoresFromCache()` backfills `calendarFit` from that cache when it's
+    still null. Stale-but-real beats blank. Guarded, non-fatal.
+  - **Rate limit (`lib/rateLimit.ts`):** bumped `calendarScores` 20 → 60 / hour per user (the
+    dashboard is chatty); comment header updated. No test asserted the old limit.
+  - localStorage path isn't unit-testable; tsc + vitest (2441) + next build clean.
 - **2026-07-01** — **Today's Focus per-item ✓/✗ buttons + call-time dismissal guidance (2441 green).**
   - **Types:** `FocusArea.completed?: boolean` (`lib/focusRecommendation.ts`) +
     `FocusRecommendationArea.completed?` (`components/ui/FocusRecommendationCard.tsx`) — piggybacked

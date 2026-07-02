@@ -1669,8 +1669,9 @@ function DashboardInner() {
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => {
-      if (!d) return;
+      if (!d) { hydrateScoresFromCache(); return; } // 429 / non-ok — serve last good, don't blank
       setCalendarFit(d);
+      cacheScores(d);
       // R25 T7 Part B — celebrate a natural score rise on page load (not just after confirm-focus).
       try {
         const lastSeen = parseInt(localStorage.getItem(LAST_SEEN_SCORE_KEY) ?? '0', 10) || 0;
@@ -1679,7 +1680,7 @@ function DashboardInner() {
           localStorage.setItem(LAST_SEEN_SCORE_KEY, String(d.edgeScore));
         }
       } catch { /* localStorage unavailable — skip celebration, non-fatal */ }
-    }).catch(() => {}).finally(() => setCalendarFitLoading(false));
+    }).catch(() => { hydrateScoresFromCache(); }).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     // Check if already confirmed today — show locked state, prevent re-confirm.
@@ -1837,6 +1838,7 @@ function DashboardInner() {
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
       if (!s) return;
       setCalendarFit(s);
+      cacheScores(s);
       if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
         setEdgeScoreCelebrating(true);
         setTimeout(() => setEdgeScoreCelebrating(false), 1500);
@@ -1874,6 +1876,18 @@ function DashboardInner() {
     }
   }
 
+  // Edge Score resilience: /api/scores is rate-limited (chatty dashboard) — cache the last good
+  // response so a 429 / fetch failure serves stale-but-real data instead of blanking to the
+  // first-run empty state (which reads like the user's data is gone).
+  function cacheScores(s: CalendarFit | null) {
+    if (!s) return;
+    try { localStorage.setItem('lastScores', JSON.stringify(s)); } catch { /* non-fatal */ }
+  }
+  function hydrateScoresFromCache() {
+    if (calendarFitRef.current) return; // only backfill when we have nothing live
+    try { const c = localStorage.getItem('lastScores'); if (c) setCalendarFit(JSON.parse(c)); } catch { /* non-fatal */ }
+  }
+
   // "Not now" on the Edge Assessment: hide it AND remember so it stays gone for the rest of today.
   function handleDismissDayPlan() {
     setDayPlan(null);
@@ -1894,7 +1908,7 @@ function DashboardInner() {
     // ALWAYS refetch the canonical Edge Score so the HEADLINE moves to the real new
     // value — otherwise the headline stayed stale (e.g. 63) while the plan card showed
     // its projected number (67). One Edge Score, and it's the headline.
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) { setCalendarFit(s); cacheScores(s); } }).catch(() => {});
     // Auto-dismiss toast after 30 s
     setTimeout(() => { setDayPlanApplied(false); setDayPlan(null); }, 30_000);
   }
@@ -1912,7 +1926,7 @@ function DashboardInner() {
     setDayPlan(null);
     setDayPlanChangeLines([]);
     // Refetch scores after undo
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) { setCalendarFit(s); cacheScores(s); } }).catch(() => {});
   }
 
   async function retryBriefingCall() {
@@ -1958,6 +1972,7 @@ function DashboardInner() {
       const s = await fetch('/api/scores').then(r => r.ok ? r.json() : null).catch(() => null);
       if (!s) return;
       setCalendarFit(s);
+      cacheScores(s);
       if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
         setEdgeScoreCelebrating(true);
         setTimeout(() => setEdgeScoreCelebrating(false), 1500);

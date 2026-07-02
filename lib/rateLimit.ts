@@ -13,7 +13,8 @@
  *   dayPlanConfirm — 5  per 60 min per user  (calendar mutations + LLM)
  *   focusRecommend — 20 per 60 min per user  (LLM recommendation)
  *   focusConfirm   — 30 per 60 min per user  (DB write)
- *   calendarScores — 20 per 60 min per user  (LLM scoring)
+ *   calendarScores — 60 per 60 min per user  (LLM scoring; dashboard refetches on load +
+ *                    confirm-focus + confirm-plan + undo, so 20/hr blanked the card mid-session)
  *   factEdit       — 20 per 60 min per user  (fact corrections/deletions)
  *   emailReceipt   — 60 per 60 min per user  (Activity receipt reads)
  *
@@ -40,7 +41,7 @@ export const LIMITS = {
   dayPlanConfirm: { limit: 5,  windowMs: 60 * 60 * 1000 },  // 5  / hour per user
   focusRecommend: { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user
   focusConfirm:   { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user
-  calendarScores: { limit: 20, windowMs: 60 * 60 * 1000 },  // 20 / hour per user
+  calendarScores: { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (chatty dashboard)
   learned:        { limit: 30, windowMs: 60 * 60 * 1000 },  // 30 / hour per user
   openLoops:      { limit: 60, windowMs: 60 * 60 * 1000 },  // 60 / hour per user (resolve/dismiss)
   openCall:       { limit: 5,  windowMs:  5 * 60 * 1000 },  // 5  / 5 min per user (Vapi call cost)
