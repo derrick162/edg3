@@ -729,7 +729,12 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   "ALTER TABLE people_profiles ADD COLUMN email TEXT",
   // Round 6 T2 — confidence decay (0.0–1.0; decays weekly; below 0.3 = unverified)
   "ALTER TABLE facts ADD COLUMN confidence_score REAL NOT NULL DEFAULT 1.0",
-  "ALTER TABLE facts ADD COLUMN last_confirmed_at TEXT DEFAULT (datetime('now'))",
+  // S9a — last_confirmed_at is NOT added here. `ADD COLUMN … DEFAULT (datetime('now'))` is a
+  // non-constant default: some SQLite builds (older than prod's) reject it, so on prod this ALTER
+  // failed silently on every boot and left the column missing (memory-freshness upserts threw
+  // "no such column: last_confirmed_at"). The column is instead guaranteed by rebuildFactsIfStale()
+  // below, which recreates the table with the full current schema — column + DEFAULT — so an
+  // existing prod row and a fresh CREATE converge to identical schema. See applyMigrations().
   // Retry durability: DB-flagged retry time survives server restarts (replaces in-memory setTimeout)
   "ALTER TABLE briefings ADD COLUMN retry_after TEXT",
   // Learning pipeline reliability: per-call extraction status (success/partial/failed)
@@ -768,10 +773,157 @@ export const DEFERRED_INDEXES: readonly string[] = [
   "CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(user_id, category, valid_until)",
 ];
 
+// The stored CREATE SQL for a table (from sqlite_master), or undefined if the table is absent.
+function tableCreateSql(db: Database.Database, table: string): string | undefined {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table) as { sql: string } | undefined;
+  return row?.sql;
+}
+
+// The live column names of a table.
+function tableColumnSet(db: Database.Database, table: string): Set<string> {
+  return new Set((db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(c => c.name));
+}
+
+// SQLite can ALTER-add a column but can NEVER alter a CHECK constraint or a column's DEFAULT.
+// A long-lived prod DB whose table predates a CHECK/DEFAULT change therefore drifts from the
+// fresh CREATE schema and rejects inserts the current code assumes are legal. The only fix is a
+// table rebuild: create a new table with the desired schema, copy rows, swap. This helper does
+// that safely under foreign_keys=ON — the pragma must be toggled OUTSIDE the transaction (a no-op
+// inside one), and we create-new/drop-old/rename-new (not rename-old) so no child table's FK gets
+// silently rewritten to the temp name. Callers guard on "is the drift actually present?" so a
+// fresh or already-converged DB never rebuilds (zero data churn on the common path).
+function rebuildTable(
+  db: Database.Database,
+  table: string,
+  createNewSql: string, // CREATE TABLE __new_<table> (...)
+  insertCols: string[], // target columns to populate
+  selectExprs: string[], // matching expressions read from the old table
+  indexes: string[], // indexes to recreate (dropped with the old table)
+): void {
+  const tmp = `__new_${table}`;
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      db.exec(createNewSql);
+      db.exec(`INSERT INTO ${tmp} (${insertCols.join(', ')}) SELECT ${selectExprs.join(', ')} FROM ${table}`);
+      db.exec(`DROP TABLE ${table}`);
+      db.exec(`ALTER TABLE ${tmp} RENAME TO ${table}`);
+      for (const idx of indexes) db.exec(idx);
+    })();
+    const violations = db.pragma('foreign_key_check') as unknown[];
+    if (violations.length) console.error(`[db] ${table} rebuild left ${violations.length} FK violation(s)`);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
+// S9b — prod's briefings.status CHECK predates 'missed' (declined/short-call streak gate inserts it
+// and threw "CHECK constraint failed"). SQLite can't alter a CHECK, so rebuild once. Idempotent:
+// a table whose CHECK already lists 'missed' (fresh CREATE, or an already-rebuilt DB) is skipped.
+function rebuildBriefingsIfStale(db: Database.Database): void {
+  const sql = tableCreateSql(db, 'briefings');
+  if (!sql || sql.includes("'missed'")) return;
+  const NEW_BRIEFINGS = `CREATE TABLE __new_briefings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      content TEXT NOT NULL,
+      vapi_call_id TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','calling','completed','failed','missed')),
+      scheduled_for TEXT NOT NULL,
+      transcript TEXT,
+      user_response TEXT,
+      retry_attempted INTEGER DEFAULT 0,
+      calendar_actions TEXT,
+      edge_promises TEXT,
+      tool_actions TEXT,
+      error_code TEXT,
+      is_open_call INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      retry_after TEXT,
+      learning_status TEXT,
+      is_inbound INTEGER NOT NULL DEFAULT 0
+    )`;
+  // Copy every target column that the legacy table actually has (all simple columns — no
+  // nullable→NOT NULL conversions on briefings, so a straight copy is safe).
+  const target = ['id', 'user_id', 'content', 'vapi_call_id', 'status', 'scheduled_for', 'transcript',
+    'user_response', 'retry_attempted', 'calendar_actions', 'edge_promises', 'tool_actions',
+    'error_code', 'is_open_call', 'created_at', 'retry_after', 'learning_status', 'is_inbound'];
+  const have = tableColumnSet(db, 'briefings');
+  const cols = target.filter(c => have.has(c));
+  rebuildTable(db, 'briefings', NEW_BRIEFINGS, cols, cols, [
+    'CREATE INDEX IF NOT EXISTS idx_briefings_user_id ON briefings(user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_briefings_vapi_call_id ON briefings(vapi_call_id)',
+  ]);
+  console.warn('[db] briefings rebuilt: status CHECK now includes \'missed\' (legacy schema drift S9b)');
+}
+
+// S9a + S9c — prod's facts table predates both the expanded category CHECK ('pattern','commitment',
+// 'weekly_summary','lifetime_profile','user_note') and the last_confirmed_at column. Rebuild once to
+// converge. Guard triggers on EITHER drift; a fresh/converged DB (has 'user_note' AND the column) is
+// skipped. Backfills are built only from columns the legacy table actually has, so this is safe even
+// against a very old minimal facts table (no learned_at) — a fresh column just takes its DEFAULT.
+function rebuildFactsIfStale(db: Database.Database): void {
+  const sql = tableCreateSql(db, 'facts');
+  if (!sql) return;
+  const have = tableColumnSet(db, 'facts');
+  if (sql.includes("'user_note'") && have.has('last_confirmed_at')) return;
+  const NEW_FACTS = `CREATE TABLE __new_facts (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id            INTEGER NOT NULL REFERENCES users(id),
+      category           TEXT NOT NULL CHECK(category IN ('person','project','goal','preference','fact','pattern','commitment','weekly_summary','lifetime_profile','user_note')),
+      statement          TEXT NOT NULL,
+      entity             TEXT,
+      learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      confidence         TEXT NOT NULL DEFAULT 'high' CHECK(confidence IN ('high','low')),
+      source_briefing_id INTEGER REFERENCES briefings(id),
+      valid_from         TEXT NOT NULL DEFAULT (datetime('now')),
+      valid_until        TEXT,
+      confidence_score   REAL NOT NULL DEFAULT 1.0,
+      last_confirmed_at  TEXT DEFAULT (datetime('now')),
+      reference_count    INTEGER NOT NULL DEFAULT 0,
+      source             TEXT
+    )`;
+  // Straight 1:1 columns copied only if present on the legacy table.
+  const plain = ['id', 'user_id', 'category', 'statement', 'entity', 'learned_at', 'confidence',
+    'source_briefing_id', 'valid_until', 'confidence_score', 'reference_count', 'source'].filter(c => have.has(c));
+  const insertCols = [...plain];
+  const selectExprs = [...plain];
+  // valid_from is NOT NULL in the new schema but was added nullable on legacy DBs — coalesce so a
+  // NULL legacy value can't violate the constraint. Fall back through learned_at to now().
+  const vfSources = ['valid_from', 'learned_at'].filter(c => have.has(c));
+  insertCols.push('valid_from');
+  selectExprs.push(vfSources.length ? `COALESCE(${vfSources.join(', ')}, datetime('now'))` : "datetime('now')");
+  // last_confirmed_at (the S9a column): if the legacy table has it, keep it; otherwise synthesize from
+  // learned_at (memory-freshness semantics) rather than inventing "now" for old rows.
+  const lcSources = ['last_confirmed_at', 'learned_at'].filter(c => have.has(c));
+  insertCols.push('last_confirmed_at');
+  selectExprs.push(lcSources.length ? `COALESCE(${lcSources.join(', ')}, datetime('now'))` : "datetime('now')");
+  rebuildTable(db, 'facts', NEW_FACTS, insertCols, selectExprs, [
+    'CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id, category)',
+  ]);
+  console.warn('[db] facts rebuilt: full category CHECK + last_confirmed_at (legacy schema drift S9a/S9c)');
+}
+
 export function applyMigrations(db: Database.Database): void {
   for (const migration of SCHEMA_MIGRATIONS) {
-    try { db.exec(migration); } catch { /* column already exists / non-constant default — skip */ }
+    try {
+      db.exec(migration);
+    } catch (e) {
+      // S9d — additive ALTERs are expected to no-op on an up-to-date DB ("duplicate column name"
+      // / "already exists"). ANY other failure is a real schema problem that was silently swallowed
+      // before (prod incident: three write paths broken, invisible). Log it, but never abort boot —
+      // one bad migration must not block the rest (that independence is the whole point).
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/duplicate column name|already exists/i.test(msg)) {
+        console.error('[db] MIGRATION FAILED:', migration.slice(0, 80), '->', msg);
+      }
+    }
   }
+  // CHECK/DEFAULT drift can't be fixed by ALTER — rebuild the affected tables (idempotent, guarded).
+  // Runs AFTER the ALTER loop (so all columns exist to copy) and BEFORE DEFERRED_INDEXES (so an index
+  // on a rebuilt table is recreated on the new table).
+  rebuildBriefingsIfStale(db);
+  rebuildFactsIfStale(db);
   // Column-dependent indexes run only after the columns above are guaranteed present.
   for (const idx of DEFERRED_INDEXES) {
     try { db.exec(idx); } catch (e) { console.error('[db] deferred index failed:', idx, e); }
