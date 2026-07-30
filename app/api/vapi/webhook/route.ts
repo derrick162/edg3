@@ -208,6 +208,9 @@ export async function POST(req: NextRequest) {
       // Duration: prefer whatever the webhook payload already carries; the full-call fetch below
       // overrides it with the authoritative value when available.
       let durationSec = vapiCallDurationSeconds(payload) ?? vapiCallDurationSeconds({ call });
+      // Journaling — call recording URL from Vapi's artifact (only present when recording was enabled).
+      let audioUrl: string | null =
+        payload.artifact?.recordingUrl || payload.recordingUrl || call.artifact?.recordingUrl || null;
       try {
         const vapiCall = await withRetry(async () => {
           const vapiRes = await fetch(`https://api.vapi.ai/call/${call.id}`, {
@@ -223,6 +226,8 @@ export async function POST(req: NextRequest) {
         }
         const fetchedDur = vapiCallDurationSeconds(vapiCall);
         if (fetchedDur != null) durationSec = fetchedDur;
+        const fetchedAudio = vapiCall.artifact?.recordingUrl || vapiCall.recordingUrl || vapiCall.artifact?.stereoRecordingUrl || null;
+        if (fetchedAudio) audioUrl = fetchedAudio;
       } catch (err) {
         console.error('[webhook] Failed to fetch full transcript after retries:', err);
       }
@@ -278,6 +283,7 @@ export async function POST(req: NextRequest) {
         status: transcript.length > 50 ? 'completed' : 'missed',
         transcript,
         user_response: userResponse || undefined,
+        audio_url: audioUrl || undefined,
       });
 
       // Extract and store insight from user response
