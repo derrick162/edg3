@@ -727,6 +727,142 @@ interface ActivityItem {
   count?: number;
 }
 
+interface JournalEntry { id: number; createdAt: string; transcript: string; audioUrl: string | null; }
+
+function JournalTab() {
+  const [journals, setJournals] = useState<JournalEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startMsg, setStartMsg] = useState<string | null>(null);
+  const [startErr, setStartErr] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const r = await fetch('/api/journal');
+      if (!r.ok) { setFetchError(true); setLoading(false); return; }
+      const d = await r.json();
+      setJournals(d.journals || []);
+    } catch {
+      setFetchError(true);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function startJournal() {
+    setStarting(true);
+    setStartErr(null);
+    setStartMsg(null);
+    try {
+      const r = await fetch('/api/journal/call', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setStartMsg("Calling you now — pick up and think out loud. I'll save it here when you hang up.");
+      } else {
+        setStartErr(d.error || 'Could not start the journal call — please try again shortly.');
+      }
+    } catch {
+      setStartErr('Could not start the journal call — please check your connection.');
+    }
+    setStarting(false);
+  }
+
+  // SQLite datetime without a 'Z' is UTC — add it so the browser doesn't parse as local.
+  function parseTs(ts: string): Date {
+    return new Date(ts.includes('Z') || ts.includes('+') ? ts : ts.replace(' ', 'T') + 'Z');
+  }
+  function entryLabel(ts: string): string {
+    const d = parseTs(ts);
+    return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  return (
+    <div>
+      <div className="glass-card p-5 md:p-6 mb-4">
+        <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Journal</h2>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+          Hit the button and Edge calls your phone. Think out loud about your trades, a thesis, whatever&apos;s
+          on your mind — Edge mostly listens. When you hang up, the audio and a full transcript are saved here.
+        </p>
+        <button onClick={startJournal} disabled={starting} className="btn-primary text-sm py-2.5 px-6">
+          {starting ? 'Starting…' : '📓 Start Journal'}
+        </button>
+        {startMsg && <p className="text-sm mt-3" style={{ color: 'var(--text-body)' }}>{startMsg}</p>}
+        {startErr && <p className="text-sm mt-3" style={{ color: 'var(--edg-danger, #dc2626)' }}>{startErr}</p>}
+      </div>
+
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="glass-card p-4">
+              <div className="skeleton h-3 w-1/3 mb-3 rounded" />
+              <div className="skeleton h-4 w-3/4 rounded" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && fetchError && (
+        <div className="glass-card p-8 text-center">
+          <p className="text-2xl mb-3" role="img" aria-label="warning">⚠</p>
+          <p className="font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Couldn&apos;t load your journals</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>This is usually a temporary blip.</p>
+          <button onClick={load} className="btn-secondary text-sm py-2 px-5">Try again</button>
+        </div>
+      )}
+
+      {!loading && !fetchError && journals.length === 0 && (
+        <div className="glass-card p-8 text-center">
+          <p className="text-3xl mb-3" role="img" aria-label="journal">📓</p>
+          <p className="font-semibold mb-1" style={{ color: 'var(--text-body)' }}>No journal entries yet</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Start a journal above and your recordings will show up here.</p>
+        </div>
+      )}
+
+      {!loading && !fetchError && journals.length > 0 && (
+        <div className="space-y-3">
+          {journals.map(j => {
+            const expanded = expandedId === j.id;
+            const preview = j.transcript.replace(/^(User:|AI:|Assistant:|Customer:)\s*/gm, '').slice(0, 140);
+            return (
+              <div key={j.id} className="glass-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-body)' }}>{entryLabel(j.createdAt)}</span>
+                  {j.transcript && (
+                    <button
+                      onClick={() => setExpandedId(expanded ? null : j.id)}
+                      className="text-xs shrink-0"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {expanded ? 'Hide transcript ▲' : 'Read transcript ▼'}
+                    </button>
+                  )}
+                </div>
+                {j.audioUrl && (
+                  <audio controls preload="none" src={j.audioUrl} className="w-full mt-3" style={{ height: 36 }}>
+                    Your browser can&apos;t play this recording.
+                  </audio>
+                )}
+                {!expanded && j.transcript && (
+                  <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>{preview}{j.transcript.length > 140 ? '…' : ''}</p>
+                )}
+                {expanded && (
+                  <pre className="text-sm mt-3 whitespace-pre-wrap font-sans" style={{ color: 'var(--text-body)' }}>{j.transcript}</pre>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActivityTab() {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1506,7 +1642,7 @@ function DashboardInner() {
   // briefing is generated (calendar fetch + LLM take a few seconds before the phone rings).
   const [callStage, setCallStage] = useState('');
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'journal' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [tabSlideDir, setTabSlideDir] = useState<'left' | 'right' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [memoryPage, setMemoryPage] = useState(1);
@@ -2431,6 +2567,7 @@ function DashboardInner() {
             {(() => {
               const NAV_TABS = [
                 { id: 'home', label: 'Today', icon: '✦' },
+                { id: 'journal', label: 'Journal', icon: '📓' },
                 { id: 'briefings', label: 'Briefings', icon: '📋' },
                 { id: 'memory', label: 'Memory', icon: '🧠' },
                 { id: 'priorities', label: 'Focus', icon: '🎯' },
@@ -3288,6 +3425,8 @@ function DashboardInner() {
           )}
 
           {activeTab === 'activity' && <ActivityTab />}
+
+          {activeTab === 'journal' && <JournalTab />}
 
           {activeTab === 'memory' && (
             <div>
