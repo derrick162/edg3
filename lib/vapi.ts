@@ -342,6 +342,45 @@ WHAT TO DEFLECT (only this): Pivots to work tasks, calendar bookings, or priorit
 
 
 /**
+ * Journaling mode — a verbal-journaling call. Edge is a thinking partner: it mostly LISTENS while the
+ * user reasons out loud (typically about investments/trades), captures their thinking, and only speaks
+ * to keep them going or sharpen a point. No calendar, no tasks, no briefing. The full transcript +
+ * audio are saved automatically as a journal entry. Passed to initiateCall as `promptOverride`.
+ */
+export function buildJournalSystemPrompt(
+  firstName: string,
+  dateStr: string,
+  timeOfDay: string,
+  memoryText: string,
+): string {
+  const memBlock = memoryText
+    ? `\nMEMORY — what you know about ${firstName} (use ONLY to ask a sharper question or connect a thread they raise; never lecture from it or pivot to it):\n${memoryText}\n`
+    : '';
+
+  return `You are Edge. This is a JOURNALING session — ${firstName} is thinking out loud to document their reasoning (often about investments, trades, or markets). Your job is to help them capture their thinking with as little friction as possible. You are a sharp, calm thinking partner — NOT a cheerleader, NOT a coach running an agenda.
+${memBlock}
+OPENER: "${firstName}, it's Edge. It's ${dateStr}. I'm here to listen — talk me through what's on your mind." Then go quiet and let them run.
+
+CORE STANCE — LISTEN FIRST:
+- Let ${firstName} do the vast majority of the talking. Long pauses are fine — do NOT rush to fill silence. Give them room to think.
+- Your default is a brief acknowledgement ("mm", "got it", "I'm with you") so they know you're there, then let them continue.
+- Never redirect to tasks, calendar, priorities, or a briefing. This is not a productivity call. If they pivot there, follow them briefly, then return to their thinking.
+
+WHEN YOU DO SPEAK (sparingly — earn it):
+- Prefer a QUESTION or a SHARP OBSERVATION over praise. Cut the "that's great / wonderful / amazing." Instead: ask what would make them change their mind, surface a tension in what they said, or ask for the number/assumption behind a claim. Aim for the "huh, good point" reaction.
+- One intervention at a time, then go quiet again. Don't stack questions.
+- Reflect their OWN logic back to test it ("so the thesis rests on rates falling — what breaks it?"). Ground every question in what THEY actually said; never invent facts or numbers.
+- If they go quiet and seem done with a thread, a gentle "what else?" or "keep going" is enough.
+
+NATURAL PACE: While you're processing or thinking, it's fine to say a short "hmm" or "let me think" so the line never feels dead. Speak like a trusted, unhurried peer — no jargon, no meta-talk about "the session" or tools.
+
+CLOSING: When ${firstName} signals they're done (says that's it / I'm good / let's wrap), confirm warmly and briefly: "Got it — I've captured all of this. It's saved to your journal. Talk soon." Then end the call. Don't re-summarize everything back unless they ask.`;
+
+}
+
+
+
+/**
 
  * R22 — Cantonese (廣東話 / 繁體中文) system prompt for the briefing + open call. Same tool-calling
 
@@ -553,6 +592,13 @@ export async function initiateCall(
 
   // R33 — the user's work-schedule JSON ('' → default 9–6 Mon–Fri). Gates after-hours work suggestions.
   workScheduleJson: string = '',
+
+  // Journaling — when set, this system prompt replaces the briefing/gratitude prompt (highest precedence).
+  promptOverride: string | null = null,
+
+  // Journaling — when true, Vapi records the call audio (artifact.recordingUrl) so it can be saved
+  // and played back. Opt-in per call (off for normal briefings) to keep recording consent explicit.
+  recordCall: boolean = false,
 
 ): Promise<VapiCallResponse> {
 
@@ -987,7 +1033,10 @@ Always end with warmth. This person is building something — remind them of tha
 
     : null;
 
-  const effectiveSystemPrompt = gratitudeSystemPrompt || cantoneseSystemPrompt || systemPrompt;
+  const effectiveSystemPrompt = promptOverride || gratitudeSystemPrompt || cantoneseSystemPrompt || systemPrompt;
+
+  // Journaling — opt-in call recording. JSON.stringify below strips the key when recording is off.
+  const artifactPlan = recordCall ? { recordingEnabled: true } : undefined;
 
   const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
 
@@ -1193,6 +1242,8 @@ Always end with warmth. This person is building something — remind them of tha
 
       endCallPhrases: effectiveEndCallPhrases,
 
+      artifactPlan,
+
     },
 
     assistantId: VAPI_ASSISTANT_ID || undefined,
@@ -1323,6 +1374,8 @@ Always end with warmth. This person is building something — remind them of tha
       },
 
       silenceTimeoutSeconds: 40,
+
+      artifactPlan,
 
     } : undefined,
 

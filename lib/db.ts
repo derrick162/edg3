@@ -90,6 +90,8 @@ export function initSchema(db: Database.Database) {
       tool_actions TEXT,
       error_code TEXT,
       is_open_call INTEGER DEFAULT 0,
+      is_journal INTEGER NOT NULL DEFAULT 0,
+      audio_url TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -760,6 +762,10 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   `ALTER TABLE users ADD COLUMN work_schedule TEXT DEFAULT '{"start":9,"end":18,"days":[1,2,3,4,5]}'`,
   // M4-6 — Memory Ranking Engine: per-fact reference count (incremented when surfaced into context).
   "ALTER TABLE facts ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0",
+  // Journaling mode — a call whose purpose is verbal journaling (think out loud). is_journal flags
+  // the briefing row; audio_url stores the call recording URL (from Vapi's artifact) for playback.
+  "ALTER TABLE briefings ADD COLUMN is_journal INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE briefings ADD COLUMN audio_url TEXT",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -1031,7 +1037,7 @@ export const briefingQueries = {
     getDb().prepare('UPDATE briefings SET content = ? WHERE id = ?').run(content, id);
   },
   update: (id: number, data: Partial<Briefing>) => {
-    const ALLOWED_FIELDS = new Set(['status', 'transcript', 'user_response', 'vapi_call_id', 'retry_attempted', 'error_code']);
+    const ALLOWED_FIELDS = new Set(['status', 'transcript', 'user_response', 'vapi_call_id', 'retry_attempted', 'error_code', 'audio_url']);
     const entries = Object.entries(data).filter(([k]) => ALLOWED_FIELDS.has(k));
     if (!entries.length) return;
     const fields = entries.map(([k]) => `${k} = ?`).join(', ');
@@ -1082,6 +1088,18 @@ export const briefingQueries = {
   // R23 T2 — flag a briefing row as created by an inbound (caller-initiated) call.
   markInbound: (id: number): void => {
     getDb().prepare('UPDATE briefings SET is_inbound = 1 WHERE id = ?').run(id);
+  },
+  // Journaling mode — flag a briefing row as a verbal-journaling call (set right after insert).
+  markJournal: (id: number): void => {
+    getDb().prepare('UPDATE briefings SET is_journal = 1 WHERE id = ?').run(id);
+  },
+  // Journal history for the dashboard Journal tab. Owner-scoped; decrypts transcript per row.
+  getJournals: (userId: number, limit = 30): Briefing[] => {
+    const rows = getDb().prepare(
+      `SELECT * FROM briefings WHERE user_id = ? AND is_journal = 1 AND status = 'completed'
+       ORDER BY scheduled_for DESC LIMIT ?`
+    ).all(userId, limit) as Briefing[];
+    return rows.map(decryptBriefingRow);
   },
   // Strictly owner-gated: the AND user_id = ? ensures a user can never read another's transcript.
   getByIdForUser: (id: number, userId: number) => {
@@ -2189,6 +2207,8 @@ export interface Briefing {
   error_code: string | null;
   is_open_call?: number;
   is_inbound?: number;
+  is_journal?: number;
+  audio_url?: string | null;
   created_at: string;
 }
 

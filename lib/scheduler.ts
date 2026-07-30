@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { format } from 'date-fns';
 import { getDb } from './db';
 import { generateDailyBriefing, getWeekOf } from './briefing';
-import { initiateCall, buildGratitudeSystemPrompt } from './vapi';
+import { initiateCall, buildGratitudeSystemPrompt, buildJournalSystemPrompt } from './vapi';
 import { getWeatherForecast, getWeatherToday } from './weather';
 import { currentOpenCallMemoryText } from './callMemory';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
@@ -898,6 +898,73 @@ export async function scheduleOpenCall(userId: number) {
     }
   } else {
     console.log(`[scheduler] Skipping open call for ${user.name} — no phone or Vapi key`);
+  }
+
+  return briefingId;
+}
+
+/**
+ * Journaling mode — Edge calls the user and mostly LISTENS while they think out loud. The call is
+ * recorded (audio) and transcribed; both are saved as a journal entry (a briefing row flagged
+ * is_journal=1, with audio_url filled in by the webhook once Vapi's recording is ready). Mirrors
+ * scheduleOpenCall but swaps in the journal prompt and turns on call recording.
+ */
+export async function scheduleJournalCall(userId: number) {
+  const user = userQueries.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  // Guard against double-tap: refuse if a call started in the last 3 minutes.
+  const recentCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const inFlight = getDb().prepare(
+    `SELECT 1 FROM briefings WHERE user_id = ? AND status = 'calling' AND scheduled_for >= ?`
+  ).get(userId, recentCutoff);
+  if (inFlight) throw new CallError('A call is already in progress — give it a moment.', 'already_called');
+
+  const timezone = effectiveTimezone(user);
+  const scheduledFor = new Date().toISOString();
+  const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }));
+  const period = dayPeriod(hour); // 'morning' | 'afternoon' | 'evening'
+  const firstName = user.name.split(' ')[0];
+
+  // TTS-safe date: "Monday June 22" — no commas (Azure pauses), no year (garbles).
+  const _d = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const dateStr = `${_days[_d.getDay()]} ${_months[_d.getMonth()]} ${_d.getDate()}`;
+
+  const journalPrompt = buildJournalSystemPrompt(firstName, dateStr, period, currentOpenCallMemoryText(userId));
+  const opener = `${firstName}, it's Edge. It's ${dateStr}. I'm here to listen — talk me through what's on your mind.`;
+
+  const result = briefingQueries.create(userId, `[Journal] ${opener}`, scheduledFor) as { lastInsertRowid: number };
+  const briefingId = result.lastInsertRowid;
+  try { briefingQueries.markJournal(briefingId); } catch { /* non-fatal — defaults to 0 */ }
+
+  const phoneNumber = user.phone_number;
+  if (phoneNumber && process.env.VAPI_API_KEY) {
+    briefingQueries.update(briefingId, { status: 'calling' });
+    const isFirstCall = briefingQueries.countCompleted(userId) === 0;
+    try {
+      console.log(`[scheduler] Initiating JOURNAL call for ${user.name}...`);
+      const call = await initiateCall(
+        phoneNumber, opener, user.name, isFirstCall, timezone, true,
+        currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId),
+        user.call_time || '', await currentEnergyText(userId),
+        user.voice_preference === 'aria' ? 'aria' : 'daniel',
+        (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'),
+        null, user.language || 'en', userQueries.getWorkSchedule(userId) ?? '',
+        journalPrompt, // promptOverride — journaling prompt wins precedence
+        true,          // recordCall — capture audio for the journal entry
+      );
+      console.log(`[scheduler] Vapi journal call initiated for ${user.name}: ${call.id}`);
+      if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
+    } catch (err) {
+      console.error(`[scheduler] Vapi journal call failed for user ${userId}:`, err);
+      const callErr = classifyVapiError(err);
+      briefingQueries.update(briefingId, { status: 'failed', error_code: callErr.code });
+      throw callErr;
+    }
+  } else {
+    console.log(`[scheduler] Skipping journal call for ${user.name} — no phone or Vapi key`);
   }
 
   return briefingId;

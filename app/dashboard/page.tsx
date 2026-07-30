@@ -10,6 +10,7 @@ import { factDisplayStatement } from '@/lib/factDisplay';
 import { factSourceLabel, parseDbTimestamp } from '@/lib/factSourceLabel';
 import { shouldCelebrateScoreRise, LAST_SEEN_SCORE_KEY } from '@/lib/scoreCelebration';
 import { pickTimezoneUpdate } from '@/lib/timezoneDetect';
+import { pickScreenRecordingMime, screenRecordingFilename, formatDuration, MAX_SCREEN_RECORDING_SECONDS } from '@/lib/screenRecording';
 import { RecoveryCard, EdgeScoreCard, FocusRecommendationCard, DayPlanCard, NotificationBell, NotificationCenter, OpenLoopsSection, ContentSection, HelpSupportSection, ActivationCard, ToastProvider } from '@/components/ui';
 import { useToast } from '@/lib/toast';
 import type { CalendarFit, FocusRecommendation, FocusRecommendationArea, CalendarPlan as DayPlanType, OpenLoop } from '@/components/ui';
@@ -725,6 +726,257 @@ interface ActivityItem {
   undone: number | null;
   emailReceiptId?: number | null;
   count?: number;
+}
+
+interface JournalEntry { id: number; createdAt: string; transcript: string; audioUrl: string | null; }
+
+function JournalTab() {
+  const [journals, setJournals] = useState<JournalEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startMsg, setStartMsg] = useState<string | null>(null);
+  const [startErr, setStartErr] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  // Desktop screen recording (video-only, saved straight to the user's computer — no upload).
+  const [canRecord, setCanRecord] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [recError, setRecError] = useState<string | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef = useRef(0);
+
+  function cleanupRecording() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    mediaRecorderRef.current = null;
+  }
+
+  useEffect(() => {
+    setCanRecord(
+      typeof navigator !== 'undefined' &&
+      !!navigator.mediaDevices?.getDisplayMedia &&
+      typeof MediaRecorder !== 'undefined'
+    );
+    return () => cleanupRecording();
+  }, []);
+
+  function finishAndDownload() {
+    const mime = mediaRecorderRef.current?.mimeType || 'video/webm';
+    const blob = new Blob(chunksRef.current, { type: mime });
+    chunksRef.current = [];
+    if (blob.size > 0) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = screenRecordingFilename(new Date());
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setSavedMsg('Screen recording saved to your computer.');
+      setTimeout(() => setSavedMsg(null), 6000);
+    }
+  }
+
+  function stopRecording() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== 'inactive') {
+      mr.stop(); // fires onstop → download + cleanup
+    } else {
+      cleanupRecording();
+      setRecording(false);
+      setElapsed(0);
+    }
+  }
+
+  async function startRecording() {
+    setRecError(null);
+    setSavedMsg(null);
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      // Video only — drop any audio track the browser attached.
+      stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mime = pickScreenRecordingMime();
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => { finishAndDownload(); cleanupRecording(); setRecording(false); setElapsed(0); elapsedRef.current = 0; };
+      // If the user clicks the browser's native "Stop sharing", end the recording too.
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => stopRecording());
+      mr.start(1000);
+      setRecording(true);
+      elapsedRef.current = 0;
+      setElapsed(0);
+      timerRef.current = setInterval(() => {
+        elapsedRef.current += 1;
+        setElapsed(elapsedRef.current);
+        if (elapsedRef.current >= MAX_SCREEN_RECORDING_SECONDS) stopRecording();
+      }, 1000);
+    } catch (err) {
+      cleanupRecording();
+      setRecording(false);
+      // A user cancelling the screen picker isn't an error worth surfacing.
+      const cancelled = err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'AbortError');
+      if (!cancelled) setRecError('Could not start screen recording. Use a desktop browser like Chrome.');
+    }
+  }
+
+  async function load() {
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const r = await fetch('/api/journal');
+      if (!r.ok) { setFetchError(true); setLoading(false); return; }
+      const d = await r.json();
+      setJournals(d.journals || []);
+    } catch {
+      setFetchError(true);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function startJournal() {
+    setStarting(true);
+    setStartErr(null);
+    setStartMsg(null);
+    try {
+      const r = await fetch('/api/journal/call', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setStartMsg("Calling you now — pick up and think out loud. I'll save it here when you hang up.");
+      } else {
+        setStartErr(d.error || 'Could not start the journal call — please try again shortly.');
+      }
+    } catch {
+      setStartErr('Could not start the journal call — please check your connection.');
+    }
+    setStarting(false);
+  }
+
+  // SQLite datetime without a 'Z' is UTC — add it so the browser doesn't parse as local.
+  function parseTs(ts: string): Date {
+    return new Date(ts.includes('Z') || ts.includes('+') ? ts : ts.replace(' ', 'T') + 'Z');
+  }
+  function entryLabel(ts: string): string {
+    const d = parseTs(ts);
+    return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  return (
+    <div>
+      <div className="glass-card p-5 md:p-6 mb-4">
+        <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Journal</h2>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+          Hit the button and Edge calls your phone. Think out loud about your trades, a thesis, whatever&apos;s
+          on your mind — Edge mostly listens. When you hang up, the audio and a full transcript are saved here.
+        </p>
+        <button onClick={startJournal} disabled={starting} className="btn-primary text-sm py-2.5 px-6">
+          {starting ? 'Starting…' : '📓 Start Journal'}
+        </button>
+        {startMsg && <p className="text-sm mt-3" style={{ color: 'var(--text-body)' }}>{startMsg}</p>}
+        {startErr && <p className="text-sm mt-3" style={{ color: 'var(--edg-danger, #dc2626)' }}>{startErr}</p>}
+      </div>
+
+      <div className="glass-card p-5 md:p-6 mb-4">
+        <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Record your screen <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>· desktop only</span></h3>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+          Optional: capture your screen (video only, no sound) while you journal — for reviewing charts or news later.
+          Caps at 5 minutes and saves straight to your computer. Edge never stores it.
+        </p>
+        {!canRecord ? (
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Screen recording is available on a desktop browser (e.g. Chrome). It isn&apos;t supported on this device.
+          </p>
+        ) : !recording ? (
+          <button onClick={startRecording} className="btn-secondary text-sm py-2.5 px-6">🖥️ Record screen</button>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="inline-flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-body)' }}>
+              <span style={{ color: '#dc2626' }}>●</span> Recording {formatDuration(elapsed)} / {formatDuration(MAX_SCREEN_RECORDING_SECONDS)}
+            </span>
+            <button onClick={stopRecording} className="btn-primary text-sm py-2 px-5">⏹ Stop &amp; save</button>
+          </div>
+        )}
+        {savedMsg && <p className="text-sm mt-3" style={{ color: 'var(--text-body)' }}>{savedMsg}</p>}
+        {recError && <p className="text-sm mt-3" style={{ color: 'var(--edg-danger, #dc2626)' }}>{recError}</p>}
+      </div>
+
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="glass-card p-4">
+              <div className="skeleton h-3 w-1/3 mb-3 rounded" />
+              <div className="skeleton h-4 w-3/4 rounded" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && fetchError && (
+        <div className="glass-card p-8 text-center">
+          <p className="text-2xl mb-3" role="img" aria-label="warning">⚠</p>
+          <p className="font-semibold mb-1" style={{ color: 'var(--text-body)' }}>Couldn&apos;t load your journals</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>This is usually a temporary blip.</p>
+          <button onClick={load} className="btn-secondary text-sm py-2 px-5">Try again</button>
+        </div>
+      )}
+
+      {!loading && !fetchError && journals.length === 0 && (
+        <div className="glass-card p-8 text-center">
+          <p className="text-3xl mb-3" role="img" aria-label="journal">📓</p>
+          <p className="font-semibold mb-1" style={{ color: 'var(--text-body)' }}>No journal entries yet</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Start a journal above and your recordings will show up here.</p>
+        </div>
+      )}
+
+      {!loading && !fetchError && journals.length > 0 && (
+        <div className="space-y-3">
+          {journals.map(j => {
+            const expanded = expandedId === j.id;
+            const preview = j.transcript.replace(/^(User:|AI:|Assistant:|Customer:)\s*/gm, '').slice(0, 140);
+            return (
+              <div key={j.id} className="glass-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-body)' }}>{entryLabel(j.createdAt)}</span>
+                  {j.transcript && (
+                    <button
+                      onClick={() => setExpandedId(expanded ? null : j.id)}
+                      className="text-xs shrink-0"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {expanded ? 'Hide transcript ▲' : 'Read transcript ▼'}
+                    </button>
+                  )}
+                </div>
+                {j.audioUrl && (
+                  <audio controls preload="none" src={j.audioUrl} className="w-full mt-3" style={{ height: 36 }}>
+                    Your browser can&apos;t play this recording.
+                  </audio>
+                )}
+                {!expanded && j.transcript && (
+                  <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>{preview}{j.transcript.length > 140 ? '…' : ''}</p>
+                )}
+                {expanded && (
+                  <pre className="text-sm mt-3 whitespace-pre-wrap font-sans" style={{ color: 'var(--text-body)' }}>{j.transcript}</pre>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ActivityTab() {
@@ -1506,7 +1758,7 @@ function DashboardInner() {
   // briefing is generated (calendar fetch + LLM take a few seconds before the phone rings).
   const [callStage, setCallStage] = useState('');
   const [openingCall, setOpeningCall] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'journal' | 'briefings' | 'priorities' | 'memory' | 'profile' | 'activity' | 'help'>('home');
   const [tabSlideDir, setTabSlideDir] = useState<'left' | 'right' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [memoryPage, setMemoryPage] = useState(1);
@@ -2488,6 +2740,7 @@ function DashboardInner() {
             {(() => {
               const NAV_TABS = [
                 { id: 'home', label: 'Today', icon: '✦' },
+                { id: 'journal', label: 'Journal', icon: '📓' },
                 { id: 'briefings', label: 'Briefings', icon: '📋' },
                 { id: 'memory', label: 'Memory', icon: '🧠' },
                 { id: 'priorities', label: 'Focus', icon: '🎯' },
@@ -3373,6 +3626,8 @@ function DashboardInner() {
           )}
 
           {activeTab === 'activity' && <ActivityTab />}
+
+          {activeTab === 'journal' && <JournalTab />}
 
           {activeTab === 'memory' && (
             <div>
