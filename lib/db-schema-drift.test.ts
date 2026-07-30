@@ -115,6 +115,20 @@ describe('applyMigrations — converges legacy prod to the current schema', () =
     expect(f.last_confirmed_at).toBe('2026-06-01'); // == learned_at, not "now"
   });
 
+  it('does not drop briefings columns added by later migrations (is_journal/audio_url)', () => {
+    // The rebuild schema is hand-maintained; a column added to CREATE + migrations but forgotten
+    // in the rebuild list would be silently dropped from a rebuilt legacy table. Guard against it.
+    const db = seedLegacyProd();
+    applyMigrations(db);
+    const c = cols(db, 'briefings');
+    expect(c).toContain('is_journal');
+    expect(c).toContain('audio_url');
+    // audio_url is writable through the rebuilt table.
+    expect(() => db.prepare(`UPDATE briefings SET audio_url = 'https://x/rec.mp3', is_journal = 1 WHERE id = 7`).run()).not.toThrow();
+    const row = db.prepare('SELECT audio_url, is_journal FROM briefings WHERE id = 7').get() as { audio_url: string; is_journal: number };
+    expect(row).toEqual({ audio_url: 'https://x/rec.mp3', is_journal: 1 });
+  });
+
   it('keeps the facts→briefings FK intact after both tables are rebuilt', () => {
     const db = seedLegacyProd();
     applyMigrations(db);

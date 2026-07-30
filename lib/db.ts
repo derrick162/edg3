@@ -844,16 +844,21 @@ function rebuildBriefingsIfStale(db: Database.Database): void {
       tool_actions TEXT,
       error_code TEXT,
       is_open_call INTEGER DEFAULT 0,
+      is_journal INTEGER NOT NULL DEFAULT 0,
+      audio_url TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       retry_after TEXT,
       learning_status TEXT,
       is_inbound INTEGER NOT NULL DEFAULT 0
     )`;
   // Copy every target column that the legacy table actually has (all simple columns — no
-  // nullable→NOT NULL conversions on briefings, so a straight copy is safe).
+  // nullable→NOT NULL conversions on briefings, so a straight copy is safe). This list MUST stay
+  // in sync with the briefings CREATE TABLE + its ADD COLUMN migrations — a column omitted here is
+  // silently dropped from a rebuilt legacy table (that's why is_journal/audio_url are included).
   const target = ['id', 'user_id', 'content', 'vapi_call_id', 'status', 'scheduled_for', 'transcript',
     'user_response', 'retry_attempted', 'calendar_actions', 'edge_promises', 'tool_actions',
-    'error_code', 'is_open_call', 'created_at', 'retry_after', 'learning_status', 'is_inbound'];
+    'error_code', 'is_open_call', 'is_journal', 'audio_url', 'created_at', 'retry_after',
+    'learning_status', 'is_inbound'];
   const have = tableColumnSet(db, 'briefings');
   const cols = target.filter(c => have.has(c));
   rebuildTable(db, 'briefings', NEW_BRIEFINGS, cols, cols, [
