@@ -6,6 +6,7 @@ import { generateDailyBriefing, getWeekOf } from './briefing';
 import { initiateCall, buildGratitudeSystemPrompt, buildJournalSystemPrompt } from './vapi';
 import { getWeatherForecast, getWeatherToday } from './weather';
 import { currentOpenCallMemoryText } from './callMemory';
+import { getRecentCallContinuityBlock } from './recentCallContinuity';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, performanceLogQueries, effectiveTimezone, User } from './db';
 
@@ -887,7 +888,9 @@ export async function scheduleOpenCall(userId: number) {
       console.log(isGratitude ? `[scheduler] Gratitude call for ${user.name}` : `[scheduler] Initiating OPEN call for ${user.name}...`);
       // R23 T1 — open calls get briefing-quality memory (all fact categories + open loops + recent
       // call notes), not just 10 preference facts. Passed as preferencesText (rendered under MEMORY).
-      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), currentOpenCallMemoryText(userId), await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt, user.language || 'en', userQueries.getWorkSchedule(userId) ?? '');
+      // C12 — append a just-ended call's transcript if its memory hasn't landed yet (exclude this call).
+      const openCallMemory = currentOpenCallMemoryText(userId) + await getRecentCallContinuityBlock(userId, briefingId);
+      const call = await initiateCall(phoneNumber, opener, user.name, isFirstCall, timezone, true, currentPrioritiesText(userId), openCallMemory, await currentWhoopText(userId), user.call_time || '', await currentEnergyText(userId), user.voice_preference === 'aria' ? 'aria' : 'daniel', (user.voice_speed === 'slow' || user.voice_speed === 'fast' ? user.voice_speed : 'default'), gratitudePrompt, user.language || 'en', userQueries.getWorkSchedule(userId) ?? '');
       console.log(`[scheduler] Vapi open call initiated for ${user.name}: ${call.id}`);
       if (call.id) briefingQueries.update(briefingId, { vapi_call_id: call.id });
     } catch (err) {
@@ -932,7 +935,9 @@ export async function scheduleJournalCall(userId: number) {
   const _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const dateStr = `${_days[_d.getDay()]} ${_months[_d.getMonth()]} ${_d.getDate()}`;
 
-  const journalPrompt = buildJournalSystemPrompt(firstName, dateStr, period, currentOpenCallMemoryText(userId));
+  // C12 — surface a just-ended call's transcript if its memory hasn't landed yet (journal row not created yet).
+  const journalContinuity = await getRecentCallContinuityBlock(userId);
+  const journalPrompt = buildJournalSystemPrompt(firstName, dateStr, period, currentOpenCallMemoryText(userId) + journalContinuity);
   const opener = `${firstName}, it's Edge. It's ${dateStr}. I'm here to listen — talk me through what's on your mind.`;
 
   const result = briefingQueries.create(userId, `[Journal] ${opener}`, scheduledFor) as { lastInsertRowid: number };

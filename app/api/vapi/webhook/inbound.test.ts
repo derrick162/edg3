@@ -11,6 +11,7 @@ process.env.DB_PATH = ':memory:';
 vi.mock('@/lib/db', async () => await import('../../../../lib/db'));
 vi.mock('@/lib/vapi', async () => await import('../../../../lib/vapi'));
 vi.mock('@/lib/callMemory', async () => await import('../../../../lib/callMemory'));
+vi.mock('@/lib/recentCallContinuity', async () => await import('../../../../lib/recentCallContinuity'));
 vi.mock('@/lib/briefing', async () => await import('../../../../lib/briefing'));
 vi.mock('@/lib/actionSummary', async () => await import('../../../../lib/actionSummary'));
 vi.mock('@/lib/idempotency', async () => await import('../../../../lib/idempotency'));

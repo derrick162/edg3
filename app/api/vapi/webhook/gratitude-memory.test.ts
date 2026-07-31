@@ -19,6 +19,7 @@ vi.mock('@/lib/rateLimit', async () => await import('../../../../lib/rateLimit')
 vi.mock('@/lib/greeting', async () => await import('../../../../lib/greeting'));
 vi.mock('@/lib/actionSummary', async () => await import('../../../../lib/actionSummary'));
 vi.mock('@/lib/callMemory', async () => await import('../../../../lib/callMemory'));
+vi.mock('@/lib/recentCallContinuity', async () => await import('../../../../lib/recentCallContinuity'));
 // analyzeUserResponse is awaited inline — stub so it never makes a real LLM call.
 vi.mock('@/lib/briefing', () => ({ analyzeUserResponse: vi.fn().mockResolvedValue(undefined) }));
 // The three memory learners we assert run for gratitude calls — spy on each.

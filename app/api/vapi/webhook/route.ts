@@ -6,6 +6,7 @@ import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
 import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, type VoiceSpeedPref } from '@/lib/vapi';
 import { currentOpenCallMemoryText, currentPrioritiesText } from '@/lib/callMemory';
+import { getRecentCallContinuityBlock } from '@/lib/recentCallContinuity';
 import { claimWebhookEvent } from '@/lib/idempotency';
 import { withRetry } from '@/lib/retry';
 import Anthropic from '@anthropic-ai/sdk';
@@ -119,10 +120,13 @@ export async function POST(req: NextRequest) {
 
       // R40 T1 — current wall-clock time so an evening inbound call isn't framed as morning.
       const currentTime = new Date().toLocaleTimeString('en-US', { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true });
+      // C12 — if the user just had a call whose memory hasn't landed yet (e.g. they called back
+      // seconds after a dropped briefing), inject its transcript so Edge already knows what was said.
+      const inboundContinuity = await getRecentCallContinuityBlock(userId, briefingId);
       const systemPrompt = buildOpenCallSystemPrompt({
         firstName, userName: callerUser.name, timezone,
         prioritiesText: currentPrioritiesText(userId),
-        memoryText: currentOpenCallMemoryText(userId),
+        memoryText: currentOpenCallMemoryText(userId) + inboundContinuity,
         language,
         currentTime,
         isEvening: hour >= 17,

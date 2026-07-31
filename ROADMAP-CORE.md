@@ -3422,6 +3422,28 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-31** — **C12 SHIPPED (2496 green) — same-morning memory continuity (back-to-back call).**
+  - **Incident:** a briefing dropped at the duration cap; the user called back 13s later and Edge had
+    no memory of the call that had just ended (he'd dictated his trading plan + said "please record
+    this"). Root cause: the post-call memory pipeline (transcript fetch + fact extraction) runs
+    async on the call-ended webhook, so a back-to-back call builds its memory before the previous
+    call's notes exist.
+  - **New `lib/recentCallContinuity.ts`** (Core): `getRecentCallContinuityBlock(userId, excludeId?)`
+    finds the user's most recent call whose memory hasn't landed yet — still `'calling'` (webhook not
+    done) OR completed/missed within 15 min with `learning_status.facts_ok` not set — and returns a
+    `MINUTES AGO` block with the transcript tail (uses the stored transcript when present, else
+    fetches from the Vapi API with a 3s timeout). The block tells Edge to reference it directly and,
+    if it looks cut off, to open by acknowledging the drop. Fully guarded → `''` on anything, so the
+    call always proceeds. `findRecentUnprocessedBriefing` + `buildContinuityBlock` exported pure for
+    tests.
+  - **Wiring (additive):** inbound `assistant-request` webhook (the incident path), `scheduleOpenCall`,
+    and `scheduleJournalCall` now append the continuity block to the open-call memory text (each
+    excludes its own just-created briefing row).
+  - **Tests:** `lib/recentCallContinuity.test.ts` (11 — block build/empty, detection of calling vs
+    facts-extracted vs stale-window vs excluded-current, stored-transcript path with no fetch, Vapi
+    fetch path, no-recent → '', fetch-fails → ''). +11 (2485 → 2496). Added `@/lib/recentCallContinuity`
+    pass-through mocks to the 5 webhook/e2e tests that load the route. tsc + next build clean.
+  - ⚠️ **Vijay (Security) — sync down:** additive edits to `lib/scheduler.ts` + `app/api/vapi/webhook/route.ts`.
 - **2026-07-30** — **C11 SHIPPED (2482 green) — Trade Monitor integration (briefing + live tool).**
   - **`lib/tradeMonitor.ts`:** `getTradeSnapshot()` — reads `TRADE_MONITOR_URL`/`TRADE_MONITOR_PASS`
     env vars, returns null when unset (local + pre-Railway state) or on ANY failure; 3s
