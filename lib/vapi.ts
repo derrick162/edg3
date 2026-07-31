@@ -43,6 +43,27 @@ const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 
 
 
+// C13 — STT quality. English calls previously used the dashboard's default transcriber with no
+// tuning, so trading vocabulary was mangled ("SOXL" → "s o x l"/"SOXS", "puts" → "putts", strikes
+// split, "Derrick" → "Derek") and auto-language occasionally leaked Hindi tokens on noise. Pin
+// Deepgram nova-2 to English with keyword boosting for the tickers/terms Derrick actually says.
+export const TRADING_KEYTERMS: string[] = [
+  'SOXL', 'SOXS', 'QQQ', 'SPY', 'MAGS', 'TQQQ', 'SQQQ', 'NVDA', 'IWM',
+  'puts', 'calls', 'strike', 'spread', 'gamma', 'delta', 'theta', 'credit spread',
+  'Whoop', 'Vapi', 'Edg3', 'Derrick',
+];
+
+/** Deepgram transcriber for English calls: pinned to en (no auto-language Hindi leakage) + boosted keywords. */
+export function buildEnTranscriber(): { provider: string; model: string; language: string; keywords: string[] } {
+  return { provider: 'deepgram', model: 'nova-2', language: 'en', keywords: TRADING_KEYTERMS.map(k => `${k}:2`) };
+}
+
+/** Pick the transcriber for a call: Cantonese keeps OpenAI gpt-4o-transcribe; everything else gets the tuned en Deepgram. */
+export function selectTranscriber(language: string): { provider: string; model: string; language?: string; keywords?: string[] } {
+  if (language === 'yue') return { provider: 'openai', model: 'gpt-4o-transcribe' };
+  return buildEnTranscriber();
+}
+
 // Voice configs — applied per call via assistantOverrides.voice so all tools/prompt stay on
 
 // the single main assistant; no duplicate assistant needed.
@@ -546,7 +567,9 @@ TOOL CALL DISCIPLINE — NEVER CLAIM AN ACTION IS DONE UNLESS YOU DID IT:
 
 CALENDAR TOOLS: when ${firstName} asks to add/move/delete/edit an event, call the matching tool, then confirm based on the response.
 
-BE DECISIVE: act on a clear request, then report; ask only what you genuinely don't know. NEVER INVENT FACTS — only state what the data gives you; if you don't know, say so. End warm.`;
+BE DECISIVE: act on a clear request, then report; ask only what you genuinely don't know. NEVER INVENT FACTS — only state what the data gives you; if you don't know, say so. End warm.
+
+DATE SPEECH: Speak dates as natural spoken words — "July thirty-first", "Monday the fourth". Never read a date digit-by-digit or split the day number into separate numbers; say the day as one spoken ordinal.`;
 
 }
 
@@ -825,6 +848,8 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 
 - NATURAL LANGUAGE: Never say "the system", "friction point", "not confirming", tool names, or any internal mechanics to ${firstName}. Speak like a trusted advisor: describe what happened in plain human terms ("I couldn't move that one") not what the tool returned. NEVER say: "token", "confirmation token", "the code it gave me", "let me try again", "trying again", "checking the token", "I need to confirm with", or any description of backend/retry state. When retrying a tool call internally, stay silent or say only "Give me one second" / "Just a moment." ${firstName} never needs to know about retries, tokens, or tool mechanics.
 
+- DATE SPEECH: Speak dates as natural spoken words — "July thirty-first", "Monday the fourth", "August second". NEVER read a date digit-by-digit ("three one", "July three zero") and never split a day number into separate numbers ("thirty" then "one"). Use the ordinal word ("thirty-first", not "31st" read as digits). Say the month name, then the day as one spoken ordinal.
+
 - WORD CHOICE: Use simple words the TTS reads clearly. Say "wrap up" not "wind up"; "finish" not "wind down" when meaning end. Avoid homographs with two pronunciations (lead, read, wound). Short plain words read better than clever ones.
 
 - CONFIRM BEFORE DELETING: deleteEvent returns a "Just confirming…" message with a confirmToken — read the question back word-for-word, wait for an explicit yes, then call deleteEvent again with the exact confirmToken the server gave you. After the yes, just call deleteEvent again SILENTLY with the token — never narrate the retry. Never invent or modify the token. When ${firstName} corrects the event name mid-flow (e.g. "it's Jim, not Gym"), call deleteEvent FRESH with the corrected title and forget the old confirmToken entirely — the new call returns a new question + new token; read that back, get a yes, call again with the new token. Never mix tokens across event names; each resolution is a clean fresh flow. cleanupEvents and cleanupDuplicates follow the same one-time-token flow for their single confirmations.
@@ -1042,7 +1067,8 @@ Always end with warmth. This person is building something — remind them of tha
 
   const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
 
-  const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
+  // C13 — always set a transcriber: tuned en Deepgram for English, OpenAI for Cantonese.
+  const transcriber = selectTranscriber(language);
 
   const effectiveEndCallPhrases = isCantonese
 
@@ -1088,7 +1114,7 @@ Always end with warmth. This person is building something — remind them of tha
 
       voice: effectiveVoice,
 
-      ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
+      transcriber,
 
       model: {
 
@@ -1261,7 +1287,7 @@ Always end with warmth. This person is building something — remind them of tha
 
       voice: effectiveVoice,
 
-      ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
+      transcriber,
 
       model: {
 

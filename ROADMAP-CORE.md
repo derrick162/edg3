@@ -3422,6 +3422,25 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-31** — **C13 SHIPPED (2502 green) — STT tuning on trading vocab + date TTS.**
+  - **Transcriber override** (`lib/vapi.ts`): English calls previously used the dashboard's default
+    transcriber untuned, mangling trading vocab ("SOXL"→"s o x l"/"SOXS", "puts"→"putts", strikes
+    split, "Derrick"→"Derek") and occasionally leaking Hindi tokens on noise. New `selectTranscriber(language)`
+    + `buildEnTranscriber()` + `TRADING_KEYTERMS`: English now pins **Deepgram nova-2, language 'en'**
+    (kills auto-language leakage) with keyword boosting for the tickers/terms Derrick says (SOXL, SOXS,
+    QQQ, SPY, MAGS, TQQQ, SQQQ, NVDA, IWM, puts, calls, strike, spread, gamma, delta, theta, credit
+    spread, Whoop, Vapi, Edg3, Derrick — each `:2`). Cantonese keeps OpenAI gpt-4o-transcribe. Wired
+    into both `initiateCall` config paths + the inbound `assistant-request` webhook (transcriber now
+    always set, not Cantonese-only).
+  - **Date TTS** (`lib/time.ts` + prompts): new shared `ttsSafeDate(d)` → "Friday July 31" (no comma,
+    no year, **no ordinal suffix** — "31st" was read as "30 first"); the two scheduler date builders
+    now use it. Added a DATE SPEECH prompt rule to the main system prompt + `buildOpenCallSystemPrompt`:
+    speak dates as natural spoken ordinals ("July thirty-first"), never digit-by-digit or split.
+  - **Tests:** `lib/vapi-transcriber.test.ts` (4 — en tuned/pinned/boosted, yue unchanged, unknown→en,
+    keyword count) + `ttsSafeDate` (2 — no ordinal/comma/year across day types). +6 (2496 → 2502).
+    tsc + next build clean.
+  - ⚠️ **Vijay (Security) — sync down:** additive edits to `lib/vapi.ts`, `lib/scheduler.ts`,
+    `app/api/vapi/webhook/route.ts`.
 - **2026-07-31** — **C12 SHIPPED (2496 green) — same-morning memory continuity (back-to-back call).**
   - **Incident:** a briefing dropped at the duration cap; the user called back 13s later and Edge had
     no memory of the call that had just ended (he'd dictated his trading plan + said "please record

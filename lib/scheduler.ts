@@ -7,6 +7,7 @@ import { initiateCall, buildGratitudeSystemPrompt, buildJournalSystemPrompt } fr
 import { getWeatherForecast, getWeatherToday } from './weather';
 import { currentOpenCallMemoryText } from './callMemory';
 import { getRecentCallContinuityBlock } from './recentCallContinuity';
+import { ttsSafeDate } from './time';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, formatWhoopHistoryForCall } from './whoop';
 import { briefingQueries, userQueries, priorityQueries, factQueries, energyLogQueries, openLoopQueries, watchedThreadQueries, oauthStateQueries, auditLogQueries, episodeQueries, briefingContextPackQueries, failedWebhookQueries, backgroundJobFailureQueries, healthLogQueries, callAttemptQueries, calendarQueries, notificationQueries, webhookDedupeQueries, toolCallDedupeQueries, schedulerLockQueries, performanceLogQueries, effectiveTimezone, User } from './db';
 
@@ -846,11 +847,9 @@ export async function scheduleOpenCall(userId: number) {
     : `${greet}, ${firstName}. It's Edge — I'm all yours. What's on your mind?`;
   let gratitudePrompt: string | null = null;
   if (isGratitude) {
-    // Build TTS-safe date: "Monday June 22" — no commas (cause Azure pauses), no year (garbles).
+    // C13 — TTS-safe date via shared builder (no comma/year/ordinal).
     const _d = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-    const _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const dateStr = `${_days[_d.getDay()]} ${_months[_d.getMonth()]} ${_d.getDate()}`;
+    const dateStr = ttsSafeDate(_d);
     // Today-only — no forecast/tomorrow. Returns null on failure so weather is silently omitted.
     const weatherStr = await getWeatherToday().catch(() => null);
     // R21 — optional themed daily quote at the top of the gratitude call. Degrade safely.
@@ -929,11 +928,9 @@ export async function scheduleJournalCall(userId: number) {
   const period = dayPeriod(hour); // 'morning' | 'afternoon' | 'evening'
   const firstName = user.name.split(' ')[0];
 
-  // TTS-safe date: "Monday June 22" — no commas (Azure pauses), no year (garbles).
+  // C13 — TTS-safe date via shared builder (no comma/year/ordinal).
   const _d = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-  const _days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const dateStr = `${_days[_d.getDay()]} ${_months[_d.getMonth()]} ${_d.getDate()}`;
+  const dateStr = ttsSafeDate(_d);
 
   // C12 — surface a just-ended call's transcript if its memory hasn't landed yet (journal row not created yet).
   const journalContinuity = await getRecentCallContinuityBlock(userId);

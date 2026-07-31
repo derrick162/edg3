@@ -317,3 +317,13 @@ export function recurringSeriesTimeShift(
   };
 }
 
+
+// C13 — TTS-safe spoken date: "Friday July 31". No comma (Azure inserts a pause), no year
+// (garbles), and the day is a bare number — NEVER an ordinal suffix ("31st"), which TTS mangles
+// into "thirty first" / "30 first". The voice prompt separately tells Edge to speak it as a
+// natural spoken ordinal ("July thirty-first").
+const TTS_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const TTS_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export function ttsSafeDate(d: Date): string {
+  return `${TTS_DAYS[d.getDay()]} ${TTS_MONTHS[d.getMonth()]} ${d.getDate()}`;
+}

@@ -4,7 +4,7 @@ import { checkInboundCallRateLimit, checkRateLimit, getClientIP } from '@/lib/ra
 import { dayPeriod, greetingYue } from '@/lib/greeting';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
-import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, type VoiceSpeedPref } from '@/lib/vapi';
+import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, selectTranscriber, type VoiceSpeedPref } from '@/lib/vapi';
 import { currentOpenCallMemoryText, currentPrioritiesText } from '@/lib/callMemory';
 import { getRecentCallContinuityBlock } from '@/lib/recentCallContinuity';
 import { claimWebhookEvent } from '@/lib/idempotency';
@@ -116,7 +116,8 @@ export async function POST(req: NextRequest) {
       const voiceSpeedPref: VoiceSpeedPref = (callerUser.voice_speed === 'slow' || callerUser.voice_speed === 'fast') ? callerUser.voice_speed : 'default';
       const voiceConfig = { ...VOICES[voicePref], speed: SPEED_MAP[voiceSpeedPref] };
       const effectiveVoice = isCantonese ? { provider: 'azure', voiceId: 'zh-HK-WanLungNeural' } : voiceConfig;
-      const cantoneseTranscriber = isCantonese ? { provider: 'openai', model: 'gpt-4o-transcribe' } : undefined;
+      // C13 — tuned en Deepgram transcriber (keyword boost + pinned en) for inbound calls too; Cantonese keeps OpenAI.
+      const inboundTranscriber = selectTranscriber(language);
 
       // R40 T1 — current wall-clock time so an evening inbound call isn't framed as morning.
       const currentTime = new Date().toLocaleTimeString('en-US', { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true });
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
       const assistantConfig = {
         firstMessage: isCantonese ? `${greetingYue(hour)}，${firstName}！我係 Edge——有咩想傾？` : opener,
         voice: effectiveVoice,
-        ...(cantoneseTranscriber ? { transcriber: cantoneseTranscriber } : {}),
+        transcriber: inboundTranscriber,
         backgroundSound: ambientBase ? `${ambientBase}/audio/ambient-1.mp3` : 'office',
         model: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', systemPrompt, toolIds: CALENDAR_TOOL_IDS },
         endCallPhrases: isCantonese ? ['再見', '拜拜', '多謝', 'goodbye'] : ['have a focused day', 'have a great day', 'goodbye'],
