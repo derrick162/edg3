@@ -16,7 +16,7 @@ import { deriveEnergySignal } from '@/lib/energy';
 import { getLatestRecovery, getRecoveryHistory, getLastSleep } from '@/lib/whoop';
 import { buildCalendarPlan } from '@/lib/calendarPlan';
 import { effectiveTimezone, vapiAuthLogQueries } from '@/lib/db';
-import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries, peopleModelQueries } from '@/lib/db';
+import { calendarQueries, userQueries, priorityQueries, dailyFocusQueries, factQueries, factHistoryQueries, memoryQueries, episodeQueries, energyLogQueries, calendarScoreQueries, undoQueries, auditLogQueries, openLoopQueries, taskQueries, gratitudeQueries, peopleModelQueries, tradeAlertQueries } from '@/lib/db';
 import { pickTaskToComplete } from '@/lib/taskMatch';
 import { factsMatchingTopic } from '@/lib/factForget';
 import { enrichFact, derivePersonModelFields } from '@/lib/facts';
@@ -1642,6 +1642,53 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
     const snapshot = await getTradeSnapshot();
     if (!snapshot) return TRADE_UNAVAILABLE;
     return formatTradeUpdateForVoice(snapshot);
+
+  } else if (fn === 'setTradeAlert') {
+    // C14 — voice-set a price alert. Edge echoes the parsed condition back before/while saving;
+    // never claim watching started unless this tool confirmed it saved.
+    const { symbol: rawSym, direction: rawDir, level: rawLevel, note } = args as { symbol?: string; direction?: string; level?: unknown; note?: string };
+    const { parseAlertDirection, describeTradeAlert } = await import('@/lib/tradeAlerts');
+    const symbol = (rawSym ?? '').trim().toUpperCase().replace(/[^A-Z0-9.]/g, '');
+    const direction = parseAlertDirection(rawDir);
+    const level = typeof rawLevel === 'number' ? rawLevel : parseFloat(String(rawLevel));
+    if (!symbol) return "Which symbol should I watch? Tell me the ticker and the price.";
+    if (!direction) return `Should I alert you when ${symbol} goes ABOVE or BELOW a price? Say "above" or "below".`;
+    if (!Number.isFinite(level) || level <= 0) return `What price should I watch ${symbol} for?`;
+    try {
+      tradeAlertQueries.create(userId, symbol, direction, level, note?.trim()?.slice(0, 200) || null);
+    } catch (err) {
+      console.error('[setTradeAlert] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't set that alert just now — want me to try again?`;
+    }
+    // Confirm the exact parsed condition back so a misheard number is caught immediately.
+    return `Got it — I'll watch ${describeTradeAlert({ symbol, direction, level })} and call you if it happens.`;
+
+  } else if (fn === 'listTradeAlerts') {
+    // C14 — spoken summary of the user's active alerts.
+    const { describeTradeAlert } = await import('@/lib/tradeAlerts');
+    const alerts = (() => { try { return tradeAlertQueries.listActive(userId); } catch { return []; } })();
+    if (!alerts.length) return "You don't have any active trade alerts right now.";
+    const list = alerts.map(a => describeTradeAlert(a)).join('; ');
+    return `You've got ${alerts.length} active alert${alerts.length === 1 ? '' : 's'}: ${list}.`;
+
+  } else if (fn === 'cancelTradeAlert') {
+    // C14 — cancel an active alert, resolved by symbol and/or level. Confirms; disambiguates.
+    const { symbol: rawSym, level: rawLevel } = args as { symbol?: string; level?: unknown };
+    const { describeTradeAlert, matchTradeAlerts } = await import('@/lib/tradeAlerts');
+    const alerts = (() => { try { return tradeAlertQueries.listActive(userId); } catch { return []; } })();
+    if (!alerts.length) return "You don't have any active alerts to cancel.";
+    const sym = (rawSym ?? '').trim().toUpperCase().replace(/[^A-Z0-9.]/g, '') || undefined;
+    const lvl = rawLevel == null || rawLevel === '' ? undefined : (typeof rawLevel === 'number' ? rawLevel : parseFloat(String(rawLevel)));
+    const matches = matchTradeAlerts(alerts, { symbol: sym, level: Number.isFinite(lvl as number) ? (lvl as number) : undefined });
+    if (!matches.length) return `I couldn't find an active alert matching that${sym ? ` for ${sym}` : ''}.`;
+    if (matches.length > 1) return `You have a few that could match: ${matches.map(a => describeTradeAlert(a)).join(', ')}. Which one should I cancel?`;
+    try {
+      tradeAlertQueries.cancel(userId, matches[0].id);
+    } catch (err) {
+      console.error('[cancelTradeAlert] failed:', err instanceof Error ? err.message : err);
+      return `I couldn't cancel that just now — want me to try again?`;
+    }
+    return `Done — cancelled your alert for ${describeTradeAlert(matches[0])}.`;
 
   } else if (fn === 'addTask') {
     // R14 T4 — create an action-item task by voice.
