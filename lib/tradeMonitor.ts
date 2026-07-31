@@ -25,6 +25,14 @@ export interface TradePosition {
   entryPrice?: number;
   lastClose?: number;
   pnlPct?: number;      // percent P&L as the dashboard reports it
+  account?: string;     // broker (portfolio positions only — e.g. "Schwab")
+}
+
+// [2026-07-30 addendum] Real broker position book — null unless the request carries the
+// x-portfolio-key header (dashboard password is now shared with friends; positions got a 2nd lock).
+export interface TradePortfolio {
+  positions?: TradePosition[];
+  [k: string]: unknown;
 }
 
 export interface TradeSnapshot {
@@ -33,6 +41,7 @@ export interface TradeSnapshot {
   tradeScore?: { score?: number; prev?: number; components?: TradeComponent[]; intraday?: unknown };
   morningRead?: { d?: string; text?: string };
   trades?: TradePosition[];
+  portfolio?: TradePortfolio | null;
   catalysts?: { earningsUpcoming?: unknown; [k: string]: unknown };
   [k: string]: unknown;
 }
@@ -54,8 +63,13 @@ export async function getTradeSnapshot(): Promise<TradeSnapshot | null> {
   try {
     // HTTP Basic auth — username is ignored by the dashboard ("any-username:{pass}").
     const auth = Buffer.from(`edg3:${pass}`).toString('base64');
+    const headers: Record<string, string> = { Authorization: `Basic ${auth}` };
+    // Optional second lock: the portfolio (real broker positions) is null unless this header is
+    // present. Missing/wrong key just means portfolio:null — no error path.
+    const portfolioKey = process.env.TRADE_MONITOR_PORTFOLIO_KEY;
+    if (portfolioKey) headers['x-portfolio-key'] = portfolioKey;
     const res = await fetch(`${url.replace(/\/$/, '')}/api/snapshot`, {
-      headers: { Authorization: `Basic ${auth}` },
+      headers,
       signal: controller.signal,
     });
     if (!res.ok) return null;
@@ -109,15 +123,26 @@ export function earningsNames(earningsUpcoming: unknown): string[] {
   return out;
 }
 
-/** One P&L line per position, e.g. "SOXL long: +4.2%". */
-function positionLines(trades: TradePosition[] | undefined): string[] {
-  if (!Array.isArray(trades)) return [];
-  return trades
+/**
+ * The position book to report P&L from: prefer the real broker `portfolio.positions` when present
+ * (unlocked via x-portfolio-key), else fall back to the public `trades` list. Exported for tests.
+ */
+export function resolvePositions(s: TradeSnapshot): TradePosition[] {
+  const port = s.portfolio?.positions;
+  if (Array.isArray(port) && port.some(p => p && typeof p.symbol === 'string' && p.symbol.trim())) return port;
+  return Array.isArray(s.trades) ? s.trades : [];
+}
+
+/** One P&L line per position, e.g. "SOXL long: +4.2% (Schwab)". */
+function positionLines(positions: TradePosition[] | undefined): string[] {
+  if (!Array.isArray(positions)) return [];
+  return positions
     .filter(t => t && typeof t.symbol === 'string' && t.symbol.trim())
     .map(t => {
       const dir = t.direction ? ` ${t.direction}` : '';
       const pnl = typeof t.pnlPct === 'number' ? `${signed(t.pnlPct)}%` : 'P&L n/a';
-      return `${t.symbol!.trim()}${dir}: ${pnl}`;
+      const acct = t.account ? ` (${t.account})` : '';
+      return `${t.symbol!.trim()}${dir}: ${pnl}${acct}`;
     });
 }
 
@@ -144,7 +169,7 @@ export function formatTradeMonitorForBriefing(s: TradeSnapshot | null): string |
     for (const m of movers) lines.push(`    • ${m}`);
   }
 
-  const positions = positionLines(s.trades);
+  const positions = positionLines(resolvePositions(s));
   if (positions.length) {
     lines.push('- Positions:');
     for (const p of positions) lines.push(`    • ${p}`);
@@ -173,7 +198,7 @@ export function formatTradeUpdateForVoice(s: TradeSnapshot | null, todayET?: str
     parts.push(`Your trade score's at ${score}${delta}${mover ? ` — ${mover}` : ''}.`);
   }
 
-  const positions = positionLines(s.trades);
+  const positions = positionLines(resolvePositions(s));
   if (positions.length) parts.push(`Positions: ${positions.join('; ')}.`);
 
   const et = todayET ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());

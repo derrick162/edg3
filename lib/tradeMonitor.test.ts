@@ -10,6 +10,7 @@ import {
   formatTradeUpdateForVoice,
   topMoverTexts,
   earningsNames,
+  resolvePositions,
   TRADE_UNAVAILABLE,
   type TradeSnapshot,
 } from './tradeMonitor';
@@ -35,7 +36,7 @@ const SNAPSHOT: TradeSnapshot = {
   catalysts: { earningsUpcoming: ['AAPL', { symbol: 'MSFT' }] },
 };
 
-afterEach(() => { vi.unstubAllGlobals(); delete process.env.TRADE_MONITOR_URL; delete process.env.TRADE_MONITOR_PASS; });
+afterEach(() => { vi.unstubAllGlobals(); delete process.env.TRADE_MONITOR_URL; delete process.env.TRADE_MONITOR_PASS; delete process.env.TRADE_MONITOR_PORTFOLIO_KEY; });
 
 describe('getTradeSnapshot (env-gated, degrade-to-null)', () => {
   it('returns null when env vars are unset (never fetches)', async () => {
@@ -70,6 +71,46 @@ describe('getTradeSnapshot (env-gated, degrade-to-null)', () => {
     process.env.TRADE_MONITOR_PASS = 'secret';
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('aborted'); }));
     expect(await getTradeSnapshot()).toBeNull();
+  });
+
+  it('sends the x-portfolio-key header only when TRADE_MONITOR_PORTFOLIO_KEY is set', async () => {
+    process.env.TRADE_MONITOR_URL = 'https://tm.example.com';
+    process.env.TRADE_MONITOR_PASS = 'secret';
+    const headersSeen: Record<string, string>[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init: { headers?: Record<string, string> }) => {
+      headersSeen.push(init?.headers ?? {});
+      return { ok: true, json: async () => SNAPSHOT };
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    await getTradeSnapshot(); // no portfolio key
+    expect(headersSeen[0]['x-portfolio-key']).toBeUndefined();
+    process.env.TRADE_MONITOR_PORTFOLIO_KEY = 'pkey';
+    await getTradeSnapshot(); // with portfolio key
+    expect(headersSeen[1]['x-portfolio-key']).toBe('pkey');
+    delete process.env.TRADE_MONITOR_PORTFOLIO_KEY;
+  });
+});
+
+describe('resolvePositions (prefer real broker portfolio when present)', () => {
+  it('uses portfolio.positions when present (unlocked via x-portfolio-key)', () => {
+    const withPortfolio: TradeSnapshot = {
+      ...SNAPSHOT,
+      portfolio: { positions: [{ symbol: 'SOXL', direction: 'long', pnlPct: 6.1, account: 'Schwab' }] },
+    };
+    const resolved = resolvePositions(withPortfolio);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].account).toBe('Schwab');
+    // Briefing block renders the real broker position (with account), not the public trades list.
+    const block = formatTradeMonitorForBriefing(withPortfolio)!;
+    expect(block).toContain('SOXL long: +6.1% (Schwab)');
+    expect(block).not.toContain('+4.2%'); // the public trades P&L is superseded
+  });
+
+  it('falls back to the trades list when portfolio is null (key missing/wrong)', () => {
+    const noPortfolio: TradeSnapshot = { ...SNAPSHOT, portfolio: null };
+    const resolved = resolvePositions(noPortfolio);
+    expect(resolved.map(p => p.symbol)).toEqual(['SOXL', 'QQQ']);
+    expect(formatTradeMonitorForBriefing(noPortfolio)!).toContain('SOXL long: +4.2%');
   });
 });
 

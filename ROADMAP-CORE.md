@@ -3443,8 +3443,17 @@ Ship small / green / full preflight (real exit code) per item; log each below.
     mover ranking, earnings extraction, briefing block present/absent, voice summary incl. fresh vs
     stale morningRead, honest-failure) + `trade-update.test.ts` (2 — tool honest-failure + spoken
     summary). +13 tests (2469 → 2482). tsc + next build clean.
-  - ⚠️ **External (Derrick/PM):** set `TRADE_MONITOR_URL` + `TRADE_MONITOR_PASS` on the Edg3 Railway
-    service; create the `getTradeUpdate` tool in the Vapi dashboard (no params) + paste UUID into
+  - **[2026-07-30 addendum] Portfolio second lock:** the snapshot's `portfolio` field (real broker
+    positions + realized P&L) is null unless the request sends header `x-portfolio-key`. Added
+    optional env `TRADE_MONITOR_PORTFOLIO_KEY` — sent as that header only when set; missing/wrong
+    key ⇒ `portfolio:null`, treated as absent (no error path). New `resolvePositions(s)` prefers
+    `portfolio.positions` (real broker book, with `account` label e.g. "SOXL long: +6.1% (Schwab)")
+    over the public `trades` list for the P&L lines in BOTH the briefing block and the voice tool;
+    falls back to `trades` when portfolio is null. +3 tests (header sent only when key set; portfolio
+    preferred; trades fallback). 2482 → 2485.
+  - ⚠️ **External (Derrick/PM):** set `TRADE_MONITOR_URL` + `TRADE_MONITOR_PASS` (+ optional
+    `TRADE_MONITOR_PORTFOLIO_KEY` to unlock real broker positions) on the Edg3 Railway service;
+    create the `getTradeUpdate` tool in the Vapi dashboard (no params) + paste UUID into
     `lib/vapi.ts` toolIds. Code behaves silently (no briefing degradation) until then.
 - **2026-07-01** — **[BUG] Edge Score card blanked to first-run state on rate-limit / fetch failure (2441 green).**
   - **Root cause:** `/api/scores` is rate-limited per user; the dashboard refetches on load +
