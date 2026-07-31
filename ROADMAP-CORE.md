@@ -3422,6 +3422,137 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-31** — **C14 safe slice SHIPPED (2525 green) — voice-set trade alerts (parts 1, 2, 5).**
+  - **Part 1 (`9bc69a9`):** `trade_alerts` table (constant defaults per S9; added to
+    `USER_SCOPED_DELETE_ORDER` — the S3 drift guard caught it) + `tradeAlertQueries`. Three Vapi
+    tools in `tool-call/route.ts`: `setTradeAlert` (echoes the parsed condition back, never claims
+    watching unless saved), `listTradeAlerts` (spoken summary), `cancelTradeAlert` (resolve by
+    symbol/level, disambiguate). Pure `lib/tradeAlerts.ts` (`parseAlertDirection` handles
+    above/below/breaks/drops/`>`/`<`/"breaks down"; `describeTradeAlert`; `matchTradeAlerts`).
+    Prompt guidance + 3 commented toolId placeholders in `lib/vapi.ts`. +19 tests.
+  - **Part 2 — definitions feed:** `GET /api/vapi/trade-alerts?status=active` (header
+    `x-trade-alert-key`) → active alert definitions `[{id,symbol,direction,level,note}]` for the
+    trade-monitor watcher to poll. Env-key check returns 401 whenever the secret is unset; **Vijay
+    (S10) hardens the compare to constant-time + audit log.** +4 tests.
+  - **Part 5 — sidebar card:** read-only "Active alerts" card in the dashboard left sidebar
+    (symbol · condition · set-date · green dot), fed by a new user-scoped `GET /api/trade-alerts`.
+    No controls — voice-only management per Derrick.
+  - **Holding parts 3 (fire-path `POST /api/vapi/trade-alert`) + 4 (300s short-call variant)** until
+    Vijay's S10 auth/rate-limit/market-window/kill-switch is in flight (leaked-key robocall
+    backstop) AND the weekend ntfy validation clears.
+  - ⚠️ **Vijay (Security) — sync down + S10:** new `app/api/vapi/trade-alerts/route.ts` needs the
+    constant-time key compare; `lib/vapi.ts` prompt is additive.
+  - ⚠️ **External (Derrick/PM):** create 3 Vapi tools (setTradeAlert/listTradeAlerts/cancelTradeAlert)
+    + paste UUIDs; set `TRADE_ALERT_KEY` on both Railway services.
+- **2026-07-31** — **C13 SHIPPED (2502 green) — STT tuning on trading vocab + date TTS.**
+  - **Transcriber override** (`lib/vapi.ts`): English calls previously used the dashboard's default
+    transcriber untuned, mangling trading vocab ("SOXL"→"s o x l"/"SOXS", "puts"→"putts", strikes
+    split, "Derrick"→"Derek") and occasionally leaking Hindi tokens on noise. New `selectTranscriber(language)`
+    + `buildEnTranscriber()` + `TRADING_KEYTERMS`: English now pins **Deepgram nova-2, language 'en'**
+    (kills auto-language leakage) with keyword boosting for the tickers/terms Derrick says (SOXL, SOXS,
+    QQQ, SPY, MAGS, TQQQ, SQQQ, NVDA, IWM, puts, calls, strike, spread, gamma, delta, theta, credit
+    spread, Whoop, Vapi, Edg3, Derrick — each `:2`). Cantonese keeps OpenAI gpt-4o-transcribe. Wired
+    into both `initiateCall` config paths + the inbound `assistant-request` webhook (transcriber now
+    always set, not Cantonese-only).
+  - **Date TTS** (`lib/time.ts` + prompts): new shared `ttsSafeDate(d)` → "Friday July 31" (no comma,
+    no year, **no ordinal suffix** — "31st" was read as "30 first"); the two scheduler date builders
+    now use it. Added a DATE SPEECH prompt rule to the main system prompt + `buildOpenCallSystemPrompt`:
+    speak dates as natural spoken ordinals ("July thirty-first"), never digit-by-digit or split.
+  - **Tests:** `lib/vapi-transcriber.test.ts` (4 — en tuned/pinned/boosted, yue unchanged, unknown→en,
+    keyword count) + `ttsSafeDate` (2 — no ordinal/comma/year across day types). +6 (2496 → 2502).
+    tsc + next build clean.
+  - ⚠️ **Vijay (Security) — sync down:** additive edits to `lib/vapi.ts`, `lib/scheduler.ts`,
+    `app/api/vapi/webhook/route.ts`.
+- **2026-07-31** — **C12 SHIPPED (2496 green) — same-morning memory continuity (back-to-back call).**
+  - **Incident:** a briefing dropped at the duration cap; the user called back 13s later and Edge had
+    no memory of the call that had just ended (he'd dictated his trading plan + said "please record
+    this"). Root cause: the post-call memory pipeline (transcript fetch + fact extraction) runs
+    async on the call-ended webhook, so a back-to-back call builds its memory before the previous
+    call's notes exist.
+  - **New `lib/recentCallContinuity.ts`** (Core): `getRecentCallContinuityBlock(userId, excludeId?)`
+    finds the user's most recent call whose memory hasn't landed yet — still `'calling'` (webhook not
+    done) OR completed/missed within 15 min with `learning_status.facts_ok` not set — and returns a
+    `MINUTES AGO` block with the transcript tail (uses the stored transcript when present, else
+    fetches from the Vapi API with a 3s timeout). The block tells Edge to reference it directly and,
+    if it looks cut off, to open by acknowledging the drop. Fully guarded → `''` on anything, so the
+    call always proceeds. `findRecentUnprocessedBriefing` + `buildContinuityBlock` exported pure for
+    tests.
+  - **Wiring (additive):** inbound `assistant-request` webhook (the incident path), `scheduleOpenCall`,
+    and `scheduleJournalCall` now append the continuity block to the open-call memory text (each
+    excludes its own just-created briefing row).
+  - **Tests:** `lib/recentCallContinuity.test.ts` (11 — block build/empty, detection of calling vs
+    facts-extracted vs stale-window vs excluded-current, stored-transcript path with no fetch, Vapi
+    fetch path, no-recent → '', fetch-fails → ''). +11 (2485 → 2496). Added `@/lib/recentCallContinuity`
+    pass-through mocks to the 5 webhook/e2e tests that load the route. tsc + next build clean.
+  - ⚠️ **Vijay (Security) — sync down:** additive edits to `lib/scheduler.ts` + `app/api/vapi/webhook/route.ts`.
+- **2026-07-30** — **C11 SHIPPED (2482 green) — Trade Monitor integration (briefing + live tool).**
+  - **`lib/tradeMonitor.ts`:** `getTradeSnapshot()` — reads `TRADE_MONITOR_URL`/`TRADE_MONITOR_PASS`
+    env vars, returns null when unset (local + pre-Railway state) or on ANY failure; 3s
+    AbortController timeout; HTTP Basic auth; credentials only in env (never logged/spoken). Pure
+    formatters `formatTradeMonitorForBriefing` (briefing block) + `formatTradeUpdateForVoice`
+    (spoken 2–4 sentences) + helpers `topMoverTexts` / `earningsNames`. **Honesty guard:** all
+    formatters cite the snapshot's own numbers + component/morningRead text; never infer
+    bullish/bearish or add detail beyond the snapshot.
+  - **Briefing injection (`lib/briefing.ts`):** `getTradeSnapshot().catch(() => null)` added to the
+    main parallel `Promise.all` (same degrade pattern as Whoop). When non-null, a `TRADE MONITOR`
+    block (score + delta + top movers + per-position P&L + earnings) is injected with guidance to
+    weave AT MOST one plain line into section 1/3, never read all components, cite exactly. Null →
+    no block, briefing builds normally.
+  - **`getTradeUpdate` Vapi tool (`tool-call/route.ts`):** no params; calls `getTradeSnapshot()`,
+    returns the spoken summary or the honest "couldn't reach your trade dashboard" line on
+    null/failure. Prompt note in `lib/vapi.ts` (call it for trades/portfolio/positions/trade score);
+    commented toolId placeholder added to the outbound toolIds list.
+  - **Tests:** `lib/tradeMonitor.test.ts` (11 — env-unset/non-ok/throw → null, Basic-auth header,
+    mover ranking, earnings extraction, briefing block present/absent, voice summary incl. fresh vs
+    stale morningRead, honest-failure) + `trade-update.test.ts` (2 — tool honest-failure + spoken
+    summary). +13 tests (2469 → 2482). tsc + next build clean.
+  - **[2026-07-30 addendum] Portfolio second lock:** the snapshot's `portfolio` field (real broker
+    positions + realized P&L) is null unless the request sends header `x-portfolio-key`. Added
+    optional env `TRADE_MONITOR_PORTFOLIO_KEY` — sent as that header only when set; missing/wrong
+    key ⇒ `portfolio:null`, treated as absent (no error path). New `resolvePositions(s)` prefers
+    `portfolio.positions` (real broker book, with `account` label e.g. "SOXL long: +6.1% (Schwab)")
+    over the public `trades` list for the P&L lines in BOTH the briefing block and the voice tool;
+    falls back to `trades` when portfolio is null. +3 tests (header sent only when key set; portfolio
+    preferred; trades fallback). 2482 → 2485.
+  - ⚠️ **External (Derrick/PM):** set `TRADE_MONITOR_URL` + `TRADE_MONITOR_PASS` (+ optional
+    `TRADE_MONITOR_PORTFOLIO_KEY` to unlock real broker positions) on the Edg3 Railway service;
+    create the `getTradeUpdate` tool in the Vapi dashboard (no params) + paste UUID into
+    `lib/vapi.ts` toolIds. Code behaves silently (no briefing degradation) until then.
+- **2026-07-01** — **[BUG] Edge Score card blanked to first-run state on rate-limit / fetch failure (2441 green).**
+  - **Root cause:** `/api/scores` is rate-limited per user; the dashboard refetches on load +
+    confirm-focus + confirm-plan + undo + tab-focus, so a busy session hit the cap. On 429 the
+    handlers left `calendarFit` null → `EdgeScoreCard` rendered its `!fit` first-run empty state,
+    reading like the user's data was gone.
+  - **Fix (`app/dashboard/page.tsx`):** cache the last good scores in `localStorage['lastScores']`
+    after every successful `/api/scores` fetch (load, confirm-focus, undo ×2, tab-visibility); on a
+    failed/non-ok load, `hydrateScoresFromCache()` backfills `calendarFit` from that cache when it's
+    still null. Stale-but-real beats blank. Guarded, non-fatal.
+  - **Rate limit (`lib/rateLimit.ts`):** bumped `calendarScores` 20 → 60 / hour per user (the
+    dashboard is chatty); comment header updated. No test asserted the old limit.
+  - localStorage path isn't unit-testable; tsc + vitest (2441) + next build clean.
+- **2026-07-01** — **Today's Focus per-item ✓/✗ buttons + call-time dismissal guidance (2441 green).**
+  - **Types:** `FocusArea.completed?: boolean` (`lib/focusRecommendation.ts`) +
+    `FocusRecommendationArea.completed?` (`components/ui/FocusRecommendationCard.tsx`) — piggybacked
+    in the existing `focus_areas` JSON, no schema migration.
+  - **DB:** new `dailyFocusQueries.updateAreas(userId, date, areas)` — overwrites `focus_areas`
+    (encrypted) WITHOUT resetting `confirmed` (unlike `upsert`).
+  - **`POST /api/focus/complete`:** now accepts `{ title }` (legacy `idOrTitle` kept), finds the item
+    case-insensitively, sets `completed:true`, persists via `updateAreas`, returns `{ ok, areas }`.
+  - **`POST /api/focus/dismiss`:** accepts `{ title }`, records the dismissal FIRST (so
+    `recommendFocusAreas` — which reads `dismissed_titles` — won't re-suggest it), trims the item,
+    then generates a replacement (energy + calendar + anchors + email opts, same as the recommend
+    route) and appends the first area not already present. Returns the updated list (3 items if a
+    replacement was found, 2 if not). LLM call guarded — degrades to the trimmed list.
+  - **Dashboard locked-in view:** each focus row gets a done (✓) button (optimistic strikethrough +
+    50% opacity, reverts on error) and a dismiss (✕) button (per-row ⟳ spinner via
+    `dismissingFocusTitle` state while the replacement generates; replaces the list on success,
+    toast on error). Completed items stay visible, struck through.
+  - **Vapi prompt:** new bullet — if the user says a focus area is "no longer relevant"/"skip
+    that"/"cross that off", Edge tells them to tap the X on the dashboard card after the call; does
+    NOT call a tool or mutate focus mid-call.
+  - New `app/api/focus/focus-actions.test.ts` (6 tests: updateAreas round-trip + confirmed
+    preserved; complete sets/persists completed + legacy param; dismiss removes+replaces to 3,
+    graceful 2-item when no replacement, no duplicate replacement). +6 tests. tsc + next build clean.
 - **2026-07-01** — **Call-feedback batch (2435 green) — streak gate + memory freshness + capture breadth.** _(branch `claude/edge-call-feedback-v38s51` — awaiting PM integration to master.)_
   - **[#1 BUG] Declined/short calls counted toward the streak.** Root cause: the webhook marked a
     briefing `completed` on the single gate `transcript.length > 50` (`app/api/vapi/webhook/route.ts`),

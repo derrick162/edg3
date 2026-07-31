@@ -8,6 +8,7 @@ export interface FocusRecommendationArea {
   title: string;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
+  completed?: boolean;   // user marked this focus done today (flows from focus_areas JSON)
 }
 
 export interface FocusRecommendation {

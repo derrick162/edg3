@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, computeFreeSlots, buildRrule } from './time';
+import { zoneOffsetMinutes, wallTimeToUtc, todayInTz, nowParts, dayRangeUtc, formatInTz, rruleUntilUtc, nextDay, prevDay, isValidTimeZone, bookEventTimes, timedEventDateMove, recurringSeriesTimeShift, applyRruleUntil, computeFreeSlots, buildRrule, ttsSafeDate } from './time';
 
 const LA = 'America/Los_Angeles';
 const TOR = 'America/Toronto';
@@ -346,4 +346,21 @@ describe('buildRrule (R14 T2)', () => {
   it('with COUNT', () => expect(buildRrule({ freq: 'daily', count: 10 })).toBe('RRULE:FREQ=DAILY;COUNT=10'));
   it('monthly', () => expect(buildRrule({ freq: 'monthly' })).toBe('RRULE:FREQ=MONTHLY'));
   it('until beats count when both supplied', () => expect(buildRrule({ freq: 'daily', until: '2026-12-31', count: 5 })).toBe('RRULE:FREQ=DAILY;UNTIL=20261231'));
+});
+
+describe('ttsSafeDate (C13 — no ordinals for TTS)', () => {
+  it('emits "Weekday Month DD" with no ordinal suffix, comma, or year', () => {
+    const out = ttsSafeDate(new Date(2026, 6, 31)); // July 31
+    expect(out).toMatch(/^\w+ July 31$/);
+    expect(out).not.toContain(',');
+    expect(out).not.toMatch(/2026/);
+    expect(out).not.toMatch(/\d(st|nd|rd|th)\b/); // never "31st"
+  });
+  it('never appends an ordinal for 1st/2nd/3rd/21st/31st-style days', () => {
+    for (const day of [1, 2, 3, 21, 22, 23, 31]) {
+      const out = ttsSafeDate(new Date(2026, 0, day));
+      expect(out).not.toMatch(/(st|nd|rd|th)\b/);
+      expect(out.endsWith(String(day))).toBe(true);
+    }
+  });
 });

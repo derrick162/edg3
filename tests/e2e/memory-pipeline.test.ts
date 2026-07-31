@@ -23,6 +23,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 // Real modules the route needs:
 vi.mock('@/lib/db', async () => await import('../../lib/db'));
+vi.mock('@/lib/recentCallContinuity', async () => await import('../../lib/recentCallContinuity'));
 vi.mock('@/lib/rateLimit', async () => await import('../../lib/rateLimit'));
 vi.mock('@/lib/greeting', async () => await import('../../lib/greeting'));
 vi.mock('@/lib/actionSummary', async () => await import('../../lib/actionSummary'));

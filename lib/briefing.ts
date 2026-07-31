@@ -12,6 +12,7 @@ import { linkEventsToFacts, extractAndUpsertFactsFromEmail } from './facts';
 import { getUrgentOpenLoops, formatOpenLoopsForBriefing, extractAndUpsertOpenLoops, detectRecurringPatterns, formatRecurringPatternsForBriefing } from './openLoops';
 import { buildMeetingContexts, formatMeetingContextsForBriefing } from './meetingContext';
 import { getLatestRecovery, getLastSleep, getRecentStrain, getRecoveryHistory, getSleepHistory, getStrainHistory, whoopFreshnessNote, hasWhoopConnected, type WhoopRecovery, type WhoopSleep, type WhoopStrain } from './whoop';
+import { getTradeSnapshot, formatTradeMonitorForBriefing } from './tradeMonitor';
 import { computeWhoopTrends, formatTrendForBriefing, detectRecoveryDrop, formatRecoveryAlertForBriefing, computeWhoopBaselines, buildBaselineDeviationNote, buildCalendarActionFromRecovery } from './whoopTrends';
 import { computeWhoopCorrelations, predictTomorrowRecoveryHint } from './whoopCorrelations';
 import { topFacts, rankByMemoryScore } from './memorySalience';
@@ -739,7 +740,7 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
   const salientFactsEarly = topFacts(allRawFacts, priorities, today, { max: 20, maxPerCategory: 6, filterStale: true });
 
   const _parallelStart = Date.now();
-  const [calendarEvents, weekEvents, fullWeekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory] = await Promise.all([
+  const [calendarEvents, weekEvents, fullWeekEvents, whoopRecovery, whoopSleep, whoopStrain, recoveryHistory, sleepHistory, strainHistory, pastCalendarDays, emailSignal, pastCalendarHistory, tradeSnapshot] = await Promise.all([
     getCalendarEvents(userId).catch(() => []),
     getWeekEvents(userId).catch(() => []),
     getFullWeekEvents(userId, userTimezone).catch(() => []),
@@ -752,7 +753,10 @@ export async function generateDailyBriefing(userId: number): Promise<string> {
     getPastCalendarDays(userId, 14, userTimezone).catch(() => []),
     getRecentEmailSignal(userId, { days: 14, max: 20, fullBodies: true }).catch(() => null),
     getPastCalendarEvents(userId, 180).catch(() => []),
+    getTradeSnapshot().catch(() => null), // C11 — Derrick's trade dashboard; null when env unset / any failure
   ]);
+  // C11 — TRADE MONITOR block (null unless env configured + fetch succeeds; briefing never blocks on it).
+  const tradeMonitorBlock = formatTradeMonitorForBriefing(tradeSnapshot);
   // DC2-3b: timing log so we can audit why Whoop data is occasionally missing.
   console.log(`[briefing] parallel-fetch ${Date.now() - _parallelStart}ms | whoop={whoopFetchMs:${Date.now() - _parallelStart},recoveryNull:${whoopRecovery === null},sleepNull:${whoopSleep === null},strainNull:${whoopStrain === null}}`);
   const whoopIsConnected = hasWhoopConnected(userId);
@@ -1382,6 +1386,9 @@ ${timeAllocationBlock}
 Use TIME ALLOCATION in section 3 (ALIGNMENT CHECK) only — surface the biggest misalignment concretely (e.g. "60% of your calendar time has been going to meetings, while fundraising — your top priority — has only gotten 8% in the last 8 weeks"). One observation max. Do not repeat it elsewhere.
 ` : ''}${focusScoreboardBlock ? `
 ${focusScoreboardBlock}
+` : ''}${tradeMonitorBlock ? `
+${tradeMonitorBlock}
+Weave AT MOST ONE short, plain trade line into section 1 or 3 (e.g. "your trade score's at 52, down five — credit spreads widened overnight"). Use the numbers and the component/position notes above EXACTLY as given — never read all the components aloud, never infer bullish/bearish beyond what the notes say. Skip entirely if nothing here is noteworthy today.
 ` : ''}${whoopContextBlock}${packedWhoopSection ? `
 ${packedWhoopSection}
 (Whoop live-fetch unavailable — using last night's context pack data. Present it normally; if directly asked about freshness, say the data is from last night.)

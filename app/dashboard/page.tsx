@@ -1863,6 +1863,9 @@ function DashboardInner() {
   const [focusRecLoading, setFocusRecLoading] = useState(false);
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
   const [focusLockedAreas, setFocusLockedAreas] = useState<FocusRecommendationArea[] | null>(null);
+  const [dismissingFocusTitle, setDismissingFocusTitle] = useState<string | null>(null);
+  // C14 — read-only active trade alerts (voice-managed; sidebar displays only).
+  const [tradeAlerts, setTradeAlerts] = useState<{ id: number; symbol: string; direction: string; level: number; note: string | null; created_at: string }[]>([]);
   const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -1920,8 +1923,9 @@ function DashboardInner() {
     fetch('/api/energy/today').then(r => r.ok ? r.json() : null).then(d => { if (d?.signal) setEnergySignal(d.signal); }).catch(() => {});
     setCalendarFitLoading(true);
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(d => {
-      if (!d) return;
+      if (!d) { hydrateScoresFromCache(); return; } // 429 / non-ok — serve last good, don't blank
       setCalendarFit(d);
+      cacheScores(d);
       // R25 T7 Part B — celebrate a natural score rise on page load (not just after confirm-focus).
       try {
         const lastSeen = parseInt(localStorage.getItem(LAST_SEEN_SCORE_KEY) ?? '0', 10) || 0;
@@ -1930,7 +1934,7 @@ function DashboardInner() {
           localStorage.setItem(LAST_SEEN_SCORE_KEY, String(d.edgeScore));
         }
       } catch { /* localStorage unavailable — skip celebration, non-fatal */ }
-    }).catch(() => {}).finally(() => setCalendarFitLoading(false));
+    }).catch(() => { hydrateScoresFromCache(); }).finally(() => setCalendarFitLoading(false));
     setFocusRecLoading(true);
     fetch('/api/focus/recommend').then(r => r.ok ? r.json() : null).then(d => { if (d) setFocusRec(d); }).catch(() => {}).finally(() => setFocusRecLoading(false));
     // Check if already confirmed today — show locked state, prevent re-confirm.
@@ -1941,8 +1945,13 @@ function DashboardInner() {
       }
     }).catch(() => {});
     setDayPlanLoading(true);
-    fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => { setDayPlan(d ?? null); }).catch(() => {}).finally(() => setDayPlanLoading(false));
+    fetch('/api/day-plan').then(r => r.ok ? r.json() : null).then(d => {
+      // "Not now" suppresses the Edge Assessment for the rest of the day (per-day localStorage flag).
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: user?.timezone || 'UTC' });
+      if (localStorage.getItem('dayPlanDismissedDate') !== today) setDayPlan(d ?? null);
+    }).catch(() => {}).finally(() => setDayPlanLoading(false));
     fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {}).finally(() => setOpenLoopsLoaded(true));
+    fetch('/api/trade-alerts').then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d?.alerts)) setTradeAlerts(d.alerts); }).catch(() => {});
     fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.isFresh && d.recentFacts?.length > 0) {
         setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
@@ -2084,11 +2093,61 @@ function DashboardInner() {
     fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => {
       if (!s) return;
       setCalendarFit(s);
+      cacheScores(s);
       if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
         setEdgeScoreCelebrating(true);
         setTimeout(() => setEdgeScoreCelebrating(false), 1500);
       }
     }).catch(() => {});
+  }
+
+  // Mark a locked-in focus area done — optimistic (strikethrough), revert on error.
+  async function handleCompleteFocus(title: string) {
+    setFocusLockedAreas(prev => prev ? prev.map(a => a.title === title ? { ...a, completed: true } : a) : prev);
+    try {
+      const res = await fetch('/api/focus/complete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error('failed');
+    } catch {
+      setFocusLockedAreas(prev => prev ? prev.map(a => a.title === title ? { ...a, completed: false } : a) : prev);
+    }
+  }
+
+  // Dismiss a locked-in focus area — spinner on that row while the replacement is generated.
+  async function handleDismissFocus(title: string) {
+    setDismissingFocusTitle(title);
+    try {
+      const res = await fetch('/api/focus/dismiss', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json();
+      if (Array.isArray(data.areas)) setFocusLockedAreas(data.areas);
+    } catch {
+      showToast('Couldn’t refresh — try again', 'error');
+    } finally {
+      setDismissingFocusTitle(null);
+    }
+  }
+
+  // Edge Score resilience: /api/scores is rate-limited (chatty dashboard) — cache the last good
+  // response so a 429 / fetch failure serves stale-but-real data instead of blanking to the
+  // first-run empty state (which reads like the user's data is gone).
+  function cacheScores(s: CalendarFit | null) {
+    if (!s) return;
+    try { localStorage.setItem('lastScores', JSON.stringify(s)); } catch { /* non-fatal */ }
+  }
+  function hydrateScoresFromCache() {
+    if (calendarFitRef.current) return; // only backfill when we have nothing live
+    try { const c = localStorage.getItem('lastScores'); if (c) setCalendarFit(JSON.parse(c)); } catch { /* non-fatal */ }
+  }
+
+  // "Not now" on the Edge Assessment: hide it AND remember so it stays gone for the rest of today.
+  function handleDismissDayPlan() {
+    setDayPlan(null);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: user?.timezone || 'UTC' });
+    try { localStorage.setItem('dayPlanDismissedDate', today); } catch { /* localStorage unavailable — non-fatal */ }
   }
 
   async function handleConfirmDayPlan(planId: string) {
@@ -2104,7 +2163,7 @@ function DashboardInner() {
     // ALWAYS refetch the canonical Edge Score so the HEADLINE moves to the real new
     // value — otherwise the headline stayed stale (e.g. 63) while the plan card showed
     // its projected number (67). One Edge Score, and it's the headline.
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) { setCalendarFit(s); cacheScores(s); } }).catch(() => {});
     // Auto-dismiss toast after 30 s
     setTimeout(() => { setDayPlanApplied(false); setDayPlan(null); }, 30_000);
   }
@@ -2122,7 +2181,7 @@ function DashboardInner() {
     setDayPlan(null);
     setDayPlanChangeLines([]);
     // Refetch scores after undo
-    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) setCalendarFit(s); }).catch(() => {});
+    fetch('/api/scores').then(r => r.ok ? r.json() : null).then(s => { if (s) { setCalendarFit(s); cacheScores(s); } }).catch(() => {});
   }
 
   async function retryBriefingCall() {
@@ -2168,6 +2227,7 @@ function DashboardInner() {
       const s = await fetch('/api/scores').then(r => r.ok ? r.json() : null).catch(() => null);
       if (!s) return;
       setCalendarFit(s);
+      cacheScores(s);
       if (prevScore !== null && typeof s.edgeScore === 'number' && s.edgeScore > prevScore) {
         setEdgeScoreCelebrating(true);
         setTimeout(() => setEdgeScoreCelebrating(false), 1500);
@@ -2956,6 +3016,30 @@ function DashboardInner() {
                 </div>
               </div>
             )}
+            {/* C14 — read-only "Active alerts" card (voice-only management; no controls here). */}
+            {tradeAlerts.length > 0 && (
+              <div className="px-2 pt-1">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span aria-hidden="true" style={{ color: 'var(--text-accent)', fontSize: 11 }}>◆</span>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Active alerts</p>
+                </div>
+                <ul className="space-y-1.5 pl-3.5">
+                  {tradeAlerts.map(a => (
+                    <li key={a.id} className="flex items-start gap-2">
+                      <span aria-hidden="true" style={{ color: 'var(--edg-success)', fontSize: 9, lineHeight: '1.4' }}>●</span>
+                      <div className="min-w-0">
+                        <p className="text-xs" style={{ color: 'var(--text-strong)', fontWeight: 500 }}>
+                          {a.symbol} {a.direction} {Number.isInteger(a.level) ? a.level : a.level.toFixed(2)}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                          set {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {briefings.length === 0 && (
               <button
                 onClick={() => { setIntroCalling(false); setShowWelcome(true); }}
@@ -3100,11 +3184,13 @@ function DashboardInner() {
                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s Focus · Locked in</span>
                   </div>
                   <ol className="list-none space-y-2">
-                    {focusLockedAreas.map((a, i) => (
-                      <li key={i} className="flex gap-2" style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                    {focusLockedAreas.map((a, i) => {
+                      const isDismissing = dismissingFocusTitle === a.title;
+                      return (
+                      <li key={i} className="flex gap-2 items-start" style={{ color: 'var(--text-primary)', fontSize: '0.875rem', opacity: a.completed ? 0.5 : 1 }}>
                         <span style={{ color: 'var(--edg-success)', fontWeight: 700, flexShrink: 0 }}>✓</span>
                         <div className="flex-1 min-w-0">
-                          <span style={{ fontWeight: 500 }}>{a.title}</span>
+                          <span style={{ fontWeight: 500, textDecoration: a.completed ? 'line-through' : undefined }}>{a.title}</span>
                           {/* Ticket 2: one-line context so the focus list isn't a bare to-do list */}
                           {a.rationale?.trim() && (
                             <p style={{ color: 'var(--text-faint)', fontSize: '0.75rem', marginTop: '0.125rem', lineHeight: 1.4 }}>
@@ -3112,8 +3198,34 @@ function DashboardInner() {
                             </p>
                           )}
                         </div>
+                        {/* C11 — per-item done / dismiss controls */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {isDismissing ? (
+                            <span className="text-xs" style={{ color: 'var(--text-faint)' }} aria-label="Refreshing">⟳</span>
+                          ) : (
+                            <>
+                              {!a.completed && (
+                                <button
+                                  title="Mark done"
+                                  aria-label={`Mark "${a.title}" done`}
+                                  onClick={() => handleCompleteFocus(a.title)}
+                                  className="p-1 rounded"
+                                  style={{ color: 'var(--edg-success)', lineHeight: 1 }}
+                                >✓</button>
+                              )}
+                              <button
+                                title="No longer relevant"
+                                aria-label={`Dismiss "${a.title}"`}
+                                onClick={() => handleDismissFocus(a.title)}
+                                className="p-1 rounded"
+                                style={{ color: 'var(--text-faint)', lineHeight: 1 }}
+                              >✕</button>
+                            </>
+                          )}
+                        </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ol>
                 </div>
               ) : !focusRecDismissed && (
@@ -3149,7 +3261,7 @@ function DashboardInner() {
                   plan={dayPlan}
                   loading={dayPlanLoading}
                   onConfirm={handleConfirmDayPlan}
-                  onDismiss={() => setDayPlan(null)}
+                  onDismiss={handleDismissDayPlan}
                   applied={dayPlanApplied}
                   appliedScore={dayPlanAppliedScore}
                   changeLines={dayPlanChangeLines}

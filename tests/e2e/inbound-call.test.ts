@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 process.env.DB_PATH = ':memory:';
 
 vi.mock('@/lib/db', async () => await import('../../lib/db'));
+vi.mock('@/lib/recentCallContinuity', async () => await import('../../lib/recentCallContinuity'));
 vi.mock('@/lib/rateLimit', async () => await import('../../lib/rateLimit'));
 vi.mock('@/lib/greeting', async () => await import('../../lib/greeting'));
 vi.mock('@/lib/briefing', async () => await import('../../lib/briefing'));
