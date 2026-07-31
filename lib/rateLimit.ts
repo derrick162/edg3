@@ -94,6 +94,10 @@ export const LIMITS = {
   // /api/vapi/trade-alert endpoint: a leaked TRADE_ALERT_KEY is a robocall vector, and ≤3 calls/day
   // bounds the blast radius. Consumed only on a fully-accepted alert (see the route's gate order).
   tradeAlert:           { limit: 3, windowMs: 24 * 60 * 60 * 1000 }, // 3 / 24h per user
+  // S10 — DoS backstop for the GET watch-list feed (`/api/vapi/trade-alerts`), keyed per source IP.
+  // The trade-monitor polls it legitimately in its refresh loop, so this is set well above real poll
+  // volume — auth (constant-time key) is the real guard; this just sheds a pathological flood.
+  tradeAlertPoll:       { limit: 120, windowMs: 60 * 1000 },         // 120 / min per source IP
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;

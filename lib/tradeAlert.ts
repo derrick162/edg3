@@ -10,7 +10,8 @@
 // compare + per-user kill switch + market-hours window + idempotency dedupe + a hard ≤3/day cap.
 
 import crypto from 'crypto';
-import type { User } from './db';
+import { NextRequest, NextResponse } from 'next/server';
+import { auditLogQueries, type User } from './db';
 
 export const TRADE_ALERT_MAX_PER_DAY = 3;
 export const MARKET_OPEN_MINUTES = 9 * 60 + 30; // 09:30 ET
@@ -63,6 +64,22 @@ export interface TradeAlertBody {
   headline: string;
   context: string;
   idempotencyKey: string;
+  // Optional — the trade_alerts row (Core-owned table) this alert fired for. When present, Core's
+  // call-variant marks that row 'fired' + stamps fired_at as it places the call.
+  alertId?: number;
+}
+
+/**
+ * Shared auth gate for BOTH externally-hit trade-alert endpoints: the POST fire path AND the GET
+ * watch-list feed (`GET /api/vapi/trade-alerts` — Core-built, Security-gated). Constant-time key
+ * compare; on failure audit-logs a `bad_key` reject (sentinel user 0) and returns a ready 401. The
+ * GET feed leaks Derrick's watch-list if unauthenticated, so it MUST call this first — same rigor as
+ * the POST. Returns null when the key is valid (proceed). The key is never logged.
+ */
+export function guardTradeAlertKey(req: NextRequest): NextResponse | null {
+  if (verifyTradeAlertKey(req.headers.get('x-trade-alert-key'))) return null;
+  auditLogQueries.logTradeAlert({ userId: 0, outcome: 'rejected', reason: 'bad_key' });
+  return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 }
 
 /**
@@ -87,7 +104,16 @@ export function parseTradeAlertBody(
   if (headline.length > HEADLINE_MAX) return { ok: false, error: 'headline too long' };
   if (context.length > CONTEXT_MAX) return { ok: false, error: `context exceeds ${CONTEXT_MAX} chars` };
   if (idempotencyKey.length > 200) return { ok: false, error: 'idempotencyKey too long' };
-  return { ok: true, value: { reason, headline, context, idempotencyKey } };
+  // Optional alertId — accepts a number or numeric string; must be a positive integer if present.
+  let alertId: number | undefined;
+  if (o.alertId !== undefined && o.alertId !== null) {
+    const n = typeof o.alertId === 'number'
+      ? o.alertId
+      : (typeof o.alertId === 'string' && /^\d+$/.test(o.alertId.trim()) ? Number(o.alertId.trim()) : NaN);
+    if (!Number.isInteger(n) || n <= 0) return { ok: false, error: 'alertId must be a positive integer' };
+    alertId = n;
+  }
+  return { ok: true, value: { reason, headline, context, idempotencyKey, ...(alertId !== undefined ? { alertId } : {}) } };
 }
 
 /**

@@ -43,13 +43,23 @@ vi.mock('@/lib/idempotency', () => ({
 }));
 
 // NOTE: the `@` alias isn't resolved inside a vi.mock factory in this repo — import the real module
-// via a relative path (same pattern as the other route tests) so real verify/parse still run.
+// via a relative path (same pattern as the other route tests). We keep the REAL verifyTradeAlertKey
+// (the constant-time crypto compare) and parseTradeAlertBody, and stub only the three side-effectful
+// pieces: market-hours (deterministic), the dispatch seam, and guardTradeAlertKey's audit write
+// (the guard's real `./db` import isn't caught by the db mock when pulled in via this dynamic import,
+// so we route its audit straight to h.audit while still exercising the real key compare).
 vi.mock('@/lib/tradeAlert', async () => {
   const actual = await import('../../../../lib/tradeAlert');
+  const { NextResponse } = await import('next/server');
   return {
     ...actual,
     isWithinMarketHours: () => h.marketOpen,
     dispatchTradeAlertCall: (...a: unknown[]) => { h.dispatch(...a); return Promise.resolve(h.dispatchResult); },
+    guardTradeAlertKey: (req: { headers: { get: (k: string) => string | null } }) => {
+      if (actual.verifyTradeAlertKey(req.headers.get('x-trade-alert-key'))) return null;
+      h.audit.push({ userId: 0, outcome: 'rejected', reason: 'bad_key' });
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    },
   };
 });
 
@@ -164,4 +174,21 @@ describe('POST /api/vapi/trade-alert', () => {
     expect(await res.json()).toEqual({ queued: false, reason: 'dispatch_failed' });
     expect(lastAudit()).toMatchObject({ outcome: 'rejected', reason: 'dispatch_failed' });
   });
+
+  it('threads alertId through to the dispatch seam when present', async () => {
+    const res = await POST(post({ ...GOOD, alertId: 42 }));
+    expect(await res.json()).toEqual({ queued: true });
+    const [, alert] = h.dispatch.mock.calls[0];
+    expect(alert).toMatchObject({ alertId: 42 });
+  });
+
+  it('400s on an invalid alertId', async () => {
+    const res = await POST(post({ ...GOOD, alertId: -1 }));
+    expect(res.status).toBe(400);
+    expect(h.dispatch).not.toHaveBeenCalled();
+  });
+
+  // The shared guardTradeAlertKey gate (also used by Core's GET watch-list feed) is exercised here
+  // through the fire path: a bad key → 401 + bad_key audit (above), a valid key → the request
+  // proceeds past auth (every happy-path case above). Same constant-time compare guards both routes.
 });

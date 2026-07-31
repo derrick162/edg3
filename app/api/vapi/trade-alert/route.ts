@@ -3,7 +3,7 @@ import { userQueries, auditLogQueries } from '@/lib/db';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { claimTradeAlert } from '@/lib/idempotency';
 import {
-  verifyTradeAlertKey,
+  guardTradeAlertKey,
   isWithinMarketHours,
   parseTradeAlertBody,
   dispatchTradeAlertCall,
@@ -28,11 +28,9 @@ import {
 //   8. dispatch the call + audit accept (200 queued:true)
 // Every branch is audit-logged (accept or reject + reason).
 export async function POST(req: NextRequest) {
-  // 1) Authenticate. Never log the key.
-  if (!verifyTradeAlertKey(req.headers.get('x-trade-alert-key'))) {
-    auditLogQueries.logTradeAlert({ userId: 0, outcome: 'rejected', reason: 'bad_key' });
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+  // 1) Authenticate (shared gate — same constant-time compare + bad_key audit as the GET feed).
+  const authFail = guardTradeAlertKey(req);
+  if (authFail) return authFail;
 
   // 2) Validate the payload.
   let raw: unknown;

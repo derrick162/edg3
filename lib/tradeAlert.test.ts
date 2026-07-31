@@ -87,6 +87,28 @@ describe('parseTradeAlertBody', () => {
     const r = parseTradeAlertBody({ ...good, context: 'x'.repeat(501) });
     expect(r.ok).toBe(false);
   });
+
+  it('accepts an optional alertId (number or numeric string) and normalizes to a number', () => {
+    const a = parseTradeAlertBody({ ...good, alertId: 42 });
+    expect(a.ok).toBe(true);
+    if (a.ok) expect(a.value.alertId).toBe(42);
+    const b = parseTradeAlertBody({ ...good, alertId: '42' });
+    expect(b.ok).toBe(true);
+    if (b.ok) expect(b.value.alertId).toBe(42);
+  });
+
+  it('omits alertId when absent', () => {
+    const r = parseTradeAlertBody(good);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect('alertId' in r.value).toBe(false);
+  });
+
+  it('rejects a non-positive-integer alertId', () => {
+    expect(parseTradeAlertBody({ ...good, alertId: -1 }).ok).toBe(false);
+    expect(parseTradeAlertBody({ ...good, alertId: 0 }).ok).toBe(false);
+    expect(parseTradeAlertBody({ ...good, alertId: 1.5 }).ok).toBe(false);
+    expect(parseTradeAlertBody({ ...good, alertId: 'abc' }).ok).toBe(false);
+  });
 });
 
 it('daily cap constant is 3', () => {
