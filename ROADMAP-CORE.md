@@ -3422,6 +3422,30 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-30** — **C11 SHIPPED (2482 green) — Trade Monitor integration (briefing + live tool).**
+  - **`lib/tradeMonitor.ts`:** `getTradeSnapshot()` — reads `TRADE_MONITOR_URL`/`TRADE_MONITOR_PASS`
+    env vars, returns null when unset (local + pre-Railway state) or on ANY failure; 3s
+    AbortController timeout; HTTP Basic auth; credentials only in env (never logged/spoken). Pure
+    formatters `formatTradeMonitorForBriefing` (briefing block) + `formatTradeUpdateForVoice`
+    (spoken 2–4 sentences) + helpers `topMoverTexts` / `earningsNames`. **Honesty guard:** all
+    formatters cite the snapshot's own numbers + component/morningRead text; never infer
+    bullish/bearish or add detail beyond the snapshot.
+  - **Briefing injection (`lib/briefing.ts`):** `getTradeSnapshot().catch(() => null)` added to the
+    main parallel `Promise.all` (same degrade pattern as Whoop). When non-null, a `TRADE MONITOR`
+    block (score + delta + top movers + per-position P&L + earnings) is injected with guidance to
+    weave AT MOST one plain line into section 1/3, never read all components, cite exactly. Null →
+    no block, briefing builds normally.
+  - **`getTradeUpdate` Vapi tool (`tool-call/route.ts`):** no params; calls `getTradeSnapshot()`,
+    returns the spoken summary or the honest "couldn't reach your trade dashboard" line on
+    null/failure. Prompt note in `lib/vapi.ts` (call it for trades/portfolio/positions/trade score);
+    commented toolId placeholder added to the outbound toolIds list.
+  - **Tests:** `lib/tradeMonitor.test.ts` (11 — env-unset/non-ok/throw → null, Basic-auth header,
+    mover ranking, earnings extraction, briefing block present/absent, voice summary incl. fresh vs
+    stale morningRead, honest-failure) + `trade-update.test.ts` (2 — tool honest-failure + spoken
+    summary). +13 tests (2469 → 2482). tsc + next build clean.
+  - ⚠️ **External (Derrick/PM):** set `TRADE_MONITOR_URL` + `TRADE_MONITOR_PASS` on the Edg3 Railway
+    service; create the `getTradeUpdate` tool in the Vapi dashboard (no params) + paste UUID into
+    `lib/vapi.ts` toolIds. Code behaves silently (no briefing degradation) until then.
 - **2026-07-01** — **[BUG] Edge Score card blanked to first-run state on rate-limit / fetch failure (2441 green).**
   - **Root cause:** `/api/scores` is rate-limited per user; the dashboard refetches on load +
     confirm-focus + confirm-plan + undo + tab-focus, so a busy session hit the cap. On 429 the

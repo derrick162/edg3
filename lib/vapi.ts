@@ -865,6 +865,8 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 
 - getWeather() — call when ${firstName} asks about the weather, forecast, temperature, rain, or conditions for today or tomorrow. Do NOT say you lack weather data — call the tool and relay what it returns.
 
+- getTradeUpdate() — call when ${firstName} asks about his trades, portfolio, positions, trade score, or "how's my position". Reads his own trade-monitor dashboard. Relay EXACTLY what the tool returns — the numbers and notes are his dashboard's own; never infer bullish/bearish or add detail it didn't give. If it returns the "couldn't reach your trade dashboard" line, say that honestly.
+
 - CALENDAR SCORES: the briefing includes ONE Edge Score (0–100) — a blend of Focus (calendar vs priorities) and Energy (calendar vs your capacity). Open with: "Your Edge Score is [X] — [one-sentence reason from the drivers]." If the score is below 50, immediately offer the topFix: "The one move that helps most: [topFix.description] — want me to do that now?" Act on yes. If energy is 'calibrating', ask for their energy level early so the score sharpens. Never recite all the drivers verbatim — one punchy line, then the fix.
 
 - FOCUS SCOREBOARD: if the briefing included a FOCUS SCOREBOARD block — CELEBRATE any milestone wins with a warm specific line ("you knocked out that investor deck milestone — real momentum"). If a focus area shows NEGLECTED (zero hours this week), proactively offer to block time: "You've got no time blocked for [area] this week — want me to find a slot?" then call findTime() + createEvent(). Never mention the scoreboard mechanics — speak in plain outcomes only.
@@ -1181,6 +1183,7 @@ Always end with warmth. This person is building something — remind them of tha
           '3bda7770-65db-4a5f-89cd-684c7111ba22', // briefEvent (R15 T6)
 
           '29898c32-3823-4a29-820d-7cacbc4427d8', // generateWeeklyReview (R15 T7)
+          // 'PASTE-UUID-HERE', // getTradeUpdate (C11) — create in Vapi dashboard (no params), then uncomment
 
         ],
 
@@ -1347,6 +1350,7 @@ Always end with warmth. This person is building something — remind them of tha
           '3bda7770-65db-4a5f-89cd-684c7111ba22', // briefEvent (R15 T6)
 
           '29898c32-3823-4a29-820d-7cacbc4427d8', // generateWeeklyReview (R15 T7)
+          // 'PASTE-UUID-HERE', // getTradeUpdate (C11) — create in Vapi dashboard (no params), then uncomment
 
         ],
 

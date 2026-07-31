@@ -1635,6 +1635,14 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
     const { getWeatherForecast } = await import('@/lib/weather');
     return await getWeatherForecast();
 
+  } else if (fn === 'getTradeUpdate') {
+    // C11 — live read of Derrick's trade-monitor dashboard. No params. Honest failure line when
+    // unreachable / env unset (never fabricates numbers). Cites the snapshot's own numbers + notes.
+    const { getTradeSnapshot, formatTradeUpdateForVoice, TRADE_UNAVAILABLE } = await import('@/lib/tradeMonitor');
+    const snapshot = await getTradeSnapshot();
+    if (!snapshot) return TRADE_UNAVAILABLE;
+    return formatTradeUpdateForVoice(snapshot);
+
   } else if (fn === 'addTask') {
     // R14 T4 — create an action-item task by voice.
     const { title: rawTaskTitle, dueDate } = args as { title?: string; dueDate?: string };
