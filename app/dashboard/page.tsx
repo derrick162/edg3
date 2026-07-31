@@ -1864,6 +1864,8 @@ function DashboardInner() {
   const [focusRecDismissed, setFocusRecDismissed] = useState(false);
   const [focusLockedAreas, setFocusLockedAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [dismissingFocusTitle, setDismissingFocusTitle] = useState<string | null>(null);
+  // C14 — read-only active trade alerts (voice-managed; sidebar displays only).
+  const [tradeAlerts, setTradeAlerts] = useState<{ id: number; symbol: string; direction: string; level: number; note: string | null; created_at: string }[]>([]);
   const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -1949,6 +1951,7 @@ function DashboardInner() {
       if (localStorage.getItem('dayPlanDismissedDate') !== today) setDayPlan(d ?? null);
     }).catch(() => {}).finally(() => setDayPlanLoading(false));
     fetch('/api/open-loops').then(r => r.ok ? r.json() : null).then(d => { if (d?.loops) setOpenLoops(d.loops); }).catch(() => {}).finally(() => setOpenLoopsLoaded(true));
+    fetch('/api/trade-alerts').then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d?.alerts)) setTradeAlerts(d.alerts); }).catch(() => {});
     fetch('/api/learned').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.isFresh && d.recentFacts?.length > 0) {
         setActivationFacts(d.recentFacts.map((f: { statement: string }) => f.statement).slice(0, 6));
@@ -3011,6 +3014,30 @@ function DashboardInner() {
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+            {/* C14 — read-only "Active alerts" card (voice-only management; no controls here). */}
+            {tradeAlerts.length > 0 && (
+              <div className="px-2 pt-1">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span aria-hidden="true" style={{ color: 'var(--text-accent)', fontSize: 11 }}>◆</span>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Active alerts</p>
+                </div>
+                <ul className="space-y-1.5 pl-3.5">
+                  {tradeAlerts.map(a => (
+                    <li key={a.id} className="flex items-start gap-2">
+                      <span aria-hidden="true" style={{ color: 'var(--edg-success)', fontSize: 9, lineHeight: '1.4' }}>●</span>
+                      <div className="min-w-0">
+                        <p className="text-xs" style={{ color: 'var(--text-strong)', fontWeight: 500 }}>
+                          {a.symbol} {a.direction} {Number.isInteger(a.level) ? a.level : a.level.toFixed(2)}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                          set {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
             {briefings.length === 0 && (

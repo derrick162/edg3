@@ -3422,6 +3422,28 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-31** — **C14 safe slice SHIPPED (2525 green) — voice-set trade alerts (parts 1, 2, 5).**
+  - **Part 1 (`9bc69a9`):** `trade_alerts` table (constant defaults per S9; added to
+    `USER_SCOPED_DELETE_ORDER` — the S3 drift guard caught it) + `tradeAlertQueries`. Three Vapi
+    tools in `tool-call/route.ts`: `setTradeAlert` (echoes the parsed condition back, never claims
+    watching unless saved), `listTradeAlerts` (spoken summary), `cancelTradeAlert` (resolve by
+    symbol/level, disambiguate). Pure `lib/tradeAlerts.ts` (`parseAlertDirection` handles
+    above/below/breaks/drops/`>`/`<`/"breaks down"; `describeTradeAlert`; `matchTradeAlerts`).
+    Prompt guidance + 3 commented toolId placeholders in `lib/vapi.ts`. +19 tests.
+  - **Part 2 — definitions feed:** `GET /api/vapi/trade-alerts?status=active` (header
+    `x-trade-alert-key`) → active alert definitions `[{id,symbol,direction,level,note}]` for the
+    trade-monitor watcher to poll. Env-key check returns 401 whenever the secret is unset; **Vijay
+    (S10) hardens the compare to constant-time + audit log.** +4 tests.
+  - **Part 5 — sidebar card:** read-only "Active alerts" card in the dashboard left sidebar
+    (symbol · condition · set-date · green dot), fed by a new user-scoped `GET /api/trade-alerts`.
+    No controls — voice-only management per Derrick.
+  - **Holding parts 3 (fire-path `POST /api/vapi/trade-alert`) + 4 (300s short-call variant)** until
+    Vijay's S10 auth/rate-limit/market-window/kill-switch is in flight (leaked-key robocall
+    backstop) AND the weekend ntfy validation clears.
+  - ⚠️ **Vijay (Security) — sync down + S10:** new `app/api/vapi/trade-alerts/route.ts` needs the
+    constant-time key compare; `lib/vapi.ts` prompt is additive.
+  - ⚠️ **External (Derrick/PM):** create 3 Vapi tools (setTradeAlert/listTradeAlerts/cancelTradeAlert)
+    + paste UUIDs; set `TRADE_ALERT_KEY` on both Railway services.
 - **2026-07-31** — **C13 SHIPPED (2502 green) — STT tuning on trading vocab + date TTS.**
   - **Transcriber override** (`lib/vapi.ts`): English calls previously used the dashboard's default
     transcriber untuned, mangling trading vocab ("SOXL"→"s o x l"/"SOXS", "puts"→"putts", strikes
