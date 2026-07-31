@@ -41,6 +41,7 @@ export function initSchema(db: Database.Database) {
       call_time TEXT DEFAULT '07:00',
       timezone TEXT DEFAULT 'America/New_York',
       onboarding_complete INTEGER DEFAULT 0,
+      trade_alerts_enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -771,6 +772,9 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // the briefing row; audio_url stores the call recording URL (from Vapi's artifact) for playback.
   "ALTER TABLE briefings ADD COLUMN is_journal INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE briefings ADD COLUMN audio_url TEXT",
+  // S10 — per-user kill switch for trade-alert outbound calls. Default ON (Derrick's own feature);
+  // the dashboard toggle is Core's. Constant default → safe additive ALTER on legacy DBs.
+  "ALTER TABLE users ADD COLUMN trade_alerts_enabled INTEGER NOT NULL DEFAULT 1",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -986,6 +990,25 @@ export const userQueries = {
   // R20 — toggle gratitude mode on/off (the open call becomes a gratitude check-in when on).
   setGratitudeMode: (id: number, enabled: boolean) => {
     return getDb().prepare("UPDATE users SET gratitude_mode = ? WHERE id = ?").run(enabled ? 1 : 0, id);
+  },
+  // S10 — trade-alert kill switch. Reads default to ON (true) when the column/row is absent, so an
+  // upgraded-but-not-yet-toggled account still receives alerts (feature is opt-out, not opt-in).
+  getTradeAlertsEnabled: (id: number): boolean => {
+    const row = getDb().prepare("SELECT trade_alerts_enabled FROM users WHERE id = ?").get(id) as { trade_alerts_enabled?: number } | undefined;
+    return row?.trade_alerts_enabled !== 0;
+  },
+  setTradeAlertsEnabled: (id: number, enabled: boolean) => {
+    return getDb().prepare("UPDATE users SET trade_alerts_enabled = ? WHERE id = ?").run(enabled ? 1 : 0, id);
+  },
+  // S10 — resolve the user a trade alert should call. The trade-monitor POST carries no user field
+  // (single-owner service), so target the account explicitly named by TRADE_ALERT_USER_ID, else the
+  // earliest-registered user (single-user reality today). Returns undefined if there are no users.
+  getTradeAlertTarget: (): User | undefined => {
+    const envId = process.env.TRADE_ALERT_USER_ID;
+    if (envId && /^\d+$/.test(envId)) {
+      return getDb().prepare("SELECT * FROM users WHERE id = ?").get(Number(envId)) as User | undefined;
+    }
+    return getDb().prepare("SELECT * FROM users ORDER BY id ASC LIMIT 1").get() as User | undefined;
   },
   // R22 — set the user's call language ('en' | 'yue').
   setLanguage: (id: number, language: string) => {
@@ -1855,6 +1878,31 @@ export const auditLogQueries = {
     } catch { /* best effort — never disrupt the call path */ }
   },
 
+  /**
+   * S10 — audit a trade-alert POST decision (accept or reject + why). action = 'trade_alert';
+   * args_json carries outcome/reason/idempotencyKey. An UNAUTHENTICATED reject (bad key, before a
+   * user is resolved) is logged with sentinel user_id 0, mirroring inbound_call_attempt. The alert
+   * key itself is NEVER passed here — only the decision. ok=1 for accepted, 0 for rejected.
+   */
+  logTradeAlert: (opts: {
+    userId: number;
+    outcome: 'accepted' | 'rejected';
+    reason: string;
+    idempotencyKey?: string;
+  }): void => {
+    try {
+      getDb().prepare(`
+        INSERT INTO audit_log (user_id, action, args_json, result_text, ok)
+        VALUES (?, 'trade_alert', ?, ?, ?)
+      `).run(
+        opts.userId,
+        JSON.stringify({ outcome: opts.outcome, reason: opts.reason, idempotencyKey: opts.idempotencyKey ?? null }),
+        `trade alert ${opts.outcome}: ${opts.reason}`,
+        opts.outcome === 'accepted' ? 1 : 0,
+      );
+    } catch { /* best effort — never let audit faults break the endpoint */ }
+  },
+
   /** Recent actions for a specific user (Core's "Recent Activity" feed). */
   recent: (userId: number, limit = 20): AuditRow[] => {
     return getDb().prepare(
@@ -2286,6 +2334,9 @@ export interface User {
   voice_speed?: 'slow' | 'default' | 'fast' | null;
   // R20 — when 1, the open call becomes a warm gratitude check-in instead of a briefing.
   gratitude_mode?: number;
+  // S10 — per-user kill switch for trade-alert outbound calls (1 = on, default). Optional so reads
+  // are safe before the column exists in an older DB.
+  trade_alerts_enabled?: number;
   // R22 — call language: 'en' (default) or 'yue' (Cantonese).
   language?: string;
   // R21 — optional themed daily quote at the top of the gratitude call.

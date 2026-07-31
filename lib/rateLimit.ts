@@ -90,6 +90,10 @@ export const LIMITS = {
   // S8 — per-user post-call fact-extraction ceiling (Haiku cost). Normal load is ~1/call and calls
   // are already rate-limited; this is a cost backstop against a pathological extraction loop.
   factExtraction:       { limit: 10, windowMs: 60 * 60 * 1000 },   // 10 / hour per user
+  // S10 — trade-alert outbound-call daily cap (per target user). This is the HARD BACKSTOP for the
+  // /api/vapi/trade-alert endpoint: a leaked TRADE_ALERT_KEY is a robocall vector, and ≤3 calls/day
+  // bounds the blast radius. Consumed only on a fully-accepted alert (see the route's gate order).
+  tradeAlert:           { limit: 3, windowMs: 24 * 60 * 60 * 1000 }, // 3 / 24h per user
 } as const;
 
 export type RateLimitKey = keyof typeof LIMITS;
