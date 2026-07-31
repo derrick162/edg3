@@ -1373,6 +1373,10 @@ Always end with warmth. This person is building something — remind them of tha
 
       silenceTimeoutSeconds: 40,
 
+      // Without this override the dashboard assistant's 600s default applies and calls hard-drop
+      // at 10 min mid-sentence (live incident 2026-07-31: journal + briefing calls cut off).
+      maxDurationSeconds: 1800,
+
       artifactPlan,
 
     } : undefined,
