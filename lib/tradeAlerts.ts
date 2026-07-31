@@ -3,11 +3,26 @@
 // before the trade-monitor starts watching it.
 
 export type AlertDirection = 'above' | 'below';
+export type AlertType = 'price' | 'volume_bar' | 'signal_grade';
 
 export interface TradeAlertLike {
   symbol: string;
-  direction: AlertDirection;
+  type?: AlertType;                      // defaults to 'price' (C14b)
+  direction?: AlertDirection | null;     // present for 'price'; null/absent for the others
   level: number;
+}
+
+// C14b — voice defaults when the user doesn't state a level.
+export const VOLUME_BAR_DEFAULT_LEVEL = 1_500_000; // "a big volume bar" → 1.5M shares
+export const SIGNAL_GRADE_DEFAULT_LEVEL = 8;       // "grades an eight"
+
+/** Canonical alert type from a raw phrase; defaults to 'price'. */
+export function parseAlertType(raw: string | null | undefined): AlertType {
+  const s = (raw ?? '').trim().toLowerCase();
+  if (!s) return 'price';
+  if (s === 'volume_bar' || /\bvolume\b|\bshares?\b|\binstitution/.test(s)) return 'volume_bar';
+  if (s === 'signal_grade' || /\bgrades?\b|\bsetup\b|\bsignal\b/.test(s)) return 'signal_grade';
+  return 'price';
 }
 
 // Map the many ways a user phrases a threshold to a canonical direction.
@@ -36,9 +51,13 @@ export function formatAlertPrice(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
-/** "SOXX below 501.30" — the canonical human-readable condition. */
+/** Human-readable condition, per type: price → "SOXX below 501.30"; volume_bar → "a volume bar on
+ * SOXX at or above 1,500,000 shares"; signal_grade → "a SOXX setup grade of 8 or higher". */
 export function describeTradeAlert(a: TradeAlertLike): string {
-  return `${a.symbol} ${a.direction} ${formatAlertPrice(a.level)}`;
+  const type = a.type ?? 'price';
+  if (type === 'volume_bar') return `a volume bar on ${a.symbol} at or above ${a.level.toLocaleString('en-US')} shares`;
+  if (type === 'signal_grade') return `a ${a.symbol} setup grade of ${a.level} or higher`;
+  return `${a.symbol} ${a.direction ?? 'below'} ${formatAlertPrice(a.level)}`;
 }
 
 /**

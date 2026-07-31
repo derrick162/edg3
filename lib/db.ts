@@ -433,7 +433,8 @@ export function initSchema(db: Database.Database) {
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       symbol      TEXT NOT NULL,
-      direction   TEXT NOT NULL CHECK(direction IN ('above','below')),
+      type        TEXT NOT NULL DEFAULT 'price' CHECK(type IN ('price','volume_bar','signal_grade')),
+      direction   TEXT CHECK(direction IS NULL OR direction IN ('above','below')),
       level       REAL NOT NULL,
       note        TEXT,
       status      TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','fired','cancelled')),
@@ -788,6 +789,9 @@ export const SCHEMA_MIGRATIONS: readonly string[] = [
   // the briefing row; audio_url stores the call recording URL (from Vapi's artifact) for playback.
   "ALTER TABLE briefings ADD COLUMN is_journal INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE briefings ADD COLUMN audio_url TEXT",
+  // C14b — alert type: 'price' (default; direction+level), 'volume_bar' (≥ level shares on a
+  // completed 30m bar), 'signal_grade' (bar-grade ≥ level). Constant default → safe additive ALTER.
+  "ALTER TABLE trade_alerts ADD COLUMN type TEXT NOT NULL DEFAULT 'price' CHECK(type IN ('price','volume_bar','signal_grade'))",
 ];
 
 // Indexes that reference migration-added columns. Created AFTER SCHEMA_MIGRATIONS so the
@@ -1116,11 +1120,13 @@ export const energyLogQueries = {
 };
 
 // C14 — voice-set trade alerts. No PII beyond a ticker/level, so no encryption needed.
+export type TradeAlertType = 'price' | 'volume_bar' | 'signal_grade';
 export interface TradeAlert {
   id: number;
   user_id: number;
   symbol: string;
-  direction: 'above' | 'below';
+  type: TradeAlertType;
+  direction: 'above' | 'below' | null; // null for volume_bar / signal_grade (C14b)
   level: number;
   note: string | null;
   status: 'active' | 'fired' | 'cancelled';
@@ -1129,10 +1135,11 @@ export interface TradeAlert {
 }
 
 export const tradeAlertQueries = {
-  create: (userId: number, symbol: string, direction: 'above' | 'below', level: number, note?: string | null): number => {
+  // C14b — `type` defaults to 'price' for back-compat; `direction` is null for non-price types.
+  create: (userId: number, symbol: string, direction: 'above' | 'below' | null, level: number, note?: string | null, type: TradeAlertType = 'price'): number => {
     const info = getDb().prepare(
-      'INSERT INTO trade_alerts (user_id, symbol, direction, level, note) VALUES (?, ?, ?, ?, ?)'
-    ).run(userId, symbol, direction, level, note ?? null);
+      'INSERT INTO trade_alerts (user_id, symbol, type, direction, level, note) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, symbol, type, direction, level, note ?? null);
     return Number(info.lastInsertRowid);
   },
   listActive: (userId: number): TradeAlert[] => {

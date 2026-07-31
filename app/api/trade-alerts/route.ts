@@ -7,10 +7,10 @@ import { tradeAlertQueries } from '@/lib/db';
 export async function GET() {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  let alerts: Array<{ id: number; symbol: string; direction: string; level: number; note: string | null; created_at: string }> = [];
+  let alerts: Array<{ id: number; symbol: string; type: string; direction: string | null; level: number; note: string | null; created_at: string }> = [];
   try {
     alerts = tradeAlertQueries.listActive(user.id).map(a => ({
-      id: a.id, symbol: a.symbol, direction: a.direction, level: a.level, note: a.note, created_at: a.created_at,
+      id: a.id, symbol: a.symbol, type: a.type, direction: a.direction, level: a.level, note: a.note, created_at: a.created_at,
     }));
   } catch { /* degrade to empty */ }
   return NextResponse.json({ alerts });

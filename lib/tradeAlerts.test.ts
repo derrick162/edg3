@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAlertDirection, formatAlertPrice, describeTradeAlert, matchTradeAlerts } from './tradeAlerts';
+import { parseAlertDirection, parseAlertType, formatAlertPrice, describeTradeAlert, matchTradeAlerts, VOLUME_BAR_DEFAULT_LEVEL, SIGNAL_GRADE_DEFAULT_LEVEL } from './tradeAlerts';
 
 describe('parseAlertDirection', () => {
   it('maps above-phrasings to "above"', () => {
@@ -27,10 +27,29 @@ describe('formatAlertPrice', () => {
   });
 });
 
+describe('parseAlertType (C14b)', () => {
+  it('maps phrases to types, defaulting to price', () => {
+    expect(parseAlertType(undefined)).toBe('price');
+    expect(parseAlertType('price')).toBe('price');
+    expect(parseAlertType('volume_bar')).toBe('volume_bar');
+    expect(parseAlertType('a big volume bar')).toBe('volume_bar');
+    expect(parseAlertType('million and a half shares')).toBe('volume_bar');
+    expect(parseAlertType('institutions are back')).toBe('volume_bar');
+    expect(parseAlertType('signal_grade')).toBe('signal_grade');
+    expect(parseAlertType('if the setup grades an eight')).toBe('signal_grade');
+  });
+});
+
 describe('describeTradeAlert', () => {
-  it('renders "SYMBOL direction price"', () => {
-    expect(describeTradeAlert({ symbol: 'SOXX', direction: 'below', level: 501.3 })).toBe('SOXX below 501.30');
-    expect(describeTradeAlert({ symbol: 'QQQ', direction: 'above', level: 500 })).toBe('QQQ above 500');
+  it('price → "SYMBOL direction price"', () => {
+    expect(describeTradeAlert({ symbol: 'SOXX', type: 'price', direction: 'below', level: 501.3 })).toBe('SOXX below 501.30');
+    expect(describeTradeAlert({ symbol: 'QQQ', direction: 'above', level: 500 })).toBe('QQQ above 500'); // type defaults to price
+  });
+  it('volume_bar → shares phrasing with grouping', () => {
+    expect(describeTradeAlert({ symbol: 'SOXX', type: 'volume_bar', level: VOLUME_BAR_DEFAULT_LEVEL })).toBe('a volume bar on SOXX at or above 1,500,000 shares');
+  });
+  it('signal_grade → grade phrasing', () => {
+    expect(describeTradeAlert({ symbol: 'SOXX', type: 'signal_grade', level: SIGNAL_GRADE_DEFAULT_LEVEL })).toBe('a SOXX setup grade of 8 or higher');
   });
 });
 

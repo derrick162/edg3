@@ -3422,6 +3422,28 @@ email-reply notification.
 Ship small / green / full preflight (real exit code) per item; log each below.
 
 ## Changelog
+- **2026-07-31** — **C14b SHIPPED (2531 green) — alert-type extension (price/volume_bar/signal_grade).**
+  - **Schema:** `trade_alerts.type TEXT NOT NULL DEFAULT 'price' CHECK(type IN
+    ('price','volume_bar','signal_grade'))` — added to the CREATE (fresh) AND as a constant-default
+    additive ALTER migration (existing prod; benign duplicate-column no-op on fresh). `direction` is
+    now nullable (`CHECK(direction IS NULL OR IN('above','below'))`) since volume_bar/signal_grade
+    omit it. Landed before the Vapi tools are created, so no dashboard rework.
+  - **`tradeAlertQueries.create`** gains a trailing `type` param (defaults 'price' — back-compat);
+    `TradeAlert.type` + nullable `direction`. `lib/tradeAlerts.ts`: `parseAlertType`,
+    `VOLUME_BAR_DEFAULT_LEVEL=1_500_000`, `SIGNAL_GRADE_DEFAULT_LEVEL=8`, and `describeTradeAlert`
+    branches per type ("SOXX below 501.30" / "a volume bar on SOXX at or above 1,500,000 shares" /
+    "a SOXX setup grade of 8 or higher").
+  - **`setTradeAlert`** accepts `type`: volume_bar → symbol + level (default 1.5M), no direction;
+    signal_grade → level (default 8), symbol defaults SOXX (SOXX-only today), no direction; price
+    unchanged. Both GET feeds return `type`; sidebar card renders per-type ("SOXX vol ≥ 1,500,000",
+    "SOXX grade ≥ 8").
+  - **Crossing semantics (prompt):** alerts fire on a state TRANSITION, not when already true — the
+    prompt tells Edge to confirm intent if a price alert is already satisfied ("SOXX is already under
+    510 — want a call if it crosses back under…?") and never imply an instant call. New types'
+    trigger phrases + defaults added to the TRADE ALERTS prompt block.
+  - +6 tests (parseAlertType, describeTradeAlert per type, volume_bar/signal_grade defaults, price
+    back-compat). 2525 → 2531. tsc + next build clean. ⚠️ Vijay S10 + Derrick's Vapi-tool creation
+    now include the `type` param.
 - **2026-07-31** — **C14 safe slice SHIPPED (2525 green) — voice-set trade alerts (parts 1, 2, 5).**
   - **Part 1 (`9bc69a9`):** `trade_alerts` table (constant defaults per S9; added to
     `USER_SCOPED_DELETE_ORDER` — the S3 drift guard caught it) + `tradeAlertQueries`. Three Vapi

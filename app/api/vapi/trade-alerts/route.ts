@@ -19,10 +19,10 @@ export async function GET(req: NextRequest) {
   const status = new URL(req.url).searchParams.get('status') ?? 'active';
   if (status !== 'active') return NextResponse.json({ alerts: [] });
 
-  let alerts: Array<{ id: number; symbol: string; direction: string; level: number; note: string | null }> = [];
+  let alerts: Array<{ id: number; symbol: string; type: string; direction: string | null; level: number; note: string | null }> = [];
   try {
     alerts = tradeAlertQueries.listAllActive().map(a => ({
-      id: a.id, symbol: a.symbol, direction: a.direction, level: a.level, note: a.note,
+      id: a.id, symbol: a.symbol, type: a.type, direction: a.direction, level: a.level, note: a.note,
     }));
   } catch { /* degrade to empty — never 500 the watcher's poll */ }
 

@@ -892,7 +892,13 @@ REPLACE PATTERN — when ${firstName} says "replace [event] with [new event]" or
 
 - getTradeUpdate() — call when ${firstName} asks about his trades, portfolio, positions, trade score, or "how's my position". Reads his own trade-monitor dashboard. Relay EXACTLY what the tool returns — the numbers and notes are his dashboard's own; never infer bullish/bearish or add detail it didn't give. If it returns the "couldn't reach your trade dashboard" line, say that honestly.
 
-- TRADE ALERTS: when ${firstName} says "alert me / call me / let me know / ping me if/when [symbol] [hits/breaks/crosses/goes above/drops below/falls under] [price]" (e.g. "call me if SOXX breaks 501.30"), call setTradeAlert with symbol, direction ("above" or "below"), level, and an optional note. ALWAYS echo the parsed condition back in your confirmation ("SOXX above 501.30 — got it, I'll call you if it happens") so a misheard ticker or number gets corrected on the spot. NEVER say you've started watching unless setTradeAlert confirmed it saved. When he asks "what alerts do I have?" → listTradeAlerts. When he says "cancel / drop / remove my alert for X" or "cancel the 501 alert" → cancelTradeAlert with symbol and/or level; if it comes back with several matches, read them and ask which. Alerts are managed by voice only — if he asks to change one, cancel it and set a new one.
+- TRADE ALERTS: when ${firstName} says "alert me / call me / let me know / ping me if/when …", call setTradeAlert. Three alert TYPES (pass \`type\`):
+    • PRICE (default, type:"price"): "if SOXX breaks 501.30 / drops below 510" → symbol, direction ("above" or "below"), level.
+    • VOLUME BAR (type:"volume_bar"): "when a big volume bar prints on SOXX / unusual volume / a million and a half shares / institutions are back" → symbol, level in shares (if he doesn't give a number, omit level and it defaults to 1,500,000); NO direction.
+    • SIGNAL GRADE (type:"signal_grade"): "if the setup grades an eight / when the grade hits X" → level 0–10 (defaults to 8 if unstated), SOXX-only today; NO direction.
+  ALWAYS echo the parsed condition back ("SOXX above 501.30 — got it, I'll call you when it happens") so a misheard ticker/number/type is corrected on the spot. NEVER say you've started watching unless setTradeAlert confirmed it saved.
+  CROSSING SEMANTICS (important): alerts fire on a state TRANSITION (a crossing), not when the level is already true. Before setting a PRICE alert, if you can tell it's already satisfied (e.g. he says "below 510" but you know SOXX is at 508), DON'T promise a call — confirm what he means first: "SOXX is already under 510 — want a call if it crosses back under after a bounce, or did you mean a different level?" Never imply an alert fires immediately.
+  When he asks "what alerts do I have?" → listTradeAlerts. "cancel / drop / remove my alert for X" or "cancel the 501 alert" → cancelTradeAlert with symbol and/or level; if several match, read them and ask which. Alerts are voice-managed only — to change one, cancel it and set a new one.
 
 - CALENDAR SCORES: the briefing includes ONE Edge Score (0–100) — a blend of Focus (calendar vs priorities) and Energy (calendar vs your capacity). Open with: "Your Edge Score is [X] — [one-sentence reason from the drivers]." If the score is below 50, immediately offer the topFix: "The one move that helps most: [topFix.description] — want me to do that now?" Act on yes. If energy is 'calibrating', ask for their energy level early so the score sharpens. Never recite all the drivers verbatim — one punchy line, then the fix.
 
@@ -1212,7 +1218,7 @@ Always end with warmth. This person is building something — remind them of tha
 
           '29898c32-3823-4a29-820d-7cacbc4427d8', // generateWeeklyReview (R15 T7)
           // 'PASTE-UUID-HERE', // getTradeUpdate (C11) — create in Vapi dashboard (no params), then uncomment
-          // 'PASTE-UUID-HERE', // setTradeAlert (C14) — params: symbol, direction, level, note?
+          // 'PASTE-UUID-HERE', // setTradeAlert (C14/C14b) — params: symbol, type?, direction?, level?, note?
           // 'PASTE-UUID-HERE', // listTradeAlerts (C14) — no params
           // 'PASTE-UUID-HERE', // cancelTradeAlert (C14) — params: symbol?, level?
 
@@ -1382,7 +1388,7 @@ Always end with warmth. This person is building something — remind them of tha
 
           '29898c32-3823-4a29-820d-7cacbc4427d8', // generateWeeklyReview (R15 T7)
           // 'PASTE-UUID-HERE', // getTradeUpdate (C11) — create in Vapi dashboard (no params), then uncomment
-          // 'PASTE-UUID-HERE', // setTradeAlert (C14) — params: symbol, direction, level, note?
+          // 'PASTE-UUID-HERE', // setTradeAlert (C14/C14b) — params: symbol, type?, direction?, level?, note?
           // 'PASTE-UUID-HERE', // listTradeAlerts (C14) — no params
           // 'PASTE-UUID-HERE', // cancelTradeAlert (C14) — params: symbol?, level?
 

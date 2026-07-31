@@ -1865,7 +1865,7 @@ function DashboardInner() {
   const [focusLockedAreas, setFocusLockedAreas] = useState<FocusRecommendationArea[] | null>(null);
   const [dismissingFocusTitle, setDismissingFocusTitle] = useState<string | null>(null);
   // C14 — read-only active trade alerts (voice-managed; sidebar displays only).
-  const [tradeAlerts, setTradeAlerts] = useState<{ id: number; symbol: string; direction: string; level: number; note: string | null; created_at: string }[]>([]);
+  const [tradeAlerts, setTradeAlerts] = useState<{ id: number; symbol: string; type: string; direction: string | null; level: number; note: string | null; created_at: string }[]>([]);
   const [edgeScoreCelebrating, setEdgeScoreCelebrating] = useState(false);
   const [dayPlan, setDayPlan] = useState<DayPlanType | null>(null);
   const [dayPlanLoading, setDayPlanLoading] = useState(false);
@@ -3029,7 +3029,11 @@ function DashboardInner() {
                       <span aria-hidden="true" style={{ color: 'var(--edg-success)', fontSize: 9, lineHeight: '1.4' }}>●</span>
                       <div className="min-w-0">
                         <p className="text-xs" style={{ color: 'var(--text-strong)', fontWeight: 500 }}>
-                          {a.symbol} {a.direction} {Number.isInteger(a.level) ? a.level : a.level.toFixed(2)}
+                          {a.type === 'volume_bar'
+                            ? `${a.symbol} vol ≥ ${a.level.toLocaleString('en-US')}`
+                            : a.type === 'signal_grade'
+                            ? `${a.symbol} grade ≥ ${a.level}`
+                            : `${a.symbol} ${a.direction ?? ''} ${Number.isInteger(a.level) ? a.level : a.level.toFixed(2)}`.trim()}
                         </p>
                         <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
                           set {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}

@@ -67,6 +67,25 @@ describe('setTradeAlert', () => {
     const res = await executeTool('setTradeAlert', { symbol: 'SOXX', direction: 'below', level: 'x' }, ctx);
     expect(res).toMatch(/what price/i);
   });
+
+  it('C14b — volume_bar defaults level to 1,500,000 and stores no direction', async () => {
+    const res = await executeTool('setTradeAlert', { symbol: 'SOXX', type: 'volume_bar' }, ctx);
+    expect(res).toContain('1,500,000 shares');
+    const a = tradeAlertQueries.listActive(1)[0];
+    expect(a).toMatchObject({ type: 'volume_bar', level: 1500000, direction: null });
+  });
+
+  it('C14b — signal_grade defaults level to 8 and symbol to SOXX', async () => {
+    const res = await executeTool('setTradeAlert', { type: 'signal_grade' }, ctx);
+    expect(res).toContain('SOXX setup grade of 8');
+    const a = tradeAlertQueries.listActive(1)[0];
+    expect(a).toMatchObject({ type: 'signal_grade', symbol: 'SOXX', level: 8, direction: null });
+  });
+
+  it('C14b — price alert still stores type=price + direction', async () => {
+    await executeTool('setTradeAlert', { symbol: 'SOXX', direction: 'below', level: 501.3 }, ctx);
+    expect(tradeAlertQueries.listActive(1)[0]).toMatchObject({ type: 'price', direction: 'below', level: 501.3 });
+  });
 });
 
 describe('listTradeAlerts', () => {

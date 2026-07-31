@@ -1644,24 +1644,37 @@ ${whoopNote ? `RECOVERY: ${whoopNote}` : ''}` }],
     return formatTradeUpdateForVoice(snapshot);
 
   } else if (fn === 'setTradeAlert') {
-    // C14 — voice-set a price alert. Edge echoes the parsed condition back before/while saving;
-    // never claim watching started unless this tool confirmed it saved.
-    const { symbol: rawSym, direction: rawDir, level: rawLevel, note } = args as { symbol?: string; direction?: string; level?: unknown; note?: string };
-    const { parseAlertDirection, describeTradeAlert } = await import('@/lib/tradeAlerts');
-    const symbol = (rawSym ?? '').trim().toUpperCase().replace(/[^A-Z0-9.]/g, '');
-    const direction = parseAlertDirection(rawDir);
-    const level = typeof rawLevel === 'number' ? rawLevel : parseFloat(String(rawLevel));
-    if (!symbol) return "Which symbol should I watch? Tell me the ticker and the price.";
-    if (!direction) return `Should I alert you when ${symbol} goes ABOVE or BELOW a price? Say "above" or "below".`;
-    if (!Number.isFinite(level) || level <= 0) return `What price should I watch ${symbol} for?`;
+    // C14 / C14b — voice-set a price / volume-bar / signal-grade alert. Edge echoes the parsed
+    // condition back; never claim watching started unless this tool confirmed it saved.
+    const { symbol: rawSym, type: rawType, direction: rawDir, level: rawLevel, note } = args as { symbol?: string; type?: string; direction?: string; level?: unknown; note?: string };
+    const { parseAlertDirection, parseAlertType, describeTradeAlert, VOLUME_BAR_DEFAULT_LEVEL, SIGNAL_GRADE_DEFAULT_LEVEL } = await import('@/lib/tradeAlerts');
+    const type = parseAlertType(rawType);
+    let symbol = (rawSym ?? '').trim().toUpperCase().replace(/[^A-Z0-9.]/g, '');
+    let level = typeof rawLevel === 'number' ? rawLevel : parseFloat(String(rawLevel));
+    let direction: 'above' | 'below' | null = null;
+
+    if (type === 'signal_grade') {
+      if (!symbol) symbol = 'SOXX'; // signal grade is SOXX-only today
+      if (!Number.isFinite(level) || level <= 0) level = SIGNAL_GRADE_DEFAULT_LEVEL;
+    } else if (type === 'volume_bar') {
+      if (!symbol) return "Which symbol should I watch for a big volume bar?";
+      if (!Number.isFinite(level) || level <= 0) level = VOLUME_BAR_DEFAULT_LEVEL;
+    } else { // price
+      if (!symbol) return "Which symbol should I watch? Tell me the ticker and the price.";
+      direction = parseAlertDirection(rawDir);
+      if (!direction) return `Should I alert you when ${symbol} goes ABOVE or BELOW a price? Say "above" or "below".`;
+      if (!Number.isFinite(level) || level <= 0) return `What price should I watch ${symbol} for?`;
+    }
     try {
-      tradeAlertQueries.create(userId, symbol, direction, level, note?.trim()?.slice(0, 200) || null);
+      tradeAlertQueries.create(userId, symbol, direction, level, note?.trim()?.slice(0, 200) || null, type);
     } catch (err) {
       console.error('[setTradeAlert] failed:', err instanceof Error ? err.message : err);
       return `I couldn't set that alert just now — want me to try again?`;
     }
-    // Confirm the exact parsed condition back so a misheard number is caught immediately.
-    return `Got it — I'll watch ${describeTradeAlert({ symbol, direction, level })} and call you if it happens.`;
+    // Confirm the exact parsed condition back so a misheard ticker/number is caught immediately.
+    // The watcher fires on a state CROSSING, not on an already-true level — so "when it happens",
+    // never "right now" (the prompt handles the already-true confirmation before calling this).
+    return `Got it — I'll watch for ${describeTradeAlert({ symbol, type, direction, level })} and call you when it happens.`;
 
   } else if (fn === 'listTradeAlerts') {
     // C14 — spoken summary of the user's active alerts.
