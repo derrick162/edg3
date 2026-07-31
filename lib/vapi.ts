@@ -1503,3 +1503,16 @@ export function vapiCallDurationSeconds(
 // the streak or the "Nth call in a row" count. (edge-call-feedback)
 export const MIN_COMPLETED_CALL_SECONDS = 20;
 
+// Pull the call-recording URL out of a Vapi payload / call object. Vapi exposes it under
+// artifact.recordingUrl (mono) or artifact.stereoRecordingUrl, and occasionally a top-level
+// recordingUrl. Returns null when none present (e.g. recording not ready yet, or disabled).
+export function extractRecordingUrl(
+  src: {
+    recordingUrl?: string | null;
+    artifact?: { recordingUrl?: string | null; stereoRecordingUrl?: string | null } | null;
+  } | null | undefined,
+): string | null {
+  if (!src) return null;
+  return src.artifact?.recordingUrl || src.recordingUrl || src.artifact?.stereoRecordingUrl || null;
+}
+

@@ -4,7 +4,7 @@ import { checkInboundCallRateLimit, checkRateLimit, getClientIP } from '@/lib/ra
 import { dayPeriod, greetingYue } from '@/lib/greeting';
 import { analyzeUserResponse } from '@/lib/briefing';
 import { summarizeUserFacingActions } from '@/lib/actionSummary';
-import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, type VoiceSpeedPref } from '@/lib/vapi';
+import { extractUserResponseFromTranscript, checkVapiSecret, VOICES, SPEED_MAP, CALENDAR_TOOL_IDS, buildOpenCallSystemPrompt, resolveWebhookUrl, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, extractRecordingUrl, type VoiceSpeedPref } from '@/lib/vapi';
 import { currentOpenCallMemoryText, currentPrioritiesText } from '@/lib/callMemory';
 import { claimWebhookEvent } from '@/lib/idempotency';
 import { withRetry } from '@/lib/retry';
@@ -197,6 +197,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
+    // Late recording capture. Vapi's artifact.recordingUrl is usually only populated in the
+    // end-of-call-report, which arrives AFTER call-ended already marked the row 'completed' — and
+    // the processing block below only runs pre-completion. Without this, journal audio is never
+    // saved (transcript is ready immediately; the recording is not). Backfill audio_url from any
+    // call-ended/report event that carries it — payload first, then one authoritative Vapi fetch
+    // on the end-of-call-report — even after the row is already completed.
+    if ((type === 'call-ended' || type === 'end-of-call-report') && !briefing.audio_url) {
+      let lateAudio = extractRecordingUrl(payload) || extractRecordingUrl(call);
+      if (!lateAudio && type === 'end-of-call-report' && process.env.VAPI_API_KEY) {
+        try {
+          const r = await fetch(`https://api.vapi.ai/call/${call.id}`, {
+            headers: { Authorization: `Bearer ${process.env.VAPI_API_KEY}` },
+          });
+          if (r.ok) lateAudio = extractRecordingUrl(await r.json());
+        } catch { /* non-fatal — recording is best-effort */ }
+      }
+      if (lateAudio) {
+        try {
+          briefingQueries.update(briefing.id, { audio_url: lateAudio });
+          console.log(`[webhook] Captured recording URL for briefing ${briefing.id}`);
+        } catch (e) { console.error('[webhook] audio_url backfill failed:', e); }
+      }
+    }
+
     if ((type === 'call-ended' || type === 'end-of-call-report') && briefing.status !== 'completed') {
       // Entering critical processing — arm the dead-letter context (see outer catch).
       dlq = { userId: briefing.user_id, callId: call.id, briefingId: briefing.id };
@@ -208,9 +232,9 @@ export async function POST(req: NextRequest) {
       // Duration: prefer whatever the webhook payload already carries; the full-call fetch below
       // overrides it with the authoritative value when available.
       let durationSec = vapiCallDurationSeconds(payload) ?? vapiCallDurationSeconds({ call });
-      // Journaling — call recording URL from Vapi's artifact (only present when recording was enabled).
-      let audioUrl: string | null =
-        payload.artifact?.recordingUrl || payload.recordingUrl || call.artifact?.recordingUrl || null;
+      // Journaling — call recording URL from Vapi's artifact (only present when recording was enabled
+      // AND ready; usually it isn't yet at call-ended — the late-capture block above backfills it).
+      let audioUrl: string | null = extractRecordingUrl(payload) || extractRecordingUrl(call);
       try {
         const vapiCall = await withRetry(async () => {
           const vapiRes = await fetch(`https://api.vapi.ai/call/${call.id}`, {
@@ -226,7 +250,7 @@ export async function POST(req: NextRequest) {
         }
         const fetchedDur = vapiCallDurationSeconds(vapiCall);
         if (fetchedDur != null) durationSec = fetchedDur;
-        const fetchedAudio = vapiCall.artifact?.recordingUrl || vapiCall.recordingUrl || vapiCall.artifact?.stereoRecordingUrl || null;
+        const fetchedAudio = extractRecordingUrl(vapiCall);
         if (fetchedAudio) audioUrl = fetchedAudio;
       } catch (err) {
         console.error('[webhook] Failed to fetch full transcript after retries:', err);

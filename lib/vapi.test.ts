@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS } from './vapi';
+import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, extractRecordingUrl } from './vapi';
 
 // checkVapiSecret reads process.env — stub it cleanly per test.
 const env = process.env;
@@ -256,5 +256,34 @@ describe('vapiCallDurationSeconds', () => {
   it('a real briefing clears the completed-call threshold', () => {
     const dur = vapiCallDurationSeconds({ durationSeconds: 125 });
     expect(dur! >= MIN_COMPLETED_CALL_SECONDS).toBe(true);
+  });
+});
+
+describe('extractRecordingUrl', () => {
+  it('returns null for null/undefined/empty', () => {
+    expect(extractRecordingUrl(null)).toBeNull();
+    expect(extractRecordingUrl(undefined)).toBeNull();
+    expect(extractRecordingUrl({})).toBeNull();
+    expect(extractRecordingUrl({ artifact: null })).toBeNull();
+  });
+
+  it('reads artifact.recordingUrl (the usual end-of-call-report shape)', () => {
+    expect(extractRecordingUrl({ artifact: { recordingUrl: 'https://vapi/rec.wav' } })).toBe('https://vapi/rec.wav');
+  });
+
+  it('falls back to a top-level recordingUrl', () => {
+    expect(extractRecordingUrl({ recordingUrl: 'https://vapi/top.wav' })).toBe('https://vapi/top.wav');
+  });
+
+  it('falls back to stereoRecordingUrl when mono is absent', () => {
+    expect(extractRecordingUrl({ artifact: { stereoRecordingUrl: 'https://vapi/stereo.wav' } })).toBe('https://vapi/stereo.wav');
+  });
+
+  it('prefers mono recordingUrl over stereo', () => {
+    expect(extractRecordingUrl({ artifact: { recordingUrl: 'mono', stereoRecordingUrl: 'stereo' } })).toBe('mono');
+  });
+
+  it('returns null when the recording is not ready (call-ended shape)', () => {
+    expect(extractRecordingUrl({ artifact: { transcript: 'hi' } as never })).toBeNull();
   });
 });
