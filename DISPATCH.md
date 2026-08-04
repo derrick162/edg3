@@ -6,6 +6,11 @@
 > - PM loop checks git every 10 minutes, merges green branches, and adds next items here.
 > - Do NOT pick up items from another lane's section.
 
+## 🚨 Incident log (all lanes read — each entry carries a rule)
+
+- **2026-08-04 — Decline-retry loop robocalled Derrick every ~6 min for a day** (fixed `cad3db5`). The Jul-30 declined/short-call streak gate (mobile IC) made an answered-then-hung-up call `treatAsMissed`; the missed path stamps a retry; each retry creates a NEW briefing row, so the per-row `retry_attempted` guard never engaged. **Rules:** (1) An ACTIVE hang-up (answered, <20s, not a no-answer reason) must never re-dial. (2) Any path that can place a call needs a per-user daily attempt cap as a structural backstop (now: retry path caps at 3 rows/day; S10's alert path shipped with ≤3/day from day one). (3) Any change to what counts as "missed"/"completed" must be traced through EVERY consumer of that status (retry, streak, momentum) before shipping — the gate was correct for streaks and catastrophic for retries.
+- **2026-08-01→03 — `'credit spread'` keyword 400'd every outbound call for 3 days** (fixed `9593df1`). Vapi rejects the whole call if any transcriber keyword isn't `word` or `word:number`; suite can't see Vapi-side validation. **Rule:** new Vapi call-request fields need a format-constraint test mirroring Vapi's documented format (see `lib/vapi-transcriber.test.ts` incident guard) or a board-flagged live smoke test before deploy.
+
 ---
 
 ## 🛠️ Core (Darren) — branch `core`
