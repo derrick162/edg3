@@ -33,4 +33,13 @@ describe('selectTranscriber (C13 STT tuning)', () => {
     expect(buildEnTranscriber().keywords).toHaveLength(TRADING_KEYTERMS.length);
     expect(buildEnTranscriber().keywords.every(k => k.endsWith(':2'))).toBe(true);
   });
+
+  // INCIDENT GUARD (Aug 1-3 2026): Vapi 400s the ENTIRE call if any keyword is not
+  // 'word' or 'word:number' — 'credit spread' (space) silently killed every outbound
+  // call for 3 days. Every boosted keyword must match Vapi's accepted format exactly.
+  it("every boosted keyword matches Vapi's 'word:number' format (no spaces/colons in the word)", () => {
+    for (const k of buildEnTranscriber().keywords) {
+      expect(k).toMatch(/^[^\s:]+:\d+$/);
+    }
+  });
 });

@@ -49,7 +49,10 @@ const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 // Deepgram nova-2 to English with keyword boosting for the tickers/terms Derrick actually says.
 export const TRADING_KEYTERMS: string[] = [
   'SOXL', 'SOXS', 'QQQ', 'SPY', 'MAGS', 'TQQQ', 'SQQQ', 'NVDA', 'IWM',
-  'puts', 'calls', 'strike', 'spread', 'gamma', 'delta', 'theta', 'credit spread',
+  // NOTE: single words ONLY — Vapi rejects the whole call (400) if any keyword contains a
+  // space/colon ('word' or 'word:number' format). 'credit spread' here broke every outbound
+  // call Aug 1-3 2026. Guarded by a format test in lib/vapi.test.ts.
+  'puts', 'calls', 'strike', 'spread', 'gamma', 'delta', 'theta', 'credit',
   'Whoop', 'Vapi', 'Edg3', 'Derrick',
 ];
 
