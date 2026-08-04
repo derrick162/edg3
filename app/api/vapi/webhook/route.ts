@@ -253,7 +253,20 @@ export async function POST(req: NextRequest) {
       //  quota is topped up — 14 consecutive failures on 2026-06-22.)
       const isQuotaError = endedReason.toLowerCase().includes('quota');
 
-      if (treatAsMissed && !briefing.retry_attempted && !isQuotaError) {
+      // Active hang-up: the user ANSWERED and ended the call under 20s — a deliberate "not now."
+      // Never re-dial it. Re-dialing declines caused the 2026-08-04 incident: every decline
+      // stamped a retry, each retry created a NEW briefing row (so the per-row retry_attempted
+      // guard never engaged), and Edge called Derrick every ~6 minutes all day.
+      const activeHangup = tooShort && !wasMissed;
+      // Backstop for reason-based loops ('declined'/'rejected' are in MISSED_CALL_REASONS and
+      // would loop the same way): hard cap on total call attempts per user per UTC day — after
+      // this many briefing rows in a day, the retry path goes silent no matter the reason.
+      const attemptsToday = (db.prepare(
+        "SELECT COUNT(*) AS n FROM briefings WHERE user_id = ? AND created_at >= date('now')"
+      ).get(briefing.user_id) as { n: number }).n;
+      const underDailyCap = attemptsToday <= 3;
+
+      if (treatAsMissed && !activeHangup && underDailyCap && !briefing.retry_attempted && !isQuotaError) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
         scheduleRetry(db, briefing.id, briefing.user_id);
