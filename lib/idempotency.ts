@@ -99,6 +99,19 @@ export function claimWebhookEvent(callId: string, type: string): boolean {
 }
 
 /**
+ * S10 — claim a trade-alert by its upstream idempotencyKey. Returns true on first delivery
+ * (proceed), false for a duplicate (an upstream retry — do NOT place a second call). Reuses the
+ * generic webhook-dedupe table under a namespaced key so retries of the same alert are collapsed.
+ * Fails OPEN (returns true) on a DB fault, consistent with the rest of the idempotency layer — the
+ * ≤3/day rate-limit cap remains the hard backstop against a duplicate turning into a robocall.
+ */
+export function claimTradeAlert(idempotencyKey: string): boolean {
+  try {
+    return webhookDedupeQueries.claim(`trade-alert:${idempotencyKey}`);
+  } catch { return true; }
+}
+
+/**
  * Claim a Vapi tool-call execution by toolCallId (Vapi's per-call unique identifier).
  * Returns true on first invocation (proceed), false on duplicate (return cached result).
  * Fails open — never blocks a legitimate tool call.
