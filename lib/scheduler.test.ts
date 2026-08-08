@@ -16,6 +16,9 @@ const MOCK_USER = {
 const h = vi.hoisted(() => ({
   prepareAll:              vi.fn<() => unknown[]>(() => []),
   prepareGet:              vi.fn<() => unknown>(() => undefined),
+  // 2026-08-08 attempt-cap COUNT query gets its own mock so the sequence-based
+  // prepareGet tests (one blocking-row read per tick) stay valid.
+  prepareCountGet:         vi.fn<() => unknown>(() => ({ n: 0 })),
   findById:                vi.fn<() => unknown>(() => MOCK_USER),
   initiateCall:            vi.fn(async () => ({ id: 'call_123' })),
   generateDailyBriefing:   vi.fn(async () => 'Test briefing content'),
@@ -38,6 +41,7 @@ vi.mock('./db', () => ({
       if (sql.includes('retry_after IS NOT NULL')) return { all: vi.fn(() => []) };
       // UPDATE retry_after = NULL — no-op mock
       if (sql.includes('retry_after = NULL')) return { run: vi.fn() };
+      if (sql.includes('COUNT(*) AS n FROM briefings')) return { get: h.prepareCountGet };
       return { get: h.prepareGet };
     },
   }),

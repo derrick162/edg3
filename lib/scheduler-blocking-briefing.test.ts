@@ -79,3 +79,43 @@ describe('R19 T4 — findTodaysBlockingBriefing open-call filter', () => {
     expect(block()).toMatchObject({ status: 'failed', error_code: 'vapi_daily_limit' });
   });
 });
+
+// 2026-08-08 INCIDENT GUARD — 'missed' rows never blocked the sweep, so instant pipeline
+// failures (ElevenLabs voice down) machine-gunned Derrick every minute of his call window.
+// After MAX_DAILY_BRIEFING_ATTEMPTS morning rows in a day, the sweep is blocked no matter
+// what status the rows have.
+describe('daily attempt cap (2026-08-08 robocall incident guard)', () => {
+  it('two missed morning rows do NOT block (statuses themselves are non-blocking)', () => {
+    seed({ status: 'missed', isOpenCall: 0 });
+    seed({ status: 'missed', isOpenCall: 0, at: `${TODAY}T07:01:00` });
+    expect(block()).toBeUndefined();
+  });
+
+  it('three missed morning rows hit the cap and block with attempt_cap', () => {
+    seed({ status: 'missed', isOpenCall: 0 });
+    seed({ status: 'missed', isOpenCall: 0, at: `${TODAY}T07:01:00` });
+    seed({ status: 'missed', isOpenCall: 0, at: `${TODAY}T07:02:00` });
+    expect(block()).toMatchObject({ status: 'attempt_cap' });
+  });
+
+  it('mixed missed/failed rows count toward the cap regardless of status', () => {
+    seed({ status: 'missed', isOpenCall: 0 });
+    seed({ status: 'failed', isOpenCall: 0, at: `${TODAY}T07:01:00` });
+    seed({ status: 'missed', isOpenCall: null, at: `${TODAY}T07:02:00` });
+    expect(block()).toMatchObject({ status: 'attempt_cap' });
+  });
+
+  it('open-call rows do NOT count toward the cap', () => {
+    seed({ status: 'completed', isOpenCall: 1 });
+    seed({ status: 'completed', isOpenCall: 1, at: `${TODAY}T06:30:00` });
+    seed({ status: 'missed', isOpenCall: 0, at: `${TODAY}T07:00:00` });
+    expect(block()).toBeUndefined();
+  });
+
+  it("yesterday's rows do NOT count toward today's cap", () => {
+    seed({ status: 'missed', isOpenCall: 0, at: '2026-06-23T07:00:00' });
+    seed({ status: 'missed', isOpenCall: 0, at: '2026-06-23T07:05:00' });
+    seed({ status: 'missed', isOpenCall: 0, at: '2026-06-23T07:10:00' });
+    expect(block()).toBeUndefined();
+  });
+});

@@ -252,6 +252,10 @@ export async function POST(req: NextRequest) {
       //  via 'pipeline-error', but retrying just burns more failed calls until the
       //  quota is topped up — 14 consecutive failures on 2026-06-22.)
       const isQuotaError = endedReason.toLowerCase().includes('quota');
+      // Voice-infrastructure failures (e.g. 'pipeline-error-eleven-labs-voice-failed') are
+      // account-side (credits/subscription/voice availability) and won't self-heal in 5 min —
+      // retrying just rings the user with another 0-second call (2026-08-08 incident).
+      const isVoiceInfraError = endedReason.toLowerCase().includes('voice-failed');
 
       // Active hang-up: the user ANSWERED and ended the call under 20s — a deliberate "not now."
       // Never re-dial it. Re-dialing declines caused the 2026-08-04 incident: every decline
@@ -266,7 +270,7 @@ export async function POST(req: NextRequest) {
       ).get(briefing.user_id) as { n: number }).n;
       const underDailyCap = attemptsToday <= 3;
 
-      if (treatAsMissed && !activeHangup && underDailyCap && !briefing.retry_attempted && !isQuotaError) {
+      if (treatAsMissed && !activeHangup && underDailyCap && !briefing.retry_attempted && !isQuotaError && !isVoiceInfraError) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         db.prepare('UPDATE briefings SET retry_attempted = 1 WHERE id = ?').run(briefing.id);
         scheduleRetry(db, briefing.id, briefing.user_id);
@@ -276,6 +280,7 @@ export async function POST(req: NextRequest) {
       if (treatAsMissed) {
         briefingQueries.update(briefing.id, { status: 'missed' });
         if (isQuotaError) console.warn(`[webhook] Quota error — call ${call.id} marked missed, no retry scheduled`);
+        if (isVoiceInfraError) console.warn(`[webhook] Voice infrastructure failure — call ${call.id} marked missed, no retry (check ElevenLabs account/credits)`);
         return NextResponse.json({ received: true });
       }
 

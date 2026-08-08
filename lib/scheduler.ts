@@ -114,6 +114,13 @@ const MAX_CONCURRENT_CALLS = 5;
  *
  * Single source of truth for both the `checkAndInitiateCalls` sweep and `scheduleBriefingCall`.
  */
+// 2026-08-08 INCIDENT: 'missed'/'failed' rows never blocked the sweep, so when every call
+// died instantly (ElevenLabs voice failure) the minute-cron re-dialed Derrick EVERY MINUTE
+// of his call window — 8 rings before he blocked the number. The sweep now hard-stops after
+// this many morning-briefing rows in a day, regardless of their status. Deliberate retries
+// (webhook-stamped, force:true) bypass this and carry their own ≤3/day cap.
+export const MAX_DAILY_BRIEFING_ATTEMPTS = 3;
+
 export function findTodaysBlockingBriefing(
   db: ReturnType<typeof getDb>,
   userId: number,
@@ -121,6 +128,11 @@ export function findTodaysBlockingBriefing(
   callingCutoff: string,
   pendingCutoff: string,
 ): { status: string; error_code: string | null } | undefined {
+  const attemptsRow = db.prepare(
+    `SELECT COUNT(*) AS n FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (is_open_call IS NULL OR is_open_call = 0)`,
+  ).get(userId, `${dayPrefix}%`) as { n: number } | undefined;
+  if ((attemptsRow?.n ?? 0) >= MAX_DAILY_BRIEFING_ATTEMPTS) return { status: 'attempt_cap', error_code: null };
+
   return db.prepare(
     `SELECT status, error_code FROM briefings WHERE user_id = ? AND scheduled_for LIKE ? AND (is_open_call IS NULL OR is_open_call = 0) AND (
       status = 'completed'
@@ -736,6 +748,8 @@ export async function scheduleBriefingCall(userId: number, opts: { force?: boole
         ? "You already had a call today — use the open call to chat with Edge now."
         : existing.status === 'calling'
         ? "A call is already in progress. Check back in a moment."
+        : existing.status === 'attempt_cap'
+        ? "Several call attempts already fired today, so automatic calling is paused until tomorrow — something upstream may be failing. Check the admin health page."
         : "A briefing is being prepared — please wait a moment.";
       throw new CallError(msg, 'already_called');
     }
