@@ -2976,10 +2976,17 @@ function DashboardInner() {
 
             {whoopConnected === false && (
               <div className="px-2">
-                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                  Connect Whoop in{' '}
-                  <a href="/settings" style={{ color: 'var(--edg-indigo)' }}>Settings</a>{' '}
-                  to see your recovery data here.
+                {/* The connect action must live HERE — Settings only shows read-only account
+                    status and links back to the dashboard, so pointing there was a dead loop
+                    (Derrick got stranded reconnecting, 2026-08-09). */}
+                <button
+                  onClick={connectWhoop}
+                  className="btn-secondary text-xs w-full py-2"
+                >
+                  ⚡ Connect Whoop
+                </button>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                  See recovery, sleep, and strain in your briefings.
                 </p>
               </div>
             )}
