@@ -578,6 +578,18 @@ DATE SPEECH: Speak dates as natural spoken words — "July thirty-first", "Monda
 
 
 
+// Quiet hours — Edge NEVER places a call before this local hour, no matter which code path
+// asks (scheduler sweep, webhook retry, journal/open-call button, trade alerts, anything
+// future). Derrick, 2026-08-11: "no matter what, Edge doesn't call until after 7 am."
+// Enforced at initiateCall — the single choke point every outbound call goes through.
+export const QUIET_HOURS_END = 7;
+
+/** True when the user's local clock has reached QUIET_HOURS_END (7 AM). Pure; testable. */
+export function isAfterQuietHours(timezone: string, now: Date = new Date()): boolean {
+  const hour = parseInt(now.toLocaleString('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }), 10);
+  return hour >= QUIET_HOURS_END;
+}
+
 export async function initiateCall(
 
   phoneNumber: string,
@@ -632,7 +644,10 @@ export async function initiateCall(
 
   if (!VAPI_PHONE_NUMBER_ID) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
 
-
+  // Quiet hours — hard floor, every call path. See QUIET_HOURS_END above.
+  if (!isAfterQuietHours(userTimezone)) {
+    throw new Error(`QUIET_HOURS: it's before ${QUIET_HOURS_END} AM in ${userTimezone} — Edge doesn't call before ${QUIET_HOURS_END} AM.`);
+  }
 
   // R12 T6 — apply the user's speaking-speed preset over the selected voice's base config.
 

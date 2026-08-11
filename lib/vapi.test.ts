@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS } from './vapi';
+import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, isAfterQuietHours, QUIET_HOURS_END } from './vapi';
 
 // checkVapiSecret reads process.env — stub it cleanly per test.
 const env = process.env;
@@ -129,7 +129,15 @@ describe('SPEED_MAP', () => {
 // Instead we use vi.resetModules() + dynamic import to get a fresh module with the env set.
 
 describe('initiateCall voice override', () => {
+  beforeEach(() => {
+    // Freeze the clock at 1 PM Vancouver — initiateCall now enforces the 7 AM quiet-hours
+    // floor against the REAL clock, so these tests must not depend on when the suite runs.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-11T20:00:00Z'));
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.resetModules();
@@ -146,6 +154,16 @@ describe('initiateCall voice override', () => {
       json: async () => body,
     } as Response);
   }
+
+  it('QUIET HOURS: refuses to place any call before 7 AM local — no Vapi request at all', async () => {
+    vi.setSystemTime(new Date('2026-08-11T13:30:00Z')); // 6:30 AM in America/Vancouver (default tz)
+    vi.stubEnv('VAPI_API_KEY', 'test-key');
+    vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
+    const spy = mockFetch({ id: 'call-q', status: 'queued', phoneNumber: '+1' });
+    const { initiateCall: call } = await importFresh();
+    await expect(call('+15551234567', 'Hello', 'Test User')).rejects.toThrow(/QUIET_HOURS/);
+    expect(spy).not.toHaveBeenCalled();
+  });
 
   it('sends daniel voice by default (no voicePref arg)', async () => {
     vi.stubEnv('VAPI_API_KEY', 'test-key');
@@ -182,6 +200,7 @@ describe('initiateCall voice override', () => {
   });
 
   it('R22: language="yue" swaps in Whisper STT + Azure Cantonese voice', async () => {
+    vi.setSystemTime(new Date('2026-08-11T01:00:00Z')); // 9 AM in Asia/Hong_Kong — past the quiet-hours floor
     vi.stubEnv('VAPI_API_KEY', 'test-key');
     vi.stubEnv('VAPI_PHONE_NUMBER_ID', 'test-phone-id');
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://test.edg3.ai');
@@ -256,5 +275,36 @@ describe('vapiCallDurationSeconds', () => {
   it('a real briefing clears the completed-call threshold', () => {
     const dur = vapiCallDurationSeconds({ durationSeconds: 125 });
     expect(dur! >= MIN_COMPLETED_CALL_SECONDS).toBe(true);
+  });
+});
+
+// Derrick 2026-08-11: "no matter what, Edge doesn't call until after 7 am." The floor is
+// enforced inside initiateCall (the choke point for EVERY outbound call path), driven by
+// this pure helper. Fixed UTC instants → known local hours, DST-current for August.
+describe(`quiet hours — no calls before ${QUIET_HOURS_END} AM local`, () => {
+  it('6:30 AM in Toronto (EDT) is inside quiet hours', () => {
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T10:30:00Z'))).toBe(false);
+  });
+
+  it('7:00 AM sharp in Toronto is allowed (floor is inclusive)', () => {
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T11:00:00Z'))).toBe(true);
+  });
+
+  it('9:05 AM in Toronto is allowed', () => {
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T13:05:00Z'))).toBe(true);
+  });
+
+  it('6:59 AM in Vancouver (PDT) is inside quiet hours while Toronto is well past 7', () => {
+    expect(isAfterQuietHours('America/Vancouver', new Date('2026-08-11T13:59:00Z'))).toBe(false);
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T13:59:00Z'))).toBe(true);
+  });
+
+  it('midnight and small hours are inside quiet hours', () => {
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T04:10:00Z'))).toBe(false); // 00:10 EDT
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T08:00:00Z'))).toBe(false); // 04:00 EDT
+  });
+
+  it('late evening is NOT quiet hours (only the pre-7AM floor was requested)', () => {
+    expect(isAfterQuietHours('America/Toronto', new Date('2026-08-11T02:30:00Z'))).toBe(true); // 22:30 EDT Aug 10
   });
 });
