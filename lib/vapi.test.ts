@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkVapiSecret, VOICES, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, isAfterQuietHours, QUIET_HOURS_END } from './vapi';
+import { checkVapiSecret, VOICES, VOICES_11LABS, SPEED_MAP, initiateCall, vapiCallDurationSeconds, MIN_COMPLETED_CALL_SECONDS, isAfterQuietHours, QUIET_HOURS_END } from './vapi';
 
 // checkVapiSecret reads process.env — stub it cleanly per test.
 const env = process.env;
@@ -87,27 +87,34 @@ describe('checkVapiSecret', () => {
 
 // ── VOICES map ────────────────────────────────────────────────────────────────
 
-describe('VOICES', () => {
-  it('daniel config uses 11labs provider with Daniel voiceId', () => {
-    expect(VOICES.daniel.provider).toBe('11labs');
-    expect(VOICES.daniel.voiceId).toBe('3WqHLnw80rOZqJzW9YRB');
-    expect(VOICES.daniel.model).toBe('eleven_turbo_v2_5');
-    expect(VOICES.daniel.stability).toBe(0.55);
-    expect(VOICES.daniel.similarityBoost).toBe(0.75);
+describe('VOICES (TEMP Azure stopgap 2026-08-12 — Vapi ElevenLabs credential rejected server-side)', () => {
+  it('daniel is temporarily the Azure Andrew voice', () => {
+    expect(VOICES.daniel.provider).toBe('azure');
+    expect(VOICES.daniel.voiceId).toBe('en-US-AndrewNeural');
     expect(VOICES.daniel.speed).toBe(0.9); // R9 T1 — slowed down from default
   });
 
-  it('aria config uses 11labs provider with aria voiceId', () => {
-    expect(VOICES.aria.provider).toBe('11labs');
-    expect(VOICES.aria.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
-    expect(VOICES.aria.model).toBe('eleven_turbo_v2_5');
-    expect(VOICES.aria.speed).toBe(0.9); // R9 T1 — slowed down from default
-    expect(VOICES.aria.stability).toBe(0.4);
-    expect(VOICES.aria.similarityBoost).toBe(0.7);
+  it('aria is temporarily the Azure Aria voice', () => {
+    expect(VOICES.aria.provider).toBe('azure');
+    expect(VOICES.aria.voiceId).toBe('en-US-AriaNeural');
+    expect(VOICES.aria.speed).toBe(0.9);
   });
 
   it('daniel and aria voiceIds are distinct', () => {
     expect(VOICES.daniel.voiceId).not.toBe(VOICES.aria.voiceId);
+  });
+
+  // Preserved originals — the revert target once the ElevenLabs key is re-saved in Vapi.
+  it('VOICES_11LABS keeps the original ElevenLabs configs intact for the revert', () => {
+    expect(VOICES_11LABS.daniel.provider).toBe('11labs');
+    expect(VOICES_11LABS.daniel.voiceId).toBe('3WqHLnw80rOZqJzW9YRB');
+    expect(VOICES_11LABS.daniel.model).toBe('eleven_turbo_v2_5');
+    expect(VOICES_11LABS.daniel.stability).toBe(0.55);
+    expect(VOICES_11LABS.daniel.similarityBoost).toBe(0.75);
+    expect(VOICES_11LABS.aria.provider).toBe('11labs');
+    expect(VOICES_11LABS.aria.voiceId).toBe('cgSgspJ2msm6clMCkdW9');
+    expect(VOICES_11LABS.aria.stability).toBe(0.4);
+    expect(VOICES_11LABS.aria.similarityBoost).toBe(0.7);
   });
 });
 

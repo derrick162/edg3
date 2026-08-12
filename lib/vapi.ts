@@ -71,7 +71,12 @@ export function selectTranscriber(language: string): { provider: string; model: 
 
 // the single main assistant; no duplicate assistant needed.
 
-export const VOICES = {
+// ⚠️ TEMP AZURE STOPGAP (2026-08-12): Vapi's stored ElevenLabs credential is rejected server-side —
+// EVERY 11labs voice (incl. stock Rachel, any model) dies at 0s with
+// pipeline-error-eleven-labs-voice-failed since Aug 7; Azure verified working by live test call.
+// TO REVERT once the ElevenLabs key is re-saved in Vapi Provider Keys: point VOICES back at
+// VOICES_11LABS below (originals preserved verbatim) and re-run a live voice test.
+export const VOICES_11LABS = {
 
   daniel: {
 
@@ -102,6 +107,30 @@ export const VOICES = {
     similarityBoost: 0.7,
 
     speed: 0.9,   // R9 T1 — default; overridden per-call by the user's voice_speed preset (R12 T6)
+
+  },
+
+} as const;
+
+export const VOICES = {
+
+  daniel: {
+
+    provider: 'azure' as const,
+
+    voiceId: 'en-US-AndrewNeural',   // closest Azure match to Edge's male voice; verified live 2026-08-12
+
+    speed: 0.9,
+
+  },
+
+  aria: {
+
+    provider: 'azure' as const,
+
+    voiceId: 'en-US-AriaNeural',
+
+    speed: 0.9,
 
   },
 
