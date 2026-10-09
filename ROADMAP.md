@@ -1,5 +1,12 @@
 # EDG3 — Coordination Constitution (read me first)
 
+> ## 🧊 PRODUCT FROZEN (2026-10-09)
+> Edg3 pivoted to **Edg3 AI** (agentic expert network) — new repo `C:\Users\Derrick\edg3-ai`,
+> lane worktrees `edg3-ai-core` / `edg3-ai-security` / `edg3-ai-design`. **All feature work
+> happens there.** This product stays DEPLOYED and RUNNING for Derrick's daily calls
+> (critical fixes only, no new features). This repo is also the lift source for proven
+> components (crypto, auth, rate limiting, admin patterns, the Vapi voice stack).
+
 > **This file is the shared constitution for every EDG3 session.** It is
 > auto-loaded into every session via `CLAUDE.md`. It does **not** hold the task
 > backlog — it defines *how the parallel lanes work together without colliding*.
